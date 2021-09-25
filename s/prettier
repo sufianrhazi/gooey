@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")/.."
+# shellcheck disable=SC1091
+source "s/_tools.sh"
+
+echo_info "Checking requirements..."
+s/check_requirements
+echo_info "Installing dependencies..."
+yarn
+echo_info "Formatting with prettier..."
+node_modules/.bin/prettier -w 'src/**.(ts|tsx)'
+
+if [ "$1" != "--no-done" ]; then
+    echo_good "All done"
+fi

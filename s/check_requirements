@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")/.."
+# shellcheck disable=SC1091
+source "s/_tools.sh"
+
+if ! which node > /dev/null; then
+    echo_error "nodejs is required. Please install via https://yarnpkg.com/"
+    exit 1
+fi
+
+NODE_VERSION=$(node --version)
+RECOMMEND_NODE_VERSION=$(cat .nvmrc)
+
+if [ "$NODE_VERSION" != "$RECOMMEND_NODE_VERSION" ]; then
+    echo_warn "WARNING: the current node version does not match the recommended node version."
+    echo -n "Current node version: "
+    echo_info "$NODE_VERSION"
+    echo -n "Recommended node version: "
+    echo_info "$RECOMMEND_NODE_VERSION"
+    echo_warn "To fix, please install nvm via https://github.com/nvm-sh/nvm and run: nvm use"
+    sleep 3
+fi
+
+if ! which yarn > /dev/null; then
+    echo_error "yarn is required. Please install via https://yarnpkg.com/"
+    exit 1
+fi

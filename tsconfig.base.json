@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2015",
+
+    "jsxFactory": "jsx",
+    "jsxFragmentFactory": "jsxFragment",
+
+    "module": "ES2015",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "paths": {},
+
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": false,
+    "sourceMap": true,
+    "newLine": "lf",
+
+    "rootDir": "./src/",
+    "outDir": "./build/tsc/",
+
+    "strict": true
+  }
+}

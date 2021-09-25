@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2015", "DOM"]
+  },
+  "include": [
+    "./src/**.ts",
+    "./src/**.tsx"
+  ]
+}
