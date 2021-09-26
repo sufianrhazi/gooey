@@ -11,7 +11,7 @@ import { DAG } from './dag';
 export const version = '0.0.1';
 
 let activeComputations: TrackedComputation[] = [];
-let computationToInvalidationMap: Map<Function, Function> = new Map();
+let computationToInvalidationMap: Map<TrackedComputation, Function> = new Map();
 let rootComputations: TrackedComputation[] = [];
 
 let partialDag = new DAG<
