@@ -424,7 +424,7 @@ export const assert = {
 
 function formatDuration(duration: [number, number] | undefined) {
     if (!duration) return 'no time';
-    return chalk.yellow(`${duration[0]}s ${duration[1]}µs`);
+    return chalk.yellow(`${duration[0]}s ${duration[1]}ns`);
 }
 
 setImmediate(async () => {
