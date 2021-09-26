@@ -359,22 +359,22 @@ export const assert = {
             );
         }
     },
-    arrayIncludes: (a: any, b: any[], msg?: string) => {
+    arrayIncludes: (haystack: any[], needle: any, msg?: string) => {
         countAssertion();
-        if (!b.includes(a)) {
+        if (!haystack.includes(needle)) {
             throw new AssertionError(
                 'arrayIncludes',
-                () => `${repr(a)} not found within ${repr(b)}`,
+                () => `${repr(needle)} not found within ${repr(haystack)}`,
                 msg
             );
         }
     },
-    notArrayIncludes: (a: any, b: any[], msg?: string) => {
+    notArrayIncludes: (haystack: any[], needle: any, msg?: string) => {
         countAssertion();
-        if (b.includes(a)) {
+        if (haystack.includes(needle)) {
             throw new AssertionError(
                 'notArrayIncludes',
-                () => `${repr(a)} is found within ${repr(b)}`,
+                () => `${repr(needle)} is found within ${repr(haystack)}`,
                 msg
             );
         }

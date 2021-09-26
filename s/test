@@ -4,17 +4,21 @@ cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source "s/_tools.sh"
 
+PROJECT_ROOT="$(pwd)"
+
 echo_info "Checking requirements..."
 s/check_requirements
 echo_info "Installing dependencies..."
 yarn
+echo_info "Cleaning..."
+git clean -f -d build/
 echo_info "Building..."
 node_modules/.bin/tsc -p ./tsconfig.test.json
 
 echo_info "Running tests..."
 find build/commonjs -name '*.test.js' -print0 | while IFS='' read -r -d $'\0' TEST_FILE; do
     echo_info "Test ${TEST_FILE/build\/commonjs/src}"
-    node "${TEST_FILE}"
+    PROJECT_ROOT="$PROJECT_ROOT" node "${TEST_FILE}"
 done
 
 echo_good "All done"
