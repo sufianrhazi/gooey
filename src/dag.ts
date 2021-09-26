@@ -6,7 +6,7 @@ export class DAG {
     public nodes: Record<string, Item>;
     public edges: [string, string][];
     public edgeMap: Record<string, Record<string, ComputationItem>>;
-    public reverseEdgeMap: Record<string, Record<string, true>>;
+    public reverseEdgeMap: Record<string, Record<string, Item>>;
 
     constructor() {
         this.nodes = {};
@@ -46,7 +46,7 @@ export class DAG {
         if (!this.reverseEdgeMap[toId]) {
             this.reverseEdgeMap[toId] = {};
         }
-        this.reverseEdgeMap[toId][fromId] = true;
+        this.reverseEdgeMap[toId][fromId] = fromNode;
     }
 
     /**
@@ -84,9 +84,7 @@ export class DAG {
         if (!this.reverseEdgeMap[toId]) {
             return [];
         }
-        return Object.keys(this.reverseEdgeMap[toId]).map(
-            (toId) => this.nodes[toId]
-        );
+        return Object.values(this.reverseEdgeMap[toId]);
     }
 
     topologicalSort(): Item[] {
