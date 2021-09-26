@@ -1,37 +1,50 @@
 import * as toposort from 'toposort';
-import { Item, ComputationItem } from './types';
-import { getItemId } from './idreg';
 
-export class DAG {
-    public nodes: Record<string, Item>;
+export class DAG<FromType extends object, ToType extends object> {
+    private maxId: number;
+    private idMap: WeakMap<FromType | ToType, string>;
+
+    public nodes: Record<string, FromType | ToType>;
     public edges: [string, string][];
-    public edgeMap: Record<string, Record<string, ComputationItem>>;
-    public reverseEdgeMap: Record<string, Record<string, Item>>;
+    public edgeMap: Record<string, Record<string, ToType>>;
+    public reverseEdgeMap: Record<string, Record<string, FromType | ToType>>;
 
     constructor() {
+        this.maxId = 0;
+        this.idMap = new WeakMap();
         this.nodes = {};
         this.edges = [];
         this.edgeMap = {};
         this.reverseEdgeMap = {};
     }
 
-    addNode(node: Item) {
-        const itemId = getItemId(node);
+    getItemId(item: FromType | ToType): string {
+        let id;
+        if ((id = this.idMap.get(item)) === undefined) {
+            id = this.maxId.toString();
+            this.maxId += 1;
+            this.idMap.set(item, id);
+        }
+        return id;
+    }
+
+    addNode(node: FromType | ToType) {
+        const itemId = this.getItemId(node);
         if (!this.nodes[itemId]) {
             this.nodes[itemId] = node;
         }
     }
 
-    hasNode(node: Item) {
-        return !!this.nodes[getItemId(node)];
+    hasNode(node: FromType | ToType) {
+        return !!this.nodes[this.getItemId(node)];
     }
 
     /**
      * Indicate that toNode needs to be updated if fromNode has changed
      */
-    addEdge(fromNode: Item, toNode: ComputationItem) {
-        const fromId = getItemId(fromNode);
-        const toId = getItemId(toNode);
+    addEdge(fromNode: FromType | ToType, toNode: ToType) {
+        const fromId = this.getItemId(fromNode);
+        const toId = this.getItemId(toNode);
         if (!this.edgeMap[fromId]) {
             this.edgeMap[fromId] = {};
         }
@@ -49,10 +62,10 @@ export class DAG {
         this.reverseEdgeMap[toId][fromId] = fromNode;
     }
 
-    removeEdges(edges: [Item, Item][]) {
+    removeEdges(edges: [FromType | ToType, ToType][]) {
         edges.forEach(([fromNode, toNode]) => {
-            const fromId = getItemId(fromNode);
-            const toId = getItemId(toNode);
+            const fromId = this.getItemId(fromNode);
+            const toId = this.getItemId(toNode);
             delete this.edgeMap[fromId][toId];
             delete this.reverseEdgeMap[toId][fromId];
         });
@@ -67,8 +80,8 @@ export class DAG {
     /**
      * Get list of things need to be updated, when fromNode has changed?
      */
-    getDependencies(fromNode: Item): ComputationItem[] {
-        const fromId = getItemId(fromNode);
+    getDependencies(fromNode: FromType): ToType[] {
+        const fromId = this.getItemId(fromNode);
         if (!this.edgeMap[fromId]) {
             return [];
         }
@@ -78,19 +91,21 @@ export class DAG {
     /**
      * Get list of things that cause toNode to updated
      */
-    getReverseDependencies(toNode: Item): Item[] {
-        const toId = getItemId(toNode);
+    getReverseDependencies(toNode: ToType): (FromType | ToType)[] {
+        const toId = this.getItemId(toNode);
         if (!this.reverseEdgeMap[toId]) {
             return [];
         }
         return Object.values(this.reverseEdgeMap[toId]);
     }
 
-    topologicalSort(): Item[] {
+    topologicalSort(): (FromType | ToType)[] {
         return toposort(this.edges).map((itemId) => this.nodes[itemId]);
     }
 
-    getUnreachableReverse(rootItems: Item[]): Item[] {
+    getUnreachableReverse(
+        rootItems: (FromType | ToType)[]
+    ): (FromType | ToType)[] {
         // mark and sweep
         //
         // Step one: visit all the items from rootItems
@@ -105,12 +120,12 @@ export class DAG {
             }
         };
         rootItems.forEach((rootItem) => {
-            const itemId = getItemId(rootItem);
+            const itemId = this.getItemId(rootItem);
             visit(itemId);
         });
 
         // Step two: identify unreachable items
-        const unreachable: Item[] = [];
+        const unreachable: (FromType | ToType)[] = [];
         Object.keys(this.nodes).forEach((nodeId) => {
             if (!marked[nodeId]) {
                 unreachable.push(this.nodes[nodeId]);
@@ -119,9 +134,9 @@ export class DAG {
         return unreachable;
     }
 
-    removeNodes(items: Item[]) {
+    removeNodes(items: (FromType | ToType)[]) {
         const itemIds: Record<string, boolean> = {};
-        items.forEach((item) => (itemIds[getItemId(item)] = true));
+        items.forEach((item) => (itemIds[this.getItemId(item)] = true));
         Object.keys(itemIds).forEach((itemId) => {
             delete this.nodes[itemId];
             const forwardEdgeMap = this.edgeMap[itemId];

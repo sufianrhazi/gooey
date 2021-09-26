@@ -1,15 +1,27 @@
-import { InvariantError, Item, SourceItem, ComputationItem } from './types';
-import { getItemId, registerItem } from './idreg';
+import {
+    ReviseSymbol,
+    InvariantError,
+    TrackedComputation,
+    TrackedModel,
+    ModelField,
+    isTrackedComputation,
+} from './types';
 import { DAG } from './dag';
 
 export const version = '0.0.1';
 
-let activeComputations: ComputationItem[] = [];
+let activeComputations: TrackedComputation[] = [];
 let computationToInvalidationMap: Map<Function, Function> = new Map();
-let rootComputations: ComputationItem[] = [];
+let rootComputations: TrackedComputation[] = [];
 
-let partialDag = new DAG();
-let globalDependencyGraph = new DAG();
+let partialDag = new DAG<
+    TrackedComputation | ModelField<unknown>,
+    TrackedComputation
+>();
+let globalDependencyGraph = new DAG<
+    TrackedComputation | ModelField<unknown>,
+    TrackedComputation
+>();
 
 export function reset() {
     partialDag = new DAG();
@@ -20,40 +32,44 @@ export function reset() {
     globalDependencyGraph = new DAG();
 }
 
-export function model<T extends {}>(obj: T): T {
+export function model<T extends {}>(obj: T): TrackedModel<T> {
     if (typeof obj !== 'object' || !obj) {
         throw new InvariantError('model must be provided an object');
     }
 
+    const fields: Record<string | symbol, ModelField<T>> = {};
+
     const proxy = new Proxy(obj, {
-        get(target: any, key) {
-            const currentItem: SourceItem = {
-                type: 'model',
-                model: proxy,
-                key,
-            };
-            processDependency(currentItem);
+        get(target: any, key: string | symbol) {
+            if (key === ReviseSymbol) {
+                return 'model';
+            }
+            if (!fields[key]) {
+                fields[key] = {
+                    model: proxy,
+                    key,
+                };
+            }
+            processDependency(fields[key]);
             return target[key];
         },
 
         set(target: any, key, value: any) {
-            // Note: in tup, we should just add to a list of "changed items"
-            const currentItem: SourceItem = {
-                type: 'model',
-                model: proxy,
-                key,
-            };
-            processChange(currentItem);
+            if (!fields[key]) {
+                fields[key] = {
+                    model: proxy,
+                    key,
+                };
+            }
+            processChange(fields[key]);
             return (target[key] = value);
         },
-    });
-
-    registerItem(proxy);
+    }) as TrackedModel<T>;
 
     return proxy;
 }
 
-export function collection<T>(array: T[]): T[] {
+export function collection<T>(array: T[]): TrackedModel<T[]> {
     if (!Array.isArray(array)) {
         throw new InvariantError('collection must be provided an array');
     }
@@ -61,18 +77,20 @@ export function collection<T>(array: T[]): T[] {
     return model(array);
 }
 
-export function rootComputation<Param, Ret>(func: () => Ret): typeof func {
+export function rootComputation<Param, Ret>(
+    func: () => Ret
+): TrackedComputation {
     return makeComputation(func, true);
 }
 
-export function computation<Param, Ret>(func: () => Ret): typeof func {
+export function computation<Param, Ret>(func: () => Ret): TrackedComputation {
     return makeComputation(func, false);
 }
 
 function makeComputation<Param, Ret>(
     func: () => Ret,
     isRoot: boolean
-): typeof func {
+): TrackedComputation {
     if (typeof func !== 'function') {
         throw new InvariantError('computation must be provided a function');
     }
@@ -83,43 +101,45 @@ function makeComputation<Param, Ret>(
         result = undefined;
     };
 
-    const computationItem: ComputationItem = {
-        type: 'computation',
-        computation: runComputation,
-    };
+    const trackedComputation: TrackedComputation = Object.assign(
+        function runComputation() {
+            processDependency(trackedComputation);
 
-    function runComputation() {
-        processDependency(computationItem);
+            if (result) {
+                return result.result;
+            }
 
-        if (result) {
+            const edgesToRemove: [
+                TrackedComputation | ModelField<unknown>,
+                TrackedComputation
+            ][] = globalDependencyGraph
+                .getReverseDependencies(runComputation)
+                .map((fromNode) => [fromNode, runComputation]);
+            globalDependencyGraph.removeEdges(edgesToRemove);
+
+            activeComputations.push(runComputation);
+            result = { result: func() };
+
+            const sanityCheck = activeComputations.pop();
+            if (sanityCheck !== runComputation) {
+                throw new InvariantError(
+                    'Active computation stack inconsistency!'
+                );
+            }
             return result.result;
-        }
+        },
+        { [ReviseSymbol]: 'computation' }
+    );
 
-        const edgesToRemove: [Item, Item][] = globalDependencyGraph
-            .getReverseDependencies(computationItem)
-            .map((fromNode) => [fromNode, computationItem]);
-        globalDependencyGraph.removeEdges(edgesToRemove);
-
-        activeComputations.push(computationItem);
-        result = { result: func() };
-
-        const sanityCheck = activeComputations.pop();
-        if (sanityCheck !== computationItem) {
-            throw new InvariantError('Active computation stack inconsistency!');
-        }
-        return result.result;
-    }
-
-    registerItem(runComputation);
-    computationToInvalidationMap.set(runComputation, invalidate);
+    computationToInvalidationMap.set(trackedComputation, invalidate);
     if (isRoot) {
-        rootComputations.push(computationItem);
+        rootComputations.push(trackedComputation);
     }
 
-    return runComputation;
+    return trackedComputation;
 }
 
-function processDependency(item: Item) {
+function processDependency<T>(item: TrackedComputation | ModelField<T>) {
     const dependentComputation =
         activeComputations[activeComputations.length - 1];
     if (dependentComputation) {
@@ -131,15 +151,15 @@ function processDependency(item: Item) {
     }
 }
 
-function processChange(item: Item) {
-    const addNode = (item: Item) => {
-        partialDag.addNode(item);
-        const dependencies = globalDependencyGraph.getDependencies(item);
+function processChange<T>(item: ModelField<T>) {
+    const addNode = (node: TrackedComputation | ModelField<T>) => {
+        partialDag.addNode(node);
+        const dependencies = globalDependencyGraph.getDependencies(node);
         dependencies.forEach((dependentItem) => {
             if (!partialDag.hasNode(dependentItem)) {
                 addNode(dependentItem);
             }
-            partialDag.addEdge(item, dependentItem);
+            partialDag.addEdge(node, dependentItem);
         });
     };
     addNode(item);
@@ -150,14 +170,12 @@ export function flush() {
     const partialTopo = partialDag.topologicalSort();
     partialDag = new DAG();
     partialTopo.forEach((item) => {
-        if (item.type === 'computation') {
-            const invalidation = computationToInvalidationMap.get(
-                item.computation
-            );
+        if (isTrackedComputation(item)) {
+            const invalidation = computationToInvalidationMap.get(item);
             if (invalidation) {
                 invalidation();
             }
-            item.computation();
+            item();
         }
     });
 

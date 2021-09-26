@@ -1,14 +1,18 @@
 export class InvariantError extends Error {}
 
-export type SourceItem = {
-    type: 'model';
-    model: any;
+export const ReviseSymbol = Symbol('revise');
+
+export type TrackedModel<T> = T & { [ReviseSymbol]: 'model' };
+export type TrackedComputation = () => any & { [ReviseSymbol]: 'computation' };
+export type TrackedItem<T> = TrackedModel<T> | TrackedComputation;
+
+export interface ModelField<T> {
+    model: TrackedModel<T>;
     key: string | symbol;
-};
+}
 
-export type ComputationItem = {
-    type: 'computation';
-    computation: () => any;
-};
-
-export type Item = SourceItem | ComputationItem;
+export function isTrackedComputation(
+    thing: unknown
+): thing is TrackedComputation {
+    return !!(thing && (thing as any)[ReviseSymbol] === 'computation');
+}
