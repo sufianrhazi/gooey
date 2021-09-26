@@ -13,6 +13,9 @@ test('package.json version is consistent with exported version', () => {
 });
 
 suite('behavior', () => {
+    beforeEach(() => {
+        revise.reset();
+    });
     function setUp() {
         type Renderer = () => string;
 
@@ -103,10 +106,13 @@ suite('behavior', () => {
     }
 
     test('initial render renders tree', () => {
-        const { app, renders } = setUp();
+        const { model0, app, renders } = setUp();
 
         assert.is(app(), 'Shopping:\n[ ] apples\n[ ] bananas');
         assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
+        model0.task = 'what';
+        revise.flush();
+        assert.is(app(), 'Shopping:\n[ ] what\n[ ] bananas');
     });
 
     test('no-op rerender does nothing', () => {
@@ -285,7 +291,6 @@ suite('behavior', () => {
             // <<flush 1 here>>
             'list',
             // <<flush 2 here>>
-            'item:model0', // TODO: figure out how to do garbage collection
         ]);
         assert.is(app(), 'Shopping:\n[ ] bananas');
     });

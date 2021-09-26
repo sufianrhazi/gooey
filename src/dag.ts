@@ -49,20 +49,19 @@ export class DAG {
         this.reverseEdgeMap[toId][fromId] = fromNode;
     }
 
-    /**
-     * Indicate that toNode no longer needs to be updated if any of the fromNodes have changed
-     */
-    removeFromEdges(fromNodes: Item[], toNode: Item) {
-        const toId = getItemId(toNode);
-        const fromIds: Record<string, true> = {};
-        fromNodes.forEach((fromNode) => {
+    removeEdges(edges: [Item, Item][]) {
+        edges.forEach(([fromNode, toNode]) => {
             const fromId = getItemId(fromNode);
-            fromIds[fromId] = true;
-
+            const toId = getItemId(toNode);
             delete this.edgeMap[fromId][toId];
             delete this.reverseEdgeMap[toId][fromId];
         });
-        this.edges = this.edges.filter(([a, b]) => !(b === toId && fromIds[a]));
+        this.edges = []; // TODO: make this faster
+        Object.keys(this.edgeMap).forEach((fromId) => {
+            Object.keys(this.edgeMap[fromId]).forEach((toId) => {
+                this.edges.push([fromId, toId]);
+            });
+        });
     }
 
     /**
@@ -89,5 +88,62 @@ export class DAG {
 
     topologicalSort(): Item[] {
         return toposort(this.edges).map((itemId) => this.nodes[itemId]);
+    }
+
+    getUnreachableReverse(rootItems: Item[]): Item[] {
+        // mark and sweep
+        //
+        // Step one: visit all the items from rootItems
+        const marked: Record<string, boolean> = {};
+        const visit = (itemId: string) => {
+            if (marked[itemId]) return;
+            marked[itemId] = true;
+            if (this.reverseEdgeMap[itemId]) {
+                Object.keys(this.reverseEdgeMap[itemId]).forEach((toId) => {
+                    visit(toId);
+                });
+            }
+        };
+        rootItems.forEach((rootItem) => {
+            const itemId = getItemId(rootItem);
+            visit(itemId);
+        });
+
+        // Step two: identify unreachable items
+        const unreachable: Item[] = [];
+        Object.keys(this.nodes).forEach((nodeId) => {
+            if (!marked[nodeId]) {
+                unreachable.push(this.nodes[nodeId]);
+            }
+        });
+        return unreachable;
+    }
+
+    removeNodes(items: Item[]) {
+        const itemIds: Record<string, boolean> = {};
+        items.forEach((item) => (itemIds[getItemId(item)] = true));
+        Object.keys(itemIds).forEach((itemId) => {
+            delete this.nodes[itemId];
+            const forwardEdgeMap = this.edgeMap[itemId];
+            delete this.edgeMap[itemId];
+            const reverseEdgeMap = this.reverseEdgeMap[itemId];
+            delete this.reverseEdgeMap[itemId];
+            if (forwardEdgeMap) {
+                Object.keys(forwardEdgeMap).forEach(
+                    (toId) => delete this.reverseEdgeMap[toId]
+                );
+            }
+            if (reverseEdgeMap) {
+                Object.keys(reverseEdgeMap).forEach(
+                    (fromId) => delete this.edgeMap[fromId]
+                );
+            }
+        });
+        this.edges = []; // TODO: make this faster
+        Object.keys(this.edgeMap).forEach((fromId) => {
+            Object.keys(this.edgeMap[fromId]).forEach((toId) => {
+                this.edges.push([fromId, toId]);
+            });
+        });
     }
 }

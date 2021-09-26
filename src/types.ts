@@ -9,7 +9,6 @@ export type SourceItem = {
 export type ComputationItem = {
     type: 'computation';
     computation: () => any;
-    invalidate: () => void;
 };
 
 export type Item = SourceItem | ComputationItem;

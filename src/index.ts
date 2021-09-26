@@ -1,13 +1,24 @@
 import { InvariantError, Item, SourceItem, ComputationItem } from './types';
-import { registerItem } from './idreg';
+import { getItemId, registerItem } from './idreg';
 import { DAG } from './dag';
 
 export const version = '0.0.1';
 
-let changes: SourceItem[] = [];
 let activeComputations: ComputationItem[] = [];
+let computationToInvalidationMap: Map<Function, Function> = new Map();
+let rootComputations: ComputationItem[] = [];
 
-const globalDag = new DAG();
+let partialDag = new DAG();
+let globalDependencyGraph = new DAG();
+
+export function reset() {
+    partialDag = new DAG();
+    activeComputations = [];
+    rootComputations = [];
+    computationToInvalidationMap = new Map();
+
+    globalDependencyGraph = new DAG();
+}
 
 export function model<T extends {}>(obj: T): T {
     if (typeof obj !== 'object' || !obj) {
@@ -16,17 +27,12 @@ export function model<T extends {}>(obj: T): T {
 
     const proxy = new Proxy(obj, {
         get(target: any, key) {
-            if (activeComputations.length > 0) {
-                const currentItem: SourceItem = {
-                    type: 'model',
-                    model: proxy,
-                    key,
-                };
-                const dependentComputation =
-                    activeComputations[activeComputations.length - 1];
-                globalDag.addNode(currentItem);
-                globalDag.addEdge(currentItem, dependentComputation); // Confirmed this is correct
-            }
+            const currentItem: SourceItem = {
+                type: 'model',
+                model: proxy,
+                key,
+            };
+            processDependency(currentItem);
             return target[key];
         },
 
@@ -37,7 +43,7 @@ export function model<T extends {}>(obj: T): T {
                 model: proxy,
                 key,
             };
-            changes.push(currentItem);
+            processChange(currentItem);
             return (target[key] = value);
         },
     });
@@ -55,7 +61,18 @@ export function collection<T>(array: T[]): T[] {
     return model(array);
 }
 
+export function rootComputation<Param, Ret>(func: () => Ret): typeof func {
+    return makeComputation(func, true);
+}
+
 export function computation<Param, Ret>(func: () => Ret): typeof func {
+    return makeComputation(func, false);
+}
+
+function makeComputation<Param, Ret>(
+    func: () => Ret,
+    isRoot: boolean
+): typeof func {
     if (typeof func !== 'function') {
         throw new InvariantError('computation must be provided a function');
     }
@@ -66,92 +83,58 @@ export function computation<Param, Ret>(func: () => Ret): typeof func {
         result = undefined;
     };
 
-    const computation = () => {
-        const currentComputation: ComputationItem = {
-            type: 'computation',
-            computation,
-            invalidate,
-        };
+    const computationItem: ComputationItem = {
+        type: 'computation',
+        computation: runComputation,
+    };
 
-        // Let's say this is the second time I've run
-        //
-        // The first time around,
-        // - computationA calls computationB
-        // - computationA reads modelA
-        // - computationA reads modelB
-        // - computationA calls computationC
-        //
-        // This means the graph looks like:
-        // - computationB -> computationA
-        // - modelA -> computationA
-        // - modelB -> computationA
-        // - computationC -> computationA
-        //
-        // However, if the second time this gets called,
-        // - computationA calls computationB
-        // - computationA reads modelB
-        // - computationA reads modelC
-        // - computationA calls computationD
-        //
-        // The graph should be updated to look like this:
-        // - computationB -> computationA
-        // - modelA -> computationA (removed)
-        // - modelB -> computationA
-        // - computationC -> computationA (removed)
-        // - modelC -> computationA (added)
-        // - computationD -> computationA (added)
-        //
-        // To do this, prior to touching the graph, we need to:
-        // 1. For all the items that point to currentComputation, (causeUpdateDependencies)
-        //    - remove (causeUpdateDependency -> currentComputation) from the DAG
-        // 2. Perform the update
-        //
-        // That's it!
+    function runComputation() {
+        processDependency(computationItem);
 
-        globalDag.addNode(currentComputation);
-        if (activeComputations.length > 0) {
-            globalDag.addEdge(
-                currentComputation,
-                activeComputations[activeComputations.length - 1]
-            ); // Confirmed this is correct
-        }
-
-        // We sadly *need* to do the above bookkeeping before reusing the prior value. Maybe there's a way to not do it?
         if (result) {
             return result.result;
         }
 
-        const itemsThatWouldPreviouslyCauseThisComputation =
-            globalDag.getReverseDependencies(currentComputation);
-        globalDag.removeFromEdges(
-            itemsThatWouldPreviouslyCauseThisComputation,
-            currentComputation
-        );
+        const edgesToRemove: [Item, Item][] = globalDependencyGraph
+            .getReverseDependencies(computationItem)
+            .map((fromNode) => [fromNode, computationItem]);
+        globalDependencyGraph.removeEdges(edgesToRemove);
 
-        activeComputations.push(currentComputation);
+        activeComputations.push(computationItem);
         result = { result: func() };
+
         const sanityCheck = activeComputations.pop();
-        if (sanityCheck !== currentComputation) {
-            throw new Error('Something weird happened!');
+        if (sanityCheck !== computationItem) {
+            throw new InvariantError('Active computation stack inconsistency!');
         }
         return result.result;
-    };
+    }
 
-    registerItem(computation);
+    registerItem(runComputation);
+    computationToInvalidationMap.set(runComputation, invalidate);
+    if (isRoot) {
+        rootComputations.push(computationItem);
+    }
 
-    return computation;
+    return runComputation;
 }
 
-// build_partial_DAG
-export function flush() {
-    const toProcess = changes;
-    changes = [];
+function processDependency(item: Item) {
+    const dependentComputation =
+        activeComputations[activeComputations.length - 1];
+    if (dependentComputation) {
+        globalDependencyGraph.addNode(item);
+        if (!globalDependencyGraph.hasNode(dependentComputation)) {
+            globalDependencyGraph.addNode(dependentComputation);
+        }
+        globalDependencyGraph.addEdge(item, dependentComputation); // Confirmed this is correct
+    }
+}
 
-    const partialDag = new DAG();
-
+function processChange(item: Item) {
     const addNode = (item: Item) => {
         partialDag.addNode(item);
-        const dependencies = globalDag.getDependencies(item);
+        const dependencies = globalDependencyGraph.getDependencies(item);
         dependencies.forEach((dependentItem) => {
             if (!partialDag.hasNode(dependentItem)) {
                 addNode(dependentItem);
@@ -159,15 +142,30 @@ export function flush() {
             partialDag.addEdge(item, dependentItem);
         });
     };
+    addNode(item);
+}
 
-    toProcess.forEach((item) => {
-        addNode(item);
-    });
-
-    partialDag.topologicalSort().forEach((item) => {
+// build_partial_DAG
+export function flush() {
+    const partialTopo = partialDag.topologicalSort();
+    partialDag = new DAG();
+    partialTopo.forEach((item) => {
         if (item.type === 'computation') {
-            item.invalidate();
+            const invalidation = computationToInvalidationMap.get(
+                item.computation
+            );
+            if (invalidation) {
+                invalidation();
+            }
             item.computation();
         }
     });
+
+    garbageCollect();
+}
+
+function garbageCollect() {
+    const unreachable =
+        globalDependencyGraph.getUnreachableReverse(rootComputations);
+    globalDependencyGraph.removeNodes(unreachable);
 }
