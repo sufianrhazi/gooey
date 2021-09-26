@@ -1,11 +1,11 @@
 import * as toposort from 'toposort';
-import { Item } from './types';
+import { Item, ComputationItem } from './types';
 import { getItemId } from './idreg';
 
 export class DAG {
     public nodes: Record<string, Item>;
     public edges: [string, string][];
-    public edgeMap: Record<string, Record<string, true>>;
+    public edgeMap: Record<string, Record<string, ComputationItem>>;
     public reverseEdgeMap: Record<string, Record<string, true>>;
 
     constructor() {
@@ -28,10 +28,8 @@ export class DAG {
 
     /**
      * Indicate that toNode needs to be updated if fromNode has changed
-     *
-     * TODO: can toNode be changed to ComputationItem?
      */
-    addEdge(fromNode: Item, toNode: Item) {
+    addEdge(fromNode: Item, toNode: ComputationItem) {
         const fromId = getItemId(fromNode);
         const toId = getItemId(toNode);
         if (!this.edgeMap[fromId]) {
@@ -41,7 +39,7 @@ export class DAG {
             // already exists
             return;
         }
-        this.edgeMap[fromId][toId] = true;
+        this.edgeMap[fromId][toId] = toNode;
         this.edges.push([fromId, toId]);
 
         // upkeeping
@@ -70,14 +68,12 @@ export class DAG {
     /**
      * Get list of things need to be updated, when fromNode has changed?
      */
-    getDependencies(fromNode: Item): Item[] {
+    getDependencies(fromNode: Item): ComputationItem[] {
         const fromId = getItemId(fromNode);
         if (!this.edgeMap[fromId]) {
             return [];
         }
-        return Object.keys(this.edgeMap[fromId]).map(
-            (toId) => this.nodes[toId]
-        );
+        return Object.values(this.edgeMap[fromId]);
     }
 
     /**
