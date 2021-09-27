@@ -8,19 +8,24 @@ import {
 } from './types';
 import { DAG } from './dag';
 
+export { InvariantError, TrackedComputation, TrackedModel } from './types';
+
 export const version = '0.0.1';
 
-let activeComputations: TrackedComputation[] = [];
-let computationToInvalidationMap: Map<TrackedComputation, Function> = new Map();
-let rootComputations: TrackedComputation[] = [];
+let activeComputations: TrackedComputation<unknown>[] = [];
+let computationToInvalidationMap: Map<
+    TrackedComputation<unknown>,
+    Function
+> = new Map();
+let rootComputations: TrackedComputation<unknown>[] = [];
 
 let partialDag = new DAG<
-    TrackedComputation | ModelField<unknown>,
-    TrackedComputation
+    TrackedComputation<unknown> | ModelField<unknown>,
+    TrackedComputation<unknown>
 >();
 let globalDependencyGraph = new DAG<
-    TrackedComputation | ModelField<unknown>,
-    TrackedComputation
+    TrackedComputation<unknown> | ModelField<unknown>,
+    TrackedComputation<unknown>
 >();
 
 export function reset() {
@@ -79,18 +84,20 @@ export function collection<T>(array: T[]): TrackedModel<T[]> {
 
 export function rootComputation<Param, Ret>(
     func: () => Ret
-): TrackedComputation {
+): TrackedComputation<Ret> {
     return makeComputation(func, true);
 }
 
-export function computation<Param, Ret>(func: () => Ret): TrackedComputation {
+export function computation<Param, Ret>(
+    func: () => Ret
+): TrackedComputation<Ret> {
     return makeComputation(func, false);
 }
 
 function makeComputation<Param, Ret>(
     func: () => Ret,
     isRoot: boolean
-): TrackedComputation {
+): TrackedComputation<Ret> {
     if (typeof func !== 'function') {
         throw new InvariantError('computation must be provided a function');
     }
@@ -101,7 +108,7 @@ function makeComputation<Param, Ret>(
         result = undefined;
     };
 
-    const trackedComputation: TrackedComputation = Object.assign(
+    const trackedComputation: TrackedComputation<Ret> = Object.assign(
         function runComputation() {
             processDependency(trackedComputation);
 
@@ -110,25 +117,25 @@ function makeComputation<Param, Ret>(
             }
 
             const edgesToRemove: [
-                TrackedComputation | ModelField<unknown>,
-                TrackedComputation
+                TrackedComputation<any> | ModelField<any>,
+                TrackedComputation<any>
             ][] = globalDependencyGraph
-                .getReverseDependencies(runComputation)
-                .map((fromNode) => [fromNode, runComputation]);
+                .getReverseDependencies(trackedComputation)
+                .map((fromNode) => [fromNode, trackedComputation]);
             globalDependencyGraph.removeEdges(edgesToRemove);
 
-            activeComputations.push(runComputation);
+            activeComputations.push(trackedComputation);
             result = { result: func() };
 
             const sanityCheck = activeComputations.pop();
-            if (sanityCheck !== runComputation) {
+            if (sanityCheck !== trackedComputation) {
                 throw new InvariantError(
                     'Active computation stack inconsistency!'
                 );
             }
             return result.result;
         },
-        { [ReviseSymbol]: 'computation' }
+        { [ReviseSymbol]: 'computation' as const }
     );
 
     computationToInvalidationMap.set(trackedComputation, invalidate);
@@ -139,7 +146,9 @@ function makeComputation<Param, Ret>(
     return trackedComputation;
 }
 
-function processDependency<T>(item: TrackedComputation | ModelField<T>) {
+function processDependency<T, Ret>(
+    item: TrackedComputation<Ret> | ModelField<T>
+) {
     const dependentComputation =
         activeComputations[activeComputations.length - 1];
     if (dependentComputation) {
@@ -152,7 +161,7 @@ function processDependency<T>(item: TrackedComputation | ModelField<T>) {
 }
 
 function processChange<T>(item: ModelField<T>) {
-    const addNode = (node: TrackedComputation | ModelField<T>) => {
+    const addNode = (node: TrackedComputation<unknown> | ModelField<T>) => {
         partialDag.addNode(node);
         const dependencies = globalDependencyGraph.getDependencies(node);
         dependencies.forEach((dependentItem) => {

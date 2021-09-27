@@ -3,8 +3,9 @@ export class InvariantError extends Error {}
 export const ReviseSymbol = Symbol('revise');
 
 export type TrackedModel<T> = T & { [ReviseSymbol]: 'model' };
-export type TrackedComputation = () => any & { [ReviseSymbol]: 'computation' };
-export type TrackedItem<T> = TrackedModel<T> | TrackedComputation;
+export type TrackedComputation<Result> = (() => Result) & {
+    [ReviseSymbol]: 'computation';
+};
 
 export interface ModelField<T> {
     model: TrackedModel<T>;
@@ -12,7 +13,7 @@ export interface ModelField<T> {
 }
 
 export function isTrackedComputation(
-    thing: unknown
-): thing is TrackedComputation {
+    thing: any
+): thing is TrackedComputation<unknown> {
     return !!(thing && (thing as any)[ReviseSymbol] === 'computation');
 }
