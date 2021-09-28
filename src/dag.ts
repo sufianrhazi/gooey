@@ -1,4 +1,4 @@
-import { default as toposort } from 'toposort';
+import { array as toposort } from 'toposort';
 
 export class DAG<FromType extends object, ToType extends object> {
     private maxId: number;
@@ -100,7 +100,9 @@ export class DAG<FromType extends object, ToType extends object> {
     }
 
     topologicalSort(): (FromType | ToType)[] {
-        return toposort(this.edges).map((itemId) => this.nodes[itemId]);
+        return toposort(Object.keys(this.nodes), this.edges).map(
+            (itemId) => this.nodes[itemId]
+        );
     }
 
     getUnreachableReverse(
@@ -163,7 +165,7 @@ export class DAG<FromType extends object, ToType extends object> {
     }
 
     graphviz(makeName: (label: string, item: FromType | ToType) => string) {
-        const lines = ['digraph graph {'];
+        const lines = ['digraph dag {'];
         Object.entries(this.nodes).forEach(([nodeId, node]) => {
             lines.push(
                 `  item_${nodeId} [label=${JSON.stringify(
@@ -171,7 +173,7 @@ export class DAG<FromType extends object, ToType extends object> {
                 )}];`
             );
         });
-        Object.entries(this.edges).forEach(([fromId, toId]) => {
+        this.edges.forEach(([fromId, toId]) => {
             lines.push(`  item_${fromId} -> item_${toId};`);
         });
         lines.push('}');

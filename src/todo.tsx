@@ -1,4 +1,4 @@
-import { React, model, collection, computation, flush } from './index';
+import { React, model, collection, computation, flush, debug } from './index';
 
 declare global {
     namespace JSX {
@@ -86,4 +86,11 @@ doSomethingButton.addEventListener('click', () => {
     });
 });
 document.body.appendChild(doSomethingButton);
+
+const debugButon = document.createElement('button');
+debugButon.textContent = 'graphviz';
+debugButon.addEventListener('click', () => {
+    console.log(debug());
+});
+document.body.appendChild(debugButon);
 alert('All ready to go');

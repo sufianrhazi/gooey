@@ -189,7 +189,7 @@ export function flush() {
         }
     });
 
-    //garbageCollect();
+    garbageCollect();
 }
 
 function garbageCollect() {
