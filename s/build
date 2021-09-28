@@ -10,6 +10,8 @@ echo_info "Installing dependencies..."
 yarn
 echo_info "Building..."
 node_modules/.bin/tsc -p ./tsconfig.json
+echo_info "Bundling..."
+node_modules/.bin/esbuild build/tsc/todo.js --sourcemap --bundle --outfile=bundle.js
 
 if [ "$1" != "--no-done" ]; then
     echo_good "All done"

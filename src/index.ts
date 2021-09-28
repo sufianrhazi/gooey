@@ -7,6 +7,7 @@ import {
     isTrackedComputation,
 } from './types';
 import { DAG } from './dag';
+export { React } from './view';
 
 export { InvariantError, TrackedComputation, TrackedModel } from './types';
 
@@ -188,7 +189,7 @@ export function flush() {
         }
     });
 
-    garbageCollect();
+    //garbageCollect();
 }
 
 function garbageCollect() {

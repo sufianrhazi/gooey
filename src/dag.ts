@@ -1,4 +1,4 @@
-import * as toposort from 'toposort';
+import { default as toposort } from 'toposort';
 
 export class DAG<FromType extends object, ToType extends object> {
     private maxId: number;

@@ -2,9 +2,7 @@
   "compilerOptions": {
     "target": "ES2015",
 
-    "jsxFactory": "jsx",
-    "jsxFragmentFactory": "jsxFragment",
-
+    "jsx": "react",
     "module": "ES2015",
     "moduleResolution": "node",
     "allowSyntheticDefaultImports": true,

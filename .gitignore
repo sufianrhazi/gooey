@@ -1,6 +1,8 @@
 .gitkeep
 /node_modules/
 /build/
+/bundle.js
+/bundle.js.map
 
 # yarn Zero-Install
 .yarn/*
