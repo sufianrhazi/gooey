@@ -43,31 +43,35 @@ export function model<T extends {}>(obj: T): TrackedModel<T> {
         throw new InvariantError('model must be provided an object');
     }
 
-    const fields: Record<string | symbol, ModelField<T>> = {};
+    const fields: Map<string | symbol, ModelField<T>> = new Map();
 
     const proxy = new Proxy(obj, {
         get(target: any, key: string | symbol) {
             if (key === ReviseSymbol) {
                 return 'model';
             }
-            if (!fields[key]) {
-                fields[key] = {
+            let field = fields.get(key);
+            if (!field) {
+                field = {
                     model: proxy,
                     key,
                 };
+                fields.set(key, field);
             }
-            processDependency(fields[key]);
+            processDependency(field);
             return target[key];
         },
 
         set(target: any, key, value: any) {
-            if (!fields[key]) {
-                fields[key] = {
+            let field = fields.get(key);
+            if (!field) {
+                field = {
                     model: proxy,
                     key,
                 };
+                fields.set(key, field);
             }
-            processChange(fields[key]);
+            processChange(field);
             return (target[key] = value);
         },
     }) as TrackedModel<T>;
