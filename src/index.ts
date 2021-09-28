@@ -197,3 +197,13 @@ function garbageCollect() {
         globalDependencyGraph.getUnreachableReverse(rootComputations);
     globalDependencyGraph.removeNodes(unreachable);
 }
+
+export function debug(): string {
+    return globalDependencyGraph.graphviz((id, item) => {
+        if (isTrackedComputation(item)) {
+            return `comp\n${id}`;
+        } else {
+            return `model\n${id}`;
+        }
+    });
+}

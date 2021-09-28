@@ -161,4 +161,20 @@ export class DAG<FromType extends object, ToType extends object> {
             });
         });
     }
+
+    graphviz(makeName: (label: string, item: FromType | ToType) => string) {
+        const lines = ['digraph graph {'];
+        Object.entries(this.nodes).forEach(([nodeId, node]) => {
+            lines.push(
+                `  item_${nodeId} [label=${JSON.stringify(
+                    makeName(nodeId, node)
+                )}];`
+            );
+        });
+        Object.entries(this.edges).forEach(([fromId, toId]) => {
+            lines.push(`  item_${fromId} -> item_${toId};`);
+        });
+        lines.push('}');
+        return lines.join('\n');
+    }
 }
