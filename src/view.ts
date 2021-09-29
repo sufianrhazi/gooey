@@ -1,4 +1,4 @@
-import { computation, model, collection } from './index';
+import { name, computation, model, collection } from './index';
 import { TrackedComputation, isTrackedComputation } from './types';
 
 type ReviseElement = {
@@ -72,20 +72,23 @@ function bindProperty(node: Element, key: string, value: RevisePropValue) {
     } else if (value === null || value === undefined) {
         // ignore
     } else if (isTrackedComputation(value)) {
-        computation(() => {
-            let newValue = value();
-            if (typeof newValue === 'string') {
-                node.setAttribute(key, newValue);
-            } else if (typeof newValue === 'boolean') {
-                if (newValue) {
-                    node.setAttribute(key, '');
-                } else {
+        name(
+            computation(() => {
+                let newValue = value();
+                if (typeof newValue === 'string') {
+                    node.setAttribute(key, newValue);
+                } else if (typeof newValue === 'boolean') {
+                    if (newValue) {
+                        node.setAttribute(key, '');
+                    } else {
+                        node.removeAttribute(key);
+                    }
+                } else if (newValue === null || newValue === undefined) {
                     node.removeAttribute(key);
                 }
-            } else if (newValue === null || newValue === undefined) {
-                node.removeAttribute(key);
-            }
-        })();
+            }),
+            `view:bindProperty:${key}`
+        )();
     }
 }
 
@@ -133,45 +136,53 @@ function bindChildren(element: Element, children: ReviseChild[]) {
                     rangeMap[childIndex][subIndex] = 0;
                 }
             } else {
-                computation(() => {
-                    const newChild = item();
-                    const replaceIndex = getTargetIndex(childIndex, rangeMap);
-                    const replaceRange = rangeMap[childIndex][subIndex];
-
-                    let newNode: Node | null;
-                    let newRange: number;
-                    if (Array.isArray(newChild)) {
-                        const fragment = document.createDocumentFragment();
-                        let numChildren = 0;
-                        newChild.forEach((grandchild) => {
-                            const grandchildNode =
-                                createReviseNodeElement(grandchild);
-                            if (grandchildNode) {
-                                numChildren += 1;
-                                fragment.appendChild(grandchildNode);
-                            }
-                        });
-                        newNode = fragment;
-                        newRange = numChildren;
-                    } else {
-                        newNode = createReviseNodeElement(newChild);
-                        newRange = newNode ? 1 : 0;
-                    }
-
-                    // Remove the old children
-                    for (let i = 0; i < replaceRange; ++i) {
-                        element.removeChild(element.childNodes[replaceIndex]);
-                    }
-                    // Add the new children
-                    if (newNode) {
-                        element.insertBefore(
-                            newNode,
-                            element.childNodes[replaceIndex + 1] || null
+                name(
+                    computation(() => {
+                        const newChild = item();
+                        const replaceIndex = getTargetIndex(
+                            childIndex,
+                            rangeMap
                         );
-                    }
+                        const replaceRange = rangeMap[childIndex][subIndex];
 
-                    rangeMap[childIndex][subIndex] = newRange;
-                })();
+                        let newNode: Node | null;
+                        let newRange: number;
+                        if (Array.isArray(newChild)) {
+                            const fragment = document.createDocumentFragment();
+                            let numChildren = 0;
+                            newChild.forEach((grandchild) => {
+                                const grandchildNode =
+                                    createReviseNodeElement(grandchild);
+                                if (grandchildNode) {
+                                    numChildren += 1;
+                                    fragment.appendChild(grandchildNode);
+                                }
+                            });
+                            newNode = fragment;
+                            newRange = numChildren;
+                        } else {
+                            newNode = createReviseNodeElement(newChild);
+                            newRange = newNode ? 1 : 0;
+                        }
+
+                        // Remove the old children
+                        for (let i = 0; i < replaceRange; ++i) {
+                            element.removeChild(
+                                element.childNodes[replaceIndex]
+                            );
+                        }
+                        // Add the new children
+                        if (newNode) {
+                            element.insertBefore(
+                                newNode,
+                                element.childNodes[replaceIndex + 1] || null
+                            );
+                        }
+
+                        rangeMap[childIndex][subIndex] = newRange;
+                    }),
+                    `view:bindChildren:${element.nodeName}:${childIndex}:${subIndex}`
+                )();
             }
         });
     });
@@ -184,7 +195,6 @@ function createElement<Props extends {}>(
 ): ReviseElement {
     let element: HTMLElement;
     if (typeof Constructor === 'string') {
-        console.log('createElement string', Constructor);
         element = document.createElement(Constructor);
         if (props) {
             Object.entries(props).forEach(([key, value]) => {
@@ -198,9 +208,7 @@ function createElement<Props extends {}>(
             bindChildren(element, children);
         }
     } else {
-        console.log('createElement constructor', Constructor);
         const result = Constructor(Object.assign({}, props, { children }));
-        console.log('got', result);
         element = result.node;
     }
     return { node: element };

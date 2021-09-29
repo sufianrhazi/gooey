@@ -18,6 +18,7 @@ let computationToInvalidationMap: Map<
     TrackedComputation<unknown>,
     Function
 > = new Map();
+let nameMap: WeakMap<any, string> = new WeakMap();
 
 let partialDag = new DAG<
     TrackedComputation<unknown> | ModelField<unknown>,
@@ -34,6 +35,11 @@ export function reset() {
     computationToInvalidationMap = new Map();
 
     globalDependencyGraph = new DAG();
+}
+
+export function name<T>(item: T, name: string): T {
+    nameMap.set(item, name);
+    return item;
 }
 
 export function model<T extends {}>(obj: T): TrackedModel<T> {
@@ -185,9 +191,11 @@ function garbageCollect() {
 export function debug(): string {
     return globalDependencyGraph.graphviz((id, item) => {
         if (isTrackedComputation(item)) {
-            return `comp\n${id}`;
+            return `comp\n${nameMap.get(item) ?? id}`;
         } else {
-            return `model\n${id}`;
+            return `model\n${nameMap.get(item.model) ?? id}:${String(
+                item.key
+            )}`;
         }
     });
 }

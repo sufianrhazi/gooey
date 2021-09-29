@@ -1,4 +1,12 @@
-import { React, model, collection, computation, flush, debug } from './index';
+import {
+    React,
+    name,
+    model,
+    collection,
+    computation,
+    flush,
+    debug,
+} from './index';
 
 declare global {
     namespace JSX {
@@ -22,30 +30,54 @@ interface TodoList {
     items: TodoItem[];
 }
 
-const list: TodoList = model({
-    name: 'Shopping',
-    items: collection([
-        model({
-            done: false,
-            task: 'apple',
-        }),
-        model({
-            done: false,
-            task: 'banana',
-        }),
-        model({
-            done: false,
-            task: 'celery',
-        }),
-    ]),
-});
+const list: TodoList = name(
+    model({
+        name: 'Shopping',
+        items: name(
+            collection([
+                name(
+                    model({
+                        done: false,
+                        task: 'apple',
+                    }),
+                    'item:0'
+                ),
+                name(
+                    model({
+                        done: false,
+                        task: 'banana',
+                    }),
+                    'item:1'
+                ),
+                name(
+                    model({
+                        done: false,
+                        task: 'celery',
+                    }),
+                    'item:3'
+                ),
+            ]),
+            'items'
+        ),
+    }),
+    'list'
+);
 
 type TodoItemProps = { item: TodoItem };
 const TodoItem = ({ item }: TodoItemProps) => {
     return (
         <li>
-            <input type="checkbox" checked={computation(() => item.done)} />{' '}
-            {computation(() => item.task)}
+            <input
+                type="checkbox"
+                checked={name(
+                    computation(() => item.done),
+                    'TodoItem:checked'
+                )}
+            />{' '}
+            {name(
+                computation(() => item.task),
+                'TodoItem:task'
+            )}
         </li>
     );
 };
@@ -54,10 +86,19 @@ type TodoListProps = { list: TodoList };
 const TodoList = ({ list }: TodoListProps) => {
     return (
         <div>
-            <h1 class="whatever">To do: {computation(() => list.name)}</h1>
+            <h1 class="whatever">
+                To do:{' '}
+                {name(
+                    computation(() => list.name),
+                    'TodoList:name'
+                )}
+            </h1>
             <ul>
-                {computation(() =>
-                    list.items.map((item) => <TodoItem item={item} />)
+                {name(
+                    computation(() =>
+                        list.items.map((item) => <TodoItem item={item} />)
+                    ),
+                    'TodoList:items'
                 )}
             </ul>
         </div>
