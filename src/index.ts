@@ -18,7 +18,6 @@ let computationToInvalidationMap: Map<
     TrackedComputation<unknown>,
     Function
 > = new Map();
-let rootComputations: TrackedComputation<unknown>[] = [];
 
 let partialDag = new DAG<
     TrackedComputation<unknown> | ModelField<unknown>,
@@ -32,7 +31,6 @@ let globalDependencyGraph = new DAG<
 export function reset() {
     partialDag = new DAG();
     activeComputations = [];
-    rootComputations = [];
     computationToInvalidationMap = new Map();
 
     globalDependencyGraph = new DAG();
@@ -87,21 +85,8 @@ export function collection<T>(array: T[]): TrackedModel<T[]> {
     return model(array);
 }
 
-export function rootComputation<Param, Ret>(
-    func: () => Ret
-): TrackedComputation<Ret> {
-    return makeComputation(func, true);
-}
-
 export function computation<Param, Ret>(
     func: () => Ret
-): TrackedComputation<Ret> {
-    return makeComputation(func, false);
-}
-
-function makeComputation<Param, Ret>(
-    func: () => Ret,
-    isRoot: boolean
 ): TrackedComputation<Ret> {
     if (typeof func !== 'function') {
         throw new InvariantError('computation must be provided a function');
@@ -144,9 +129,6 @@ function makeComputation<Param, Ret>(
     );
 
     computationToInvalidationMap.set(trackedComputation, invalidate);
-    if (isRoot) {
-        rootComputations.push(trackedComputation);
-    }
 
     return trackedComputation;
 }
@@ -197,9 +179,7 @@ export function flush() {
 }
 
 function garbageCollect() {
-    const unreachable =
-        globalDependencyGraph.getUnreachableReverse(rootComputations);
-    globalDependencyGraph.removeNodes(unreachable);
+    // TODO: implement correctly
 }
 
 export function debug(): string {
