@@ -1,231 +1,285 @@
 import { name, computation, effect, model, collection } from './index';
 import { TrackedComputation, isTrackedComputation } from './types';
 
-type ReviseElement = {
-    node: HTMLElement;
+function assertUnreachable(value: never): never {
+    throw new Error('Invariant');
+}
+function verifyExhausted(value: never): void {}
+
+// General component props
+type PropsWithChildren<P> = P & { children?: JsxChild[] };
+type Component<P extends {}> = (props: PropsWithChildren<P>) => JsxChild;
+
+/**
+ * The type returnable by JSX
+ */
+type JsxChildWithoutTrackedComputation =
+    | string
+    | number
+    | true
+    | false
+    | null
+    | undefined
+    | RenderNativeElement
+    | RenderComponent;
+
+type JsxChild =
+    | JsxChildWithoutTrackedComputation
+    | TrackedComputation<JsxChildWithoutTrackedComputation>;
+
+/**
+ * The intermediate type returnable by React.createElement
+ */
+type RenderChild =
+    | RenderNull
+    | RenderText
+    | RenderNativeElement
+    | RenderComponent
+    | RenderComputation;
+
+const RenderTag = Symbol('RenderTag');
+
+type RenderNull = {
+    [RenderTag]: 'null';
 };
 
-function isReviseElement(t: any): t is ReviseElement {
-    return !!(t && t.node instanceof HTMLElement);
+const RenderNull: RenderNull = { [RenderTag]: 'null' };
+
+function isRenderNull(a: any): a is RenderNull {
+    return a === RenderNull;
 }
 
-type ReviseNode = string | number | boolean | null | undefined | ReviseElement;
-
-function isReviseNode(t: any): t is ReviseNode {
-    return (
-        typeof t === 'string' ||
-        typeof t === 'number' ||
-        typeof t === 'boolean' ||
-        t === null ||
-        t === undefined ||
-        isReviseElement(t)
-    );
+function makeRenderNull(): RenderNull {
+    return RenderNull;
 }
 
-type ReviseChild =
-    | ReviseNode
-    | TrackedComputation<ReviseNode | ReviseNode[]>
-    | (ReviseNode | TrackedComputation<ReviseNode | ReviseNode[]>)[];
+type RenderText = {
+    [RenderTag]: 'text';
+    text: Text;
+};
 
-type ReviseStaticPropValue = string | boolean | null | undefined;
+function isRenderText(a: any): a is RenderText {
+    return a && a[RenderTag] === 'text';
+}
 
-type RevisePropValue =
-    | ReviseStaticPropValue
-    | TrackedComputation<ReviseStaticPropValue>;
+function makeRenderText(str: string): RenderText {
+    return { [RenderTag]: 'text', text: document.createTextNode(str) };
+}
 
-function isRevisePropValue(t: any): t is RevisePropValue {
+type RenderComputation = {
+    [RenderTag]: 'computation';
+    computation: TrackedComputation<JsxChild>;
+};
+
+function isRenderComputation(a: any): a is RenderComputation {
+    return a && a[RenderTag] === 'computation';
+}
+
+function makeRenderComputation(
+    computation: TrackedComputation<JsxChildWithoutTrackedComputation>
+): RenderComputation {
+    return { [RenderTag]: 'computation', computation };
+}
+
+type NativeRenderProps = {
+    [key: string]:
+        | string
+        | number
+        | true
+        | false
+        | null
+        | undefined
+        | TrackedComputation<
+              () => string | number | true | false | null | undefined
+          >;
+};
+
+type RenderNativeElement = {
+    [RenderTag]: 'element';
+    element: Element;
+    props: {};
+    children: RenderChild[];
+};
+
+function isRenderNativeElement(p: any): p is RenderNativeElement {
+    return p && p[RenderTag] === 'element';
+}
+
+function makeRenderNativeElement(
+    element: Element,
+    props: {} = {},
+    children: RenderChild[]
+): RenderNativeElement {
+    return { [RenderTag]: 'element', element, props, children };
+}
+
+type RenderComponent = {
+    [RenderTag]: 'component';
+    component: Component<any>;
+    props: {};
+    children: RenderChild[];
+};
+
+function isRenderComponent(p: any): p is RenderComponent {
+    return p && p[RenderTag] === 'component';
+}
+
+function makeRenderComponent(
+    component: Component<any>,
+    props: {} = {},
+    children: RenderChild[]
+): RenderComponent {
+    return { [RenderTag]: 'component', component, props, children };
+}
+
+function jsxChildToRenderChild(jsxChild: JsxChild): RenderChild {
     if (
-        typeof t === 'string' ||
-        typeof t === 'boolean' ||
-        t === null ||
-        t === undefined
-    ) {
-        return true;
-    }
-    if (isTrackedComputation(t)) {
-        let v = t();
-        return (
-            typeof v === 'string' ||
-            typeof v === 'boolean' ||
-            v === null ||
-            v === undefined
-        );
-    }
-    return false;
-}
-
-type PropsWithChildren<P> = P & { children?: ReviseChild[] };
-
-type ReviseComponent<P extends {}> = (
-    props: P & { children?: ReviseChild[] }
-) => ReviseElement;
-
-type RangeMap = number[][];
-
-function bindProperty(node: Element, key: string, value: RevisePropValue) {
-    if (typeof value === 'string') {
-        node.setAttribute(key, value);
-    } else if (typeof value === 'boolean') {
-        if (value) {
-            node.setAttribute(key, '');
-        }
-    } else if (value === null || value === undefined) {
-        // ignore
-    } else if (isTrackedComputation(value)) {
-        name(
-            effect(() => {
-                let newValue = value();
-                if (typeof newValue === 'string') {
-                    node.setAttribute(key, newValue);
-                } else if (typeof newValue === 'boolean') {
-                    if (newValue) {
-                        node.setAttribute(key, '');
-                    } else {
-                        node.removeAttribute(key);
-                    }
-                } else if (newValue === null || newValue === undefined) {
-                    node.removeAttribute(key);
-                }
-            }),
-            `view:bindProperty:${key}`
-        )();
-    }
-}
-
-function getTargetIndex(childIndex: number, rangeMap: RangeMap): number {
-    let targetIndex = 0;
-    // Note: we start at 1 because we need to
-    // - remove via node.removeChild(node.childNodes[targetIndex])
-    // - insert via node.insertBefore(newNode, node.childNodes[targetIndex])
-    for (let i = 0; i < childIndex; ++i) {
-        rangeMap[i].forEach((range) => {
-            targetIndex += range || 0;
-        });
-    }
-    return targetIndex;
-}
-
-function createReviseNodeElement(node: ReviseNode): Node | null {
-    if (typeof node === 'string') {
-        return document.createTextNode(node);
-    } else if (
-        typeof node === 'boolean' ||
-        node === null ||
-        node === undefined
-    ) {
-        return null;
-    } else if (typeof node === 'number') {
-        // TODO: maybe warn on numbers as nodes?
-        return document.createTextNode(node.toString());
-    } else {
-        return node.node;
-    }
-}
-
-function bindChildren(element: Element, children: ReviseChild[]) {
-    const rangeMap: RangeMap = [];
-    children.forEach((child, childIndex) => {
-        rangeMap[childIndex] = [];
-        (Array.isArray(child) ? child : [child]).forEach((item, subIndex) => {
-            if (isReviseNode(item)) {
-                const node = createReviseNodeElement(item);
-                if (node) {
-                    rangeMap[childIndex][subIndex] = 1;
-                    element.appendChild(node);
-                } else {
-                    rangeMap[childIndex][subIndex] = 0;
-                }
-            } else {
-                name(
-                    effect(() => {
-                        const newChild = item();
-                        const replaceIndex = getTargetIndex(
-                            childIndex,
-                            rangeMap
-                        );
-                        const replaceRange = rangeMap[childIndex][subIndex];
-
-                        let newNode: Node | null;
-                        let newRange: number;
-                        if (Array.isArray(newChild)) {
-                            const fragment = document.createDocumentFragment();
-                            let numChildren = 0;
-                            newChild.forEach((grandchild) => {
-                                const grandchildNode =
-                                    createReviseNodeElement(grandchild);
-                                if (grandchildNode) {
-                                    numChildren += 1;
-                                    fragment.appendChild(grandchildNode);
-                                }
-                            });
-                            newNode = fragment;
-                            newRange = numChildren;
-                        } else {
-                            newNode = createReviseNodeElement(newChild);
-                            newRange = newNode ? 1 : 0;
-                        }
-
-                        // Remove the old children
-                        for (let i = 0; i < replaceRange; ++i) {
-                            element.removeChild(
-                                element.childNodes[replaceIndex]
-                            );
-                        }
-                        // Add the new children
-                        if (newNode) {
-                            element.insertBefore(
-                                newNode,
-                                element.childNodes[replaceIndex + 1] || null
-                            );
-                        }
-
-                        rangeMap[childIndex][subIndex] = newRange;
-                    }),
-                    `view:bindChildren:${element.nodeName}:${childIndex}:${subIndex}`
-                )();
-            }
-        });
-    });
+        jsxChild === true ||
+        jsxChild === false ||
+        jsxChild === null ||
+        jsxChild === undefined
+    )
+        return RenderNull;
+    if (typeof jsxChild === 'string') return makeRenderText(jsxChild);
+    if (typeof jsxChild === 'number')
+        return makeRenderText(jsxChild.toString());
+    if (isTrackedComputation(jsxChild)) return makeRenderComputation(jsxChild);
+    if (isRenderNativeElement(jsxChild)) return jsxChild;
+    if (isRenderComponent(jsxChild)) return jsxChild;
+    assertUnreachable(jsxChild);
 }
 
 function createElement<Props extends {}>(
-    Constructor: string | ReviseComponent<Props>,
+    Constructor: string | Component<Props>,
     props?: Props,
-    ...children: ReviseChild[]
-): ReviseElement {
-    let element: HTMLElement = document.createElement('div');
-    // I _think_ I want an isolate? Maybe a constant? It should:
-    // - Not automatically recalculate the parent calculation when I run (no dependency between parent calculation and this)
-    // - Never get invalidated (only ever execute once, never recalculate itself)
-    name(
-        effect(() => {
-            if (typeof Constructor === 'string') {
-                console.log('createElement', Constructor);
-                element = document.createElement(Constructor);
-                if (props) {
-                    Object.entries(props).forEach(([key, value]) => {
-                        if (isRevisePropValue(value)) {
-                            bindProperty(element, key, value);
-                        }
-                    });
+    ...children: JsxChild[]
+): RenderChild {
+    const renderChildren = children.map((child) =>
+        jsxChildToRenderChild(child)
+    );
+    if (typeof Constructor === 'string') {
+        return makeRenderNativeElement(
+            document.createElement(Constructor),
+            props,
+            renderChildren
+        );
+    }
+    return makeRenderComponent(Constructor, props, renderChildren);
+}
+
+type RangeMap = number[];
+function getRealIndex(childIndex: number, rangeMap: RangeMap): number {
+    let realIndex = 0;
+    for (let i = 0; i < childIndex; ++i) {
+        realIndex += rangeMap[childIndex];
+    }
+    return realIndex;
+}
+
+function insertAt(parentElement: Element, index: number, child: Node) {
+    parentElement.insertBefore(child, parentElement.childNodes[index + 1]);
+}
+
+function bindChild(
+    renderTarget: Element,
+    rangeMap: RangeMap,
+    child: RenderChild,
+    childIndex: number
+) {}
+
+function bindAttribute(element: Element, key: string, value: unknown) {
+    if (value === null || value === undefined || value === false) {
+        element.removeAttribute(key);
+    }
+    if (value === true) {
+        element.setAttribute(key, '');
+    }
+    if (typeof value === 'string') {
+        element.setAttribute(key, value);
+    }
+    if (typeof value === 'number') {
+        element.setAttribute(key, value.toString());
+    }
+    if (isTrackedComputation(value)) {
+        // TODO: Technically we support nested computations for attributes? But that's weird...
+        effect(
+            name(() => {
+                const computedValue = value();
+                bindAttribute(element, key, computedValue);
+            }, `view:bindAttribute:${key}`)
+        );
+    }
+}
+
+function mountTo(
+    parentElement: Element,
+    rangeMap: RangeMap,
+    mountIndex: number,
+    root: RenderChild
+) {
+    if (isRenderNull(root)) {
+        rangeMap[mountIndex] = 0;
+        return;
+    }
+    if (isRenderText(root)) {
+        insertAt(parentElement, getRealIndex(mountIndex, rangeMap), root.text);
+        rangeMap[mountIndex] = 1;
+        return;
+    }
+    if (isRenderNativeElement(root)) {
+        // Bind props
+        Object.entries(root.props).forEach(([name, value]) => {
+            bindAttribute(root.element, name, value);
+        });
+
+        // Bind children
+        const childRangeMap: RangeMap = root.children.map(() => 0);
+        root.children.forEach((child, childIndex) => {
+            mountTo(root.element, childRangeMap, childIndex, child);
+        });
+
+        insertAt(
+            parentElement,
+            getRealIndex(mountIndex, rangeMap),
+            root.element
+        );
+        rangeMap[mountIndex] = 1;
+        return;
+    }
+    if (isRenderComputation(root) || isRenderComponent(root)) {
+        // Note: we don't know the number of children yet!
+        rangeMap[mountIndex] = 0;
+
+        let prevValue: undefined | JsxChild = undefined;
+        effect(
+            name(() => {
+                const jsxResult = isRenderComputation(root)
+                    ? root.computation()
+                    : root.component(root.props);
+                if (prevValue === jsxResult) return; // Do... we ever really need to do this?
+                prevValue = jsxResult;
+
+                const renderChild = jsxChildToRenderChild(jsxResult);
+                const numChildren = rangeMap[mountIndex];
+                const realIndex = getRealIndex(mountIndex, rangeMap);
+
+                // Remove any prior component render results
+                for (let i = 0; i < numChildren; ++i) {
+                    parentElement.removeChild(
+                        parentElement.childNodes[realIndex] || null
+                    );
                 }
-                if (children) {
-                    // Map holding true if the index exists in the DOM
-                    bindChildren(element, children);
-                }
-            } else {
-                console.log('createElement', Constructor.name);
-                const result = Constructor(
-                    Object.assign({}, props, { children })
-                );
-                element = result.node;
-            }
-        }),
-        `view:createElement:${
-            typeof Constructor === 'string' ? Constructor : Constructor.name
-        }`
-    )();
-    return { node: element };
+
+                bindChild(parentElement, rangeMap, renderChild, mountIndex);
+            }, `view:${isRenderComputation(root) ? 'computation' : 'component'}:${mountIndex}`)
+        );
+        return;
+    }
+    assertUnreachable(root);
+}
+
+export function mount(parentElement: Element, root: RenderChild) {
+    mountTo(parentElement, [], 0, root);
 }
 
 export const React = {
