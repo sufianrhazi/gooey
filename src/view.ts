@@ -1,4 +1,4 @@
-import { name, computation, model, collection } from './index';
+import { name, computation, effect, model, collection } from './index';
 import { TrackedComputation, isTrackedComputation } from './types';
 
 type ReviseElement = {
@@ -73,7 +73,7 @@ function bindProperty(node: Element, key: string, value: RevisePropValue) {
         // ignore
     } else if (isTrackedComputation(value)) {
         name(
-            computation(() => {
+            effect(() => {
                 let newValue = value();
                 if (typeof newValue === 'string') {
                     node.setAttribute(key, newValue);
@@ -137,7 +137,7 @@ function bindChildren(element: Element, children: ReviseChild[]) {
                 }
             } else {
                 name(
-                    computation(() => {
+                    effect(() => {
                         const newChild = item();
                         const replaceIndex = getTargetIndex(
                             childIndex,
@@ -193,24 +193,38 @@ function createElement<Props extends {}>(
     props?: Props,
     ...children: ReviseChild[]
 ): ReviseElement {
-    let element: HTMLElement;
-    if (typeof Constructor === 'string') {
-        element = document.createElement(Constructor);
-        if (props) {
-            Object.entries(props).forEach(([key, value]) => {
-                if (isRevisePropValue(value)) {
-                    bindProperty(element, key, value);
+    let element: HTMLElement = document.createElement('div');
+    // I _think_ I want an isolate? Maybe a constant? It should:
+    // - Not automatically recalculate the parent calculation when I run (no dependency between parent calculation and this)
+    // - Never get invalidated (only ever execute once, never recalculate itself)
+    name(
+        effect(() => {
+            if (typeof Constructor === 'string') {
+                console.log('createElement', Constructor);
+                element = document.createElement(Constructor);
+                if (props) {
+                    Object.entries(props).forEach(([key, value]) => {
+                        if (isRevisePropValue(value)) {
+                            bindProperty(element, key, value);
+                        }
+                    });
                 }
-            });
-        }
-        if (children) {
-            // Map holding true if the index exists in the DOM
-            bindChildren(element, children);
-        }
-    } else {
-        const result = Constructor(Object.assign({}, props, { children }));
-        element = result.node;
-    }
+                if (children) {
+                    // Map holding true if the index exists in the DOM
+                    bindChildren(element, children);
+                }
+            } else {
+                console.log('createElement', Constructor.name);
+                const result = Constructor(
+                    Object.assign({}, props, { children })
+                );
+                element = result.node;
+            }
+        }),
+        `view:createElement:${
+            typeof Constructor === 'string' ? Constructor : Constructor.name
+        }`
+    )();
     return { node: element };
 }
 

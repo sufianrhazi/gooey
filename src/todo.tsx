@@ -62,9 +62,11 @@ const list: TodoList = name(
     }),
     'list'
 );
+(window as any).list = list;
 
 type TodoItemProps = { item: TodoItem };
 const TodoItem = ({ item }: TodoItemProps) => {
+    console.log('Rendering item', item);
     return (
         <li>
             <input
@@ -84,6 +86,7 @@ const TodoItem = ({ item }: TodoItemProps) => {
 
 type TodoListProps = { list: TodoList };
 const TodoList = ({ list }: TodoListProps) => {
+    console.log('Rendering list');
     return (
         <div>
             <h1 class="whatever">

@@ -1,10 +1,12 @@
 import {
-    ReviseSymbol,
     InvariantError,
     TrackedComputation,
     TrackedModel,
     ModelField,
     isTrackedComputation,
+    isTrackedEffect,
+    makeComputation,
+    makeEffect,
 } from './types';
 import { DAG } from './dag';
 export { React } from './view';
@@ -19,6 +21,17 @@ let computationToInvalidationMap: Map<
     Function
 > = new Map();
 let nameMap: WeakMap<any, string> = new WeakMap();
+
+function debugNameFor(
+    item: TrackedComputation<unknown> | ModelField<unknown>
+): string {
+    if (isTrackedComputation(item)) {
+        return `${isTrackedEffect(item) ? 'eff' : 'comp'}:${
+            nameMap.get(item) ?? '?'
+        }`;
+    }
+    return `model:${nameMap.get(item.model) ?? '?'}:${String(item.key)}`;
+}
 
 let partialDag = new DAG<
     TrackedComputation<unknown> | ModelField<unknown>,
@@ -51,9 +64,6 @@ export function model<T extends {}>(obj: T): TrackedModel<T> {
 
     const proxy = new Proxy(obj, {
         get(target: any, key: string | symbol) {
-            if (key === ReviseSymbol) {
-                return 'model';
-            }
             let field = fields.get(key);
             if (!field) {
                 field = {
@@ -62,7 +72,7 @@ export function model<T extends {}>(obj: T): TrackedModel<T> {
                 };
                 fields.set(key, field);
             }
-            processDependency(field);
+            addDepToCurrentComputation(field);
             return target[key];
         },
 
@@ -91,8 +101,17 @@ export function collection<T>(array: T[]): TrackedModel<T[]> {
     return model(array);
 }
 
-export function computation<Param, Ret>(
-    func: () => Ret
+export function computation<Ret>(func: () => Ret): TrackedComputation<Ret> {
+    return trackComputation(func, false);
+}
+
+export function effect(func: () => void): TrackedComputation<void> {
+    return trackComputation(func, true);
+}
+
+function trackComputation<Ret>(
+    func: () => Ret,
+    isEffect: boolean
 ): TrackedComputation<Ret> {
     if (typeof func !== 'function') {
         throw new InvariantError('computation must be provided a function');
@@ -104,9 +123,12 @@ export function computation<Param, Ret>(
         result = undefined;
     };
 
-    const trackedComputation: TrackedComputation<Ret> = Object.assign(
+    const trackedComputation = (isEffect ? makeEffect : makeComputation)(
         function runComputation() {
-            processDependency(trackedComputation);
+            if (!isEffect) {
+                // effects return void, so they **cannot** have an effect on the current computation
+                addDepToCurrentComputation(trackedComputation);
+            }
 
             if (result) {
                 return result.result;
@@ -130,16 +152,19 @@ export function computation<Param, Ret>(
                 );
             }
             return result.result;
-        },
-        { [ReviseSymbol]: 'computation' as const }
+        }
     );
 
     computationToInvalidationMap.set(trackedComputation, invalidate);
 
-    return trackedComputation;
+    // Note: typescript gets confused, this *should* be
+    // - TrackedComputation<Ret> when isEffect is true and
+    // - TrackedComputation<Ret> when isEffect is false
+    // But infers to TrackedComputation<void> because makeEffect is present
+    return trackedComputation as TrackedComputation<Ret>;
 }
 
-function processDependency<T, Ret>(
+function addDepToCurrentComputation<T, Ret>(
     item: TrackedComputation<Ret> | ModelField<T>
 ) {
     const dependentComputation =
@@ -149,7 +174,15 @@ function processDependency<T, Ret>(
         if (!globalDependencyGraph.hasNode(dependentComputation)) {
             globalDependencyGraph.addNode(dependentComputation);
         }
-        globalDependencyGraph.addEdge(item, dependentComputation); // Confirmed this is correct
+        // Confirmed this is correct
+        if (globalDependencyGraph.addEdge(item, dependentComputation)) {
+            console.log(
+                'New global dependency',
+                debugNameFor(item),
+                '->',
+                debugNameFor(dependentComputation)
+            );
+        }
     }
 }
 
@@ -161,7 +194,14 @@ function processChange<T>(item: ModelField<T>) {
             if (!partialDag.hasNode(dependentItem)) {
                 addNode(dependentItem);
             }
-            partialDag.addEdge(node, dependentItem);
+            if (partialDag.addEdge(node, dependentItem)) {
+                console.log(
+                    'New local dependency',
+                    debugNameFor(item),
+                    '->',
+                    debugNameFor(dependentItem)
+                );
+            }
         });
     };
     addNode(item);
@@ -173,11 +213,14 @@ export function flush() {
     partialDag = new DAG();
     partialTopo.forEach((item) => {
         if (isTrackedComputation(item)) {
+            console.log('flushing computation', debugNameFor(item));
             const invalidation = computationToInvalidationMap.get(item);
             if (invalidation) {
                 invalidation();
             }
             item();
+        } else {
+            console.log('flushing model', debugNameFor(item));
         }
     });
 
@@ -190,12 +233,6 @@ function garbageCollect() {
 
 export function debug(): string {
     return globalDependencyGraph.graphviz((id, item) => {
-        if (isTrackedComputation(item)) {
-            return `comp\n${nameMap.get(item) ?? id}`;
-        } else {
-            return `model\n${nameMap.get(item.model) ?? id}:${String(
-                item.key
-            )}`;
-        }
+        return `${id}\n${debugNameFor(item)}`;
     });
 }

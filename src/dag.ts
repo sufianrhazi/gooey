@@ -28,11 +28,13 @@ export class DAG<FromType extends object, ToType extends object> {
         return id;
     }
 
-    addNode(node: FromType | ToType) {
+    addNode(node: FromType | ToType): boolean {
         const itemId = this.getItemId(node);
         if (!this.nodes[itemId]) {
             this.nodes[itemId] = node;
+            return true;
         }
+        return false;
     }
 
     hasNode(node: FromType | ToType) {
@@ -42,7 +44,7 @@ export class DAG<FromType extends object, ToType extends object> {
     /**
      * Indicate that toNode needs to be updated if fromNode has changed
      */
-    addEdge(fromNode: FromType | ToType, toNode: ToType) {
+    addEdge(fromNode: FromType | ToType, toNode: ToType): boolean {
         const fromId = this.getItemId(fromNode);
         const toId = this.getItemId(toNode);
         if (!this.edgeMap[fromId]) {
@@ -50,7 +52,7 @@ export class DAG<FromType extends object, ToType extends object> {
         }
         if (this.edgeMap[fromId][toId]) {
             // already exists
-            return;
+            return false;
         }
         this.edgeMap[fromId][toId] = toNode;
         this.edges.push([fromId, toId]);
@@ -60,6 +62,7 @@ export class DAG<FromType extends object, ToType extends object> {
             this.reverseEdgeMap[toId] = {};
         }
         this.reverseEdgeMap[toId][fromId] = fromNode;
+        return true;
     }
 
     removeEdges(edges: [FromType | ToType, ToType][]) {
