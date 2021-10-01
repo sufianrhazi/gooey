@@ -6,19 +6,8 @@ import {
     computation,
     flush,
     debug,
+    mount,
 } from './index';
-
-declare global {
-    namespace JSX {
-        interface IntrinsicElements {
-            div: any;
-            input: any;
-            ul: any;
-            li: any;
-            h1: any;
-        }
-    }
-}
 
 interface TodoItem {
     done: boolean;
@@ -66,29 +55,53 @@ const list: TodoList = name(
 
 type TodoItemProps = { item: TodoItem };
 const TodoItem = ({ item }: TodoItemProps) => {
-    console.log('Rendering item', item);
+    const onChange = (event: any) => {
+        item.done = event.target.checked;
+    };
     return (
         <li>
-            <input
-                type="checkbox"
-                checked={name(
-                    computation(() => item.done),
-                    'TodoItem:checked'
+            <label>
+                <input
+                    type="checkbox"
+                    on:change={onChange}
+                    checked={name(
+                        computation(() => item.done),
+                        'TodoItem:checked'
+                    )}
+                />{' '}
+                {name(
+                    computation(() => item.task),
+                    'TodoItem:task'
                 )}
-            />{' '}
-            {name(
-                computation(() => item.task),
-                'TodoItem:task'
-            )}
+            </label>
         </li>
     );
 };
 
 type TodoListProps = { list: TodoList };
 const TodoList = ({ list }: TodoListProps) => {
-    console.log('Rendering list');
+    const onClickAdd = () => {
+        const el = document.getElementById('input');
+        if (!el || !(el instanceof HTMLInputElement)) return;
+        list.items.push(
+            model({
+                done: false,
+                task: el.value,
+            })
+        );
+        el.value = '';
+    };
+
+    const onClickClear = () => {
+        list.items.splice(
+            0,
+            list.items.length,
+            ...list.items.filter((item) => !item.done)
+        );
+    };
+
     return (
-        <div>
+        <>
             <h1 class="whatever">
                 To do:{' '}
                 {name(
@@ -104,14 +117,21 @@ const TodoList = ({ list }: TodoListProps) => {
                     'TodoList:items'
                 )}
             </ul>
-        </div>
+            <hr />
+            <button on:click={onClickAdd}>+</button>{' '}
+            <input id="input" type="text" value="Don't forget the milk" />
+            <br />
+            <button on:click={onClickClear}>Clear completed</button>
+        </>
     );
 };
 
 // main
 const rendered = TodoList({ list });
-console.log(rendered);
-document.body.appendChild(rendered.node);
+const root = document.getElementById('root');
+if (root) {
+    mount(root, rendered);
+}
 
 // ui
 const flushButton = document.createElement('button');
@@ -137,4 +157,3 @@ debugButon.addEventListener('click', () => {
     console.log(debug());
 });
 document.body.appendChild(debugButon);
-alert('All ready to go');

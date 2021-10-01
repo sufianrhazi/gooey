@@ -9,7 +9,7 @@ import {
     makeEffect,
 } from './types';
 import { DAG } from './dag';
-export { React } from './view';
+export { React, mount } from './view';
 
 export { InvariantError, TrackedComputation, TrackedModel } from './types';
 
@@ -86,7 +86,8 @@ export function model<T extends {}>(obj: T): TrackedModel<T> {
                 fields.set(key, field);
             }
             processChange(field);
-            return (target[key] = value);
+            target[key] = value;
+            return true;
         },
     }) as TrackedModel<T>;
 

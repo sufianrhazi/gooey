@@ -1,31 +1,40 @@
 import { name, computation, effect, model, collection } from './index';
 import { TrackedComputation, isTrackedComputation } from './types';
 
+declare global {
+    namespace JSX {
+        interface IntrinsicElements {
+            [unknownElement: string]: {
+                'on:click': (event: MouseEvent) => void;
+            } & any;
+        }
+    }
+}
+
 function assertUnreachable(value: never): never {
     throw new Error('Invariant');
 }
 function verifyExhausted(value: never): void {}
 
 // General component props
-type PropsWithChildren<P> = P & { children?: JsxChild[] };
+type PropsWithChildren<P> = P & { children?: RenderChild[] };
 type Component<P extends {}> = (props: PropsWithChildren<P>) => JsxChild;
 
-/**
- * The type returnable by JSX
- */
-type JsxChildWithoutTrackedComputation =
-    | string
-    | number
-    | true
-    | false
-    | null
-    | undefined
-    | RenderNativeElement
-    | RenderComponent;
+type JsxRawNode = string | number | true | false | null | undefined | Function;
 
+/**
+ * The type returnable by JSX (raw nodes)
+ */
 type JsxChild =
-    | JsxChildWithoutTrackedComputation
-    | TrackedComputation<JsxChildWithoutTrackedComputation>;
+    | JsxRawNode
+    | RenderChild
+    | TrackedComputation<JsxRawNode | RenderChild>
+    | TrackedComputation<(JsxRawNode | RenderChild)[]>
+    | (
+          | JsxRawNode
+          | RenderChild
+          | TrackedComputation<JsxRawNode | RenderChild>
+      )[];
 
 /**
  * The intermediate type returnable by React.createElement
@@ -33,9 +42,11 @@ type JsxChild =
 type RenderChild =
     | RenderNull
     | RenderText
+    | RenderFunction
     | RenderNativeElement
     | RenderComponent
-    | RenderComputation;
+    | RenderComputation
+    | RenderArray;
 
 const RenderTag = Symbol('RenderTag');
 
@@ -66,6 +77,19 @@ function makeRenderText(str: string): RenderText {
     return { [RenderTag]: 'text', text: document.createTextNode(str) };
 }
 
+type RenderFunction = {
+    [RenderTag]: 'function';
+    fn: Function;
+};
+
+function isRenderFunction(a: any): a is RenderFunction {
+    return a && a[RenderTag] === 'function';
+}
+
+function makeRenderFunction(fn: Function): RenderFunction {
+    return { [RenderTag]: 'function', fn };
+}
+
 type RenderComputation = {
     [RenderTag]: 'computation';
     computation: TrackedComputation<JsxChild>;
@@ -76,7 +100,7 @@ function isRenderComputation(a: any): a is RenderComputation {
 }
 
 function makeRenderComputation(
-    computation: TrackedComputation<JsxChildWithoutTrackedComputation>
+    computation: TrackedComputation<JsxChild>
 ): RenderComputation {
     return { [RenderTag]: 'computation', computation };
 }
@@ -132,20 +156,43 @@ function makeRenderComponent(
     return { [RenderTag]: 'component', component, props, children };
 }
 
+type RenderArray = {
+    [RenderTag]: 'array';
+    children: RenderChild[];
+};
+
+function isRenderArray(p: any): p is RenderArray {
+    return p && p[RenderTag] === 'array';
+}
+
+function makeRenderArray(children: RenderChild[]): RenderArray {
+    return { [RenderTag]: 'array', children };
+}
+
 function jsxChildToRenderChild(jsxChild: JsxChild): RenderChild {
     if (
         jsxChild === true ||
         jsxChild === false ||
         jsxChild === null ||
-        jsxChild === undefined
+        jsxChild === undefined ||
+        isRenderNull(jsxChild)
     )
         return RenderNull;
     if (typeof jsxChild === 'string') return makeRenderText(jsxChild);
     if (typeof jsxChild === 'number')
         return makeRenderText(jsxChild.toString());
+    if (Array.isArray(jsxChild))
+        return makeRenderArray(
+            jsxChild.map((item) => jsxChildToRenderChild(item))
+        );
     if (isTrackedComputation(jsxChild)) return makeRenderComputation(jsxChild);
+    if (typeof jsxChild === 'function') return makeRenderFunction(jsxChild);
     if (isRenderNativeElement(jsxChild)) return jsxChild;
     if (isRenderComponent(jsxChild)) return jsxChild;
+    if (isRenderArray(jsxChild)) return jsxChild;
+    if (isRenderText(jsxChild)) return jsxChild;
+    if (isRenderFunction(jsxChild)) return jsxChild;
+    if (isRenderComputation(jsxChild)) return jsxChild;
     assertUnreachable(jsxChild);
 }
 
@@ -167,27 +214,90 @@ function createElement<Props extends {}>(
     return makeRenderComponent(Constructor, props, renderChildren);
 }
 
-type RangeMap = number[];
-function getRealIndex(childIndex: number, rangeMap: RangeMap): number {
-    let realIndex = 0;
-    for (let i = 0; i < childIndex; ++i) {
-        realIndex += rangeMap[childIndex];
+interface TreeSlot {
+    [n: number]: 0 | Node | TreeSlot;
+    length: number;
+}
+
+// A TreeSlot represents the number of currently mounted Nodes in a node.
+// - A null node is: 0
+// - A single node is: 1
+// - An array of mixed null/single nodes is: [0,1,0,1,0]
+// - Arrays may be nested arbitrarily deeply: [0,[1,0],[0],[[1,0],[1]],1,0]
+
+function getTreeSlot(
+    childIndex: number[],
+    treeSlot: TreeSlot
+): [TreeSlot, number] {
+    let node: TreeSlot = treeSlot;
+    for (let i = 0; i < childIndex.length - 1; ++i) {
+        let item = node[childIndex[i]];
+        if (Array.isArray(item)) {
+            node = item;
+        } else {
+            console.error('Bad TreeSlot index', { childIndex, treeSlot });
+            throw new Error('Bad TreeSlot index');
+        }
     }
-    return realIndex;
+    return [node, childIndex[childIndex.length - 1]];
+}
+
+function getRealIndex(childIndex: number[], treeSlot: TreeSlot): number {
+    const [parentTreeSlot, upTo] = getTreeSlot(childIndex, treeSlot);
+    let count = 0;
+    let lastNode: TreeSlot = treeSlot;
+    function recurse(treeSlot: TreeSlot) {
+        if (treeSlot === parentTreeSlot) {
+            return;
+        }
+        for (let i = 0; i < treeSlot.length; ++i) {
+            const item = treeSlot[i];
+            if (Array.isArray(item)) {
+                recurse(item);
+            } else if (item) {
+                count += 1;
+            }
+        }
+    }
+    recurse(treeSlot);
+    for (let i = 0; i < upTo; ++i) {
+        const item = parentTreeSlot[i];
+        if (Array.isArray(item)) {
+            recurse(item);
+        } else if (item) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+function getNumChildren(childIndex: number[], treeSlot: TreeSlot): number {
+    const [node, index] = getTreeSlot(childIndex, treeSlot);
+    let count = 0;
+    function recurse(treeSlot: TreeSlot | 0 | Node) {
+        if (Array.isArray(treeSlot)) {
+            for (let i = 0; i < treeSlot.length; ++i) {
+                recurse(treeSlot[i]);
+            }
+        } else if (treeSlot) {
+            count += 1;
+        }
+    }
+    recurse(node[index]);
+    return count;
 }
 
 function insertAt(parentElement: Element, index: number, child: Node) {
-    parentElement.insertBefore(child, parentElement.childNodes[index + 1]);
+    parentElement.insertBefore(
+        child,
+        parentElement.childNodes[index + 1] || null
+    );
 }
 
-function bindChild(
-    renderTarget: Element,
-    rangeMap: RangeMap,
-    child: RenderChild,
-    childIndex: number
-) {}
+const boundEvents = new WeakMap<Element, Record<string, (ev: Event) => void>>();
 
 function bindAttribute(element: Element, key: string, value: unknown) {
+    console.log('bindAttribute', element, key, value);
     if (value === null || value === undefined || value === false) {
         element.removeAttribute(key);
     }
@@ -202,66 +312,92 @@ function bindAttribute(element: Element, key: string, value: unknown) {
     }
     if (isTrackedComputation(value)) {
         // TODO: Technically we support nested computations for attributes? But that's weird...
-        effect(
-            name(() => {
+        name(
+            effect(() => {
                 const computedValue = value();
                 bindAttribute(element, key, computedValue);
-            }, `view:bindAttribute:${key}`)
-        );
+            }),
+            `view:bindAttribute:${key}`
+        )();
+    }
+    if (key.startsWith('on:') && typeof value === 'function') {
+        const eventName = key.slice(3);
+        let attributes = boundEvents.get(element);
+        if (!attributes) {
+            attributes = {};
+            boundEvents.set(element, attributes);
+        }
+        if (attributes[key]) {
+            element.removeEventListener(eventName, attributes[key]);
+        }
+        element.addEventListener(eventName, value as any);
+        attributes[key] = value as any;
     }
 }
 
 function mountTo(
     parentElement: Element,
-    rangeMap: RangeMap,
-    mountIndex: number,
+    treeSlot: TreeSlot,
+    mountIndex: number[],
     root: RenderChild
 ) {
+    const [slot, slotOffset] = getTreeSlot(mountIndex, treeSlot);
+
+    if (isRenderFunction(root)) {
+        // TODO: warning: you tried to mount a function to an element? What does react do?
+        slot[slotOffset] = 0;
+        return;
+    }
     if (isRenderNull(root)) {
-        rangeMap[mountIndex] = 0;
+        slot[slotOffset] = 0;
         return;
     }
     if (isRenderText(root)) {
-        insertAt(parentElement, getRealIndex(mountIndex, rangeMap), root.text);
-        rangeMap[mountIndex] = 1;
+        insertAt(parentElement, getRealIndex(mountIndex, treeSlot), root.text);
+        slot[slotOffset] = root.text;
         return;
     }
     if (isRenderNativeElement(root)) {
         // Bind props
-        Object.entries(root.props).forEach(([name, value]) => {
-            bindAttribute(root.element, name, value);
-        });
+        if (root.props) {
+            Object.entries(root.props).forEach(([name, value]) => {
+                bindAttribute(root.element, name, value);
+            });
+        }
 
         // Bind children
-        const childRangeMap: RangeMap = root.children.map(() => 0);
+        const childTreeSlot: TreeSlot = root.children.map(() => 0 as const);
         root.children.forEach((child, childIndex) => {
-            mountTo(root.element, childRangeMap, childIndex, child);
+            mountTo(root.element, childTreeSlot, [childIndex], child);
         });
 
         insertAt(
             parentElement,
-            getRealIndex(mountIndex, rangeMap),
+            getRealIndex(mountIndex, treeSlot),
             root.element
         );
-        rangeMap[mountIndex] = 1;
+        slot[slotOffset] = [root.element];
         return;
     }
     if (isRenderComputation(root) || isRenderComponent(root)) {
         // Note: we don't know the number of children yet!
-        rangeMap[mountIndex] = 0;
+        slot[slotOffset] = [0];
 
         let prevValue: undefined | JsxChild = undefined;
-        effect(
-            name(() => {
+        name(
+            effect(() => {
                 const jsxResult = isRenderComputation(root)
                     ? root.computation()
-                    : root.component(root.props);
+                    : root.component({
+                          ...(root.props || {}),
+                          children: root.children,
+                      });
                 if (prevValue === jsxResult) return; // Do... we ever really need to do this?
                 prevValue = jsxResult;
 
                 const renderChild = jsxChildToRenderChild(jsxResult);
-                const numChildren = rangeMap[mountIndex];
-                const realIndex = getRealIndex(mountIndex, rangeMap);
+                const numChildren = getNumChildren(mountIndex, treeSlot);
+                const realIndex = getRealIndex(mountIndex, treeSlot);
 
                 // Remove any prior component render results
                 for (let i = 0; i < numChildren; ++i) {
@@ -270,21 +406,35 @@ function mountTo(
                     );
                 }
 
-                bindChild(parentElement, rangeMap, renderChild, mountIndex);
-            }, `view:${isRenderComputation(root) ? 'computation' : 'component'}:${mountIndex}`)
-        );
+                mountTo(parentElement, treeSlot, mountIndex, renderChild);
+            }),
+            `view:${
+                isRenderComputation(root) ? 'computation' : 'component'
+            }:${JSON.stringify(mountIndex)}`
+        )();
+        return;
+    }
+    if (isRenderArray(root)) {
+        // Note: we don't know the number of children yet!
+        slot[slotOffset] = root.children.map(() => 0);
+        root.children.forEach((renderChild, childIndex) => {
+            mountTo(
+                parentElement,
+                treeSlot,
+                mountIndex.concat([childIndex]),
+                renderChild
+            );
+        });
         return;
     }
     assertUnreachable(root);
 }
 
 export function mount(parentElement: Element, root: RenderChild) {
-    mountTo(parentElement, [], 0, root);
+    mountTo(parentElement, [0], [0], root);
 }
 
 export const React = {
     createElement,
-    Fragment: () => {
-        throw new Error('Unsupported');
-    },
+    Fragment: ({ children }: { children: JsxChild[] }) => children,
 };
