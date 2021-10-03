@@ -22,6 +22,8 @@ let computationToInvalidationMap: Map<
 > = new Map();
 let nameMap: WeakMap<any, string> = new WeakMap();
 
+let refcountMap: Map<TrackedComputation<unknown>, number> = new Map();
+
 function debugNameFor(
     item: TrackedComputation<unknown> | ModelField<unknown>
 ): string {
@@ -46,6 +48,8 @@ export function reset() {
     partialDag = new DAG();
     activeComputations = [];
     computationToInvalidationMap = new Map();
+
+    refcountMap = new Map();
 
     globalDependencyGraph = new DAG();
 }
@@ -140,7 +144,9 @@ function trackComputation<Ret>(
                 TrackedComputation<any>
             ][] = globalDependencyGraph
                 .getReverseDependencies(trackedComputation)
-                .map((fromNode) => [fromNode, trackedComputation]);
+                .map((fromNode) => {
+                    return [fromNode, trackedComputation];
+                });
             globalDependencyGraph.removeEdges(edgesToRemove);
 
             activeComputations.push(trackedComputation);
@@ -228,8 +234,28 @@ export function flush() {
     garbageCollect();
 }
 
+export function retain(item: TrackedComputation<any>) {
+    refcountMap.set(item, (refcountMap.get(item) || 0) + 1);
+}
+
+export function release(item: TrackedComputation<any>) {
+    const refCount = refcountMap.get(item);
+    if (refCount && refCount > 1) {
+        refcountMap.set(item, refCount - 1);
+        return;
+    }
+    refcountMap.delete(item);
+}
+
 function garbageCollect() {
-    // TODO: implement correctly
+    const retained: TrackedComputation<unknown>[] = [];
+    refcountMap.forEach((refCount, item) => {
+        if (refCount > 0) {
+            retained.push(item);
+        }
+    });
+    globalDependencyGraph.removeExitsRetaining(retained);
+    partialDag.removeExitsRetaining(retained);
 }
 
 export function debug(): string {

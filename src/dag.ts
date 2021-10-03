@@ -7,6 +7,8 @@ export class DAG<FromType extends object, ToType extends object> {
     public nodes: Record<string, FromType | ToType>;
     public edges: [string, string][];
     public edgeMap: Record<string, Record<string, ToType>>;
+    public entryNodes: Record<string, boolean>;
+    public exitNodes: Record<string, boolean>;
     public reverseEdgeMap: Record<string, Record<string, FromType | ToType>>;
 
     constructor() {
@@ -15,6 +17,8 @@ export class DAG<FromType extends object, ToType extends object> {
         this.nodes = {};
         this.edges = [];
         this.edgeMap = {};
+        this.entryNodes = {};
+        this.exitNodes = {};
         this.reverseEdgeMap = {};
     }
 
@@ -31,6 +35,8 @@ export class DAG<FromType extends object, ToType extends object> {
     addNode(node: FromType | ToType): boolean {
         const itemId = this.getItemId(node);
         if (!this.nodes[itemId]) {
+            this.entryNodes[itemId] = true;
+            this.exitNodes[itemId] = true;
             this.nodes[itemId] = node;
             return true;
         }
@@ -54,6 +60,8 @@ export class DAG<FromType extends object, ToType extends object> {
             // already exists
             return false;
         }
+        delete this.entryNodes[toId];
+        delete this.exitNodes[fromId];
         this.edgeMap[fromId][toId] = toNode;
         this.edges.push([fromId, toId]);
 
@@ -65,18 +73,87 @@ export class DAG<FromType extends object, ToType extends object> {
         return true;
     }
 
-    removeEdges(edges: [FromType | ToType, ToType][]) {
-        edges.forEach(([fromNode, toNode]) => {
-            const fromId = this.getItemId(fromNode);
-            const toId = this.getItemId(toNode);
-            delete this.edgeMap[fromId][toId];
-            delete this.reverseEdgeMap[toId][fromId];
-        });
+    private rebuildEdges() {
         this.edges = []; // TODO: make this faster
         Object.keys(this.edgeMap).forEach((fromId) => {
             Object.keys(this.edgeMap[fromId]).forEach((toId) => {
                 this.edges.push([fromId, toId]);
             });
+        });
+    }
+
+    removeEdges(edges: [FromType | ToType, ToType][]) {
+        edges.forEach(([fromNode, toNode]) => {
+            const fromId = this.getItemId(fromNode);
+            const toId = this.getItemId(toNode);
+            if (this.edgeMap[fromId]) {
+                delete this.edgeMap[fromId][toId];
+                if (Object.keys(this.edgeMap[fromId]).length === 0) {
+                    this.exitNodes[fromId] = true;
+                }
+            }
+            if (this.reverseEdgeMap[toId]) {
+                delete this.reverseEdgeMap[toId][fromId];
+                if (Object.keys(this.reverseEdgeMap[toId]).length === 0) {
+                    this.entryNodes[toId] = true;
+                }
+            }
+        });
+        this.rebuildEdges();
+    }
+
+    removeExitsRetaining(items: (FromType | ToType)[]) {
+        const toKeep: Record<string, true> = {};
+        items.forEach((item) => {
+            toKeep[this.getItemId(item)] = true;
+        });
+        const toRemove: string[] = [];
+        Object.keys(this.exitNodes).forEach((fromNodeId) => {
+            if (!toKeep[fromNodeId]) {
+                toRemove.push(fromNodeId);
+            }
+        });
+        this.removeReverseSubgraphs(toRemove);
+    }
+
+    /**
+     * Remove all nodes reachable from a starting item
+     */
+    private removeReverseSubgraphs(toIds: string[]) {
+        // Mark everything to delete
+        const visited: Record<string, true> = {};
+        const recurse = (toId: string) => {
+            visited[toId] = true;
+            if (this.reverseEdgeMap[toId]) {
+                Object.keys(this.reverseEdgeMap[toId]).forEach((fromId) =>
+                    recurse(fromId)
+                );
+            }
+        };
+        toIds.forEach((toId) => recurse(toId));
+        // Delete everything
+        Object.keys(visited).forEach((nodeId) => {
+            delete this.nodes[nodeId];
+        });
+        this.edges = this.edges.filter(
+            ([fromId, toId]) => !visited[fromId] && !visited[toId]
+        );
+        // Reconstruct metadata
+        this.entryNodes = {};
+        this.exitNodes = {};
+        Object.keys(this.nodes).forEach((nodeId) => {
+            this.entryNodes[nodeId] = true;
+            this.exitNodes[nodeId] = true;
+        });
+        this.edgeMap = {};
+        this.reverseEdgeMap = {};
+        this.edges.forEach(([fromId, toId]) => {
+            if (!this.edgeMap[fromId]) this.edgeMap[fromId] = {};
+            this.edgeMap[fromId][toId] = this.nodes[toId] as ToType;
+            if (!this.reverseEdgeMap[toId]) this.reverseEdgeMap[toId] = {};
+            this.reverseEdgeMap[toId][fromId] = this.nodes[fromId];
+            delete this.exitNodes[fromId];
+            delete this.entryNodes[toId];
         });
     }
 
@@ -139,41 +216,23 @@ export class DAG<FromType extends object, ToType extends object> {
         return unreachable;
     }
 
-    removeNodes(items: (FromType | ToType)[]) {
-        const itemIds: Record<string, boolean> = {};
-        items.forEach((item) => (itemIds[this.getItemId(item)] = true));
-        Object.keys(itemIds).forEach((itemId) => {
-            delete this.nodes[itemId];
-            const forwardEdgeMap = this.edgeMap[itemId];
-            delete this.edgeMap[itemId];
-            const reverseEdgeMap = this.reverseEdgeMap[itemId];
-            delete this.reverseEdgeMap[itemId];
-            if (forwardEdgeMap) {
-                Object.keys(forwardEdgeMap).forEach(
-                    (toId) => delete this.reverseEdgeMap[toId]
-                );
-            }
-            if (reverseEdgeMap) {
-                Object.keys(reverseEdgeMap).forEach(
-                    (fromId) => delete this.edgeMap[fromId]
-                );
-            }
-        });
-        this.edges = []; // TODO: make this faster
-        Object.keys(this.edgeMap).forEach((fromId) => {
-            Object.keys(this.edgeMap[fromId]).forEach((toId) => {
-                this.edges.push([fromId, toId]);
-            });
-        });
-    }
-
     graphviz(makeName: (label: string, item: FromType | ToType) => string) {
         const lines = ['digraph dag {'];
         Object.entries(this.nodes).forEach(([nodeId, node]) => {
+            const props: Record<string, string> = {
+                label: makeName(nodeId, node),
+            };
+            if (this.entryNodes[nodeId] && this.exitNodes[nodeId]) {
+                props.shape = 'tripleoctagon';
+            } else if (this.entryNodes[nodeId]) {
+                props.shape = 'doubleoctagon';
+            } else if (this.exitNodes[nodeId]) {
+                props.shape = 'rectangle';
+            }
             lines.push(
-                `  item_${nodeId} [label=${JSON.stringify(
-                    makeName(nodeId, node)
-                )}];`
+                `  item_${nodeId} [${Object.entries(props)
+                    .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+                    .join(',')}];`
             );
         });
         this.edges.forEach(([fromId, toId]) => {

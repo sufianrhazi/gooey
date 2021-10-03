@@ -92,6 +92,7 @@ suite('behavior', () => {
         };
 
         const app = makeTodoListRenderer(todoList);
+        revise.retain(app);
 
         return {
             model0,
