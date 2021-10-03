@@ -7,6 +7,7 @@ import {
     flush,
     debug,
     mount,
+    Component,
 } from './index';
 
 interface TodoItem {
@@ -54,7 +55,11 @@ const list: TodoList = name(
 (window as any).list = list;
 
 type TodoItemProps = { item: TodoItem };
-const TodoItem = ({ item }: TodoItemProps) => {
+const TodoItem: Component<TodoItemProps> = ({ item }, { onUnmount }) => {
+    console.log('Mounting TodoItem', item);
+    onUnmount(() => {
+        console.log('Unmounting TodoItem', item);
+    });
     const onChange = (event: any) => {
         item.done = event.target.checked;
     };
@@ -79,7 +84,12 @@ const TodoItem = ({ item }: TodoItemProps) => {
 };
 
 type TodoListProps = { list: TodoList };
-const TodoList = ({ list }: TodoListProps) => {
+const TodoList: Component<TodoListProps> = ({ list }, { onUnmount }) => {
+    const localState = model({ isShowingStuff: true });
+    console.log('Mounting TodoList');
+    onUnmount(() => {
+        console.log('Unmounting TodoList');
+    });
     const onClickAdd = () => {
         const el = document.getElementById('input');
         if (!el || !(el instanceof HTMLInputElement)) return;
@@ -90,6 +100,10 @@ const TodoList = ({ list }: TodoListProps) => {
             })
         );
         el.value = '';
+    };
+
+    const onClickToggle = () => {
+        localState.isShowingStuff = !localState.isShowingStuff;
     };
 
     const onClickClear = () => {
@@ -108,6 +122,13 @@ const TodoList = ({ list }: TodoListProps) => {
                     computation(() => list.name),
                     'TodoList:name'
                 )}
+                {' - '}
+                {name(
+                    computation(() =>
+                        localState.isShowingStuff ? 'stuff' : 'not stuff'
+                    ),
+                    'TodoList:stuff'
+                )}
             </h1>
             <ul>
                 {name(
@@ -119,6 +140,7 @@ const TodoList = ({ list }: TodoListProps) => {
             </ul>
             <hr />
             <button on:click={onClickAdd}>+</button>{' '}
+            <button on:click={onClickToggle}>toggle extra</button>{' '}
             <input id="input" type="text" value="Don't forget the milk" />
             <br />
             <button on:click={onClickClear}>Clear completed</button>
@@ -127,10 +149,9 @@ const TodoList = ({ list }: TodoListProps) => {
 };
 
 // main
-const rendered = TodoList({ list });
 const root = document.getElementById('root');
 if (root) {
-    mount(root, rendered);
+    mount(root, <TodoList list={list} />);
 }
 
 // ui

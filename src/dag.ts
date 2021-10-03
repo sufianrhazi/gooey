@@ -113,7 +113,7 @@ export class DAG<FromType extends object, ToType extends object> {
                 toRemove.push(fromNodeId);
             }
         });
-        this.removeReverseSubgraphs(toRemove);
+        return this.removeReverseSubgraphs(toRemove);
     }
 
     /**
@@ -131,8 +131,10 @@ export class DAG<FromType extends object, ToType extends object> {
             }
         };
         toIds.forEach((toId) => recurse(toId));
+        const removed: (FromType | ToType)[] = [];
         // Delete everything
         Object.keys(visited).forEach((nodeId) => {
+            removed.push(this.nodes[nodeId]);
             delete this.nodes[nodeId];
         });
         this.edges = this.edges.filter(
@@ -155,6 +157,7 @@ export class DAG<FromType extends object, ToType extends object> {
             delete this.exitNodes[fromId];
             delete this.entryNodes[toId];
         });
+        return removed;
     }
 
     /**

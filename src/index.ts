@@ -9,7 +9,7 @@ import {
     makeEffect,
 } from './types';
 import { DAG } from './dag';
-export { React, mount } from './view';
+export { React, mount, Component } from './view';
 
 export { InvariantError, TrackedComputation, TrackedModel } from './types';
 
@@ -235,10 +235,12 @@ export function flush() {
 }
 
 export function retain(item: TrackedComputation<any>) {
+    console.log('Retaining', debugNameFor(item));
     refcountMap.set(item, (refcountMap.get(item) || 0) + 1);
 }
 
 export function release(item: TrackedComputation<any>) {
+    console.log('Releasing', debugNameFor(item));
     const refCount = refcountMap.get(item);
     if (refCount && refCount > 1) {
         refcountMap.set(item, refCount - 1);
@@ -254,7 +256,10 @@ function garbageCollect() {
             retained.push(item);
         }
     });
-    globalDependencyGraph.removeExitsRetaining(retained);
+    const removed = globalDependencyGraph.removeExitsRetaining(retained);
+    removed.forEach((item) => {
+        console.log('Removed', debugNameFor(item));
+    });
     partialDag.removeExitsRetaining(retained);
 }
 

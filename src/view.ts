@@ -1,4 +1,12 @@
-import { name, computation, effect, model, collection } from './index';
+import {
+    name,
+    computation,
+    effect,
+    model,
+    collection,
+    retain,
+    release,
+} from './index';
 import { TrackedComputation, isTrackedComputation } from './types';
 
 declare global {
@@ -18,7 +26,13 @@ function verifyExhausted(value: never): void {}
 
 // General component props
 type PropsWithChildren<P> = P & { children?: RenderChild[] };
-type Component<P extends {}> = (props: PropsWithChildren<P>) => JsxChild;
+type ComponentListeners = {
+    onUnmount: (callback: () => void) => void;
+};
+export type Component<P extends {}> = (
+    props: PropsWithChildren<P>,
+    listeners: ComponentListeners
+) => JsxChild;
 
 type JsxRawNode = string | number | true | false | null | undefined | Function;
 
@@ -214,9 +228,18 @@ function createElement<Props extends {}>(
     return makeRenderComponent(Constructor, props, renderChildren);
 }
 
-interface TreeSlot {
-    [n: number]: 0 | Node | TreeSlot;
-    length: number;
+type SlotData = {
+    node: Node | null;
+    unmountCallbacks: (() => void)[];
+};
+type TreeSlotNode = {
+    treeSlot: TreeSlot;
+    unmountCallbacks: (() => void)[];
+};
+type TreeSlot = Array<SlotData | TreeSlotNode>;
+
+function isTreeSlotNode(item: SlotData | TreeSlotNode): item is TreeSlotNode {
+    return 'treeSlot' in item;
 }
 
 // A TreeSlot represents the number of currently mounted Nodes in a node.
@@ -232,14 +255,36 @@ function getTreeSlot(
     let node: TreeSlot = treeSlot;
     for (let i = 0; i < childIndex.length - 1; ++i) {
         let item = node[childIndex[i]];
-        if (Array.isArray(item)) {
-            node = item;
+        if (isTreeSlotNode(item)) {
+            node = item.treeSlot;
         } else {
             console.error('Bad TreeSlot index', { childIndex, treeSlot });
             throw new Error('Bad TreeSlot index');
         }
     }
     return [node, childIndex[childIndex.length - 1]];
+}
+
+function setTreeSlot(
+    childIndex: number[],
+    treeSlot: TreeSlot,
+    newSlot: SlotData | TreeSlotNode
+) {
+    console.log('setTreeSlot', { childIndex, treeSlot, newSlot });
+    const [slot, slotOffset] = getTreeSlot(childIndex, treeSlot);
+    const visit = (item: SlotData | TreeSlotNode) => {
+        if (isTreeSlotNode(item)) {
+            item.treeSlot.forEach((child) => {
+                visit(child);
+            });
+        }
+        item.unmountCallbacks.forEach((onUnmount) => onUnmount());
+    };
+    const replacement = slot[slotOffset];
+    if (replacement) {
+        visit(replacement);
+    }
+    slot[slotOffset] = newSlot;
 }
 
 function getRealIndex(childIndex: number[], treeSlot: TreeSlot): number {
@@ -252,9 +297,9 @@ function getRealIndex(childIndex: number[], treeSlot: TreeSlot): number {
         }
         for (let i = 0; i < treeSlot.length; ++i) {
             const item = treeSlot[i];
-            if (Array.isArray(item)) {
-                recurse(item);
-            } else if (item) {
+            if (isTreeSlotNode(item)) {
+                recurse(item.treeSlot);
+            } else if (item.node) {
                 count += 1;
             }
         }
@@ -262,9 +307,9 @@ function getRealIndex(childIndex: number[], treeSlot: TreeSlot): number {
     recurse(treeSlot);
     for (let i = 0; i < upTo; ++i) {
         const item = parentTreeSlot[i];
-        if (Array.isArray(item)) {
-            recurse(item);
-        } else if (item) {
+        if (isTreeSlotNode(item)) {
+            recurse(item.treeSlot);
+        } else if (item.node) {
             count += 1;
         }
     }
@@ -274,12 +319,12 @@ function getRealIndex(childIndex: number[], treeSlot: TreeSlot): number {
 function getNumChildren(childIndex: number[], treeSlot: TreeSlot): number {
     const [node, index] = getTreeSlot(childIndex, treeSlot);
     let count = 0;
-    function recurse(treeSlot: TreeSlot | 0 | Node) {
-        if (Array.isArray(treeSlot)) {
-            for (let i = 0; i < treeSlot.length; ++i) {
-                recurse(treeSlot[i]);
+    function recurse(treeSlot: TreeSlotNode | SlotData) {
+        if (isTreeSlotNode(treeSlot)) {
+            for (let i = 0; i < treeSlot.treeSlot.length; ++i) {
+                recurse(treeSlot.treeSlot[i]);
             }
-        } else if (treeSlot) {
+        } else if (treeSlot.node) {
             count += 1;
         }
     }
@@ -296,29 +341,39 @@ function insertAt(parentElement: Element, index: number, child: Node) {
 
 const boundEvents = new WeakMap<Element, Record<string, (ev: Event) => void>>();
 
-function bindAttribute(element: Element, key: string, value: unknown) {
+function bindAttribute(
+    element: Element,
+    key: string,
+    value: unknown
+): null | TrackedComputation<void> {
     console.log('bindAttribute', element, key, value);
     if (value === null || value === undefined || value === false) {
         element.removeAttribute(key);
+        return null;
     }
     if (value === true) {
         element.setAttribute(key, '');
+        return null;
     }
     if (typeof value === 'string') {
         element.setAttribute(key, value);
+        return null;
     }
     if (typeof value === 'number') {
         element.setAttribute(key, value.toString());
+        return null;
     }
     if (isTrackedComputation(value)) {
         // TODO: Technically we support nested computations for attributes? But that's weird...
-        name(
+        const bindEffect = name(
             effect(() => {
                 const computedValue = value();
                 bindAttribute(element, key, computedValue);
             }),
             `view:bindAttribute:${key}`
-        )();
+        );
+        bindEffect();
+        return bindEffect;
     }
     if (key.startsWith('on:') && typeof value === 'function') {
         const eventName = key.slice(3);
@@ -332,7 +387,9 @@ function bindAttribute(element: Element, key: string, value: unknown) {
         }
         element.addEventListener(eventName, value as any);
         attributes[key] = value as any;
+        return null;
     }
+    return null;
 }
 
 function mountTo(
@@ -341,32 +398,47 @@ function mountTo(
     mountIndex: number[],
     root: RenderChild
 ) {
-    const [slot, slotOffset] = getTreeSlot(mountIndex, treeSlot);
-
     if (isRenderFunction(root)) {
         // TODO: warning: you tried to mount a function to an element? What does react do?
-        slot[slotOffset] = 0;
+        setTreeSlot(mountIndex, treeSlot, {
+            node: null,
+            unmountCallbacks: [],
+        });
         return;
     }
     if (isRenderNull(root)) {
-        slot[slotOffset] = 0;
+        setTreeSlot(mountIndex, treeSlot, {
+            node: null,
+            unmountCallbacks: [],
+        });
         return;
     }
     if (isRenderText(root)) {
         insertAt(parentElement, getRealIndex(mountIndex, treeSlot), root.text);
-        slot[slotOffset] = root.text;
+        setTreeSlot(mountIndex, treeSlot, {
+            node: root.text,
+            unmountCallbacks: [],
+        });
         return;
     }
     if (isRenderNativeElement(root)) {
+        const boundEffects: TrackedComputation<any>[] = [];
         // Bind props
         if (root.props) {
             Object.entries(root.props).forEach(([name, value]) => {
-                bindAttribute(root.element, name, value);
+                const boundEffect = bindAttribute(root.element, name, value);
+                if (boundEffect) {
+                    retain(boundEffect);
+                    boundEffects.push(boundEffect);
+                }
             });
         }
 
         // Bind children
-        const childTreeSlot: TreeSlot = root.children.map(() => 0 as const);
+        const childTreeSlot: TreeSlot = root.children.map(() => ({
+            node: null,
+            unmountCallbacks: [],
+        }));
         root.children.forEach((child, childIndex) => {
             mountTo(root.element, childTreeSlot, [childIndex], child);
         });
@@ -376,24 +448,32 @@ function mountTo(
             getRealIndex(mountIndex, treeSlot),
             root.element
         );
-        slot[slotOffset] = [root.element];
+        setTreeSlot(mountIndex, treeSlot, {
+            node: root.element,
+            unmountCallbacks: [
+                () => {
+                    boundEffects.forEach((boundEffect) => {
+                        release(boundEffect);
+                    });
+                },
+            ],
+        });
         return;
     }
-    if (isRenderComputation(root) || isRenderComponent(root)) {
+    if (isRenderComputation(root)) {
         // Note: we don't know the number of children yet!
-        slot[slotOffset] = [0];
+        setTreeSlot(mountIndex, treeSlot, {
+            node: null,
+            unmountCallbacks: [],
+        });
 
-        let prevValue: undefined | JsxChild = undefined;
-        name(
+        const resultEffect = name(
             effect(() => {
-                const jsxResult = isRenderComputation(root)
-                    ? root.computation()
-                    : root.component({
-                          ...(root.props || {}),
-                          children: root.children,
-                      });
-                if (prevValue === jsxResult) return; // Do... we ever really need to do this?
-                prevValue = jsxResult;
+                console.log(
+                    'Running computation',
+                    `view:computation:${JSON.stringify(mountIndex)}`
+                );
+                const jsxResult = root.computation();
 
                 const renderChild = jsxChildToRenderChild(jsxResult);
                 const numChildren = getNumChildren(mountIndex, treeSlot);
@@ -406,17 +486,84 @@ function mountTo(
                     );
                 }
 
+                retain(resultEffect); // Uhh.... wut
                 mountTo(parentElement, treeSlot, mountIndex, renderChild);
+                const [slot, slotOffset] = getTreeSlot(mountIndex, treeSlot);
+                slot[slotOffset].unmountCallbacks.push(() => {
+                    release(resultEffect);
+                });
             }),
-            `view:${
-                isRenderComputation(root) ? 'computation' : 'component'
-            }:${JSON.stringify(mountIndex)}`
-        )();
+            `view:computation:${JSON.stringify(mountIndex)}`
+        );
+        resultEffect();
+        return;
+    }
+    if (isRenderComponent(root)) {
+        // Note: we don't know the number of children yet!
+        setTreeSlot(mountIndex, treeSlot, {
+            node: null,
+            unmountCallbacks: [],
+        });
+
+        const resultEffect = name(
+            effect(() => {
+                console.log(
+                    'Running effect',
+                    `view:component:${JSON.stringify(mountIndex)}`
+                );
+                const unmountCallbacks: (() => void)[] = [];
+                let canCallOnUnmount = true;
+                const jsxResult = root.component(
+                    {
+                        ...(root.props || {}), // TODO: how to pass dynamic effects to a component?
+                        children: root.children,
+                    },
+                    {
+                        onUnmount: (unmountCallback) => {
+                            if (!canCallOnUnmount) {
+                                throw new Error(
+                                    'Invariant error: onUnmount only can be called synchronously in a component'
+                                );
+                            }
+                            unmountCallbacks.push(unmountCallback);
+                        },
+                    }
+                );
+                canCallOnUnmount = false;
+
+                const renderChild = jsxChildToRenderChild(jsxResult);
+                const numChildren = getNumChildren(mountIndex, treeSlot);
+                const realIndex = getRealIndex(mountIndex, treeSlot);
+
+                // Remove any prior component render results
+                for (let i = 0; i < numChildren; ++i) {
+                    parentElement.removeChild(
+                        parentElement.childNodes[realIndex] || null
+                    );
+                }
+
+                retain(resultEffect); // Uhh... this is weird
+                mountTo(parentElement, treeSlot, mountIndex, renderChild);
+
+                const [slot, slotOffset] = getTreeSlot(mountIndex, treeSlot);
+                slot[slotOffset].unmountCallbacks.push(() => {
+                    release(resultEffect);
+                }, ...unmountCallbacks);
+            }),
+            `view:component:${JSON.stringify(mountIndex)}`
+        );
+        resultEffect();
         return;
     }
     if (isRenderArray(root)) {
         // Note: we don't know the number of children yet!
-        slot[slotOffset] = root.children.map(() => 0);
+        setTreeSlot(mountIndex, treeSlot, {
+            treeSlot: root.children.map(() => ({
+                node: null,
+                unmountCallbacks: [],
+            })),
+            unmountCallbacks: [],
+        });
         root.children.forEach((renderChild, childIndex) => {
             mountTo(
                 parentElement,
@@ -431,7 +578,7 @@ function mountTo(
 }
 
 export function mount(parentElement: Element, root: RenderChild) {
-    mountTo(parentElement, [0], [0], root);
+    mountTo(parentElement, [{ node: null, unmountCallbacks: [] }], [0], root);
 }
 
 export const React = {
