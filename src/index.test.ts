@@ -1,16 +1,5 @@
-import * as path from 'path';
-
 import { suite, test, beforeEach, afterEach, assert } from './test';
 import * as revise from './index';
-
-const packageJson = require(path.join(
-    process.env['PROJECT_ROOT']!,
-    '/package.json'
-));
-
-test('package.json version is consistent with exported version', () => {
-    assert.is(packageJson.version, revise.version);
-});
 
 suite('behavior', () => {
     beforeEach(() => {

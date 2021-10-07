@@ -1,8 +1,4 @@
-import { exit } from 'process';
-import { write } from 'fs';
-import { inspect } from 'util';
 import { isEqual } from 'lodash';
-import * as chalk from 'chalk';
 
 type TestContext = any;
 
@@ -18,8 +14,8 @@ interface Suite {
     afterAll: SuiteAction[];
     parent: Suite | undefined;
     assertions: number;
-    duration: [number, number] | undefined;
     result: 'PASS' | 'FAIL' | 'NOT RUN';
+    only: boolean;
 }
 
 interface Test {
@@ -27,47 +23,41 @@ interface Test {
     impl: TestAction;
     parent: Suite | undefined;
     assertions: number;
-    duration: [number, number] | undefined;
-    selfDuration: [number, number] | undefined;
     result: 'PASS' | 'FAIL' | 'NOT RUN';
+    only: boolean;
 }
 
 function repr(obj: any) {
-    return inspect(obj, {
-        showHidden: true,
-        depth: Infinity,
-        colors: process.stdout.isTTY,
-        showProxy: true,
-        maxArrayLength: Infinity,
-        maxStringLength: Infinity,
-        compact: 3,
-    });
+    return JSON.stringify(obj, null, 4);
 }
 
 const makeTest = ({
     name,
     impl,
     parent = undefined,
+    only,
 }: {
     name: string;
     impl: TestAction;
     parent?: Suite;
+    only: boolean;
 }): Test => ({
     name,
     impl,
     parent,
     assertions: 0,
-    duration: undefined,
-    selfDuration: undefined,
     result: 'NOT RUN',
+    only,
 });
 
 const makeSuite = ({
     name,
     parent = undefined,
+    only,
 }: {
     name: string;
     parent?: Suite;
+    only: boolean;
 }): Suite => ({
     name,
     beforeAll: [],
@@ -77,11 +67,11 @@ const makeSuite = ({
     afterAll: [],
     parent,
     assertions: 0,
-    duration: undefined,
     result: 'NOT RUN',
+    only,
 });
 
-let currentSuite: Suite = makeSuite({ name: '' });
+let currentSuite: Suite = makeSuite({ name: '', only: false });
 const rootSuite: Suite = currentSuite;
 
 const suites: Suite[] = [];
@@ -103,14 +93,77 @@ async function log(...msgs: any[]) {
     console.log(...msgs);
 }
 
+type Report =
+    | {
+          type: 'internal';
+          e: any;
+      }
+    | {
+          type: 'suite';
+          suite: Suite;
+          result: 'register';
+      }
+    | {
+          type: 'suite';
+          suite: Suite;
+          result: 'pass';
+          duration: number;
+      }
+    | {
+          type: 'suite';
+          suite: Suite;
+          result: 'run';
+          phase: 'beforeAll' | 'tests' | 'afterAll';
+      }
+    | {
+          type: 'suite';
+          suite: Suite;
+          result: 'skip';
+      }
+    | {
+          type: 'suite';
+          suite: Suite;
+          result: 'fail';
+          phase: 'beforeAll' | 'tests' | 'afterAll';
+          e: any;
+      }
+    | {
+          type: 'test';
+          test: Test;
+          result: 'register';
+      }
+    | {
+          type: 'test';
+          test: Test;
+          result: 'run';
+      }
+    | {
+          type: 'test';
+          test: Test;
+          result: 'skip';
+      }
+    | {
+          type: 'test';
+          test: Test;
+          result: 'pass';
+          selfDuration: number;
+          duration: number;
+      }
+    | {
+          type: 'test';
+          test: Test;
+          result: 'fail';
+          e: any;
+      };
+
 export function abstractSuite(name: string, body: () => void) {
-    const fixture = makeSuite({ name, parent: undefined });
+    const fixture = makeSuite({ name, parent: undefined, only: false });
     const lastSuite = currentSuite;
     currentSuite = fixture;
     body();
     currentSuite = lastSuite;
-    return (name: string, body: () => void) => {
-        const realSuite = makeSuite({ name, parent: currentSuite });
+    return (name: string, body: () => void, only: boolean = false) => {
+        const realSuite = makeSuite({ name, parent: currentSuite, only });
         realSuite.beforeAll = [...fixture.beforeAll];
         realSuite.beforeEach = [...fixture.beforeEach];
         realSuite.tests = [...fixture.tests];
@@ -127,8 +180,13 @@ export function abstractSuite(name: string, body: () => void) {
     };
 }
 
-export function suite(name: string, body: () => void) {
-    currentSuite = makeSuite({ name, parent: currentSuite });
+export function suite(name: string, body: () => void, only: boolean = false) {
+    currentSuite = makeSuite({ name, parent: currentSuite, only });
+    report({
+        type: 'suite',
+        suite: currentSuite,
+        result: 'register',
+    });
     body();
     suites.push(currentSuite);
     if (!currentSuite.parent) {
@@ -153,8 +211,14 @@ export function afterAll(action: SuiteAction) {
     currentSuite.afterAll.push(action);
 }
 
-export function test(name: string, impl: TestAction) {
-    currentSuite.tests.push(makeTest({ name, impl, parent: currentSuite }));
+export function test(name: string, impl: TestAction, only: boolean = false) {
+    const test = makeTest({ name, impl, parent: currentSuite, only });
+    report({
+        type: 'test',
+        test,
+        result: 'register',
+    });
+    currentSuite.tests.push(test);
 }
 
 function makeNameInner(node: Suite | Test) {
@@ -165,7 +229,7 @@ function makeNameInner(node: Suite | Test) {
 }
 
 function makeName(node: Suite | Test) {
-    return `<${makeNameInner(node)}>`;
+    return `${makeNameInner(node)}`;
 }
 
 async function runBeforeAll(name: string, suite: Suite | undefined) {
@@ -204,98 +268,122 @@ async function runAfterAll(name: string, suite: Suite | undefined) {
     }
 }
 
-let numSuitesRun = 0;
-let numSuitesFailed = 0;
-let numSuitesPassed = 0;
-let numTestsRun = 0;
-let numTestsFailed = 0;
-let numTestsPassed = 0;
-
 let runningTest: Test | undefined = undefined;
 let runningSuite: Suite | undefined = undefined;
 async function runTests() {
+    const onlySuites = new Set<Suite>();
+    const onlyTests = new Set<Test>();
     for (let suite of suites) {
-        runningSuite = suite;
-        numSuitesRun += 1;
-        const suiteName = makeName(suite);
-        const suiteStart = process.hrtime();
-        try {
-            await runBeforeAll(suiteName, suite);
-        } catch (e) {
-            numSuitesFailed += 1;
-            suite.result = 'FAIL';
-            await log(`${chalk.red('FAIL')} beforeAll ${name}`);
-            if (e instanceof AssertionError) {
-                if (e.msg) {
-                    await log(`Message: ${e.msg}`);
-                }
-                await log(`Reason: ${e.format()}`);
-            }
-            if (e instanceof Error) {
-                await log(e.stack);
-            }
-            continue;
+        if (suite.only) {
+            onlySuites.add(suite);
         }
         for (let test of suite.tests) {
+            if (suite.only || test.only) {
+                onlySuites.add(suite);
+                onlyTests.add(test);
+            }
+        }
+    }
+
+    const isLimited = onlySuites.size > 0 || onlyTests.size > 0;
+
+    for (let suite of suites) {
+        const isSuiteSkipped = isLimited && !onlySuites.has(suite);
+        runningSuite = suite;
+        const suiteName = makeName(suite);
+        const suiteStart = performance.now();
+        report({
+            type: 'suite',
+            suite,
+            result: isSuiteSkipped ? 'skip' : 'run',
+            phase: 'beforeAll',
+        });
+        try {
+            if (!isSuiteSkipped) {
+                await runBeforeAll(suiteName, suite);
+            }
+        } catch (e) {
+            suite.result = 'FAIL';
+            report({
+                type: 'suite',
+                suite,
+                result: 'fail',
+                phase: 'beforeAll',
+                e,
+            });
+            continue;
+        }
+        report({
+            type: 'suite',
+            suite,
+            result: isSuiteSkipped ? 'skip' : 'run',
+            phase: 'tests',
+        });
+        for (let test of suite.tests) {
+            const isTestSkipped = isLimited && !onlyTests.has(test);
             runningTest = test;
-            numTestsRun += 1;
             const name = makeName(test);
+            report({
+                type: 'test',
+                test,
+                result: isTestSkipped ? 'skip' : 'run',
+            });
+            if (isTestSkipped) continue;
             const ctx: TestContext = {};
             try {
-                const testStart = process.hrtime();
+                const testStart = performance.now();
                 await runBeforeEach(ctx, name, suite);
-                const testImplStart = process.hrtime();
+                const testImplStart = performance.now();
                 await test.impl(ctx);
-                test.selfDuration = process.hrtime(testImplStart);
+                const selfDuration = performance.now() - testImplStart;
                 await runAfterEach(ctx, name, suite);
-                test.duration = process.hrtime(testStart);
+                const duration = performance.now() - testStart;
                 test.result = 'PASS';
-                await log(
-                    `${chalk.green('PASS')} ${chalk.bold(
-                        name
-                    )} in ${formatDuration(
-                        test.selfDuration
-                    )} (in ${formatDuration(test.duration)} with setup)`
-                );
-                numTestsPassed += 1;
+                report({
+                    type: 'test',
+                    test,
+                    result: 'pass',
+                    selfDuration,
+                    duration,
+                });
             } catch (e) {
-                numTestsFailed += 1;
                 suite.result = 'FAIL';
                 test.result = 'FAIL';
-                await log(`${chalk.red('FAIL')} ${chalk.bold(name)}`);
-                if (e instanceof AssertionError) {
-                    if (e.msg) {
-                        await log(`Message: ${e.msg}`);
-                    }
-                    await log(`Reason: ${e.format()}`);
-                }
-                if (e instanceof Error) {
-                    await log(e.stack);
-                }
-                if (!isEqual(ctx, {})) {
-                    await log(`Context: ${repr(ctx)}`);
-                }
+                report({
+                    type: 'test',
+                    test,
+                    result: 'fail',
+                    e,
+                });
             }
         }
+        report({
+            type: 'suite',
+            suite,
+            phase: 'afterAll',
+            result: isSuiteSkipped ? 'skip' : 'run',
+        });
         try {
-            await runAfterAll(suiteName, suite);
+            if (!isSuiteSkipped) {
+                await runAfterAll(suiteName, suite);
+            }
         } catch (e) {
-            numSuitesFailed += 1;
             suite.result = 'FAIL';
-            await log(`${chalk.red('FAIL')} afterAll ${name}`);
-            if (e instanceof AssertionError) {
-                if (e.msg) {
-                    await log(`Message: ${e.msg}`);
-                }
-                await log(`Reason: ${e.format()}`);
-            }
-            if (e instanceof Error) {
-                await log(e.stack);
-            }
+            report({
+                type: 'suite',
+                suite,
+                phase: 'afterAll',
+                result: 'fail',
+                e,
+            });
         }
         suite.result = 'PASS';
-        numSuitesPassed += 1;
-        suite.duration = process.hrtime(suiteStart);
+        report({
+            type: 'suite',
+            suite,
+            result: isSuiteSkipped ? 'skip' : 'pass',
+            duration: performance.now() - suiteStart,
+        });
     }
 }
 
@@ -331,7 +419,7 @@ export const assert = {
     },
     isNot: (a: any, b: any, msg?: string) => {
         countAssertion();
-        if (a !== b) {
+        if (a === b) {
             throw new AssertionError(
                 'isNot',
                 () => `${repr(a)} is ${repr(b)}`,
@@ -422,26 +510,159 @@ export const assert = {
     },
 };
 
-function formatDuration(duration: [number, number] | undefined) {
-    if (!duration) return 'no time';
-    return chalk.yellow(`${duration[0]}s ${duration[1]}ns`);
+const suiteRow = new Map<Suite, Element>();
+const testRow = new Map<Test, Element>();
+
+function getSuiteRow(suite: Suite): Element {
+    let row = suiteRow.get(suite);
+    if (row) return row;
+
+    const name = makeName(suite);
+    row = document.createElement('details');
+    row.className = 'row_suite status_pending';
+
+    const summary = document.createElement('summary');
+    summary.className = 'row_summary';
+    row.appendChild(summary);
+
+    const msgEl = document.createElement('pre');
+    msgEl.className = 'row_msg';
+    row.appendChild(msgEl);
+
+    const nameEl = document.createElement('a');
+    nameEl.href = '#suite=' + encodeURIComponent(name);
+    nameEl.textContent = name;
+    summary.appendChild(nameEl);
+
+    const statusEl = document.createElement('span');
+    statusEl.className = 'row_status';
+    statusEl.textContent = '----';
+    summary.appendChild(statusEl);
+
+    suiteRow.set(suite, row);
+
+    return row;
 }
 
-setImmediate(async () => {
+function getTestRow(test: Test): Element {
+    let row = testRow.get(test);
+    if (row) return row;
+
+    const name = makeName(test);
+    row = document.createElement('details');
+    row.className = 'row_test status_pending';
+
+    const summary = document.createElement('summary');
+    summary.className = 'row_summary';
+    row.appendChild(summary);
+
+    const msgEl = document.createElement('pre');
+    msgEl.className = 'row_msg';
+    row.appendChild(msgEl);
+
+    const nameEl = document.createElement('a');
+    nameEl.href = '#test=' + encodeURIComponent(name);
+    nameEl.textContent = name;
+    summary.appendChild(nameEl);
+
+    const statusEl = document.createElement('span');
+    statusEl.className = 'row_status';
+    statusEl.textContent = '----';
+    summary.appendChild(statusEl);
+
+    testRow.set(test, row);
+
+    return row;
+}
+
+const testRoot = document.createElement('div');
+testRoot.id = 'test-root';
+document.body.appendChild(testRoot);
+
+const testUi = document.createElement('div');
+testUi.id = 'test-ui';
+document.body.appendChild(testUi);
+
+beforeEach(() => {
+    while (testRoot.childNodes.length > 0) {
+        testRoot.removeChild(testRoot.childNodes[0]);
+    }
+});
+
+function report(info: Report) {
+    if (info.type === 'internal') {
+        alert('Uh oh');
+        console.error(info.e);
+    } else if (info.type === 'suite' && info.result === 'register') {
+        testUi.appendChild(getSuiteRow(info.suite));
+    } else if (info.type === 'test' && info.result === 'register') {
+        testUi.appendChild(getTestRow(info.test));
+    } else if (info.type === 'suite') {
+        const row = getSuiteRow(info.suite);
+        row.classList.toggle('status_pending', false);
+        row.classList.toggle('status_running', info.result === 'run');
+        row.classList.toggle('status_skipped', info.result === 'skip');
+        row.classList.toggle('status_passed', info.result === 'pass');
+        row.classList.toggle('status_failed', info.result === 'fail');
+        row.querySelector('.row_status')!.textContent = info.result;
+        if (info.result === 'fail') {
+            let msg = '';
+            if (info.e instanceof AssertionError) {
+                if (info.e.msg) {
+                    msg += `Message: ${info.e.msg}\n`;
+                }
+                msg += `Reason: ${info.e.format()}\n`;
+            }
+            if (info.e instanceof Error) {
+                msg += `${info.e.stack}\n`;
+            }
+            row.querySelector('.row_msg')!.textContent = msg;
+            row.setAttribute('open', '');
+        }
+        if (info.result === 'pass') {
+            row.querySelector(
+                '.row_msg'
+            )!.textContent = `Passed in ${info.duration.toFixed(3)}ms`;
+        }
+    } else if (info.type === 'test') {
+        const row = getTestRow(info.test);
+        row.classList.toggle('status_pending', false);
+        row.classList.toggle('status_running', info.result === 'run');
+        row.classList.toggle('status_skipped', info.result === 'skip');
+        row.classList.toggle('status_passed', info.result === 'pass');
+        row.classList.toggle('status_failed', info.result === 'fail');
+        row.querySelector('.row_status')!.textContent = info.result;
+        if (info.result === 'fail') {
+            let msg = '';
+            if (info.e instanceof AssertionError) {
+                if (info.e.msg) {
+                    msg += `Message: ${info.e.msg}\n`;
+                }
+                msg += `Reason: ${info.e.format()}\n`;
+            }
+            if (info.e instanceof Error) {
+                msg += `${info.e.stack}\n`;
+            }
+            row.querySelector('.row_msg')!.textContent = msg;
+            row.setAttribute('open', '');
+        }
+        if (info.result === 'pass') {
+            row.querySelector(
+                '.row_msg'
+            )!.textContent = `Passed in ${info.selfDuration.toFixed(
+                3
+            )}ms (${info.duration.toFixed(3)}ms including setup)\n`;
+        }
+    }
+}
+
+setTimeout(async () => {
     try {
         await runTests();
     } catch (e) {
-        await log('INTERNAL TEST ERROR');
-        if (e instanceof Error) {
-            await log(e.stack);
-        }
-        process.exit(2);
+        report({
+            type: 'internal',
+            e,
+        });
     }
-    const success = numSuitesFailed === 0 && numTestsFailed === 0;
-    if (success) {
-        await log(chalk.green.bold('FILE PASSED'));
-    } else {
-        await log(chalk.red.bold('FILE FAILED'));
-    }
-    process.exit(success ? 1 : 0);
-});
+}, 0);

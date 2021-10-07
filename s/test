@@ -12,13 +12,5 @@ echo_info "Installing dependencies..."
 yarn
 echo_info "Cleaning..."
 git clean -f -d build/
-echo_info "Building..."
-node_modules/.bin/tsc -p ./tsconfig.test.json
-
-echo_info "Running tests..."
-find build/commonjs -name '*.test.js' -print0 | while IFS='' read -r -d $'\0' TEST_FILE; do
-    echo_info "Test ${TEST_FILE/build\/commonjs/src}"
-    PROJECT_ROOT="$PROJECT_ROOT" node "${TEST_FILE}"
-done
-
-echo_good "All done"
+echo_error "To test, esbuild a test file is test-bundle.js, and open testrunner.html"
+echo_error node_modules/.bin/esbuild src/view.test.tsx --sourcemap --bundle --outfile=test-bundle.js

@@ -3,6 +3,8 @@
 /build/
 /bundle.js
 /bundle.js.map
+/test-bundle.js
+/test-bundle.js.map
 
 # yarn Zero-Install
 .yarn/*

@@ -1,0 +1,63 @@
+body {
+    display: flex;
+    font-family: sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+#test-root {
+    flex: 1 0 auto;
+}
+
+#test-ui {
+    flex: 0 0 auto;
+    border-bottom: thin black solid;
+    max-width: 50%;
+    overflow-y: scroll;
+}
+
+.row_suite,
+.row_test {
+    display: block;
+    padding: 2px 4px 2px 16px;
+    border-top: thin black solid;
+    border-right: thin black solid;
+    border-left: thin black solid;
+}
+
+.status_pending {
+    background-color: #ddd;
+}
+.status_running {
+    background-color: #eea;
+}
+.status_skipped {
+    background-color: #ddd;
+}
+.status_passed {
+    background-color: #ded;
+}
+.status_failed {
+    background-color: #edd;
+}
+
+.row_summary {
+    display: list-item;
+    cursor: pointer;
+}
+.row_summary a {
+    flex: 1 0 auto;
+}
+.row_status {
+    font-family: Consolas, monospace;
+    flex: 0 0 auto;
+    padding: 0 8px;
+}
+
+.row_msg {
+    padding: 2px 4px 2px 16px;
+    min-height: 1em;
+
+    white-space: pre-wrap;
+    word-break: break-word;
+}
