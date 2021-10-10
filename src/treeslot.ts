@@ -4,6 +4,7 @@ import {
     isRenderNativeElement,
     isRenderComputation,
 } from './renderchild';
+import * as log from './log';
 import { release } from './index';
 
 const TreeSlotSymbol = Symbol('TreeSlot');
@@ -112,13 +113,15 @@ function callOnUnmount(node: TreeSlot) {
 
     // Call any onUnmount listeners
     if (isRenderComponent(node.renderChild)) {
+        const renderChild = node.renderChild;
         node.renderChild.onUnmountListeners.forEach((listener) => {
             try {
                 listener();
             } catch (e) {
-                // TODO: actually helpful error logging
-                console.error(
-                    'Uncaught error when calling onUnmount on component'
+                log.exception(
+                    e,
+                    'component raised exception in onUnmount',
+                    renderChild.component
                 );
             }
         });

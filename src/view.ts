@@ -8,6 +8,7 @@ import {
     release,
 } from './index';
 import { TrackedComputation, isTrackedComputation } from './types';
+import * as log from './log';
 import {
     Component,
     JsxChild,
@@ -39,9 +40,6 @@ declare global {
     }
 }
 
-function assertUnreachable(value: never): never {
-    throw new Error('Invariant');
-}
 function verifyExhausted(value: never): void {}
 
 function jsxChildToRenderChild(jsxChild: JsxChild): RenderChild {
@@ -68,7 +66,7 @@ function jsxChildToRenderChild(jsxChild: JsxChild): RenderChild {
     if (isRenderText(jsxChild)) return jsxChild;
     if (isRenderFunction(jsxChild)) return jsxChild;
     if (isRenderComputation(jsxChild)) return jsxChild;
-    assertUnreachable(jsxChild);
+    log.assertExhausted(jsxChild, 'unexpected jsx child type');
 }
 
 function createElement<Props extends {}>(
@@ -103,7 +101,6 @@ function bindAttribute(
     key: string,
     value: unknown
 ): null | TrackedComputation<void> {
-    console.log('bindAttribute', element, key, value);
     if (value === null || value === undefined || value === false) {
         element.removeAttribute(key);
         return null;
@@ -295,7 +292,7 @@ function mountTo(
         });
         return;
     }
-    assertUnreachable(root);
+    log.assertExhausted(root, 'unexpected render type');
 }
 
 export function mount(parentElement: Element, root: RenderChild) {

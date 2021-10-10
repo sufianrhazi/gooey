@@ -8,6 +8,7 @@ import {
     makeComputation,
     makeEffect,
 } from './types';
+import * as log from './log';
 import { DAG } from './dag';
 export { React, mount } from './view';
 export { Component } from './renderchild';
@@ -184,7 +185,7 @@ function addDepToCurrentComputation<T, Ret>(
         }
         // Confirmed this is correct
         if (globalDependencyGraph.addEdge(item, dependentComputation)) {
-            console.log(
+            log.debug(
                 'New global dependency',
                 debugNameFor(item),
                 '->',
@@ -203,7 +204,7 @@ function processChange<T>(item: ModelField<T>) {
                 addNode(dependentItem);
             }
             if (partialDag.addEdge(node, dependentItem)) {
-                console.log(
+                log.debug(
                     'New local dependency',
                     debugNameFor(item),
                     '->',
@@ -221,14 +222,14 @@ export function flush() {
     partialDag = new DAG();
     partialTopo.forEach((item) => {
         if (isTrackedComputation(item)) {
-            console.log('flushing computation', debugNameFor(item));
+            log.debug('flushing computation', debugNameFor(item));
             const invalidation = computationToInvalidationMap.get(item);
             if (invalidation) {
                 invalidation();
             }
             item();
         } else {
-            console.log('flushing model', debugNameFor(item));
+            log.debug('flushing model', debugNameFor(item));
         }
     });
 
@@ -236,12 +237,12 @@ export function flush() {
 }
 
 export function retain(item: TrackedComputation<any>) {
-    console.log('Retaining', debugNameFor(item));
+    log.debug('Retaining computation', debugNameFor(item));
     refcountMap.set(item, (refcountMap.get(item) || 0) + 1);
 }
 
 export function release(item: TrackedComputation<any>) {
-    console.log('Releasing', debugNameFor(item));
+    log.debug('Releasing computation', debugNameFor(item));
     const refCount = refcountMap.get(item);
     if (refCount && refCount > 1) {
         refcountMap.set(item, refCount - 1);
@@ -259,7 +260,7 @@ function garbageCollect() {
     });
     const removed = globalDependencyGraph.removeExitsRetaining(retained);
     removed.forEach((item) => {
-        console.log('Removed', debugNameFor(item));
+        log.debug('Removed', debugNameFor(item));
     });
     partialDag.removeExitsRetaining(retained);
 }
