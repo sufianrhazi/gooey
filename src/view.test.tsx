@@ -301,57 +301,153 @@ suite('mount arrays', () => {
         );
     });
 
-    test(
-        'rerendering multiple arrays in a row concats as expected',
-        () => {
-            const items = collection([
-                'A',
-                'is',
-                'the',
-                'only',
-                'thing',
-                'unless',
-                'letters',
-                'continue',
-            ]);
-            mount(
-                testRoot,
-                <div>
-                    {computation(() => items.map((item) => item))}
-                    {computation(() => items.map((item) => item))}
-                </div>
-            );
+    test('rerendering multiple arrays in a row concats as expected', () => {
+        const items = collection([
+            'A',
+            'is',
+            'the',
+            'only',
+            'thing',
+            'unless',
+            'letters',
+            'continue',
+        ]);
+        mount(
+            testRoot,
+            <div>
+                foo
+                {computation(() =>
+                    items.map((item, idx) => `A:${item}:${idx} `)
+                )}
+                bar
+                {computation(() =>
+                    items.map((item, idx) => `B:${item}:${idx} `)
+                )}
+                baz
+            </div>
+        );
 
-            items[3] = 'best';
-            items[6] = 'not';
-            items.shift();
-            items.pop();
+        items[3] = 'best';
+        items[6] = 'not';
+        items.shift();
+        items.pop();
 
-            console.log('FLUSH');
-            flush();
+        flush();
 
-            assert.deepEqual(
-                (
-                    Array.from(
-                        testRoot.querySelector('div')!.childNodes
-                    ) as Text[]
-                ).map((item) => item.data),
-                [
-                    'is',
-                    'the',
-                    'best',
-                    'thing',
-                    'unless',
-                    'not',
-                    'is',
-                    'the',
-                    'best',
-                    'thing',
-                    'unless',
-                    'not',
-                ]
-            );
-        },
-        true
-    );
+        assert.deepEqual(
+            (
+                Array.from(testRoot.querySelector('div')!.childNodes) as Text[]
+            ).map((item) => item.data),
+            [
+                'foo',
+                'A:is:0 ',
+                'A:the:1 ',
+                'A:best:2 ',
+                'A:thing:3 ',
+                'A:unless:4 ',
+                'A:not:5 ',
+                'bar',
+                'B:is:0 ',
+                'B:the:1 ',
+                'B:best:2 ',
+                'B:thing:3 ',
+                'B:unless:4 ',
+                'B:not:5 ',
+                'baz',
+            ]
+        );
+    });
+
+    test('arrays can be nested and concatted as as expected', () => {
+        const items = collection([1, 2, 3]);
+        mount(
+            testRoot,
+            <div>
+                foo
+                {computation(() =>
+                    items.map((count) => {
+                        const array: string[] = [];
+                        for (let i = 0; i < count; ++i) {
+                            array.push(`A:${i + 1}/${count}`);
+                        }
+                        return array;
+                    })
+                )}
+                bar
+                {computation(() =>
+                    items.map((count) => {
+                        const array: string[] = [];
+                        for (let i = 0; i < count; ++i) {
+                            array.push(`B:${i + 1}/${count}`);
+                        }
+                        return array;
+                    })
+                )}
+                baz
+            </div>
+        );
+
+        assert.deepEqual(
+            (
+                Array.from(testRoot.querySelector('div')!.childNodes) as Text[]
+            ).map((item) => item.data),
+            [
+                'foo',
+                'A:1/1',
+                'A:1/2',
+                'A:2/2',
+                'A:1/3',
+                'A:2/3',
+                'A:3/3',
+                'bar',
+                'B:1/1',
+                'B:1/2',
+                'B:2/2',
+                'B:1/3',
+                'B:2/3',
+                'B:3/3',
+                'baz',
+            ]
+        );
+
+        items[0] = 3;
+        items.push(4);
+
+        flush();
+
+        assert.deepEqual(
+            (
+                Array.from(testRoot.querySelector('div')!.childNodes) as Text[]
+            ).map((item) => item.data),
+            [
+                'foo',
+                'A:1/3',
+                'A:2/3',
+                'A:3/3',
+                'A:1/2',
+                'A:2/2',
+                'A:1/3',
+                'A:2/3',
+                'A:3/3',
+                'A:1/4',
+                'A:2/4',
+                'A:3/4',
+                'A:4/4',
+                'bar',
+                'B:1/3',
+                'B:2/3',
+                'B:3/3',
+                'B:1/2',
+                'B:2/2',
+                'B:1/3',
+                'B:2/3',
+                'B:3/3',
+                'B:1/4',
+                'B:2/4',
+                'B:3/4',
+                'B:4/4',
+                'baz',
+            ]
+        );
+    });
 });

@@ -9,7 +9,8 @@ import {
     makeEffect,
 } from './types';
 import { DAG } from './dag';
-export { React, mount, Component } from './view';
+export { React, mount } from './view';
+export { Component } from './renderchild';
 
 export { InvariantError, TrackedComputation, TrackedModel } from './types';
 
