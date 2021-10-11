@@ -7,8 +7,14 @@ import {
     flush,
     debug,
     mount,
+    subscribe,
+    setLogLevel,
     Component,
 } from './index';
+
+subscribe(() => {
+    setTimeout(() => flush(), 0);
+});
 
 interface TodoItem {
     done: boolean;
@@ -94,10 +100,13 @@ const TodoList: Component<TodoListProps> = ({ list }, { onUnmount }) => {
         const el = document.getElementById('input');
         if (!el || !(el instanceof HTMLInputElement)) return;
         list.items.push(
-            model({
-                done: false,
-                task: el.value,
-            })
+            name(
+                model({
+                    done: false,
+                    task: el.value,
+                }),
+                el.value
+            )
         );
         el.value = '';
     };

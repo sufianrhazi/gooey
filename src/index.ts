@@ -9,6 +9,7 @@ import {
     makeEffect,
 } from './types';
 import * as log from './log';
+export { setLogLevel } from './log';
 import { DAG } from './dag';
 export { React, mount } from './view';
 export { Component } from './renderchild';
@@ -276,6 +277,13 @@ export function release(item: TrackedComputation<any>) {
         return;
     }
     refcountMap.delete(item);
+    garbageCollect(); // TODO: this is so inefficient!
+    // Can probably incrementally implement garbage collection via:
+    //
+    // Move retain/release into the DAG and
+    // - ADD a -> b means b is retained
+    // - DEL a -> b means b is released
+    // - When any node is released, delete from DAG and remove edges
 }
 
 function garbageCollect() {
@@ -287,7 +295,7 @@ function garbageCollect() {
     });
     const removed = globalDependencyGraph.removeExitsRetaining(retained);
     removed.forEach((item) => {
-        log.debug('Removed', debugNameFor(item));
+        log.debug('GC Removing', debugNameFor(item));
     });
     partialDag.removeExitsRetaining(retained);
 }

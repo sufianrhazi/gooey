@@ -96,40 +96,16 @@ function insertAt(parentElement: Element, index: number, child: Node) {
 
 const boundEvents = new WeakMap<Element, Record<string, (ev: Event) => void>>();
 
-function bindAttribute(
-    element: Element,
-    key: string,
-    value: unknown
-): null | TrackedComputation<void> {
+function setAttributeValue(element: Element, key: string, value: unknown) {
     if (value === null || value === undefined || value === false) {
         element.removeAttribute(key);
-        return null;
-    }
-    if (value === true) {
+    } else if (value === true) {
         element.setAttribute(key, '');
-        return null;
-    }
-    if (typeof value === 'string') {
+    } else if (typeof value === 'string') {
         element.setAttribute(key, value);
-        return null;
-    }
-    if (typeof value === 'number') {
+    } else if (typeof value === 'number') {
         element.setAttribute(key, value.toString());
-        return null;
-    }
-    if (isTrackedComputation(value)) {
-        // TODO: Technically we support nested computations for attributes? But that's weird...
-        const bindEffect = name(
-            effect(() => {
-                const computedValue = value();
-                bindAttribute(element, key, computedValue);
-            }),
-            `view:bindAttribute:${key}`
-        );
-        bindEffect();
-        return bindEffect;
-    }
-    if (key.startsWith('on:') && typeof value === 'function') {
+    } else if (key.startsWith('on:') && typeof value === 'function') {
         const eventName = key.slice(3);
         let attributes = boundEvents.get(element);
         if (!attributes) {
@@ -141,9 +117,7 @@ function bindAttribute(
         }
         element.addEventListener(eventName, value as any);
         attributes[key] = value as any;
-        return null;
     }
-    return null;
 }
 
 function mountTo(
@@ -187,11 +161,22 @@ function mountTo(
     if (isRenderNativeElement(root)) {
         // Bind props
         if (root.props) {
-            Object.entries(root.props).forEach(([name, value]) => {
-                const boundEffect = bindAttribute(root.element, name, value);
-                if (boundEffect) {
+            Object.entries(root.props).forEach(([key, value]) => {
+                if (isTrackedComputation(value)) {
+                    const boundEffect = name(
+                        effect(() => {
+                            const computedValue = value();
+                            setAttributeValue(root.element, key, computedValue);
+                        }),
+                        `view:bindAttribute:${key}:${JSON.stringify(
+                            mountIndex
+                        )}`
+                    );
                     retain(boundEffect);
                     root.boundEffects.push(boundEffect);
+                    boundEffect();
+                } else {
+                    setAttributeValue(root.element, key, value);
                 }
             });
         }
@@ -200,12 +185,17 @@ function mountTo(
             renderChild: root,
             domNode: root.element,
         });
+        setTreeSlot(treeSlot, mountIndex, newTreeSlot);
 
         root.children.forEach((child, childIndex) => {
-            mountTo(root.element, newTreeSlot, [childIndex], child);
+            mountTo(
+                root.element,
+                treeSlot,
+                mountIndex.concat([childIndex]),
+                child
+            );
         });
 
-        setTreeSlot(treeSlot, mountIndex, newTreeSlot);
         return;
     }
     if (isRenderComputation(root)) {
