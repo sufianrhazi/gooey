@@ -211,13 +211,40 @@ function processChange<T>(item: ModelField<T>) {
                     debugNameFor(dependentItem)
                 );
             }
+            if (!needsFlush) {
+                needsFlush = true;
+                notify();
+            }
         });
     };
     addNode(item);
 }
 
+type Listener = () => void;
+let needsFlush = false;
+
+const listeners: Set<Listener> = new Set();
+export function subscribe(listener: Listener): () => void {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+}
+
+function notify() {
+    listeners.forEach((listener) => {
+        try {
+            listener();
+        } catch (e) {
+            log.exception(e, 'unhandled exception in subscriber');
+        }
+    });
+}
+
 // build_partial_DAG
 export function flush() {
+    if (!needsFlush) {
+        return;
+    }
+    needsFlush = false;
     const partialTopo = partialDag.topologicalSort();
     partialDag = new DAG();
     partialTopo.forEach((item) => {
