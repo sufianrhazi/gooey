@@ -258,7 +258,9 @@ function mountTo(
                     renderChild
                 );
             }),
-            `view:component:${JSON.stringify(mountIndex)}`
+            `view:component:${root.component.name}:${JSON.stringify(
+                mountIndex
+            )}`
         );
 
         // Hold on to the new effect

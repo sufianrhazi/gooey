@@ -1,28 +1,34 @@
-import { array as toposort } from 'toposort';
+import * as log from './log';
+import { Sentinel, isSentinel, sentinel } from './sentinel';
 
 export class DAG<FromType extends object, ToType extends object> {
     private maxId: number;
-    private idMap: WeakMap<FromType | ToType, string>;
+    private sentinelId: string;
+    private idMap: WeakMap<FromType | ToType | Sentinel, string>;
 
-    public nodes: Record<string, FromType | ToType>;
-    public edges: [string, string][];
-    public edgeMap: Record<string, Record<string, ToType>>;
-    public entryNodes: Record<string, boolean>;
-    public exitNodes: Record<string, boolean>;
-    public reverseEdgeMap: Record<string, Record<string, FromType | ToType>>;
+    public nodes: Record<string, FromType | ToType | Sentinel>;
+    public refCount: Record<string, number>; // The number of *outgoing* edges from a node. We want to cull nodes that have no outgoing edges.
+    public cullableSet: Record<string, true>; // Set of nodeIds where refcount === 0
+    public edgeMap: Record<string, Record<string, ToType | Sentinel>>;
+    public reverseEdgeMap: Record<
+        string,
+        Record<string, FromType | ToType | Sentinel>
+    >;
 
     constructor() {
         this.maxId = 0;
         this.idMap = new WeakMap();
         this.nodes = {};
-        this.edges = [];
         this.edgeMap = {};
-        this.entryNodes = {};
-        this.exitNodes = {};
         this.reverseEdgeMap = {};
+        this.refCount = {};
+        this.cullableSet = {};
+
+        this._addNode(sentinel);
+        this.sentinelId = this.getItemId(sentinel);
     }
 
-    getItemId(item: FromType | ToType): string {
+    getItemId(item: Sentinel | FromType | ToType): string {
         let id;
         if ((id = this.idMap.get(item)) === undefined) {
             id = this.maxId.toString();
@@ -33,26 +39,52 @@ export class DAG<FromType extends object, ToType extends object> {
     }
 
     addNode(node: FromType | ToType): boolean {
+        return this._addNode(node);
+    }
+
+    private _addNode(node: Sentinel | FromType | ToType): boolean {
         const itemId = this.getItemId(node);
         if (!this.nodes[itemId]) {
-            this.entryNodes[itemId] = true;
-            this.exitNodes[itemId] = true;
+            this.refCount[itemId] = 0;
+            if (!isSentinel(node)) {
+                this.cullableSet[itemId] = true;
+            }
             this.nodes[itemId] = node;
+            this.edgeMap[itemId] = {};
+            this.reverseEdgeMap[itemId] = {};
             return true;
         }
         return false;
     }
 
-    hasNode(node: FromType | ToType) {
+    hasNode(node: FromType | ToType): boolean {
         return !!this.nodes[this.getItemId(node)];
     }
 
     /**
      * Indicate that toNode needs to be updated if fromNode has changed
+     *
+     * Returns true if edge is added
      */
     addEdge(fromNode: FromType | ToType, toNode: ToType): boolean {
         const fromId = this.getItemId(fromNode);
         const toId = this.getItemId(toNode);
+        return this._addEdge(fromId, toId);
+    }
+
+    private _addEdge(fromId: string, toId: string): boolean {
+        const fromNode = this.nodes[fromId] as FromType | Sentinel;
+        const toNode = this.nodes[toId] as ToType;
+        log.invariant(
+            () => fromId === this.sentinelId || !!this.nodes[fromId],
+            'addEdge fromNode does not exist',
+            fromNode
+        );
+        log.invariant(
+            () => !!this.nodes[toId],
+            'addEdge toNode does not exist',
+            toNode
+        );
         if (!this.edgeMap[fromId]) {
             this.edgeMap[fromId] = {};
         }
@@ -60,104 +92,119 @@ export class DAG<FromType extends object, ToType extends object> {
             // already exists
             return false;
         }
-        delete this.entryNodes[toId];
-        delete this.exitNodes[fromId];
         this.edgeMap[fromId][toId] = toNode;
-        this.edges.push([fromId, toId]);
 
         // upkeeping
         if (!this.reverseEdgeMap[toId]) {
             this.reverseEdgeMap[toId] = {};
         }
         this.reverseEdgeMap[toId][fromId] = fromNode;
+        this.refCount[fromId] += 1;
+        delete this.cullableSet[fromId];
         return true;
     }
 
-    private rebuildEdges() {
-        this.edges = []; // TODO: make this faster
-        Object.keys(this.edgeMap).forEach((fromId) => {
-            Object.keys(this.edgeMap[fromId]).forEach((toId) => {
-                this.edges.push([fromId, toId]);
-            });
-        });
+    /**
+     * Indicate that toNode no longer needs to be updated if fromNode has changed
+     */
+    removeEdge(fromNode: FromType | ToType, toNode: ToType): boolean {
+        const fromId = this.getItemId(fromNode);
+        const toId = this.getItemId(toNode);
+        const result = this._removeEdge(fromId, toId);
+        log.invariant(
+            () => result === false,
+            'removeEdge attempted on nonexistent edge',
+            { fromNode, toNode }
+        );
+        return result;
+    }
+
+    /**
+     * Remove a node and all its edges from the graph, returns true if node not present
+     */
+    removeNode(node: FromType | ToType): boolean {
+        const itemId = this.getItemId(node);
+        return this._removeNode(itemId);
+    }
+
+    private _removeNode(itemId: string): boolean {
+        if (!this.nodes[itemId]) return true;
+        const node = this.nodes[itemId];
+        Object.keys(this.edgeMap[itemId]).forEach((toId) =>
+            this._removeEdge(itemId, toId)
+        );
+        Object.keys(this.reverseEdgeMap[itemId]).forEach((fromId) =>
+            this._removeEdge(fromId, itemId)
+        );
+
+        log.invariant(
+            () => this.refCount[itemId] === 0,
+            'still has refcount after deleting edges',
+            node
+        );
+        log.invariant(
+            () => this.cullableSet[itemId] === true,
+            'not cullable after deleting edges',
+            node
+        );
+        delete this.nodes[itemId];
+        delete this.edgeMap[itemId];
+        delete this.reverseEdgeMap[itemId];
+        delete this.refCount[itemId];
+        delete this.cullableSet[itemId];
+        return false;
+    }
+
+    private _removeEdge(fromId: string, toId: string): boolean {
+        log.assert(
+            !!this.edgeMap[fromId],
+            '_removeEdge fromId not found in edgeMap',
+            fromId
+        );
+        log.assert(
+            !!this.reverseEdgeMap[toId],
+            '_removeEdge toId not found in reverseEdgeMap',
+            toId
+        );
+        if (!this.edgeMap[fromId][toId]) {
+            log.error('_removeEdge edge not found', { fromId, toId });
+            return true;
+        }
+
+        // Remove fromId -> toId
+        delete this.edgeMap[fromId][toId];
+        this.refCount[fromId] -= 1;
+        if (this.refCount[fromId] === 0) {
+            this.cullableSet[fromId] = true;
+        }
+
+        delete this.reverseEdgeMap[toId][fromId];
+        return false;
+    }
+
+    retain(node: FromType | ToType) {
+        const retained = this._addEdge(this.getItemId(node), this.sentinelId);
+        log.invariant(() => !!retained, 'double-retained', node);
+    }
+
+    release(node: FromType | ToType) {
+        const releaseFailed = this._removeEdge(
+            this.getItemId(node),
+            this.sentinelId
+        );
+        log.invariant(
+            () => !releaseFailed,
+            'released a non-retained node',
+            node
+        );
     }
 
     removeEdges(edges: [FromType | ToType, ToType][]) {
         edges.forEach(([fromNode, toNode]) => {
             const fromId = this.getItemId(fromNode);
             const toId = this.getItemId(toNode);
-            if (this.edgeMap[fromId]) {
-                delete this.edgeMap[fromId][toId];
-                if (Object.keys(this.edgeMap[fromId]).length === 0) {
-                    this.exitNodes[fromId] = true;
-                }
-            }
-            if (this.reverseEdgeMap[toId]) {
-                delete this.reverseEdgeMap[toId][fromId];
-                if (Object.keys(this.reverseEdgeMap[toId]).length === 0) {
-                    this.entryNodes[toId] = true;
-                }
-            }
+            this._removeEdge(fromId, toId);
         });
-        this.rebuildEdges();
-    }
-
-    removeExitsRetaining(items: (FromType | ToType)[]) {
-        const toKeep: Record<string, true> = {};
-        items.forEach((item) => {
-            toKeep[this.getItemId(item)] = true;
-        });
-        const toRemove: string[] = [];
-        Object.keys(this.exitNodes).forEach((fromNodeId) => {
-            if (!toKeep[fromNodeId]) {
-                toRemove.push(fromNodeId);
-            }
-        });
-        return this.removeReverseSubgraphs(toRemove);
-    }
-
-    /**
-     * Remove all nodes reachable from a starting item
-     */
-    private removeReverseSubgraphs(toIds: string[]) {
-        // Mark everything to delete
-        const visited: Record<string, true> = {};
-        const recurse = (toId: string) => {
-            visited[toId] = true;
-            if (this.reverseEdgeMap[toId]) {
-                Object.keys(this.reverseEdgeMap[toId]).forEach((fromId) =>
-                    recurse(fromId)
-                );
-            }
-        };
-        toIds.forEach((toId) => recurse(toId));
-        const removed: (FromType | ToType)[] = [];
-        // Delete everything
-        Object.keys(visited).forEach((nodeId) => {
-            removed.push(this.nodes[nodeId]);
-            delete this.nodes[nodeId];
-        });
-        this.edges = this.edges.filter(
-            ([fromId, toId]) => !visited[fromId] && !visited[toId]
-        );
-        // Reconstruct metadata
-        this.entryNodes = {};
-        this.exitNodes = {};
-        Object.keys(this.nodes).forEach((nodeId) => {
-            this.entryNodes[nodeId] = true;
-            this.exitNodes[nodeId] = true;
-        });
-        this.edgeMap = {};
-        this.reverseEdgeMap = {};
-        this.edges.forEach(([fromId, toId]) => {
-            if (!this.edgeMap[fromId]) this.edgeMap[fromId] = {};
-            this.edgeMap[fromId][toId] = this.nodes[toId] as ToType;
-            if (!this.reverseEdgeMap[toId]) this.reverseEdgeMap[toId] = {};
-            this.reverseEdgeMap[toId][fromId] = this.nodes[fromId];
-            delete this.exitNodes[fromId];
-            delete this.entryNodes[toId];
-        });
-        return removed;
     }
 
     /**
@@ -168,7 +215,13 @@ export class DAG<FromType extends object, ToType extends object> {
         if (!this.edgeMap[fromId]) {
             return [];
         }
-        return Object.values(this.edgeMap[fromId]);
+        const deps: ToType[] = [];
+        Object.values(this.edgeMap[fromId]).forEach((node) => {
+            if (!isSentinel(node)) {
+                deps.push(node);
+            }
+        });
+        return deps;
     }
 
     /**
@@ -179,58 +232,67 @@ export class DAG<FromType extends object, ToType extends object> {
         if (!this.reverseEdgeMap[toId]) {
             return [];
         }
-        return Object.values(this.reverseEdgeMap[toId]);
+        const revDeps: (FromType | ToType)[] = [];
+        Object.values(this.reverseEdgeMap[toId]).forEach((node) => {
+            if (!isSentinel(node)) {
+                revDeps.push(node);
+            }
+        });
+        return revDeps;
     }
 
-    topologicalSort(): (FromType | ToType)[] {
-        return toposort(Object.keys(this.nodes), this.edges).map(
-            (itemId) => this.nodes[itemId]
-        );
-    }
-
-    getUnreachableReverse(
-        rootItems: (FromType | ToType)[]
-    ): (FromType | ToType)[] {
-        // mark and sweep
-        //
-        // Step one: visit all the items from rootItems
-        const marked: Record<string, boolean> = {};
-        const visit = (itemId: string) => {
-            if (marked[itemId]) return;
-            marked[itemId] = true;
-            if (this.reverseEdgeMap[itemId]) {
-                Object.keys(this.reverseEdgeMap[itemId]).forEach((toId) => {
-                    visit(toId);
-                });
+    /**
+     * Visit topological graph
+     */
+    visitTopological(callback: (node: FromType | ToType) => void) {
+        const visited: Record<string, boolean> = {};
+        const sorted: (FromType | ToType)[] = [];
+        const dfsRecurse = (nodeId: string) => {
+            if (visited[nodeId]) return;
+            visited[nodeId] = true;
+            Object.keys(this.edgeMap[nodeId] || {}).forEach((toId) => {
+                dfsRecurse(toId);
+            });
+            const node = this.nodes[nodeId];
+            if (!isSentinel(node)) {
+                sorted.unshift(node);
             }
         };
-        rootItems.forEach((rootItem) => {
-            const itemId = this.getItemId(rootItem);
-            visit(itemId);
-        });
-
-        // Step two: identify unreachable items
-        const unreachable: (FromType | ToType)[] = [];
         Object.keys(this.nodes).forEach((nodeId) => {
-            if (!marked[nodeId]) {
-                unreachable.push(this.nodes[nodeId]);
-            }
+            dfsRecurse(nodeId);
         });
-        return unreachable;
+        sorted.forEach((node) => {
+            callback(node);
+        });
     }
 
+    garbageCollect(): (FromType | ToType)[] {
+        const culled: (FromType | ToType)[] = [];
+        while (Object.keys(this.cullableSet).length > 0) {
+            Object.keys(this.cullableSet).forEach((nodeId) => {
+                const node = this.nodes[nodeId];
+                log.assert(
+                    !isSentinel(node),
+                    'tried to garbage collect sentinel'
+                );
+                culled.push(node);
+                this._removeNode(nodeId);
+            });
+        }
+        return culled;
+    }
+
+    /**
+     * Generate a dot file structure of the graph
+     */
     graphviz(makeName: (label: string, item: FromType | ToType) => string) {
         const lines = ['digraph dag {'];
         Object.entries(this.nodes).forEach(([nodeId, node]) => {
             const props: Record<string, string> = {
-                label: makeName(nodeId, node),
+                label: isSentinel(node) ? '<ROOT>' : makeName(nodeId, node),
             };
-            if (this.entryNodes[nodeId] && this.exitNodes[nodeId]) {
-                props.shape = 'tripleoctagon';
-            } else if (this.entryNodes[nodeId]) {
-                props.shape = 'doubleoctagon';
-            } else if (this.exitNodes[nodeId]) {
-                props.shape = 'rectangle';
+            if (isSentinel(node)) {
+                props.shape = 'circle';
             }
             lines.push(
                 `  item_${nodeId} [${Object.entries(props)
@@ -238,8 +300,10 @@ export class DAG<FromType extends object, ToType extends object> {
                     .join(',')}];`
             );
         });
-        this.edges.forEach(([fromId, toId]) => {
-            lines.push(`  item_${fromId} -> item_${toId};`);
+        Object.entries(this.edgeMap).forEach(([fromNodeId, toNodeMap]) => {
+            Object.keys(toNodeMap).forEach((toNodeId) => {
+                lines.push(`  item_${fromNodeId} -> item_${toNodeId};`);
+            });
         });
         lines.push('}');
         return lines.join('\n');

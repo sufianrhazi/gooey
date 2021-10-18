@@ -180,7 +180,7 @@ export function abstractSuite(name: string, body: () => void) {
     };
 }
 
-export function suite(name: string, body: () => void, only: boolean = false) {
+function suiteInner(name: string, body: () => void, only: boolean) {
     currentSuite = makeSuite({ name, parent: currentSuite, only });
     report({
         type: 'suite',
@@ -194,6 +194,13 @@ export function suite(name: string, body: () => void, only: boolean = false) {
     }
     currentSuite = currentSuite.parent;
 }
+
+export function suite(name: string, body: () => void) {
+    suiteInner(name, body, false);
+}
+suite.only = function suiteQnly(name: string, body: () => void) {
+    suiteInner(name, body, true);
+};
 
 export function beforeAll(action: SuiteAction) {
     currentSuite.beforeAll.push(action);
@@ -211,7 +218,7 @@ export function afterAll(action: SuiteAction) {
     currentSuite.afterAll.push(action);
 }
 
-export function test(name: string, impl: TestAction, only: boolean = false) {
+function testInner(name: string, impl: TestAction, only: boolean = false) {
     const test = makeTest({ name, impl, parent: currentSuite, only });
     report({
         type: 'test',
@@ -220,6 +227,12 @@ export function test(name: string, impl: TestAction, only: boolean = false) {
     });
     currentSuite.tests.push(test);
 }
+export function test(name: string, impl: TestAction) {
+    testInner(name, impl, false);
+}
+test.only = function testOnly(name: string, impl: TestAction) {
+    testInner(name, impl, true);
+};
 
 function makeNameInner(node: Suite | Test) {
     let name = '';

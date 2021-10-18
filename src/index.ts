@@ -165,6 +165,8 @@ function trackComputation<Ret>(
         }
     );
 
+    globalDependencyGraph.addNode(trackedComputation);
+
     computationToInvalidationMap.set(trackedComputation, invalidate);
 
     // Note: typescript gets confused, this *should* be
@@ -246,9 +248,9 @@ export function flush() {
         return;
     }
     needsFlush = false;
-    const partialTopo = partialDag.topologicalSort();
+    const oldPartialDag = partialDag;
     partialDag = new DAG();
-    partialTopo.forEach((item) => {
+    oldPartialDag.visitTopological((item) => {
         if (isTrackedComputation(item)) {
             log.debug('flushing computation', debugNameFor(item));
             const invalidation = computationToInvalidationMap.get(item);
@@ -260,44 +262,29 @@ export function flush() {
             log.debug('flushing model', debugNameFor(item));
         }
     });
-
-    garbageCollect();
+    globalDependencyGraph.garbageCollect().forEach((item) => {
+        if (isTrackedComputation(item)) {
+            log.debug('GC computation', debugNameFor(item));
+        } else {
+            log.debug('GC model', debugNameFor(item));
+        }
+    });
 }
 
 export function retain(item: TrackedComputation<any>) {
-    log.debug('Retaining computation', debugNameFor(item));
-    refcountMap.set(item, (refcountMap.get(item) || 0) + 1);
+    log.debug('retain', debugNameFor(item));
+    globalDependencyGraph.retain(item);
 }
 
 export function release(item: TrackedComputation<any>) {
-    log.debug('Releasing computation', debugNameFor(item));
-    const refCount = refcountMap.get(item);
-    if (refCount && refCount > 1) {
-        refcountMap.set(item, refCount - 1);
-        return;
-    }
-    refcountMap.delete(item);
-    garbageCollect(); // TODO: this is so inefficient!
+    log.debug('release', debugNameFor(item));
+    globalDependencyGraph.release(item);
+
     // Can probably incrementally implement garbage collection via:
     //
     // Move retain/release into the DAG and
-    // - ADD a -> b means b is retained
-    // - DEL a -> b means b is released
-    // - When any node is released, delete from DAG and remove edges
-}
-
-function garbageCollect() {
-    const retained: TrackedComputation<unknown>[] = [];
-    refcountMap.forEach((refCount, item) => {
-        if (refCount > 0) {
-            retained.push(item);
-        }
-    });
-    const removed = globalDependencyGraph.removeExitsRetaining(retained);
-    removed.forEach((item) => {
-        log.debug('GC Removing', debugNameFor(item));
-    });
-    partialDag.removeExitsRetaining(retained);
+    // - ADD a -> b means a is retained
+    // - DEL a -> b means a is released
 }
 
 export function debug(): string {

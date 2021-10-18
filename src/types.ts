@@ -3,7 +3,10 @@ export class InvariantError extends Error {}
 const TrackedTypeTag = Symbol('trackedType');
 const ComputationType = Symbol('computationType');
 
-export type TrackedModel<T> = T & { [TrackedTypeTag]: 'model' };
+export type TrackedModel<T> = T & {
+    [TrackedTypeTag]: 'model';
+    release: () => void;
+};
 export type TrackedComputation<Result> = (() => Result) & {
     [TrackedTypeTag]: 'computation';
     [ComputationType]: 'computation' | 'effect';

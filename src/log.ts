@@ -51,8 +51,8 @@ export function invariant(check: () => any, ...items: any[]) {
     }
 }
 
-export function assert(check: () => any, ...items: any[]) {
-    if (!check()) {
+export function assert(check: any, ...items: any[]): asserts check {
+    if (!check) {
         error('Assertion failure', check.toString(), 'is not truthy', ...items);
         throw new Error('Assertion failure');
     }

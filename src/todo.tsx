@@ -12,6 +12,8 @@ import {
     Component,
 } from './index';
 
+setLogLevel('debug');
+
 subscribe(() => {
     setTimeout(() => flush(), 0);
 });
