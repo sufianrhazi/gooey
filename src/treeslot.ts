@@ -1,9 +1,4 @@
-import {
-    RenderChild,
-    isRenderComponent,
-    isRenderNativeElement,
-    isRenderComputation,
-} from './renderchild';
+import { RenderChild } from './renderchild';
 import * as log from './log';
 import { release } from './index';
 
@@ -19,22 +14,26 @@ export type TreeSlot = {
     domNode: Node | null;
     children: TreeSlot[];
     renderChild: RenderChild | null;
+    onUnmount: Function[];
     [TreeSlotSymbol]: true;
 };
 
 export type TreeSlotIndex = number[];
 
 export function makeTreeSlot({
-    renderChild = null,
-    domNode = null,
+    renderChild,
+    domNode,
+    onUnmount,
 }: {
-    renderChild?: RenderChild | null;
-    domNode?: Node | null;
+    renderChild: RenderChild | null;
+    domNode: Node | null;
+    onUnmount: Function[];
 }): TreeSlot {
     return {
         domNode,
         children: [],
         renderChild,
+        onUnmount,
         [TreeSlotSymbol]: true,
     };
 }
@@ -112,29 +111,17 @@ function callOnUnmount(node: TreeSlot) {
     node.children.forEach((child) => callOnUnmount(child));
 
     // Call any onUnmount listeners
-    if (isRenderComponent(node.renderChild)) {
-        const renderChild = node.renderChild;
-        node.renderChild.onUnmountListeners.forEach((listener) => {
+    if (node.onUnmount) {
+        node.onUnmount.forEach((onUnmount) => {
             try {
-                listener();
+                onUnmount();
             } catch (e) {
                 log.exception(
                     e,
-                    'component raised exception in onUnmount',
-                    renderChild.component
+                    'TreeSlot node raised exception in onUnmount',
+                    node
                 );
             }
-        });
-    }
-
-    // Release any bound effects
-    if (
-        isRenderNativeElement(node.renderChild) ||
-        isRenderComputation(node.renderChild) ||
-        isRenderComponent(node.renderChild)
-    ) {
-        node.renderChild.boundEffects.forEach((boundEffect) => {
-            release(boundEffect);
         });
     }
 }
@@ -160,7 +147,7 @@ export function setTreeSlot(
     root: TreeSlot,
     treeSlotIndex: TreeSlotIndex,
     newNode: TreeSlot
-): void {
+): TreeSlot | undefined {
     const { immediateParent, childIndex, domParent } = getTreeSlotParent(
         root,
         treeSlotIndex
@@ -193,4 +180,5 @@ export function setTreeSlot(
             domParent.domNode.childNodes[domIndex];
         domParent.domNode.insertBefore(newNode.domNode, referenceNode || null);
     }
+    return detachedTreeSlot;
 }

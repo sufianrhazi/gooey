@@ -82,10 +82,19 @@ const TodoItem: Component<TodoItemProps> = ({ item }, { onUnmount }) => {
                         'TodoItem:checked'
                     )}
                 />{' '}
-                {name(
-                    computation(() => item.task),
-                    'TodoItem:task'
-                )}
+                <span
+                    style={name(
+                        computation(() =>
+                            item.done ? 'text-decoration: line-through' : ''
+                        ),
+                        'TodoItem:strikethrough'
+                    )}
+                >
+                    {name(
+                        computation(() => item.task),
+                        'TodoItem:task'
+                    )}
+                </span>
             </label>
         </li>
     );
@@ -93,12 +102,12 @@ const TodoItem: Component<TodoItemProps> = ({ item }, { onUnmount }) => {
 
 type TodoListProps = { list: TodoList };
 const TodoList: Component<TodoListProps> = ({ list }, { onUnmount }) => {
-    const localState = model({ isShowingStuff: true });
-    console.log('Mounting TodoList');
+    console.log('TodoList:mount');
     onUnmount(() => {
-        console.log('Unmounting TodoList');
+        console.log('TodoList:unmount');
     });
     const onClickAdd = () => {
+        console.log('TodoList:click:add');
         const el = document.getElementById('input');
         if (!el || !(el instanceof HTMLInputElement)) return;
         list.items.push(
@@ -113,10 +122,6 @@ const TodoList: Component<TodoListProps> = ({ list }, { onUnmount }) => {
         el.value = '';
     };
 
-    const onClickToggle = () => {
-        localState.isShowingStuff = !localState.isShowingStuff;
-    };
-
     const onClickClear = () => {
         list.items.splice(
             0,
@@ -127,20 +132,13 @@ const TodoList: Component<TodoListProps> = ({ list }, { onUnmount }) => {
 
     return (
         <>
-            <h1 class="whatever">
-                To do:{' '}
+            <p>
                 {name(
-                    computation(() => list.name),
-                    'TodoList:name'
-                )}
-                {' - '}
-                {name(
-                    computation(() =>
-                        localState.isShowingStuff ? 'stuff' : 'not stuff'
-                    ),
-                    'TodoList:stuff'
-                )}
-            </h1>
+                    computation(() => list.items.length),
+                    'TodoList:items.length'
+                )}{' '}
+                items
+            </p>
             <ul>
                 {name(
                     computation(() =>
@@ -149,9 +147,7 @@ const TodoList: Component<TodoListProps> = ({ list }, { onUnmount }) => {
                     'TodoList:items'
                 )}
             </ul>
-            <hr />
             <button on:click={onClickAdd}>+</button>{' '}
-            <button on:click={onClickToggle}>toggle extra</button>{' '}
             <input id="input" type="text" value="Don't forget the milk" />
             <br />
             <button on:click={onClickClear}>Clear completed</button>
@@ -165,13 +161,10 @@ if (root) {
     mount(root, <TodoList list={list} />);
 }
 
-// ui
-const flushButton = document.createElement('button');
-flushButton.textContent = 'flush';
-flushButton.addEventListener('click', () => {
-    flush();
-});
-document.body.appendChild(flushButton);
+// non-revise ui
+const separator = document.createElement('hr');
+separator.style.margin = '20px 0';
+document.body.appendChild(separator);
 
 const doSomethingButton = document.createElement('button');
 doSomethingButton.textContent = 'doSomething';

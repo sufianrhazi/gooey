@@ -11,24 +11,20 @@ import { TrackedComputation, isTrackedComputation } from './types';
 import * as log from './log';
 import {
     Component,
-    JsxChild,
     RenderChild,
-    isRenderNull,
-    makeRenderText,
-    isRenderNativeElement,
+    ElementProps,
     isRenderComponent,
-    isRenderArray,
-    makeRenderNull,
-    makeRenderArray,
-    makeRenderComputation,
-    makeRenderFunction,
-    makeRenderNativeElement,
-    makeRenderComponent,
-    isRenderText,
-    isRenderFunction,
-    isRenderComputation,
+    RenderComponent,
+    isRenderElement,
+    RenderElement,
 } from './renderchild';
-import { TreeSlot, TreeSlotIndex, setTreeSlot, makeTreeSlot } from './treeslot';
+import {
+    TreeSlot,
+    TreeSlotIndex,
+    getTreeSlotParent,
+    setTreeSlot,
+    makeTreeSlot,
+} from './treeslot';
 
 declare global {
     namespace JSX {
@@ -42,49 +38,35 @@ declare global {
 
 function verifyExhausted(value: never): void {}
 
-function jsxChildToRenderChild(jsxChild: JsxChild): RenderChild {
-    if (
-        jsxChild === true ||
-        jsxChild === false ||
-        jsxChild === null ||
-        jsxChild === undefined ||
-        isRenderNull(jsxChild)
-    )
-        return makeRenderNull();
-    if (typeof jsxChild === 'string') return makeRenderText(jsxChild);
-    if (typeof jsxChild === 'number')
-        return makeRenderText(jsxChild.toString());
-    if (Array.isArray(jsxChild))
-        return makeRenderArray(
-            jsxChild.map((item) => jsxChildToRenderChild(item))
-        );
-    if (isTrackedComputation(jsxChild)) return makeRenderComputation(jsxChild);
-    if (typeof jsxChild === 'function') return makeRenderFunction(jsxChild);
-    if (isRenderNativeElement(jsxChild)) return jsxChild;
-    if (isRenderComponent(jsxChild)) return jsxChild;
-    if (isRenderArray(jsxChild)) return jsxChild;
-    if (isRenderText(jsxChild)) return jsxChild;
-    if (isRenderFunction(jsxChild)) return jsxChild;
-    if (isRenderComputation(jsxChild)) return jsxChild;
-    log.assertExhausted(jsxChild, 'unexpected jsx child type');
-}
-
+function createElement<Props extends {}>(
+    Constructor: string,
+    props?: ElementProps,
+    ...children: RenderChild[]
+): RenderChild;
+function createElement<Props extends {}>(
+    Constructor: Component<Props>,
+    props?: Props,
+    ...children: RenderChild[]
+): RenderChild;
 function createElement<Props extends {}>(
     Constructor: string | Component<Props>,
-    props?: Props,
-    ...children: JsxChild[]
+    props?: ElementProps | Props,
+    ...children: RenderChild[]
 ): RenderChild {
-    const renderChildren = children.map((child) =>
-        jsxChildToRenderChild(child)
-    );
     if (typeof Constructor === 'string') {
-        return makeRenderNativeElement(
-            document.createElement(Constructor),
+        return {
+            type: 'element',
+            element: Constructor,
             props,
-            renderChildren
-        );
+            children,
+        };
     }
-    return makeRenderComponent(Constructor, props, renderChildren);
+    return {
+        type: 'component',
+        component: Constructor,
+        props,
+        children,
+    };
 }
 
 function insertAt(parentElement: Element, index: number, child: Node) {
@@ -120,45 +102,64 @@ function setAttributeValue(element: Element, key: string, value: unknown) {
     }
 }
 
-function mountTo(
-    parentElement: Element,
-    treeSlot: TreeSlot,
-    mountIndex: TreeSlotIndex,
-    root: RenderChild
-) {
-    if (isRenderFunction(root)) {
+interface MountToParams {
+    parentElement: Element;
+    treeSlot: TreeSlot;
+    mountIndex: TreeSlotIndex;
+    root: RenderChild;
+    replacedTreeSlot?: TreeSlot | undefined;
+}
+function mountTo({
+    parentElement,
+    treeSlot,
+    mountIndex,
+    root,
+    replacedTreeSlot,
+}: MountToParams) {
+    if (
+        root === null ||
+        root === undefined ||
+        root === false ||
+        root === true
+    ) {
         setTreeSlot(
             treeSlot,
             mountIndex,
             makeTreeSlot({
                 renderChild: root,
+                domNode: null,
+                onUnmount: [],
             })
         );
-        // TODO: warning: you tried to mount a function to an element? What does react do?
         return;
     }
-    if (isRenderNull(root)) {
+    if (typeof root === 'string') {
         setTreeSlot(
             treeSlot,
             mountIndex,
             makeTreeSlot({
                 renderChild: root,
+                domNode: document.createTextNode(root),
+                onUnmount: [],
             })
         );
         return;
     }
-    if (isRenderText(root)) {
+    if (typeof root === 'number') {
         setTreeSlot(
             treeSlot,
             mountIndex,
             makeTreeSlot({
                 renderChild: root,
-                domNode: root.text,
+                domNode: document.createTextNode(root.toString()),
+                onUnmount: [],
             })
         );
         return;
     }
-    if (isRenderNativeElement(root)) {
+    if (isRenderElement(root)) {
+        const element = document.createElement(root.element);
+        const boundEffects: TrackedComputation<any>[] = [];
         // Bind props
         if (root.props) {
             Object.entries(root.props).forEach(([key, value]) => {
@@ -166,97 +167,116 @@ function mountTo(
                     const boundEffect = name(
                         effect(() => {
                             const computedValue = value();
-                            setAttributeValue(root.element, key, computedValue);
+                            setAttributeValue(element, key, computedValue);
                         }),
                         `view:bindAttribute:${key}:${JSON.stringify(
                             mountIndex
                         )}`
                     );
                     retain(boundEffect);
-                    root.boundEffects.push(boundEffect);
+                    boundEffects.push(boundEffect);
                     boundEffect();
                 } else {
-                    setAttributeValue(root.element, key, value);
+                    setAttributeValue(element, key, value);
                 }
             });
         }
 
         const newTreeSlot = makeTreeSlot({
             renderChild: root,
-            domNode: root.element,
+            domNode: element,
+            onUnmount: [
+                () => {
+                    boundEffects.forEach((boundEffect) => release(boundEffect));
+                },
+            ],
         });
         setTreeSlot(treeSlot, mountIndex, newTreeSlot);
 
         root.children.forEach((child, childIndex) => {
-            mountTo(
-                root.element,
+            mountTo({
+                parentElement: element,
                 treeSlot,
-                mountIndex.concat([childIndex]),
-                child
-            );
+                mountIndex: mountIndex.concat([childIndex]),
+                root: child,
+            });
         });
 
         return;
     }
-    if (isRenderComputation(root)) {
+    if (isTrackedComputation(root)) {
+        const trackedComputation = root;
+        const onUnmount: Function[] = [];
         const resultEffect = name(
             effect(() => {
-                const jsxResult = root.computation();
+                const renderChild = trackedComputation();
 
-                const renderChild = jsxChildToRenderChild(jsxResult);
-
-                setTreeSlot(
+                const { immediateParent, childIndex } = getTreeSlotParent(
+                    treeSlot,
+                    mountIndex
+                );
+                console.log('SUFIAN REPLACE', {
+                    prev: immediateParent.children[childIndex],
+                    curr: renderChild,
+                });
+                // Note: We retain ourselves each time it's executed and
+                // release each time we are unmounted.
+                // On update (unmount followed by render), we want to keep this effect alive
+                // If unmounted (unmount not followed by render), we must be culled
+                const replaced = setTreeSlot(
                     treeSlot,
                     mountIndex,
-                    makeTreeSlot({ renderChild })
+                    makeTreeSlot({
+                        renderChild,
+                        domNode: null,
+                        onUnmount: [() => release(resultEffect)],
+                    })
                 );
 
-                mountTo(
+                // Hold on to the new effect and release on unmount
+                retain(resultEffect);
+                mountTo({
                     parentElement,
                     treeSlot,
-                    mountIndex.concat([0]),
-                    renderChild
-                );
+                    mountIndex: mountIndex.concat([0]),
+                    root: renderChild,
+                    replacedTreeSlot: replaced,
+                });
             }),
             `view:computation:${JSON.stringify(mountIndex)}`
         );
-
-        // Hold on to the new effect
-        retain(resultEffect);
-        // Place the effect on the RenderChild so we can release on unmount
-        root.boundEffects.push(resultEffect);
 
         resultEffect();
         return;
     }
     if (isRenderComponent(root)) {
+        const Component = root.component;
+        const onUnmount: Function[] = [];
         const resultEffect = name(
             effect(() => {
-                const jsxResult = root.component(
+                const renderChild = Component(
                     {
-                        ...(root.props || {}), // TODO: how to pass dynamic effects to a component?
+                        ...(root.props || {}),
                         children: root.children,
                     },
                     {
                         onUnmount: (unmountCallback) => {
-                            root.onUnmountListeners.push(unmountCallback);
+                            onUnmount.push(unmountCallback);
                         },
                     }
                 );
 
-                const renderChild = jsxChildToRenderChild(jsxResult);
-
                 setTreeSlot(
                     treeSlot,
                     mountIndex,
-                    makeTreeSlot({ renderChild })
+                    makeTreeSlot({ renderChild, domNode: null, onUnmount })
                 );
-                mountTo(
+                mountTo({
                     parentElement,
                     treeSlot,
-                    mountIndex.concat([0]),
-                    renderChild
-                );
+                    mountIndex: mountIndex.concat([0]),
+                    root: renderChild,
+                });
             }),
             `view:component:${root.component.name}:${JSON.stringify(
                 mountIndex
@@ -265,33 +285,63 @@ function mountTo(
 
         // Hold on to the new effect
         retain(resultEffect);
-        // Place the effect on the RenderChild so we can release on unmount
-        root.boundEffects.push(resultEffect);
+        onUnmount.push(() => release(resultEffect));
 
         resultEffect();
         return;
     }
-    if (isRenderArray(root)) {
-        setTreeSlot(treeSlot, mountIndex, makeTreeSlot({ renderChild: root }));
+    if (Array.isArray(root)) {
+        const items = root;
+        setTreeSlot(
+            treeSlot,
+            mountIndex,
+            makeTreeSlot({
+                renderChild: root,
+                domNode: null,
+                onUnmount: [],
+            })
+        );
 
-        root.children.forEach((renderChild, childIndex) => {
-            mountTo(
+        items.forEach((renderChild, childIndex) => {
+            mountTo({
                 parentElement,
                 treeSlot,
-                mountIndex.concat([childIndex]),
-                renderChild
-            );
+                mountIndex: mountIndex.concat([childIndex]),
+                root: renderChild,
+            });
         });
+        return;
+    }
+    if (typeof root === 'function') {
+        setTreeSlot(
+            treeSlot,
+            mountIndex,
+            makeTreeSlot({
+                renderChild: root,
+                domNode: null,
+                onUnmount: [],
+            })
+        );
+        // TODO: warning: you tried to mount a function to an element? What does react do?
         return;
     }
     log.assertExhausted(root, 'unexpected render type');
 }
 
 export function mount(parentElement: Element, root: RenderChild) {
-    mountTo(parentElement, makeTreeSlot({ domNode: parentElement }), [0], root);
+    mountTo({
+        parentElement,
+        treeSlot: makeTreeSlot({
+            renderChild: null,
+            domNode: parentElement,
+            onUnmount: [],
+        }),
+        mountIndex: [0],
+        root,
+    });
 }
 
 export const React = {
     createElement,
-    Fragment: ({ children }: { children: JsxChild[] }) => children,
+    Fragment: ({ children }: { children: RenderChild[] }) => children,
 };

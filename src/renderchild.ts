@@ -11,170 +11,152 @@ type ComponentListeners = {
 export type Component<P extends {}> = (
     props: PropsWithChildren<P>,
     listeners: ComponentListeners
-) => JsxChild;
+) => RenderChild;
 
-type JsxRawNode = string | number | true | false | null | undefined | Function;
+type JsxRawNode = string | number | boolean | null | undefined | Function;
 
 /**
  * The type returnable by JSX (raw nodes)
  */
-export type JsxChild =
+type RenderChildSingle =
     | JsxRawNode
-    | RenderChild
-    | TrackedComputation<JsxRawNode | RenderChild>
-    | TrackedComputation<(JsxRawNode | RenderChild)[]>
-    | (
-          | JsxRawNode
-          | RenderChild
-          | TrackedComputation<JsxRawNode | RenderChild>
-      )[];
+    | TrackedComputation<JsxRawNode>
+    | TrackedComputation<JsxRawNode[]>
+    | RenderElement
+    | RenderComponent<any>;
+export type RenderChild = RenderChildSingle | RenderChildSingle[];
 
-/**
- * The intermediate type returnable by React.createElement
- */
-export type RenderChild =
-    | RenderNull
-    | RenderText
-    | RenderFunction
-    | RenderNativeElement
-    | RenderComponent
-    | RenderComputation
-    | RenderArray;
-
-const RenderTag = Symbol('RenderTag');
-
-export type RenderNull = {
-    [RenderTag]: 'null';
+export type RenderElement = {
+    type: 'element';
+    element: string;
+    props?: ElementProps;
+    children: RenderChild[];
 };
-
-const RenderNull: RenderNull = { [RenderTag]: 'null' };
-
-export function isRenderNull(a: any): a is RenderNull {
-    return a === RenderNull;
+export function isRenderElement(
+    renderChild: RenderChild
+): renderChild is RenderElement {
+    return !!(
+        renderChild &&
+        typeof renderChild === 'object' &&
+        'type' in renderChild &&
+        renderChild.type === 'element'
+    );
 }
 
-export function makeRenderNull(): RenderNull {
-    return RenderNull;
-}
+type EventHandler<T> = (event: T) => void;
 
-export type RenderText = {
-    [RenderTag]: 'text';
-    text: Text;
-};
-
-export function isRenderText(a: any): a is RenderText {
-    return a && a[RenderTag] === 'text';
-}
-
-export function makeRenderText(str: string): RenderText {
-    return { [RenderTag]: 'text', text: document.createTextNode(str) };
-}
-
-export type RenderFunction = {
-    [RenderTag]: 'function';
-    fn: Function;
-};
-
-export function isRenderFunction(a: any): a is RenderFunction {
-    return a && a[RenderTag] === 'function';
-}
-
-export function makeRenderFunction(fn: Function): RenderFunction {
-    return { [RenderTag]: 'function', fn };
-}
-
-export type RenderComputation = {
-    [RenderTag]: 'computation';
-    computation: TrackedComputation<JsxChild>;
-    boundEffects: TrackedComputation<any>[];
-};
-
-export function isRenderComputation(a: any): a is RenderComputation {
-    return a && a[RenderTag] === 'computation';
-}
-
-export function makeRenderComputation(
-    computation: TrackedComputation<JsxChild>
-): RenderComputation {
-    return { [RenderTag]: 'computation', computation, boundEffects: [] };
-}
-
-export type NativeRenderProps = {
+export type ElementProps = {
+    // AnimationEvent
+    'on:animationstart'?: EventHandler<AnimationEvent>;
+    'on:animationiteration'?: EventHandler<AnimationEvent>;
+    'on:animationend'?: EventHandler<AnimationEvent>;
+    'on:animationcancel'?: EventHandler<AnimationEvent>;
+    // ClipboardEvent
+    'on:copy'?: EventHandler<ClipboardEvent>;
+    'on:paste'?: EventHandler<ClipboardEvent>;
+    // DOMContentLoaded
+    'on:DOMContentLoaded'?: EventHandler<Event>;
+    // DragEvent
+    'on:dragend'?: EventHandler<DragEvent>;
+    'on:dragenter'?: EventHandler<DragEvent>;
+    'on:dragleave'?: EventHandler<DragEvent>;
+    'on:dragover'?: EventHandler<DragEvent>;
+    'on:dragstart'?: EventHandler<DragEvent>;
+    'on:drag'?: EventHandler<DragEvent>;
+    'on:drop'?: EventHandler<DragEvent>;
+    // Full Screen
+    'on:fullscreenchange'?: EventHandler<Event>;
+    'on:fullscreenerror'?: EventHandler<Event>;
+    // Pointer Capture
+    'on:gotpointercapture'?: EventHandler<PointerEvent>;
+    'on:lostpointercapture'?: EventHandler<PointerEvent>;
+    // PointerEvent
+    'on:pointercancel'?: EventHandler<PointerEvent>;
+    'on:pointerdown'?: EventHandler<PointerEvent>;
+    'on:pointerenter'?: EventHandler<PointerEvent>;
+    'on:pointerleave'?: EventHandler<PointerEvent>;
+    'on:pointerlockchange'?: EventHandler<PointerEvent>;
+    'on:pointerlockerror'?: EventHandler<PointerEvent>;
+    'on:pointermove'?: EventHandler<PointerEvent>;
+    'on:pointerout'?: EventHandler<PointerEvent>;
+    'on:pointerover'?: EventHandler<PointerEvent>;
+    'on:pointerup'?: EventHandler<PointerEvent>;
+    // KeyboardEvent
+    'on:keydown'?: EventHandler<KeyboardEvent>;
+    'on:keypress'?: EventHandler<KeyboardEvent>;
+    'on:keyup'?: EventHandler<KeyboardEvent>;
+    // readyState
+    'on:readystatechange'?: EventHandler<Event>;
+    // Scroll
+    'on:scroll'?: EventHandler<Event>;
+    // Selection
+    'on:selectionchange'?: EventHandler<Event>;
+    'on:selectstart'?: EventHandler<Event>;
+    'on:select'?: EventHandler<Event | UIEvent>;
+    // Touch
+    'on:touchcancel'?: EventHandler<TouchEvent>;
+    'on:touchend'?: EventHandler<TouchEvent>;
+    'on:touchmove'?: EventHandler<TouchEvent>;
+    'on:touchstart'?: EventHandler<TouchEvent>;
+    // Transition
+    'on:transitioncancel'?: EventHandler<TransitionEvent>;
+    'on:transitionend'?: EventHandler<TransitionEvent>;
+    'on:transitionrun'?: EventHandler<TransitionEvent>;
+    'on:transitionstart'?: EventHandler<TransitionEvent>;
+    // Visibility
+    'on:visibilitychange'?: EventHandler<Event>;
+    // Wheel
+    'on:wheel'?: EventHandler<WheelEvent>;
+    // Mouse
+    'on:auxclick'?: EventHandler<MouseEvent>;
+    'on:click'?: EventHandler<MouseEvent>;
+    'on:dblclick'?: EventHandler<MouseEvent>;
+    'on:contextmenu'?: EventHandler<MouseEvent>;
+    'on:mousedown'?: EventHandler<MouseEvent>;
+    'on:mouseenter'?: EventHandler<MouseEvent>;
+    'on:mouseleave'?: EventHandler<MouseEvent>;
+    'on:mouseout'?: EventHandler<MouseEvent>;
+    'on:mouseover'?: EventHandler<MouseEvent>;
+    'on:mouseup'?: EventHandler<MouseEvent>;
+    // Focus
+    'on:focus'?: EventHandler<FocusEvent>;
+    'on:focusin'?: EventHandler<FocusEvent>;
+    'on:focusout'?: EventHandler<FocusEvent>;
+    'on:blur'?: EventHandler<FocusEvent>;
+    // Composition
+    'on:compositionend'?: EventHandler<CompositionEvent>;
+    'on:compositionstart'?: EventHandler<CompositionEvent>;
+    'on:compositionupdate'?: EventHandler<CompositionEvent>;
+    // Error
+    'on:error'?: EventHandler<Event | UIEvent>; // TODO: different elements have different events
+    // TODO: generate this from spec
+} & {
+    [key: `on:${string}`]: EventHandler<Event>;
     [key: string]:
+        | Function
         | string
         | number
-        | true
-        | false
+        | boolean
         | null
         | undefined
         | TrackedComputation<
-              () => string | number | true | false | null | undefined
+              () => Function | string | number | boolean | null | undefined
           >;
 };
 
-export type RenderNativeElement = {
-    [RenderTag]: 'element';
-    element: Element;
-    props: {};
-    children: RenderChild[];
-    boundEffects: TrackedComputation<any>[];
-};
-
-export function isRenderNativeElement(p: any): p is RenderNativeElement {
-    return p && p[RenderTag] === 'element';
-}
-
-export function makeRenderNativeElement(
-    element: Element,
-    props: {} = {},
-    children: RenderChild[]
-): RenderNativeElement {
-    return {
-        [RenderTag]: 'element',
-        element,
-        props,
-        children,
-        boundEffects: [],
-    };
-}
-
-export type RenderComponent = {
-    [RenderTag]: 'component';
-    component: Component<any>;
-    props: {};
-    children: RenderChild[];
-    onUnmountListeners: OnUnmountCallback[];
-    boundEffects: TrackedComputation<any>[];
-};
-
-export function isRenderComponent(p: any): p is RenderComponent {
-    return p && p[RenderTag] === 'component';
-}
-
-export function makeRenderComponent(
-    component: Component<any>,
-    props: {} = {},
-    children: RenderChild[]
-): RenderComponent {
-    return {
-        [RenderTag]: 'component',
-        component,
-        props,
-        children,
-        onUnmountListeners: [],
-        boundEffects: [],
-    };
-}
-
-export type RenderArray = {
-    [RenderTag]: 'array';
+export type RenderComponent<Props extends {}> = {
+    type: 'component';
+    component: Component<Props>;
+    props?: Props;
     children: RenderChild[];
 };
-
-export function isRenderArray(p: any): p is RenderArray {
-    return p && p[RenderTag] === 'array';
-}
-
-export function makeRenderArray(children: RenderChild[]): RenderArray {
-    return { [RenderTag]: 'array', children };
+export function isRenderComponent(
+    renderChild: RenderChild
+): renderChild is RenderComponent<any> {
+    return !!(
+        renderChild &&
+        typeof renderChild === 'object' &&
+        'type' in renderChild &&
+        renderChild.type === 'component'
+    );
 }
