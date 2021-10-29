@@ -10,6 +10,8 @@ import {
     subscribe,
     setLogLevel,
     Component,
+    TrackedModel,
+    TrackedCollection,
 } from './index';
 
 setLogLevel('debug');
@@ -25,7 +27,7 @@ interface TodoItem {
 
 interface TodoList {
     name: string;
-    items: TodoItem[];
+    items: TrackedCollection<TodoItem>;
 }
 
 const list: TodoList = name(
@@ -123,11 +125,11 @@ const TodoList: Component<TodoListProps> = ({ list }, { onUnmount }) => {
     };
 
     const onClickClear = () => {
-        list.items.splice(
-            0,
-            list.items.length,
-            ...list.items.filter((item) => !item.done)
-        );
+        for (let i = list.items.length - 1; i >= 0; --i) {
+            if (list.items[i].done) {
+                list.items.splice(i, 1);
+            }
+        }
     };
 
     return (
@@ -141,9 +143,9 @@ const TodoList: Component<TodoListProps> = ({ list }, { onUnmount }) => {
             </p>
             <ul>
                 {name(
-                    computation(() =>
-                        list.items.map((item) => <TodoItem item={item} />)
-                    ),
+                    list.items.mapCollection((item) => (
+                        <TodoItem item={item} />
+                    )),
                     'TodoList:items'
                 )}
             </ul>

@@ -148,14 +148,26 @@ export function setTreeSlot(
     treeSlotIndex: TreeSlotIndex,
     newNode: TreeSlot
 ): TreeSlot | undefined {
+    return spliceTreeSlot(root, treeSlotIndex, 1, [newNode])[0];
+}
+
+export function spliceTreeSlot(
+    root: TreeSlot,
+    treeSlotIndex: TreeSlotIndex,
+    removeCount: number,
+    newNodes: TreeSlot[]
+) {
     const { immediateParent, childIndex, domParent } = getTreeSlotParent(
         root,
         treeSlotIndex
     );
-    const detachedTreeSlot = immediateParent.children[childIndex];
-    immediateParent.children[childIndex] = newNode;
+    const detachedTreeSlots = immediateParent.children.splice(
+        childIndex,
+        removeCount,
+        ...newNodes
+    );
 
-    if (detachedTreeSlot) {
+    detachedTreeSlots.forEach((detachedTreeSlot) => {
         callOnUnmount(detachedTreeSlot);
 
         const nodesToRemove = getShallowNodes(detachedTreeSlot);
@@ -164,21 +176,24 @@ export function setTreeSlot(
                 node.parentNode.removeChild(node);
             }
         });
-    }
+    });
 
     if (!domParent.domNode) {
         throw new Error('Invariant: domParent missing domNode');
     }
+    const domParentNode = domParent.domNode;
 
-    if (newNode.domNode) {
-        const domIndex = getDomParentChildIndex(
-            domParent,
-            immediateParent,
-            childIndex
-        );
-        const referenceNode: Node | undefined =
-            domParent.domNode.childNodes[domIndex];
-        domParent.domNode.insertBefore(newNode.domNode, referenceNode || null);
-    }
-    return detachedTreeSlot;
+    newNodes.forEach((newNode) => {
+        if (newNode.domNode) {
+            const domIndex = getDomParentChildIndex(
+                domParent,
+                immediateParent,
+                childIndex
+            );
+            const referenceNode: Node | undefined =
+                domParentNode.childNodes[domIndex];
+            domParentNode.insertBefore(newNode.domNode, referenceNode || null);
+        }
+    });
+    return detachedTreeSlots;
 }

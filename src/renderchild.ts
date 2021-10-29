@@ -1,4 +1,8 @@
-import { TrackedComputation, isTrackedComputation } from './types';
+import {
+    TrackedComputation,
+    TrackedCollection,
+    isTrackedComputation,
+} from './types';
 
 // General component props
 type PropsWithChildren<P> = P & { children?: RenderChild[] };
@@ -24,7 +28,10 @@ type RenderChildSingle =
     | TrackedComputation<JsxRawNode[]>
     | RenderElement
     | RenderComponent<any>;
-export type RenderChild = RenderChildSingle | RenderChildSingle[];
+export type RenderChild =
+    | RenderChildSingle
+    | RenderChildSingle[]
+    | TrackedCollection<RenderChildSingle>;
 
 export type RenderElement = {
     type: 'element';

@@ -1,11 +1,38 @@
 export class InvariantError extends Error {}
 
-const TrackedTypeTag = Symbol('trackedType');
+export const TrackedTypeTag = Symbol('trackedType');
 const ComputationType = Symbol('computationType');
+
+export type CollectionEvent<T> =
+    | {
+          type: 'splice';
+          index: number;
+          count: number;
+          items: readonly T[];
+      }
+    | {
+          type: 'init';
+          items: readonly T[];
+      }
+    | {
+          type: 'sort';
+      };
+
+export type CollectionObserver<T> = (event: CollectionEvent<T>) => void;
 
 export type TrackedModel<T> = T & {
     [TrackedTypeTag]: 'model';
-    release: () => void;
+};
+
+type MappingFunction<T, V> = (item: T, index: number, array: T[]) => V;
+export const OnCollectionRelease = Symbol('OnCollectionRelease');
+export type TrackedCollection<T> = T[] & {
+    [TrackedTypeTag]: 'collection';
+    observe(observer: CollectionObserver<T>): () => void;
+    mapCollection<V>(fn: MappingFunction<T, V>): Readonly<TrackedCollection<V>>;
+    retain(): void;
+    release(): void;
+    [OnCollectionRelease]: (fn: () => void) => void;
 };
 export type TrackedComputation<Result> = (() => Result) & {
     [TrackedTypeTag]: 'computation';
@@ -13,7 +40,7 @@ export type TrackedComputation<Result> = (() => Result) & {
 };
 
 export interface ModelField<T> {
-    model: TrackedModel<T>;
+    model: TrackedModel<T> | TrackedCollection<T>;
     key: string | symbol;
 }
 
@@ -29,6 +56,12 @@ export function makeEffect(fn: () => void): TrackedComputation<void> {
         [TrackedTypeTag]: 'computation' as const,
         [ComputationType]: 'effect' as const,
     });
+}
+
+export function isTrackedCollection(
+    thing: any
+): thing is TrackedCollection<unknown> {
+    return !!(thing && (thing as any)[TrackedTypeTag] === 'collection');
 }
 
 export function isTrackedComputation(

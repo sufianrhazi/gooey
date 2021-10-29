@@ -1,19 +1,16 @@
 import * as log from './log';
 import { Sentinel, isSentinel, sentinel } from './sentinel';
 
-export class DAG<FromType extends object, ToType extends object> {
+export class DAG<Type extends object> {
     private maxId: number;
     private sentinelId: string;
-    private idMap: WeakMap<FromType | ToType | Sentinel, string>;
+    private idMap: WeakMap<Type | Sentinel, string>;
 
-    public nodes: Record<string, FromType | ToType | Sentinel>;
+    public nodes: Record<string, Type | Sentinel>;
     public refCount: Record<string, number>; // The number of *outgoing* edges from a node. We want to cull nodes that have no outgoing edges.
     public cullableSet: Record<string, true>; // Set of nodeIds where refcount === 0
-    public edgeMap: Record<string, Record<string, ToType | Sentinel>>;
-    public reverseEdgeMap: Record<
-        string,
-        Record<string, FromType | ToType | Sentinel>
-    >;
+    public edgeMap: Record<string, Record<string, Type | Sentinel>>;
+    public reverseEdgeMap: Record<string, Record<string, Type | Sentinel>>;
 
     constructor() {
         this.maxId = 0;
@@ -28,7 +25,7 @@ export class DAG<FromType extends object, ToType extends object> {
         this.sentinelId = this.getItemId(sentinel);
     }
 
-    getItemId(item: Sentinel | FromType | ToType): string {
+    getItemId(item: Sentinel | Type): string {
         let id;
         if ((id = this.idMap.get(item)) === undefined) {
             id = this.maxId.toString();
@@ -38,11 +35,11 @@ export class DAG<FromType extends object, ToType extends object> {
         return id;
     }
 
-    addNode(node: FromType | ToType): boolean {
+    addNode(node: Type): boolean {
         return this._addNode(node);
     }
 
-    private _addNode(node: Sentinel | FromType | ToType): boolean {
+    private _addNode(node: Sentinel | Type): boolean {
         const itemId = this.getItemId(node);
         if (!this.nodes[itemId]) {
             this.refCount[itemId] = 0;
@@ -57,7 +54,7 @@ export class DAG<FromType extends object, ToType extends object> {
         return false;
     }
 
-    hasNode(node: FromType | ToType): boolean {
+    hasNode(node: Type): boolean {
         return !!this.nodes[this.getItemId(node)];
     }
 
@@ -66,15 +63,15 @@ export class DAG<FromType extends object, ToType extends object> {
      *
      * Returns true if edge is added
      */
-    addEdge(fromNode: FromType | ToType, toNode: ToType): boolean {
+    addEdge(fromNode: Type, toNode: Type): boolean {
         const fromId = this.getItemId(fromNode);
         const toId = this.getItemId(toNode);
         return this._addEdge(fromId, toId);
     }
 
     private _addEdge(fromId: string, toId: string): boolean {
-        const fromNode = this.nodes[fromId] as FromType | Sentinel;
-        const toNode = this.nodes[toId] as ToType;
+        const fromNode = this.nodes[fromId] as Type | Sentinel;
+        const toNode = this.nodes[toId] as Type;
         log.invariant(
             () => fromId === this.sentinelId || !!this.nodes[fromId],
             'addEdge fromNode does not exist',
@@ -107,7 +104,7 @@ export class DAG<FromType extends object, ToType extends object> {
     /**
      * Indicate that toNode no longer needs to be updated if fromNode has changed
      */
-    removeEdge(fromNode: FromType | ToType, toNode: ToType): boolean {
+    removeEdge(fromNode: Type, toNode: Type): boolean {
         const fromId = this.getItemId(fromNode);
         const toId = this.getItemId(toNode);
         const result = this._removeEdge(fromId, toId);
@@ -122,7 +119,7 @@ export class DAG<FromType extends object, ToType extends object> {
     /**
      * Remove a node and all its edges from the graph, returns true if node not present
      */
-    removeNode(node: FromType | ToType): boolean {
+    removeNode(node: Type): boolean {
         const itemId = this.getItemId(node);
         return this._removeNode(itemId);
     }
@@ -182,12 +179,12 @@ export class DAG<FromType extends object, ToType extends object> {
         return false;
     }
 
-    retain(node: FromType | ToType) {
+    retain(node: Type) {
         const retained = this._addEdge(this.getItemId(node), this.sentinelId);
         log.invariant(() => !!retained, 'double-retained', node);
     }
 
-    release(node: FromType | ToType) {
+    release(node: Type) {
         const releaseFailed = this._removeEdge(
             this.getItemId(node),
             this.sentinelId
@@ -199,7 +196,7 @@ export class DAG<FromType extends object, ToType extends object> {
         );
     }
 
-    removeEdges(edges: [FromType | ToType, ToType][]) {
+    removeEdges(edges: [Type, Type][]) {
         edges.forEach(([fromNode, toNode]) => {
             const fromId = this.getItemId(fromNode);
             const toId = this.getItemId(toNode);
@@ -210,12 +207,12 @@ export class DAG<FromType extends object, ToType extends object> {
     /**
      * Get list of things need to be updated, when fromNode has changed?
      */
-    getDependencies(fromNode: FromType): ToType[] {
+    getDependencies(fromNode: Type): Type[] {
         const fromId = this.getItemId(fromNode);
         if (!this.edgeMap[fromId]) {
             return [];
         }
-        const deps: ToType[] = [];
+        const deps: Type[] = [];
         Object.values(this.edgeMap[fromId]).forEach((node) => {
             if (!isSentinel(node)) {
                 deps.push(node);
@@ -227,12 +224,12 @@ export class DAG<FromType extends object, ToType extends object> {
     /**
      * Get list of things that cause toNode to updated
      */
-    getReverseDependencies(toNode: ToType): (FromType | ToType)[] {
+    getReverseDependencies(toNode: Type): Type[] {
         const toId = this.getItemId(toNode);
         if (!this.reverseEdgeMap[toId]) {
             return [];
         }
-        const revDeps: (FromType | ToType)[] = [];
+        const revDeps: Type[] = [];
         Object.values(this.reverseEdgeMap[toId]).forEach((node) => {
             if (!isSentinel(node)) {
                 revDeps.push(node);
@@ -244,9 +241,9 @@ export class DAG<FromType extends object, ToType extends object> {
     /**
      * Visit topological graph
      */
-    visitTopological(callback: (node: FromType | ToType) => void) {
+    visitTopological(callback: (node: Type) => void) {
         const visited: Record<string, boolean> = {};
-        const sorted: (FromType | ToType)[] = [];
+        const sorted: Type[] = [];
         const dfsRecurse = (nodeId: string) => {
             if (visited[nodeId]) return;
             visited[nodeId] = true;
@@ -266,8 +263,8 @@ export class DAG<FromType extends object, ToType extends object> {
         });
     }
 
-    garbageCollect(): (FromType | ToType)[] {
-        const culled: (FromType | ToType)[] = [];
+    garbageCollect(): Type[] {
+        const culled: Type[] = [];
         while (Object.keys(this.cullableSet).length > 0) {
             Object.keys(this.cullableSet).forEach((nodeId) => {
                 const node = this.nodes[nodeId];
@@ -285,7 +282,7 @@ export class DAG<FromType extends object, ToType extends object> {
     /**
      * Generate a dot file structure of the graph
      */
-    graphviz(makeName: (label: string, item: FromType | ToType) => string) {
+    graphviz(makeName: (label: string, item: Type) => string) {
         const lines = ['digraph dag {'];
         Object.entries(this.nodes).forEach(([nodeId, node]) => {
             const props: Record<string, string> = {

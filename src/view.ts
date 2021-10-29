@@ -7,7 +7,12 @@ import {
     retain,
     release,
 } from './index';
-import { TrackedComputation, isTrackedComputation } from './types';
+import {
+    TrackedComputation,
+    isTrackedComputation,
+    isTrackedCollection,
+    CollectionEvent,
+} from './types';
 import * as log from './log';
 import {
     Component,
@@ -23,6 +28,7 @@ import {
     TreeSlotIndex,
     getTreeSlotParent,
     setTreeSlot,
+    spliceTreeSlot,
     makeTreeSlot,
 } from './treeslot';
 
@@ -204,21 +210,79 @@ function mountTo({
 
         return;
     }
+    if (isTrackedCollection(root)) {
+        const trackedCollection = root;
+        const onUnmount: (() => void)[] = [];
+
+        setTreeSlot(
+            treeSlot,
+            mountIndex,
+            makeTreeSlot({
+                renderChild: root,
+                domNode: null,
+                onUnmount,
+            })
+        );
+
+        const unobserve = trackedCollection.observe((event) => {
+            if (event.type === 'init') {
+                const { items } = event;
+                items.forEach((renderChild, childIndex) => {
+                    mountTo({
+                        parentElement,
+                        treeSlot,
+                        mountIndex: mountIndex.concat([childIndex]),
+                        root: renderChild,
+                    });
+                });
+            } else if (event.type === 'sort') {
+                // TODO: figure out how to do this
+            } else if (event.type === 'splice') {
+                const { count, index, items } = event;
+                const replaceCount = Math.min(count, items.length);
+                const removeCount = count - replaceCount;
+                const insertCount = items.length - replaceCount;
+                const removed = spliceTreeSlot(
+                    treeSlot,
+                    mountIndex.concat([index]),
+                    count,
+                    items.map((item) =>
+                        makeTreeSlot({
+                            renderChild: null,
+                            domNode: null,
+                            onUnmount: [],
+                        })
+                    )
+                );
+                items.forEach((renderChild, childIndex) => {
+                    mountTo({
+                        parentElement,
+                        treeSlot,
+                        mountIndex: mountIndex.concat([index + childIndex]),
+                        root: renderChild,
+                    });
+                });
+            }
+        });
+
+        retain(trackedCollection);
+        onUnmount.push(unobserve);
+        onUnmount.push(() => {
+            release(trackedCollection);
+        });
+
+        return;
+    }
     if (isTrackedComputation(root)) {
         const trackedComputation = root;
         const onUnmount: Function[] = [];
         const resultEffect = name(
             effect(() => {
                 const renderChild = trackedComputation();
-
                 const { immediateParent, childIndex } = getTreeSlotParent(
                     treeSlot,
                     mountIndex
                 );
-                console.log('SUFIAN REPLACE', {
-                    prev: immediateParent.children[childIndex],
-                    curr: renderChild,
-                });
                 // Note: We retain ourselves each time it's executed and
                 // release each time we are unmounted.
                 // On update (unmount followed by render), we want to keep this effect alive
