@@ -27,7 +27,7 @@ export {
     TrackedCollection,
 } from './types';
 
-export const version = '0.0.1';
+export const VERSION = 'development';
 
 let activeComputations: TrackedComputation<unknown>[] = [];
 let computationToInvalidationMap: Map<

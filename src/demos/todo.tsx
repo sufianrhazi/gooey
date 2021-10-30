@@ -12,7 +12,7 @@ import {
     Component,
     TrackedModel,
     TrackedCollection,
-} from './index';
+} from '../index';
 
 setLogLevel('debug');
 
@@ -143,9 +143,7 @@ const TodoList: Component<TodoListProps> = ({ list }, { onUnmount }) => {
             </p>
             <ul>
                 {name(
-                    list.items.mapView((item) => (
-                        <TodoItem item={item} />
-                    )),
+                    list.items.mapView((item) => <TodoItem item={item} />),
                     'TodoList:items'
                 )}
             </ul>

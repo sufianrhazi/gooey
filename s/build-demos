@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")/.."
+# shellcheck disable=SC1091
+source "s/_tools.sh"
+
+echo_info "Checking requirements..."
+s/check_requirements
+echo_info "Installing dependencies..."
+yarn
+for DEMO_FILE in src/demos/*.tsx; do
+    DEMO_FILE_DEST="${DEMO_FILE#src/}"
+    DEMO_FILE_DEST="${DEMO_FILE_DEST%.tsx}.js"
+    echo_info "Bundling $DEMO_FILE -> $DEMO_FILE_DEST..."
+    node_modules/.bin/esbuild "$DEMO_FILE" --sourcemap --bundle --outfile="$DEMO_FILE_DEST"
+done
+
+if [ "$1" != "--no-done" ]; then
+    echo_good "All done"
+fi

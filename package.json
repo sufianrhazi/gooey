@@ -2,7 +2,9 @@
   "name": "revise",
   "version": "0.0.1",
   "description": "A minimal effort UI library",
-  "main": "index.js",
+  "main": "build/tsc/index.js",
+  "type": "module",
+  "types": "build/tsc/index.d.ts",
   "scripts": {
     "build": "s/build",
     "test": "s/test"

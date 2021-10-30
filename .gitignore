@@ -1,12 +1,10 @@
 .gitkeep
 /node_modules/
 /build/
-/bundle.js
-/bundle.js.map
-/benchmark.js
-/benchmark.js.map
-/test-bundle.js
-/test-bundle.js.map
+/demos/*.js
+/demos/*.js.map
+/test/test-bundle.js
+/test/test-bundle.js.map
 
 # yarn Zero-Install
 .yarn/*

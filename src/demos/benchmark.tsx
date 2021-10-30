@@ -12,7 +12,7 @@ import {
     Component,
     TrackedModel,
     TrackedCollection,
-} from './index';
+} from '../index';
 
 function _random(max: number): number {
     return Math.round(Math.random() * 1000) % max;

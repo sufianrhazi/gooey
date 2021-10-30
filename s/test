@@ -4,13 +4,8 @@ cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source "s/_tools.sh"
 
-PROJECT_ROOT="$(pwd)"
-
-echo_info "Checking requirements..."
-s/check_requirements
-echo_info "Installing dependencies..."
-yarn
 echo_info "Cleaning..."
-git clean -f -d build/
-echo_error "To test, esbuild a test file is test-bundle.js, and open testrunner.html"
-echo_error node_modules/.bin/esbuild src/view.test.tsx --sourcemap --bundle --outfile=test-bundle.js
+s/clean
+
+# TODO: actually have a test runner that can run multiple test files
+node_modules/.bin/esbuild src/view.test.tsx --sourcemap --bundle --outfile=test/test-bundle.js

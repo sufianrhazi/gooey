@@ -1,10 +1,30 @@
 {
-  "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "lib": ["ES2015", "DOM"]
+    "lib": ["ES2017", "DOM"],
+    "target": "ES2017",
+
+    "jsx": "react",
+    "module": "ES2015",
+    "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "paths": {},
+
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": false,
+    "sourceMap": true,
+    "newLine": "lf",
+
+    "rootDir": "./src/",
+    "outDir": "./build/tsc/",
+
+    "strict": true
   },
   "include": [
     "./src/**.ts",
-    "./src/**.tsx"
+    "./src/**.tsx",
+    "./src/demos/**.ts",
+    "./src/demos/**.tsx"
   ]
 }
