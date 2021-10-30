@@ -1,5 +1,7 @@
 import {
     React,
+    Ref,
+    ref,
     name,
     model,
     collection,
@@ -11,14 +13,22 @@ import {
     setLogLevel,
     Component,
     Collection,
+    Model,
 } from '../index';
 
 setLogLevel('debug');
 
+// Initialize flush subscription, so everything automatically updates
 subscribe(() => {
     setTimeout(() => flush(), 0);
 });
 
+let maxId = 0;
+const uniqueId = (): string => `id_${maxId++}`;
+
+/*
+ * Application state
+ */
 interface TodoItem {
     done: boolean;
     task: string;
@@ -29,164 +39,174 @@ interface TodoList {
     items: Collection<TodoItem>;
 }
 
-const list: TodoList = name(
-    model({
-        name: 'Shopping',
-        items: name(
-            collection([
-                name(
-                    model({
-                        done: false,
-                        task: 'apple',
-                    }),
-                    'item:0'
-                ),
-                name(
-                    model({
-                        done: false,
-                        task: 'banana',
-                    }),
-                    'item:1'
-                ),
-                name(
-                    model({
-                        done: false,
-                        task: 'celery',
-                    }),
-                    'item:3'
-                ),
-            ]),
-            'items'
-        ),
-    }),
-    'list'
-);
-(window as any).list = list;
+const globalState: TodoList = model({
+    name: 'Groceries',
+    items: collection([
+        model({
+            done: false,
+            task: 'apples',
+        }),
+        model({
+            done: false,
+            task: 'bananas',
+        }),
+        model({
+            done: false,
+            task: 'celery',
+        }),
+    ]),
+});
+// Exported to window, so you can play with it in the console!
+(window as any).globalState = globalState;
 
-type TodoItemProps = { item: TodoItem };
-const TodoItem: Component<TodoItemProps> = ({ item }, { onUnmount }) => {
-    console.log('Mounting TodoItem', item);
-    onUnmount(() => {
-        console.log('Unmounting TodoItem', item);
-    });
-    const onChange = (event: any) => {
-        item.done = event.target.checked;
+/*
+ * Components
+ */
+const TodoItem: Component<{ item: TodoItem }> = ({ item }) => {
+    const onChange = (event: InputEvent) => {
+        item.done = (event.target as HTMLInputElement).checked;
     };
     return (
-        <li>
-            <label>
+        <li class="list-group-item p-0">
+            <label class="d-block px-3 py-2">
                 <input
                     type="checkbox"
+                    class="form-check-input me-3"
                     on:change={onChange}
-                    checked={name(
-                        calc(() => item.done),
-                        'TodoItem:checked'
-                    )}
-                />{' '}
+                    checked={calc(() => item.done)}
+                />
                 <span
-                    style={name(
-                        calc(() =>
-                            item.done ? 'text-decoration: line-through' : ''
-                        ),
-                        'TodoItem:strikethrough'
+                    style={calc(() =>
+                        item.done ? 'text-decoration: line-through' : ''
                     )}
                 >
-                    {name(
-                        calc(() => item.task),
-                        'TodoItem:task'
-                    )}
+                    {calc(() => item.task)}
                 </span>
             </label>
         </li>
     );
 };
 
-type TodoListProps = { list: TodoList };
-const TodoList: Component<TodoListProps> = ({ list }, { onUnmount }) => {
-    console.log('TodoList:mount');
-    onUnmount(() => {
-        console.log('TodoList:unmount');
+const TodoList = () => {
+    return (
+        <div class="my-2">
+            <ul class="list-group">
+                {globalState.items.mapView((item) => (
+                    <TodoItem item={item} />
+                ))}
+            </ul>
+        </div>
+    );
+};
+
+const TodoControls: Component<{}> = ({}, { onMount }) => {
+    const id = uniqueId();
+    const inputRef: Ref<HTMLInputElement> = ref();
+
+    onMount(() => {
+        // Auto-focus the input on render
+        if (inputRef.current) inputRef.current.focus();
     });
+
     const onClickAdd = () => {
-        console.log('TodoList:click:add');
-        const el = document.getElementById('input');
-        if (!el || !(el instanceof HTMLInputElement)) return;
-        list.items.push(
-            name(
-                model({
-                    done: false,
-                    task: el.value,
-                }),
-                el.value
-            )
+        if (!inputRef.current) return;
+        if (!inputRef.current.value) return;
+        globalState.items.push(
+            model({
+                done: false,
+                task: inputRef.current.value,
+            })
         );
-        el.value = '';
+        inputRef.current.value = '';
+
+        if (inputRef.current) inputRef.current.focus();
     };
 
     const onClickClear = () => {
-        for (let i = list.items.length - 1; i >= 0; --i) {
-            if (list.items[i].done) {
-                list.items.splice(i, 1);
+        for (let i = globalState.items.length - 1; i >= 0; --i) {
+            if (globalState.items[i].done) {
+                globalState.items.splice(i, 1);
             }
         }
+
+        if (inputRef.current) inputRef.current.focus();
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+        if (e.code === 'Enter') {
+            e.preventDefault();
+            onClickAdd();
+        }
+    };
+
+    const onRename = () => {
+        globalState.name = prompt('New name')!;
     };
 
     return (
         <>
-            <p>
-                {name(
-                    calc(() => list.items.length),
-                    'TodoList:items.length'
-                )}{' '}
-                items
-            </p>
-            <ul>
-                {name(
-                    list.items.mapView((item) => <TodoItem item={item} />),
-                    'TodoList:items'
-                )}
-            </ul>
-            <button on:click={onClickAdd}>+</button>{' '}
-            <input id="input" type="text" value="Don't forget the milk" />
-            <br />
-            <button on:click={onClickClear}>Clear completed</button>
+            <div class="input-group mb-3">
+                <label class="input-group-text" for={id}>
+                    Add item
+                </label>
+                <input
+                    id={id}
+                    class="form-control"
+                    ref={inputRef}
+                    type="text"
+                    value="Don't forget the milk"
+                    on:keydown={onKeyDown}
+                />
+                <button class="btn btn-primary" on:click={onClickAdd}>
+                    +
+                </button>
+            </div>
+            <div class="input-group mb-3">
+                <button
+                    class="btn btn-secondary"
+                    disabled={calc(() =>
+                        globalState.items.every((item) => !item.done)
+                    )}
+                    on:click={onClickClear}
+                >
+                    Clear completed
+                </button>
+            </div>
         </>
     );
 };
 
 const App = () => {
+    const onClickMutate = () => {
+        globalState.items.forEach((item) => {
+            item.done = Math.random() < 0.5;
+            item.task = item.task + '!';
+        });
+    };
+
+    const onClickDebug = () => {
+        console.log(debug());
+    };
+
     return (
-        <div>
-            <h1>ToDo List</h1>
-            <TodoList list={list} />
+        <div class="container">
+            <h1>List: {calc(() => globalState.name)}</h1>
+            <TodoList />
+            <TodoControls />
+            <hr class="my-4 border border-2 border-dark" />
+            <div class="input-group mb-3">
+                <button class="btn btn-warning" on:click={onClickMutate}>
+                    Mutate items
+                </button>
+                <button class="btn btn-outline-warning" on:click={onClickDebug}>
+                    Write graphviz dot to console
+                </button>
+            </div>
         </div>
     );
 };
 
-// main
 const root = document.getElementById('root');
 if (root) {
-    mount(root, <TodoList list={list} />);
+    mount(root, <App />);
 }
-
-// non-revise ui
-const separator = document.createElement('hr');
-separator.style.margin = '20px 0';
-document.body.appendChild(separator);
-
-const doSomethingButton = document.createElement('button');
-doSomethingButton.textContent = 'doSomething';
-doSomethingButton.addEventListener('click', () => {
-    list.items.forEach((item) => {
-        item.done = Math.random() < 0.5;
-        item.task = item.task + '!';
-    });
-});
-document.body.appendChild(doSomethingButton);
-
-const debugButon = document.createElement('button');
-debugButon.textContent = 'graphviz';
-debugButon.addEventListener('click', () => {
-    console.log(debug());
-});
-document.body.appendChild(debugButon);

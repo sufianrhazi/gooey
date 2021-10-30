@@ -1,12 +1,14 @@
-import { Calculation, Collection, isCalculation } from './types';
+import { Ref, Calculation, Collection, isCalculation } from './types';
 
 // General component props
 type PropsWithChildren<P> = P & { children?: RenderChild[] };
 
 type OnUnmountCallback = () => void;
+type OnMountCallback = () => void;
 
 type ComponentListeners = {
     onUnmount: (callback: OnUnmountCallback) => void;
+    onMount: (callback: OnMountCallback) => void;
 };
 export type Component<P extends {}> = (
     props: PropsWithChildren<P>,
@@ -49,6 +51,8 @@ export function isRenderElement(
 type EventHandler<T> = (event: T) => void;
 
 export type ElementProps = {
+    ref?: Ref<Element> | ((el?: Element) => void);
+
     // AnimationEvent
     'on:animationstart'?: EventHandler<AnimationEvent>;
     'on:animationiteration'?: EventHandler<AnimationEvent>;

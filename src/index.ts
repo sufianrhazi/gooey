@@ -21,6 +21,8 @@ export { React, mount } from './view';
 export { Component } from './renderchild';
 
 export {
+    ref,
+    Ref,
     InvariantError,
     Calculation,
     Collection,
@@ -38,31 +40,22 @@ let calculationToInvalidationMap: Map<
 let nameMap: WeakMap<any, string> = new WeakMap();
 
 function debugNameFor(
-    item:
-        | Collection<unknown>
-        | Calculation<unknown>
-        | ModelField<unknown>
+    item: Collection<unknown> | Calculation<unknown> | ModelField<unknown>
 ): string {
     if (isCollection(item)) {
         return `coll:${nameMap.get(item) ?? '?'}`;
     }
     if (isCalculation(item)) {
-        return `${isEffect(item) ? 'eff' : 'comp'}:${
-            nameMap.get(item) ?? '?'
-        }`;
+        return `${isEffect(item) ? 'eff' : 'comp'}:${nameMap.get(item) ?? '?'}`;
     }
     return `model:${nameMap.get(item.model) ?? '?'}:${String(item.key)}`;
 }
 
 let partialDag = new DAG<
-    | Collection<unknown>
-    | Calculation<unknown>
-    | ModelField<unknown>
+    Collection<unknown> | Calculation<unknown> | ModelField<unknown>
 >();
 let globalDependencyGraph = new DAG<
-    | Collection<unknown>
-    | Calculation<unknown>
-    | ModelField<unknown>
+    Collection<unknown> | Calculation<unknown> | ModelField<unknown>
 >();
 
 export function reset() {
@@ -351,11 +344,7 @@ function trackCalculation<Ret>(
             }
 
             const edgesToRemove: [
-                (
-                    | Collection<any>
-                    | Calculation<any>
-                    | ModelField<any>
-                ),
+                Collection<any> | Calculation<any> | ModelField<any>,
                 Calculation<any>
             ][] = globalDependencyGraph
                 .getReverseDependencies(trackedCalculation)
@@ -429,10 +418,7 @@ function addCollectionDep<T, V>(
 
 function processChange(item: ModelField<unknown>) {
     const addNode = (
-        node:
-            | Collection<unknown>
-            | Calculation<unknown>
-            | ModelField<unknown>
+        node: Collection<unknown> | Calculation<unknown> | ModelField<unknown>
     ) => {
         partialDag.addNode(node);
         const dependencies = globalDependencyGraph.getDependencies(node);
@@ -513,9 +499,7 @@ export function retain(item: Calculation<any> | Collection<any>) {
     globalDependencyGraph.retain(item);
 }
 
-export function release(
-    item: Calculation<any> | Collection<any>
-) {
+export function release(item: Calculation<any> | Collection<any>) {
     log.debug('release', debugNameFor(item));
     globalDependencyGraph.release(item);
 

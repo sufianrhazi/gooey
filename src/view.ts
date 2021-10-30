@@ -12,6 +12,7 @@ import {
     isCalculation,
     isCollection,
     CollectionEvent,
+    isRef,
 } from './types';
 import * as log from './log';
 import {
@@ -171,10 +172,23 @@ function mountTo({
     }
     if (isRenderElement(root)) {
         const element = document.createElement(root.element);
+
         const boundEffects: Calculation<any>[] = [];
+        let refCallback: any = undefined;
+
         // Bind props
         if (root.props) {
             Object.entries(root.props).forEach(([key, value]) => {
+                if (key === 'ref') {
+                    if (isRef(value)) {
+                        value.current = element;
+                        return;
+                    }
+                    if (typeof value === 'function' && !isCalculation(value)) {
+                        refCallback = value;
+                        return;
+                    }
+                }
                 if (isCalculation(value)) {
                     const boundEffect = name(
                         effect(() => {
@@ -200,6 +214,9 @@ function mountTo({
             onUnmount: [
                 () => {
                     boundEffects.forEach((boundEffect) => release(boundEffect));
+                    if (refCallback) {
+                        refCallback(undefined);
+                    }
                 },
             ],
         });
@@ -213,6 +230,10 @@ function mountTo({
                 root: child,
             });
         });
+
+        if (refCallback) {
+            refCallback(element);
+        }
 
         return;
     }
@@ -321,9 +342,10 @@ function mountTo({
     }
     if (isRenderComponent(root)) {
         const Component = root.component;
-        const onUnmount: Function[] = [];
         const resultEffect = name(
             effect(() => {
+                const onUnmount: Function[] = [];
+                const onMount: Function[] = [];
                 const renderChild = Component(
                     {
                         ...(root.props || {}),
@@ -333,29 +355,40 @@ function mountTo({
                         onUnmount: (unmountCallback) => {
                             onUnmount.push(unmountCallback);
                         },
+                        onMount: (mountCallback) => {
+                            onMount.push(mountCallback);
+                        },
                     }
                 );
 
+                // Note: We retain ourselves each time it's executed and
+                // release each time we are unmounted.
+                // On update (unmount followed by render), we want to keep this effect alive
+                // If unmounted (unmount not followed by render), we must be culled
                 setTreeSlot(
                     treeSlot,
                     mountIndex,
-                    makeTreeSlot({ renderChild, domNode: null, onUnmount })
+                    makeTreeSlot({
+                        renderChild,
+                        domNode: null,
+                        onUnmount: [() => release(resultEffect), ...onUnmount],
+                    })
                 );
+
+                // Hold on to the new effect and release on unmount
+                retain(resultEffect);
                 mountTo({
                     parentElement,
                     treeSlot,
                     mountIndex: mountIndex.concat([0]),
                     root: renderChild,
                 });
+                onMount.forEach((mountCallback) => mountCallback());
             }),
             `view:component:${root.component.name}:${JSON.stringify(
                 mountIndex
             )}`
         );
-
-        // Hold on to the new effect
-        retain(resultEffect);
-        onUnmount.push(() => release(resultEffect));
 
         resultEffect();
         return;

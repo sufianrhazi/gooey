@@ -1,22 +1,36 @@
-export class InvariantError extends Error { }
+export class InvariantError extends Error {}
 
 export const TypeTag = Symbol('reviseType');
 const CalculationTypeTag = Symbol('calculationType');
 
+export type Ref<T> = {
+    [TypeTag]: 'ref';
+    current?: T;
+};
+export function isRef(ref: any): ref is Ref<unknown> {
+    return ref && ref[TypeTag] === 'ref';
+}
+export function ref<T>(val?: T): Ref<T> {
+    return {
+        [TypeTag]: 'ref',
+        current: val,
+    };
+}
+
 export type CollectionEvent<T> =
     | {
-        type: 'splice';
-        index: number;
-        count: number;
-        items: readonly T[];
-    }
+          type: 'splice';
+          index: number;
+          count: number;
+          items: readonly T[];
+      }
     | {
-        type: 'init';
-        items: readonly T[];
-    }
+          type: 'init';
+          items: readonly T[];
+      }
     | {
-        type: 'sort';
-    };
+          type: 'sort';
+      };
 
 export type CollectionObserver<T> = (event: CollectionEvent<T>) => void;
 
@@ -33,7 +47,7 @@ export interface Collection<T> extends Array<T> {
     retain(): void;
     release(): void;
     [OnCollectionRelease]: (fn: () => void) => void;
-};
+}
 export type Calculation<Result> = (() => Result) & {
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
@@ -58,20 +72,14 @@ export function makeEffect(fn: () => void): Calculation<void> {
     });
 }
 
-export function isCollection(
-    thing: any
-): thing is Collection<unknown> {
+export function isCollection(thing: any): thing is Collection<unknown> {
     return !!(thing && (thing as any)[TypeTag] === 'collection');
 }
 
-export function isCalculation(
-    thing: any
-): thing is Calculation<unknown> {
+export function isCalculation(thing: any): thing is Calculation<unknown> {
     return !!(thing && (thing as any)[TypeTag] === 'calculation');
 }
 
-export function isEffect<T>(
-    thing: Calculation<unknown>
-): boolean {
+export function isEffect<T>(thing: Calculation<unknown>): boolean {
     return thing[CalculationTypeTag] === 'effect';
 }
