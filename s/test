@@ -8,4 +8,5 @@ echo_info "Cleaning..."
 s/clean
 
 # TODO: actually have a test runner that can run multiple test files
+node_modules/.bin/tsc --noEmit -p .
 node_modules/.bin/esbuild src/view.test.tsx --sourcemap --bundle --outfile=test/test-bundle.js

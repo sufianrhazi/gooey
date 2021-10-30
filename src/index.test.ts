@@ -188,15 +188,25 @@ suite('behavior', () => {
         model0.done = true;
         model1.task = 'cherries';
         revise.flush();
-        assert.deepEqual(renders, [
+        assert.deepEqual(renders.slice(0, 3), [
             'list',
             'item:model0',
             'item:model1',
-            // <<flush here>>
-            'item:model0',
-            'item:model1',
-            'list',
         ]);
+
+        const postFlushRenders = renders.slice(3);
+        assert.arrayIncludes(postFlushRenders, 'item:model0');
+        assert.arrayIncludes(postFlushRenders, 'item:model1');
+        assert.arrayIncludes(postFlushRenders, 'list');
+        assert.lessThan(
+            postFlushRenders.indexOf('item:model0'),
+            postFlushRenders.indexOf('list')
+        );
+        assert.lessThan(
+            postFlushRenders.indexOf('item:model1'),
+            postFlushRenders.indexOf('list')
+        );
+
         assert.is(app(), 'Shopping:\n[x] apples\n[ ] cherries');
     });
 

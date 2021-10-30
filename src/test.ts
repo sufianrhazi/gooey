@@ -460,6 +460,50 @@ export const assert = {
             );
         }
     },
+    lessThan: (a: string | number, b: string | number, msg?: string) => {
+        countAssertion();
+        if (!(a < b)) {
+            throw new AssertionError(
+                'lessThan',
+                () => `${repr(a)} not < ${repr(b)}`,
+                msg
+            );
+        }
+    },
+    lessThanOrEqual: (a: string | number, b: string | number, msg?: string) => {
+        countAssertion();
+        if (!(a <= b)) {
+            throw new AssertionError(
+                'lessThanOrEqual',
+                () => `${repr(a)} not <= ${repr(b)}`,
+                msg
+            );
+        }
+    },
+    greaterThan: (a: string | number, b: string | number, msg?: string) => {
+        countAssertion();
+        if (!(a > b)) {
+            throw new AssertionError(
+                'greaterThan',
+                () => `${repr(a)} not > ${repr(b)}`,
+                msg
+            );
+        }
+    },
+    greaterThanOrEqual: (
+        a: string | number,
+        b: string | number,
+        msg?: string
+    ) => {
+        countAssertion();
+        if (!(a >= b)) {
+            throw new AssertionError(
+                'greaterThan',
+                () => `${repr(a)} not >= ${repr(b)}`,
+                msg
+            );
+        }
+    },
     arrayIncludes: (haystack: any[], needle: any, msg?: string) => {
         countAssertion();
         if (!haystack.includes(needle)) {
