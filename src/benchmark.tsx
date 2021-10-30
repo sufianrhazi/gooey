@@ -253,7 +253,7 @@ const Row = ({
 const Table = ({ store }: { store: TrackedModel<Store> }) => {
     return (
         <tbody id="tbody">
-            {store.items.mapCollection((item) => (
+            {store.items.mapView((item) => (
                 <Row store={store} item={item} />
             ))}
         </tbody>

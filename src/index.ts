@@ -195,7 +195,7 @@ export function collection<T>(array: T[]): TrackedCollection<T> {
         return proxy;
     }
 
-    function mapCollection<V>(
+    function mapView<V>(
         mapper: (item: T, index: number, array: readonly T[]) => V
     ): Readonly<TrackedCollection<V>> {
         const mapped = collection(array.map(mapper));
@@ -248,7 +248,7 @@ export function collection<T>(array: T[]): TrackedCollection<T> {
         unshift,
         observe,
         sort,
-        mapCollection,
+        mapView,
     };
 
     function getField(key: string | symbol) {

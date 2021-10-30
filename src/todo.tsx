@@ -143,7 +143,7 @@ const TodoList: Component<TodoListProps> = ({ list }, { onUnmount }) => {
             </p>
             <ul>
                 {name(
-                    list.items.mapCollection((item) => (
+                    list.items.mapView((item) => (
                         <TodoItem item={item} />
                     )),
                     'TodoList:items'

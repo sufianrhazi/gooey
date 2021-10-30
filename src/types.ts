@@ -29,7 +29,7 @@ export const OnCollectionRelease = Symbol('OnCollectionRelease');
 export type TrackedCollection<T> = T[] & {
     [TrackedTypeTag]: 'collection';
     observe(observer: CollectionObserver<T>): () => void;
-    mapCollection<V>(fn: MappingFunction<T, V>): Readonly<TrackedCollection<V>>;
+    mapView<V>(fn: MappingFunction<T, V>): Readonly<TrackedCollection<V>>;
     retain(): void;
     release(): void;
     [OnCollectionRelease]: (fn: () => void) => void;
