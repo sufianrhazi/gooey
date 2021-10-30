@@ -2,7 +2,7 @@ import {
     React,
     reset,
     mount,
-    computation,
+    calc,
     model,
     collection,
     flush,
@@ -90,13 +90,13 @@ suite('mount static', () => {
     });
 });
 
-suite('mount computations', () => {
-    test('renders child computations as their raw value', () => {
+suite('mount calculations', () => {
+    test('renders child calculations as their raw value', () => {
         mount(
             testRoot,
             <div id="ok">
                 {name(
-                    computation(() => 'hello'),
+                    calc(() => 'hello'),
                     'hello-test'
                 )}
             </div>
@@ -107,13 +107,13 @@ suite('mount computations', () => {
         );
     });
 
-    test('renders attribute computations as their raw value', () => {
+    test('renders attribute calculations as their raw value', () => {
         mount(
             testRoot,
             <div
                 id="ok"
                 data-whatever={name(
-                    computation(() => 'hello'),
+                    calc(() => 'hello'),
                     'hello-test'
                 )}
             />
@@ -124,13 +124,13 @@ suite('mount computations', () => {
         );
     });
 
-    test('rerenders child computations on flush', () => {
+    test('rerenders child calculations on flush', () => {
         const state = name(model({ value: 'hello' }), 'state');
         mount(
             testRoot,
             <div id="ok">
                 {name(
-                    computation(() => state.value),
+                    calc(() => state.value),
                     'hello-test'
                 )}
             </div>
@@ -150,14 +150,14 @@ suite('mount computations', () => {
         );
     });
 
-    test('rerenders attribute computations on flush', () => {
+    test('rerenders attribute calculations on flush', () => {
         const state = model({ value: 'hello' });
         mount(
             testRoot,
             <div
                 id="ok"
                 data-value={name(
-                    computation(() => state.value),
+                    calc(() => state.value),
                     'hello-test'
                 )}
             />
@@ -183,7 +183,7 @@ suite('mount computations', () => {
             testRoot,
             <div id="ok">
                 {name(
-                    computation(() => state.value),
+                    calc(() => state.value),
                     'hello-test'
                 )}
             </div>
@@ -204,7 +204,7 @@ suite('mount computations', () => {
             <div
                 id="ok"
                 data-value={name(
-                    computation(() => state.value),
+                    calc(() => state.value),
                     'hello-test'
                 )}
             />
@@ -228,7 +228,7 @@ suite('mount components', () => {
         assert.is(testRoot.innerHTML, '<p>Hello world!</p>');
     });
 
-    test('components can have computations', () => {
+    test('components can have calculations', () => {
         const state = model({
             name: 'world',
         });
@@ -236,7 +236,7 @@ suite('mount components', () => {
             <p>
                 Hello{' '}
                 {name(
-                    computation(() => state.name),
+                    calc(() => state.name),
                     'hello-test'
                 )}
             </p>
@@ -251,7 +251,7 @@ suite('mount components', () => {
         assert.is(testRoot.innerHTML, '<p>Hello there</p>');
     });
 
-    test('components are themselves computations and rerender upon dependency change', () => {
+    test('components are themselves calculations and rerender upon dependency change', () => {
         const state = model({
             name: 'world',
         });
@@ -269,7 +269,7 @@ suite('mount components', () => {
         assert.is(testRoot.innerHTML, '<p>Hello there!</p>');
     });
 
-    test('components with computations do not change roots', () => {
+    test('components with calculations do not change roots', () => {
         const state = model({
             name: 'world',
         });
@@ -278,7 +278,7 @@ suite('mount components', () => {
                 <p id="p">
                     Hello{' '}
                     {name(
-                        computation(() => state.name),
+                        calc(() => state.name),
                         'hello-test'
                     )}
                 </p>
@@ -296,7 +296,7 @@ suite('mount components', () => {
         assert.is(pBefore, pAfter);
     });
 
-    test('components without computations that rerender *do* change roots', () => {
+    test('components without calculations that rerender *do* change roots', () => {
         const state = model({
             name: 'world',
         });
@@ -333,11 +333,11 @@ suite('mount arrays', () => {
             testRoot,
             <div>
                 {name(
-                    computation(() => items.map((item) => item)),
+                    calc(() => items.map((item) => item)),
                     'arr-1'
                 )}
                 {name(
-                    computation(() => items.map((item) => item)),
+                    calc(() => items.map((item) => item)),
                     'arr-2'
                 )}
             </div>
@@ -384,14 +384,14 @@ suite('mount arrays', () => {
             <div>
                 foo
                 {name(
-                    computation(() =>
+                    calc(() =>
                         items.map((item, idx) => `A:${item}:${idx} `)
                     ),
                     'arr-1'
                 )}
                 bar
                 {name(
-                    computation(() =>
+                    calc(() =>
                         items.map((item, idx) => `B:${item}:${idx} `)
                     ),
                     'arr-2'
@@ -438,7 +438,7 @@ suite('mount arrays', () => {
             <div>
                 foo
                 {name(
-                    computation(() =>
+                    calc(() =>
                         items.map((count) => {
                             const array: string[] = [];
                             for (let i = 0; i < count; ++i) {
@@ -451,7 +451,7 @@ suite('mount arrays', () => {
                 )}
                 bar
                 {name(
-                    computation(() =>
+                    calc(() =>
                         items.map((count) => {
                             const array: string[] = [];
                             for (let i = 0; i < count; ++i) {

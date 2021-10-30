@@ -3,15 +3,15 @@ import {
     name,
     model,
     collection,
-    computation,
+    calc,
     flush,
     debug,
     mount,
     subscribe,
     setLogLevel,
     Component,
-    TrackedModel,
-    TrackedCollection,
+    Model,
+    Collection,
 } from '../index';
 
 function _random(max: number): number {
@@ -20,7 +20,7 @@ function _random(max: number): number {
 
 interface Store {
     selected?: number;
-    items: TrackedCollection<TrackedModel<Item>>;
+    items: Collection<Model<Item>>;
 }
 interface Item {
     id: number;
@@ -53,9 +53,9 @@ const Button: Component<{
     </button>
 );
 
-const Controls = ({ store }: { store: TrackedModel<Store> }) => {
+const Controls = ({ store }: { store: Model<Store> }) => {
     let maxId: number = 0;
-    const makeRows = (count: number): TrackedModel<Item>[] => {
+    const makeRows = (count: number): Model<Item>[] => {
         var adjectives = [
             'pretty',
             'large',
@@ -111,7 +111,7 @@ const Controls = ({ store }: { store: TrackedModel<Store> }) => {
             'mouse',
             'keyboard',
         ];
-        var data: TrackedModel<Item>[] = [];
+        var data: Model<Item>[] = [];
         for (var i = 0; i < count; i++)
             data.push(
                 model({
@@ -216,8 +216,8 @@ const Row = ({
     store,
     item,
 }: {
-    store: TrackedModel<Store>;
-    item: TrackedModel<Item>;
+    store: Model<Store>;
+    item: Model<Item>;
 }) => {
     function selectItem(e: MouseEvent) {
         e.preventDefault();
@@ -227,14 +227,14 @@ const Row = ({
 
     return (
         <tr
-            class={computation(() =>
+            class={calc(() =>
                 store.selected === item.id ? 'danger' : ''
             )}
         >
-            <td class="col-md-1">{computation(() => item.id)}</td>
+            <td class="col-md-1">{calc(() => item.id)}</td>
             <td class="col-md-4">
                 <a class="lbl" on:click={time(selectItem)}>
-                    {computation(() => item.label)}
+                    {calc(() => item.label)}
                 </a>
             </td>
             <td class="col-md-1">
@@ -250,7 +250,7 @@ const Row = ({
     );
 };
 
-const Table = ({ store }: { store: TrackedModel<Store> }) => {
+const Table = ({ store }: { store: Model<Store> }) => {
     return (
         <tbody id="tbody">
             {store.items.mapView((item) => (
@@ -263,7 +263,7 @@ const Table = ({ store }: { store: TrackedModel<Store> }) => {
 const JsFrameworkBenchmark = () => {
     const store = model<Store>({
         selected: undefined,
-        items: collection<TrackedModel<Item>>([]),
+        items: collection<Model<Item>>([]),
     });
 
     return (

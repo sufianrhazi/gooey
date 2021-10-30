@@ -1,16 +1,16 @@
 import {
     InvariantError,
-    TrackedTypeTag,
-    TrackedComputation,
-    TrackedModel,
-    TrackedCollection,
+    TypeTag,
+    Calculation,
+    Model,
+    Collection,
     CollectionEvent,
     CollectionObserver,
     ModelField,
-    isTrackedComputation,
-    isTrackedEffect,
-    isTrackedCollection,
-    makeComputation,
+    isCalculation,
+    isEffect,
+    isCollection,
+    makeCalculation,
     makeEffect,
     OnCollectionRelease,
 } from './types';
@@ -22,31 +22,32 @@ export { Component } from './renderchild';
 
 export {
     InvariantError,
-    TrackedComputation,
-    TrackedModel,
-    TrackedCollection,
+    Calculation,
+    Collection,
+    Model,
+    OnCollectionRelease,
 } from './types';
 
 export const VERSION = 'development';
 
-let activeComputations: TrackedComputation<unknown>[] = [];
-let computationToInvalidationMap: Map<
-    TrackedComputation<unknown>,
+let activeCalculations: Calculation<unknown>[] = [];
+let calculationToInvalidationMap: Map<
+    Calculation<unknown>,
     Function
 > = new Map();
 let nameMap: WeakMap<any, string> = new WeakMap();
 
 function debugNameFor(
     item:
-        | TrackedCollection<unknown>
-        | TrackedComputation<unknown>
+        | Collection<unknown>
+        | Calculation<unknown>
         | ModelField<unknown>
 ): string {
-    if (isTrackedCollection(item)) {
+    if (isCollection(item)) {
         return `coll:${nameMap.get(item) ?? '?'}`;
     }
-    if (isTrackedComputation(item)) {
-        return `${isTrackedEffect(item) ? 'eff' : 'comp'}:${
+    if (isCalculation(item)) {
+        return `${isEffect(item) ? 'eff' : 'comp'}:${
             nameMap.get(item) ?? '?'
         }`;
     }
@@ -54,20 +55,20 @@ function debugNameFor(
 }
 
 let partialDag = new DAG<
-    | TrackedCollection<unknown>
-    | TrackedComputation<unknown>
+    | Collection<unknown>
+    | Calculation<unknown>
     | ModelField<unknown>
 >();
 let globalDependencyGraph = new DAG<
-    | TrackedCollection<unknown>
-    | TrackedComputation<unknown>
+    | Collection<unknown>
+    | Calculation<unknown>
     | ModelField<unknown>
 >();
 
 export function reset() {
     partialDag = new DAG();
-    activeComputations = [];
-    computationToInvalidationMap = new Map();
+    activeCalculations = [];
+    calculationToInvalidationMap = new Map();
 
     globalDependencyGraph = new DAG();
 }
@@ -77,16 +78,16 @@ export function name<T>(item: T, name: string): T {
     return item;
 }
 
-export function model<T extends {}>(obj: T): TrackedModel<T> {
+export function model<T extends {}>(obj: T): Model<T> {
     if (typeof obj !== 'object' || !obj) {
         throw new InvariantError('model must be provided an object');
     }
 
-    const fields: Map<string | symbol, ModelField<T>> = new Map();
+    const fields: Map<string | number | symbol, ModelField<T>> = new Map();
 
     const proxy = new Proxy(obj, {
         get(target: any, key: string | symbol) {
-            if (key === TrackedTypeTag) {
+            if (key === TypeTag) {
                 return 'model';
             }
             let field = fields.get(key);
@@ -97,11 +98,11 @@ export function model<T extends {}>(obj: T): TrackedModel<T> {
                 };
                 fields.set(key, field);
             }
-            addDepToCurrentComputation(field);
+            addDepToCurrentCalculation(field);
             return target[key];
         },
 
-        set(target: any, key, value: any) {
+        set(target: any, key: string | number | symbol, value: any) {
             let field = fields.get(key);
             if (!field) {
                 field = {
@@ -114,17 +115,17 @@ export function model<T extends {}>(obj: T): TrackedModel<T> {
             target[key] = value;
             return true;
         },
-    }) as TrackedModel<T>;
+    }) as Model<T>;
 
     return proxy;
 }
 
-export function collection<T>(array: T[]): TrackedCollection<T> {
+export function collection<T>(array: T[]): Collection<T> {
     if (!Array.isArray(array)) {
         throw new InvariantError('collection must be provided an array');
     }
 
-    const fields: Map<string | symbol, ModelField<T>> = new Map();
+    const fields: Map<string | number | symbol, ModelField<T>> = new Map();
     let observers: CollectionObserver<T>[] = [];
 
     function notify(event: CollectionEvent<T>) {
@@ -197,7 +198,7 @@ export function collection<T>(array: T[]): TrackedCollection<T> {
 
     function mapView<V>(
         mapper: (item: T, index: number, array: readonly T[]) => V
-    ): Readonly<TrackedCollection<V>> {
+    ): Readonly<Collection<V>> {
         const mapped = collection(array.map(mapper));
         // This probably needs to:
         // - Live in the global DAG... this _may_ not be needed if we manually retain/release? But that seems wrong...
@@ -251,7 +252,7 @@ export function collection<T>(array: T[]): TrackedCollection<T> {
         mapView,
     };
 
-    function getField(key: string | symbol) {
+    function getField(key: string | number | symbol) {
         let field = fields.get(key);
         if (!field) {
             field = {
@@ -268,16 +269,16 @@ export function collection<T>(array: T[]): TrackedCollection<T> {
             if (key in methods) {
                 return (methods as any)[key];
             }
-            if (key === TrackedTypeTag) {
+            if (key === TypeTag) {
                 return 'collection';
             }
             const field = getField(key);
             addCollectionDep(proxy, field);
-            addDepToCurrentComputation(field);
+            addDepToCurrentCalculation(field);
             return target[key];
         },
 
-        set(target: any, key, value: any) {
+        set(target: any, key: string | number | symbol, value: any) {
             if (key in methods) {
                 log.error(
                     'Overriding certain collection methods not supported',
@@ -311,25 +312,25 @@ export function collection<T>(array: T[]): TrackedCollection<T> {
             delete target[key];
             return true;
         },
-    }) as TrackedCollection<T>;
+    }) as Collection<T>;
 
     return proxy;
 }
 
-export function computation<Ret>(func: () => Ret): TrackedComputation<Ret> {
-    return trackComputation(func, false);
+export function calc<Ret>(func: () => Ret): Calculation<Ret> {
+    return trackCalculation(func, false);
 }
 
-export function effect(func: () => void): TrackedComputation<void> {
-    return trackComputation(func, true);
+export function effect(func: () => void): Calculation<void> {
+    return trackCalculation(func, true);
 }
 
-function trackComputation<Ret>(
+function trackCalculation<Ret>(
     func: () => Ret,
     isEffect: boolean
-): TrackedComputation<Ret> {
+): Calculation<Ret> {
     if (typeof func !== 'function') {
-        throw new InvariantError('computation must be provided a function');
+        throw new InvariantError('calculation must be provided a function');
     }
 
     let result: { result: Ret } | undefined = undefined;
@@ -338,11 +339,11 @@ function trackComputation<Ret>(
         result = undefined;
     };
 
-    const trackedComputation = (isEffect ? makeEffect : makeComputation)(
-        function runComputation() {
+    const trackedCalculation = (isEffect ? makeEffect : makeCalculation)(
+        function runCalculation() {
             if (!isEffect) {
-                // effects return void, so they **cannot** have an effect on the current computation
-                addDepToCurrentComputation(trackedComputation);
+                // effects return void, so they **cannot** have an effect on the current calculation
+                addDepToCurrentCalculation(trackedCalculation);
             }
 
             if (result) {
@@ -351,67 +352,67 @@ function trackComputation<Ret>(
 
             const edgesToRemove: [
                 (
-                    | TrackedCollection<any>
-                    | TrackedComputation<any>
+                    | Collection<any>
+                    | Calculation<any>
                     | ModelField<any>
                 ),
-                TrackedComputation<any>
+                Calculation<any>
             ][] = globalDependencyGraph
-                .getReverseDependencies(trackedComputation)
+                .getReverseDependencies(trackedCalculation)
                 .map((fromNode) => {
-                    return [fromNode, trackedComputation];
+                    return [fromNode, trackedCalculation];
                 });
             globalDependencyGraph.removeEdges(edgesToRemove);
 
-            activeComputations.push(trackedComputation);
+            activeCalculations.push(trackedCalculation);
             result = { result: func() };
 
-            const sanityCheck = activeComputations.pop();
-            if (sanityCheck !== trackedComputation) {
+            const sanityCheck = activeCalculations.pop();
+            if (sanityCheck !== trackedCalculation) {
                 throw new InvariantError(
-                    'Active computation stack inconsistency!'
+                    'Active calculation stack inconsistency!'
                 );
             }
             return result.result;
         }
     );
 
-    globalDependencyGraph.addNode(trackedComputation);
+    globalDependencyGraph.addNode(trackedCalculation);
 
-    computationToInvalidationMap.set(trackedComputation, invalidate);
+    calculationToInvalidationMap.set(trackedCalculation, invalidate);
 
     // Note: typescript gets confused, this *should* be
-    // - TrackedComputation<Ret> when isEffect is true and
-    // - TrackedComputation<Ret> when isEffect is false
-    // But infers to TrackedComputation<void> because makeEffect is present
-    return trackedComputation as TrackedComputation<Ret>;
+    // - Calculation<Ret> when isEffect is true and
+    // - Calculation<Ret> when isEffect is false
+    // But infers to Calculation<void> because makeEffect is present
+    return trackedCalculation as Calculation<Ret>;
 }
 
-function addDepToCurrentComputation<T, Ret>(
-    item: TrackedComputation<Ret> | ModelField<T>
+function addDepToCurrentCalculation<T, Ret>(
+    item: Calculation<Ret> | ModelField<T>
 ) {
-    const dependentComputation =
-        activeComputations[activeComputations.length - 1];
-    if (dependentComputation) {
+    const dependentCalculation =
+        activeCalculations[activeCalculations.length - 1];
+    if (dependentCalculation) {
         globalDependencyGraph.addNode(item);
-        if (!globalDependencyGraph.hasNode(dependentComputation)) {
-            globalDependencyGraph.addNode(dependentComputation);
+        if (!globalDependencyGraph.hasNode(dependentCalculation)) {
+            globalDependencyGraph.addNode(dependentCalculation);
         }
         // Confirmed this is correct
-        if (globalDependencyGraph.addEdge(item, dependentComputation)) {
+        if (globalDependencyGraph.addEdge(item, dependentCalculation)) {
             log.debug(
                 'New global dependency',
                 debugNameFor(item),
                 '->',
-                debugNameFor(dependentComputation)
+                debugNameFor(dependentCalculation)
             );
         }
     }
 }
 
 function addCollectionDep<T, V>(
-    fromNode: TrackedCollection<T>,
-    toNode: TrackedCollection<V> | ModelField<V>
+    fromNode: Collection<T>,
+    toNode: Collection<V> | ModelField<V>
 ) {
     globalDependencyGraph.addNode(fromNode);
     globalDependencyGraph.addNode(toNode);
@@ -429,8 +430,8 @@ function addCollectionDep<T, V>(
 function processChange(item: ModelField<unknown>) {
     const addNode = (
         node:
-            | TrackedCollection<unknown>
-            | TrackedComputation<unknown>
+            | Collection<unknown>
+            | Calculation<unknown>
             | ModelField<unknown>
     ) => {
         partialDag.addNode(node);
@@ -484,9 +485,9 @@ export function flush() {
     const oldPartialDag = partialDag;
     partialDag = new DAG();
     oldPartialDag.visitTopological((item) => {
-        if (isTrackedComputation(item)) {
-            log.debug('flushing computation', debugNameFor(item));
-            const invalidation = computationToInvalidationMap.get(item);
+        if (isCalculation(item)) {
+            log.debug('flushing calculation', debugNameFor(item));
+            const invalidation = calculationToInvalidationMap.get(item);
             if (invalidation) {
                 invalidation();
             }
@@ -496,15 +497,15 @@ export function flush() {
         }
     });
     globalDependencyGraph.garbageCollect().forEach((item) => {
-        if (isTrackedComputation(item)) {
-            log.debug('GC computation', debugNameFor(item));
+        if (isCalculation(item)) {
+            log.debug('GC calculation', debugNameFor(item));
         } else {
             log.debug('GC model', debugNameFor(item));
         }
     });
 }
 
-export function retain(item: TrackedComputation<any> | TrackedCollection<any>) {
+export function retain(item: Calculation<any> | Collection<any>) {
     log.debug('retain', debugNameFor(item));
     if (!globalDependencyGraph.hasNode(item)) {
         globalDependencyGraph.addNode(item);
@@ -513,7 +514,7 @@ export function retain(item: TrackedComputation<any> | TrackedCollection<any>) {
 }
 
 export function release(
-    item: TrackedComputation<any> | TrackedCollection<any>
+    item: Calculation<any> | Collection<any>
 ) {
     log.debug('release', debugNameFor(item));
     globalDependencyGraph.release(item);

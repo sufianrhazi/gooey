@@ -3,15 +3,14 @@ import {
     name,
     model,
     collection,
-    computation,
+    calc,
     flush,
     debug,
     mount,
     subscribe,
     setLogLevel,
     Component,
-    TrackedModel,
-    TrackedCollection,
+    Collection,
 } from '../index';
 
 setLogLevel('debug');
@@ -27,7 +26,7 @@ interface TodoItem {
 
 interface TodoList {
     name: string;
-    items: TrackedCollection<TodoItem>;
+    items: Collection<TodoItem>;
 }
 
 const list: TodoList = name(
@@ -80,20 +79,20 @@ const TodoItem: Component<TodoItemProps> = ({ item }, { onUnmount }) => {
                     type="checkbox"
                     on:change={onChange}
                     checked={name(
-                        computation(() => item.done),
+                        calc(() => item.done),
                         'TodoItem:checked'
                     )}
                 />{' '}
                 <span
                     style={name(
-                        computation(() =>
+                        calc(() =>
                             item.done ? 'text-decoration: line-through' : ''
                         ),
                         'TodoItem:strikethrough'
                     )}
                 >
                     {name(
-                        computation(() => item.task),
+                        calc(() => item.task),
                         'TodoItem:task'
                     )}
                 </span>
@@ -136,7 +135,7 @@ const TodoList: Component<TodoListProps> = ({ list }, { onUnmount }) => {
         <>
             <p>
                 {name(
-                    computation(() => list.items.length),
+                    calc(() => list.items.length),
                     'TodoList:items.length'
                 )}{' '}
                 items

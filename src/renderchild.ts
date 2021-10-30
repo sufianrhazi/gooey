@@ -1,8 +1,4 @@
-import {
-    TrackedComputation,
-    TrackedCollection,
-    isTrackedComputation,
-} from './types';
+import { Calculation, Collection, isCalculation } from './types';
 
 // General component props
 type PropsWithChildren<P> = P & { children?: RenderChild[] };
@@ -24,14 +20,14 @@ type JsxRawNode = string | number | boolean | null | undefined | Function;
  */
 type RenderChildSingle =
     | JsxRawNode
-    | TrackedComputation<JsxRawNode>
-    | TrackedComputation<JsxRawNode[]>
+    | Calculation<JsxRawNode>
+    | Calculation<JsxRawNode[]>
     | RenderElement
     | RenderComponent<any>;
 export type RenderChild =
     | RenderChildSingle
     | RenderChildSingle[]
-    | TrackedCollection<RenderChildSingle>;
+    | Collection<RenderChildSingle>;
 
 export type RenderElement = {
     type: 'element';
@@ -146,7 +142,7 @@ export type ElementProps = {
         | boolean
         | null
         | undefined
-        | TrackedComputation<
+        | Calculation<
               () => Function | string | number | boolean | null | undefined
           >;
 };

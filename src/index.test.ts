@@ -1,4 +1,4 @@
-import { suite, test, beforeEach, afterEach, assert } from './test';
+import { suite, test, beforeEach, assert } from './test';
 import * as revise from './index';
 
 suite('behavior', () => {
@@ -53,7 +53,7 @@ suite('behavior', () => {
         const renders: string[] = [];
 
         const makeItemRenderer = (item: TodoItem) => {
-            return revise.computation(() => {
+            return revise.calc(() => {
                 renders.push(`item:${itemNames.get(item)}`);
                 return `[${item.done ? 'x' : ' '}] ${item.task}`;
             });
@@ -70,7 +70,7 @@ suite('behavior', () => {
         };
 
         const makeTodoListRenderer = (todoList: TodoList) => {
-            return revise.computation(() => {
+            return revise.calc(() => {
                 renders.push('list');
                 const lines = [`${todoList.name}:`];
                 todoList.items.forEach((item) => {

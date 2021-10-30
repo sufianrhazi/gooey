@@ -1,77 +1,77 @@
-export class InvariantError extends Error {}
+export class InvariantError extends Error { }
 
-export const TrackedTypeTag = Symbol('trackedType');
-const ComputationType = Symbol('computationType');
+export const TypeTag = Symbol('reviseType');
+const CalculationTypeTag = Symbol('calculationType');
 
 export type CollectionEvent<T> =
     | {
-          type: 'splice';
-          index: number;
-          count: number;
-          items: readonly T[];
-      }
+        type: 'splice';
+        index: number;
+        count: number;
+        items: readonly T[];
+    }
     | {
-          type: 'init';
-          items: readonly T[];
-      }
+        type: 'init';
+        items: readonly T[];
+    }
     | {
-          type: 'sort';
-      };
+        type: 'sort';
+    };
 
 export type CollectionObserver<T> = (event: CollectionEvent<T>) => void;
 
-export type TrackedModel<T> = T & {
-    [TrackedTypeTag]: 'model';
+export type Model<T> = T & {
+    [TypeTag]: 'model';
 };
 
 type MappingFunction<T, V> = (item: T, index: number, array: T[]) => V;
 export const OnCollectionRelease = Symbol('OnCollectionRelease');
-export type TrackedCollection<T> = T[] & {
-    [TrackedTypeTag]: 'collection';
+export interface Collection<T> extends Array<T> {
+    [TypeTag]: 'collection';
     observe(observer: CollectionObserver<T>): () => void;
-    mapView<V>(fn: MappingFunction<T, V>): Readonly<TrackedCollection<V>>;
+    mapView<V>(fn: MappingFunction<T, V>): Readonly<Collection<V>>;
     retain(): void;
     release(): void;
     [OnCollectionRelease]: (fn: () => void) => void;
 };
-export type TrackedComputation<Result> = (() => Result) & {
-    [TrackedTypeTag]: 'computation';
-    [ComputationType]: 'computation' | 'effect';
+export type Calculation<Result> = (() => Result) & {
+    [TypeTag]: 'calculation';
+    [CalculationTypeTag]: 'calculation' | 'effect';
 };
 
 export interface ModelField<T> {
-    model: TrackedModel<T> | TrackedCollection<T>;
-    key: string | symbol;
+    model: Model<T> | Collection<T>;
+    key: string | number | symbol;
 }
 
-export function makeComputation<Ret>(fn: () => Ret): TrackedComputation<Ret> {
+export function makeCalculation<Ret>(fn: () => Ret): Calculation<Ret> {
     return Object.assign(fn, {
-        [TrackedTypeTag]: 'computation' as const,
-        [ComputationType]: 'computation' as const,
+        [TypeTag]: 'calculation' as const,
+        [CalculationTypeTag]: 'calculation' as const,
     });
 }
 
-export function makeEffect(fn: () => void): TrackedComputation<void> {
+export function makeEffect(fn: () => void): Calculation<void> {
     return Object.assign(fn, {
-        [TrackedTypeTag]: 'computation' as const,
-        [ComputationType]: 'effect' as const,
+        [TypeTag]: 'calculation' as const,
+        [CalculationTypeTag]: 'effect' as const,
     });
 }
 
-export function isTrackedCollection(
+export function isCollection(
     thing: any
-): thing is TrackedCollection<unknown> {
-    return !!(thing && (thing as any)[TrackedTypeTag] === 'collection');
+): thing is Collection<unknown> {
+    return !!(thing && (thing as any)[TypeTag] === 'collection');
 }
 
-export function isTrackedComputation(
+export function isCalculation(
     thing: any
-): thing is TrackedComputation<unknown> {
-    return !!(thing && (thing as any)[TrackedTypeTag] === 'computation');
+): thing is Calculation<unknown> {
+    return !!(thing && (thing as any)[TypeTag] === 'calculation');
 }
 
-export function isTrackedEffect<T>(
-    thing: TrackedComputation<unknown>
+export function isEffect<T>(
+    thing: Calculation<unknown>
 ): boolean {
-    return thing[ComputationType] === 'effect';
+    return thing[CalculationTypeTag] === 'effect';
 }

@@ -1,6 +1,6 @@
 import {
     name,
-    computation,
+    calc,
     effect,
     model,
     collection,
@@ -8,9 +8,9 @@ import {
     release,
 } from './index';
 import {
-    TrackedComputation,
-    isTrackedComputation,
-    isTrackedCollection,
+    Calculation,
+    isCalculation,
+    isCollection,
     CollectionEvent,
 } from './types';
 import * as log from './log';
@@ -171,11 +171,11 @@ function mountTo({
     }
     if (isRenderElement(root)) {
         const element = document.createElement(root.element);
-        const boundEffects: TrackedComputation<any>[] = [];
+        const boundEffects: Calculation<any>[] = [];
         // Bind props
         if (root.props) {
             Object.entries(root.props).forEach(([key, value]) => {
-                if (isTrackedComputation(value)) {
+                if (isCalculation(value)) {
                     const boundEffect = name(
                         effect(() => {
                             const computedValue = value();
@@ -216,7 +216,7 @@ function mountTo({
 
         return;
     }
-    if (isTrackedCollection(root)) {
+    if (isCollection(root)) {
         const trackedCollection = root;
         const onUnmount: (() => void)[] = [];
 
@@ -279,12 +279,12 @@ function mountTo({
 
         return;
     }
-    if (isTrackedComputation(root)) {
-        const trackedComputation = root;
+    if (isCalculation(root)) {
+        const trackedCalculation = root;
         const onUnmount: Function[] = [];
         const resultEffect = name(
             effect(() => {
-                const renderChild = trackedComputation();
+                const renderChild = trackedCalculation();
                 const { immediateParent, childIndex } = getTreeSlotParent(
                     treeSlot,
                     mountIndex
@@ -313,7 +313,7 @@ function mountTo({
                     replacedTreeSlot: replaced,
                 });
             }),
-            `view:computation:${JSON.stringify(mountIndex)}`
+            `view:calc:${JSON.stringify(mountIndex)}`
         );
 
         resultEffect();
