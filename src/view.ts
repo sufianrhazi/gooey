@@ -46,22 +46,22 @@ declare global {
 
 function verifyExhausted(value: never): void {}
 
-function createElement<Props extends {}>(
+export function createElement<Props extends {}>(
     Constructor: string,
     props?: ElementProps,
     ...children: RenderChild[]
 ): RenderChild;
-function createElement<Props extends {}>(
+export function createElement<Props extends {}>(
     Constructor: Component<Props>,
     props?: Props,
     ...children: RenderChild[]
 ): RenderChild;
-function createElement<Props extends {}>(
+export function createElement<Props extends {}>(
     Constructor: Component<Props>,
     props?: Props,
     ...children: RenderChild[]
 ): RenderChild;
-function createElement<Props extends {}>(
+export function createElement<Props extends {}>(
     Constructor: string | Component<Props>,
     props?: ElementProps | Props,
     ...children: RenderChild[]
@@ -444,7 +444,4 @@ export function mount(parentElement: Element, root: RenderChild) {
     });
 }
 
-export const React = {
-    createElement,
-    Fragment: ({ children }: { children: RenderChild[] }) => children,
-};
+export const Fragment = ({ children }: { children: RenderChild[] }) => children;

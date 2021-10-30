@@ -1,5 +1,6 @@
-import {
-    React,
+import Revise, {
+    mount,
+    Fragment,
     Ref,
     ref,
     name,
@@ -8,7 +9,6 @@ import {
     calc,
     flush,
     debug,
-    mount,
     subscribe,
     setLogLevel,
     Component,

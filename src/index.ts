@@ -17,7 +17,8 @@ import {
 import * as log from './log';
 export { setLogLevel } from './log';
 import { DAG } from './dag';
-export { React, mount } from './view';
+import { createElement, Fragment, mount } from './view';
+export { Fragment, mount } from './view';
 export { Component } from './renderchild';
 
 export {
@@ -29,6 +30,8 @@ export {
     Model,
     OnCollectionRelease,
 } from './types';
+
+export default createElement;
 
 export const VERSION = 'development';
 

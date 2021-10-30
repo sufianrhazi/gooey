@@ -1,5 +1,4 @@
-import {
-    React,
+import Revise, {
     reset,
     mount,
     calc,
@@ -384,16 +383,12 @@ suite('mount arrays', () => {
             <div>
                 foo
                 {name(
-                    calc(() =>
-                        items.map((item, idx) => `A:${item}:${idx} `)
-                    ),
+                    calc(() => items.map((item, idx) => `A:${item}:${idx} `)),
                     'arr-1'
                 )}
                 bar
                 {name(
-                    calc(() =>
-                        items.map((item, idx) => `B:${item}:${idx} `)
-                    ),
+                    calc(() => items.map((item, idx) => `B:${item}:${idx} `)),
                     'arr-2'
                 )}
                 baz

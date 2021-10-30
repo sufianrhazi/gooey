@@ -1,12 +1,11 @@
-import {
-    React,
+import Revise, {
+    mount,
     name,
     model,
     collection,
     calc,
     flush,
     debug,
-    mount,
     subscribe,
     setLogLevel,
     Component,
@@ -212,13 +211,7 @@ const Controls = ({ store }: { store: Model<Store> }) => {
     );
 };
 
-const Row = ({
-    store,
-    item,
-}: {
-    store: Model<Store>;
-    item: Model<Item>;
-}) => {
+const Row = ({ store, item }: { store: Model<Store>; item: Model<Item> }) => {
     function selectItem(e: MouseEvent) {
         e.preventDefault();
         store.selected = item.id;
@@ -226,11 +219,7 @@ const Row = ({
     }
 
     return (
-        <tr
-            class={calc(() =>
-                store.selected === item.id ? 'danger' : ''
-            )}
-        >
+        <tr class={calc(() => (store.selected === item.id ? 'danger' : ''))}>
             <td class="col-md-1">{calc(() => item.id)}</td>
             <td class="col-md-4">
                 <a class="lbl" on:click={time(selectItem)}>
