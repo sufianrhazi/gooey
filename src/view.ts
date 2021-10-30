@@ -39,6 +39,7 @@ declare global {
                 'on:click': (event: MouseEvent) => void;
             } & any;
         }
+        type Element = RenderChild;
     }
 }
 
@@ -47,6 +48,11 @@ function verifyExhausted(value: never): void {}
 function createElement<Props extends {}>(
     Constructor: string,
     props?: ElementProps,
+    ...children: RenderChild[]
+): RenderChild;
+function createElement<Props extends {}>(
+    Constructor: Component<Props>,
+    props?: Props,
     ...children: RenderChild[]
 ): RenderChild;
 function createElement<Props extends {}>(

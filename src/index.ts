@@ -127,18 +127,22 @@ export function collection<T>(array: T[]): TrackedCollection<T> {
     const fields: Map<string | symbol, ModelField<T>> = new Map();
     let observers: CollectionObserver<T>[] = [];
 
+    function notify(event: CollectionEvent<T>) {
+        observers.forEach((observer) => {
+            observer(event);
+        });
+    }
+
     function splice(index: number, count: number, ...items: T[]): T[] {
         if (count < 1 && items.length === 0) return []; // noop
         const origLength = array.length;
         const removed = array.splice(index, count, ...items);
         const newLength = array.length;
-        observers.forEach((observer) => {
-            observer({
-                type: 'splice',
-                index,
-                count,
-                items,
-            });
+        notify({
+            type: 'splice',
+            index,
+            count,
+            items,
         });
 
         // Cases to consider:
@@ -282,8 +286,9 @@ export function collection<T>(array: T[]): TrackedCollection<T> {
                 // TODO(sufian): maybe support this?
                 return false;
             }
-            if (typeof key === 'number' && key <= array.length) {
-                set(key, value);
+            const numericKey = Number(key);
+            if (!isNaN(numericKey) && numericKey <= array.length) {
+                set(numericKey, value);
                 return true;
             }
             const field = getField(key);

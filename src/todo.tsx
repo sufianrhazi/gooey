@@ -157,6 +157,15 @@ const TodoList: Component<TodoListProps> = ({ list }, { onUnmount }) => {
     );
 };
 
+const App = () => {
+    return (
+        <div>
+            <h1>ToDo List</h1>
+            <TodoList list={list} />
+        </div>
+    );
+};
+
 // main
 const root = document.getElementById('root');
 if (root) {
