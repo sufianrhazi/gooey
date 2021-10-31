@@ -12,11 +12,13 @@ import Revise, {
     Component,
     Collection,
     Model,
+    setLogLevel,
 } from '../index';
 
 /*
  * Initialize flush subscription, so everything automatically updates on next event loop
  */
+setLogLevel('debug');
 subscribe(() => {
     setTimeout(() => flush(), 0);
 });

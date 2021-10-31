@@ -19,7 +19,7 @@ export { setLogLevel } from './log';
 import { DAG } from './dag';
 import { createElement, Fragment, mount } from './view';
 export { Fragment, mount } from './view';
-export { Component } from './renderchild';
+export { Component } from './jsx';
 
 export {
     ref,
