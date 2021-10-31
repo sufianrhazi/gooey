@@ -80,6 +80,6 @@ export function isCalculation(thing: any): thing is Calculation<unknown> {
     return !!(thing && (thing as any)[TypeTag] === 'calculation');
 }
 
-export function isEffect<T>(thing: Calculation<unknown>): boolean {
+export function isEffect(thing: Calculation<unknown>): boolean {
     return thing[CalculationTypeTag] === 'effect';
 }

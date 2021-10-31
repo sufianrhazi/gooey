@@ -12,12 +12,11 @@ import {
     isCollection,
     makeCalculation,
     makeEffect,
-    OnCollectionRelease,
 } from './types';
 import * as log from './log';
 export { setLogLevel } from './log';
 import { DAG } from './dag';
-import { createElement, Fragment, mount } from './view';
+import { createElement } from './view';
 export { Fragment, mount } from './view';
 export { Component } from './jsx';
 
@@ -67,6 +66,7 @@ export function reset() {
     calculationToInvalidationMap = new Map();
 
     globalDependencyGraph = new DAG();
+    nameMap = new WeakMap();
 }
 
 export function name<T>(item: T, name: string): T {
@@ -161,12 +161,12 @@ export function collection<T>(array: T[]): Collection<T> {
         return removed;
     }
 
-    function pop(val: T): T | undefined {
+    function pop(): T | undefined {
         const removed = splice(array.length - 1, 1);
         return removed[0];
     }
 
-    function shift(val: T): T | undefined {
+    function shift(): T | undefined {
         const removed = splice(0, 1);
         return removed[0];
     }
@@ -209,7 +209,7 @@ export function collection<T>(array: T[]): Collection<T> {
         //
         // Make it live in the global DAG:
         // - addCollectionDep(proxy, mapped);
-        const unobserve = proxy.observe((event) => {
+        proxy.observe((event) => {
             if (event.type === 'sort') {
                 // TODO: implement mapped sort (reposition items... somehow)
                 return;

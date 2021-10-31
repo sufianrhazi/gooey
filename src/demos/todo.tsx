@@ -11,7 +11,6 @@ import Revise, {
     subscribe,
     Component,
     Collection,
-    Model,
     setLogLevel,
 } from '../index';
 
@@ -99,7 +98,7 @@ const TodoList = () => {
     );
 };
 
-const TodoControls: Component<{}> = ({}, { onMount }) => {
+const TodoControls: Component<{}> = (_props, { onMount }) => {
     const inputRef: Ref<HTMLInputElement> = ref();
 
     onMount(() => {

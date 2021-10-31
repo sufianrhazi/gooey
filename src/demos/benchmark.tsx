@@ -1,13 +1,9 @@
 import Revise, {
     mount,
-    name,
     model,
     collection,
     calc,
     flush,
-    debug,
-    subscribe,
-    setLogLevel,
     Component,
     Model,
     Collection,
@@ -53,9 +49,9 @@ const Button: Component<{
 );
 
 const Controls = ({ store }: { store: Model<Store> }) => {
-    let maxId: number = 0;
+    let maxId = 0;
     const makeRows = (count: number): Model<Item>[] => {
-        var adjectives = [
+        const adjectives = [
             'pretty',
             'large',
             'big',
@@ -82,7 +78,7 @@ const Controls = ({ store }: { store: Model<Store> }) => {
             'expensive',
             'fancy',
         ];
-        var colours = [
+        const colours = [
             'red',
             'yellow',
             'blue',
@@ -95,7 +91,7 @@ const Controls = ({ store }: { store: Model<Store> }) => {
             'black',
             'orange',
         ];
-        var nouns = [
+        const nouns = [
             'table',
             'chair',
             'house',
@@ -110,8 +106,8 @@ const Controls = ({ store }: { store: Model<Store> }) => {
             'mouse',
             'keyboard',
         ];
-        var data: Model<Item>[] = [];
-        for (var i = 0; i < count; i++)
+        const data: Model<Item>[] = [];
+        for (let i = 0; i < count; i++)
             data.push(
                 model({
                     id: maxId++,
@@ -166,7 +162,7 @@ const Controls = ({ store }: { store: Model<Store> }) => {
     const swapRows = (e: MouseEvent) => {
         e.preventDefault();
         if (store.items.length > 998) {
-            var a = store.items[1];
+            const a = store.items[1];
             store.items[1] = store.items[998];
             store.items[998] = a;
         }

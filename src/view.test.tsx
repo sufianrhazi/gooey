@@ -6,11 +6,10 @@ import Revise, {
     collection,
     flush,
     Component,
-    debug,
     name,
 } from './index';
 import * as log from './log';
-import { suite, test, beforeEach, afterEach, assert } from './test';
+import { suite, test, beforeEach, assert } from './test';
 
 const testRoot = document.getElementById('test-root');
 if (!testRoot) throw new Error('oops');

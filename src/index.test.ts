@@ -278,7 +278,7 @@ suite('behavior', () => {
     });
 
     test('updating items that once caused renders but no longer do takes no effect', () => {
-        const { model0, model3, todoList, app, renders } = setUp();
+        const { model0, todoList, app, renders } = setUp();
         app(); // initial render
         todoList.items.shift(); // remove model0
         revise.flush(); // flush 1: update with model0 removed

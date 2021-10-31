@@ -19,6 +19,7 @@ import {
 } from './vnode';
 
 declare global {
+    // eslint-disable-next-line @typescript-eslint/no-namespace
     namespace JSX {
         interface IntrinsicElements {
             [unknownElement: string]: {
@@ -29,9 +30,7 @@ declare global {
     }
 }
 
-function verifyExhausted(value: never): void {}
-
-export function createElement<Props extends {}>(
+export function createElement(
     Constructor: string,
     props?: ElementProps,
     ...children: JSXNode[]
@@ -113,14 +112,13 @@ function renderAppending({
     });
 }
 
-interface MountToParams {
-    nodeToReplace: VNode;
-    jsxNode: JSXNode;
-}
 function renderReplacing({
     nodeToReplace,
     jsxNode,
-}: MountToParams): ChildVNode {
+}: {
+    nodeToReplace: ChildVNode;
+    jsxNode: JSXNode;
+}): ChildVNode {
     if (
         jsxNode === null ||
         jsxNode === undefined ||
@@ -128,7 +126,7 @@ function renderReplacing({
         jsxNode === true
     ) {
         const emptyVNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode!,
+            parentNode: nodeToReplace.parentNode,
             domParent: nodeToReplace.domParent,
             jsxNode: jsxNode,
             domNode: null,
@@ -139,7 +137,7 @@ function renderReplacing({
     }
     if (typeof jsxNode === 'string') {
         const stringVNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode!,
+            parentNode: nodeToReplace.parentNode,
             domParent: nodeToReplace.domParent,
             jsxNode: jsxNode,
             domNode: document.createTextNode(jsxNode),
@@ -150,7 +148,7 @@ function renderReplacing({
     }
     if (typeof jsxNode === 'number') {
         const numberVNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode!,
+            parentNode: nodeToReplace.parentNode,
             domParent: nodeToReplace.domParent,
             jsxNode: jsxNode,
             domNode: document.createTextNode(jsxNode.toString()),
@@ -196,7 +194,7 @@ function renderReplacing({
         }
 
         const elementNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode!,
+            parentNode: nodeToReplace.parentNode,
             domParent: nodeToReplace.domParent,
             jsxNode: jsxNode,
             domNode: element,
@@ -211,7 +209,7 @@ function renderReplacing({
         });
         replaceVNode(nodeToReplace, elementNode);
 
-        jsxNode.children.forEach((child, childIndex) => {
+        jsxNode.children.forEach((child) => {
             renderAppending({
                 domParent: elementNode,
                 parentNode: elementNode,
@@ -230,7 +228,7 @@ function renderReplacing({
         const onUnmount: (() => void)[] = [];
 
         const collectionNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode!,
+            parentNode: nodeToReplace.parentNode,
             domParent: nodeToReplace.domParent,
             jsxNode: jsxNode,
             domNode: null,
@@ -252,16 +250,13 @@ function renderReplacing({
                 // TODO: figure out how to do this
             } else if (event.type === 'splice') {
                 const { count, index, items } = event;
-                const replaceCount = Math.min(count, items.length);
-                const removeCount = count - replaceCount;
-                const insertCount = items.length - replaceCount;
-                const childNodes = items.map((item) =>
+                const childNodes = items.map(() =>
                     makeEmptyVNode({
                         domParent: collectionNode.domParent,
                         parentNode: collectionNode,
                     })
                 );
-                const removed = spliceVNode(
+                spliceVNode(
                     collectionNode,
                     collectionNode.children[index],
                     count,
@@ -288,7 +283,7 @@ function renderReplacing({
         const trackedCalculation = jsxNode;
         const onUnmount: Function[] = [];
         const calculationNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode!,
+            parentNode: nodeToReplace.parentNode,
             domParent: nodeToReplace.domParent,
             jsxNode: jsxNode,
             domNode: null,
@@ -324,7 +319,7 @@ function renderReplacing({
     if (isRenderComponent(jsxNode)) {
         const onUnmount: Function[] = [];
         const componentNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode!,
+            parentNode: nodeToReplace.parentNode,
             domParent: nodeToReplace.domParent,
             jsxNode: jsxNode,
             domNode: null,
@@ -378,7 +373,7 @@ function renderReplacing({
     if (Array.isArray(jsxNode)) {
         const items = jsxNode;
         const arrayNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode!,
+            parentNode: nodeToReplace.parentNode,
             domParent: nodeToReplace.domParent,
             jsxNode,
             domNode: null,
@@ -397,7 +392,7 @@ function renderReplacing({
     }
     if (typeof jsxNode === 'function') {
         const functionVNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode!,
+            parentNode: nodeToReplace.parentNode,
             domParent: nodeToReplace.domParent,
             jsxNode: jsxNode,
             domNode: null,

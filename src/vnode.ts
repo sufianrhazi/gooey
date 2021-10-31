@@ -1,6 +1,5 @@
 import { JSXNode } from './jsx';
 import * as log from './log';
-import { release } from './index';
 
 const VNodeSymbol = Symbol('VNode');
 
@@ -153,10 +152,10 @@ function callOnUnmount(node: VNode) {
 }
 
 export function replaceVNode(
-    replaceNode: VNode,
+    replaceNode: ChildVNode,
     newNode: VNode
 ): VNode | undefined {
-    return spliceVNode(replaceNode.parentNode!, replaceNode, 1, [newNode])[0];
+    return spliceVNode(replaceNode.parentNode, replaceNode, 1, [newNode])[0];
 }
 
 export function spliceVNode(
