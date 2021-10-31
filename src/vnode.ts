@@ -1,4 +1,4 @@
-import { JSXChild } from './jsx';
+import { JSXNode } from './jsx';
 import * as log from './log';
 import { release } from './index';
 
@@ -7,7 +7,7 @@ const VNodeSymbol = Symbol('VNode');
 /**
  * A VNode represents a node in the virtual tree structure
  *
- * Since a JsxChild may render to 0, 1, or many DOM nodes, which may be at any
+ * Since a JSXNode may render to 0, 1, or many DOM nodes, which may be at any
  * index within the DOM tree.
  */
 export type ChildVNode = {
@@ -15,7 +15,7 @@ export type ChildVNode = {
     children: VNode[];
     parentNode: VNode;
     domParent: VNode;
-    jsxChild: JSXChild | null;
+    jsxNode: JSXNode | null;
     onUnmount: Function[];
     [VNodeSymbol]: true;
 };
@@ -24,7 +24,7 @@ export type RootVNode = {
     children: VNode[];
     parentNode: null;
     domParent: VNode;
-    jsxChild: JSXChild | null;
+    jsxNode: JSXNode | null;
     onUnmount: Function[];
     [VNodeSymbol]: true;
 };
@@ -36,7 +36,7 @@ export function makeRootVNode({ domNode }: { domNode: Node }): RootVNode {
         children: [],
         parentNode: null,
         domParent: null,
-        jsxChild: null,
+        jsxNode: null,
         onUnmount: [],
         [VNodeSymbol]: true,
     } as unknown as RootVNode; // We lie here since domParent needs to be self-referential
@@ -45,7 +45,7 @@ export function makeRootVNode({ domNode }: { domNode: Node }): RootVNode {
 }
 
 export function makeChildVNode({
-    jsxChild,
+    jsxNode,
     domNode,
     domParent,
     onUnmount,
@@ -53,7 +53,7 @@ export function makeChildVNode({
 }: {
     parentNode: VNode;
     domParent: VNode;
-    jsxChild: JSXChild | null;
+    jsxNode: JSXNode | null;
     domNode: Node | null;
     onUnmount: Function[];
 }): ChildVNode {
@@ -62,7 +62,7 @@ export function makeChildVNode({
         children: [],
         parentNode,
         domParent,
-        jsxChild,
+        jsxNode,
         onUnmount,
         [VNodeSymbol]: true,
     };
@@ -80,7 +80,7 @@ export function makeEmptyVNode({
         children: [],
         parentNode,
         domParent,
-        jsxChild: null,
+        jsxNode: null,
         onUnmount: [],
         [VNodeSymbol]: true,
     };
@@ -156,9 +156,7 @@ export function replaceVNode(
     replaceNode: VNode,
     newNode: VNode
 ): VNode | undefined {
-    return spliceVNode(replaceNode.parentNode!, replaceNode, 1, [
-        newNode,
-    ])[0];
+    return spliceVNode(replaceNode.parentNode!, replaceNode, 1, [newNode])[0];
 }
 
 export function spliceVNode(

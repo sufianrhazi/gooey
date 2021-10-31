@@ -1,7 +1,7 @@
 import { Ref, Calculation, Collection } from './types';
 
 // General component props
-type PropsWithChildren<P> = P & { children?: JSXChild[] };
+type PropsWithChildren<P> = P & { children?: JSXNode[] };
 
 type OnUnmountCallback = () => void;
 type OnMountCallback = () => void;
@@ -13,38 +13,36 @@ type ComponentListeners = {
 export type Component<P extends {}> = (
     props: PropsWithChildren<P>,
     listeners: ComponentListeners
-) => JSXChild;
+) => JSXNode;
 
 type JsxRawNode = string | number | boolean | null | undefined | Function;
 
 /**
  * The type returnable by JSX (raw nodes)
  */
-type JSXChildSingle =
+type JSXNodeSingle =
     | JsxRawNode
     | Calculation<JsxRawNode>
     | Calculation<JsxRawNode[]>
     | RenderElement
     | RenderComponent<any>;
-export type JSXChild =
-    | JSXChildSingle
-    | JSXChildSingle[]
-    | Collection<JSXChildSingle>;
+export type JSXNode =
+    | JSXNodeSingle
+    | JSXNodeSingle[]
+    | Collection<JSXNodeSingle>;
 
 export type RenderElement = {
     type: 'element';
     element: string;
     props?: ElementProps;
-    children: JSXChild[];
+    children: JSXNode[];
 };
-export function isRenderElement(
-    jsxChild: JSXChild
-): jsxChild is RenderElement {
+export function isRenderElement(jsxNode: JSXNode): jsxNode is RenderElement {
     return !!(
-        jsxChild &&
-        typeof jsxChild === 'object' &&
-        'type' in jsxChild &&
-        jsxChild.type === 'element'
+        jsxNode &&
+        typeof jsxNode === 'object' &&
+        'type' in jsxNode &&
+        jsxNode.type === 'element'
     );
 }
 
@@ -155,15 +153,15 @@ export type RenderComponent<Props extends {}> = {
     type: 'component';
     component: Component<Props>;
     props?: Props;
-    children: JSXChild[];
+    children: JSXNode[];
 };
 export function isRenderComponent(
-    jsxChild: JSXChild
-): jsxChild is RenderComponent<any> {
+    jsxNode: JSXNode
+): jsxNode is RenderComponent<any> {
     return !!(
-        jsxChild &&
-        typeof jsxChild === 'object' &&
-        'type' in jsxChild &&
-        jsxChild.type === 'component'
+        jsxNode &&
+        typeof jsxNode === 'object' &&
+        'type' in jsxNode &&
+        jsxNode.type === 'component'
     );
 }
