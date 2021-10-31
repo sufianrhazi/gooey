@@ -3,32 +3,27 @@ import Revise, {
     Fragment,
     Ref,
     ref,
-    name,
     model,
     collection,
     calc,
     flush,
     debug,
     subscribe,
-    setLogLevel,
     Component,
     Collection,
     Model,
 } from '../index';
 
-setLogLevel('debug');
-
-// Initialize flush subscription, so everything automatically updates
+/*
+ * Initialize flush subscription, so everything automatically updates on next event loop
+ */
 subscribe(() => {
     setTimeout(() => flush(), 0);
 });
 
-let maxId = 0;
-const uniqueId = (): string => `id_${maxId++}`;
-
-/*
- * Application state
- */
+////////////////////////////////////////////////////////////////////////////////
+// Application State
+////////////////////////////////////////////////////////////////////////////////
 interface TodoItem {
     done: boolean;
     task: string;
@@ -59,9 +54,10 @@ const globalState: TodoList = model({
 // Exported to window, so you can play with it in the console!
 (window as any).globalState = globalState;
 
-/*
- * Components
- */
+////////////////////////////////////////////////////////////////////////////////
+// Components
+////////////////////////////////////////////////////////////////////////////////
+
 const TodoItem: Component<{ item: TodoItem }> = ({ item }) => {
     const onChange = (event: InputEvent) => {
         item.done = (event.target as HTMLInputElement).checked;
@@ -91,16 +87,17 @@ const TodoList = () => {
     return (
         <div class="my-2">
             <ul class="list-group">
-                {globalState.items.mapView((item) => (
-                    <TodoItem item={item} />
-                ))}
+                {calc(() =>
+                    globalState.items.mapView((item) => (
+                        <TodoItem item={item} />
+                    ))
+                )}
             </ul>
         </div>
     );
 };
 
 const TodoControls: Component<{}> = ({}, { onMount }) => {
-    const id = uniqueId();
     const inputRef: Ref<HTMLInputElement> = ref();
 
     onMount(() => {
@@ -139,18 +136,14 @@ const TodoControls: Component<{}> = ({}, { onMount }) => {
         }
     };
 
-    const onRename = () => {
-        globalState.name = prompt('New name')!;
-    };
-
     return (
         <>
             <div class="input-group mb-3">
-                <label class="input-group-text" for={id}>
+                <label class="input-group-text" for="add-item">
                     Add item
                 </label>
                 <input
-                    id={id}
+                    id="add-item"
                     class="form-control"
                     ref={inputRef}
                     type="text"
@@ -206,7 +199,7 @@ const App = () => {
     );
 };
 
-const root = document.getElementById('root');
+const root = document.getElementById('app');
 if (root) {
     mount(root, <App />);
 }

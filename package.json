@@ -12,8 +12,8 @@
   "author": "Sufian Rhazi <sufian@abstract.properties>",
   "license": "BSD-3-Clause",
   "repository": {
-      "type": "git",
-      "url": "https://git.abstract.properties/revise.git"
+    "type": "git",
+    "url": "https://git.abstract.properties/revise.git"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.174",

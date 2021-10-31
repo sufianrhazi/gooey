@@ -5,6 +5,18 @@ __metadata:
   version: 4
   cacheKey: 8
 
+"@srhazi/revise@workspace:.":
+  version: 0.0.0-use.local
+  resolution: "@srhazi/revise@workspace:."
+  dependencies:
+    "@types/lodash": ^4.14.174
+    esbuild: ^0.13.2
+    lodash: ^4.17.21
+    prettier: ^2.4.1
+    typescript: ^4.4.3
+  languageName: unknown
+  linkType: soft
+
 "@types/lodash@npm:^4.14.174":
   version: 4.14.174
   resolution: "@types/lodash@npm:4.14.174"
@@ -198,18 +210,6 @@ __metadata:
   checksum: cc6830588b401b0d742862fe9c46bc9118204fb307c3abe0e49e95b35ed23629573807ffdf9cdd65289c252a0bb51fc0171437f6626ee36378dea80f0ee80b91
   languageName: node
   linkType: hard
-
-"revise@workspace:.":
-  version: 0.0.0-use.local
-  resolution: "revise@workspace:."
-  dependencies:
-    "@types/lodash": ^4.14.174
-    esbuild: ^0.13.2
-    lodash: ^4.17.21
-    prettier: ^2.4.1
-    typescript: ^4.4.3
-  languageName: unknown
-  linkType: soft
 
 typescript@^4.4.3:
   version: 4.4.3
