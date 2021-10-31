@@ -1,4 +1,4 @@
-import { Component, RenderChild, ElementProps } from './renderchild';
+import { Component, JSXNode, ElementProps } from './jsx';
 declare global {
     namespace JSX {
         interface IntrinsicElements {
@@ -6,14 +6,14 @@ declare global {
                 'on:click': (event: MouseEvent) => void;
             } & any;
         }
-        type Element = RenderChild;
+        type Element = JSXNode;
     }
 }
-export declare function createElement<Props extends {}>(Constructor: string, props?: ElementProps, ...children: RenderChild[]): RenderChild;
-export declare function createElement<Props extends {}>(Constructor: Component<Props>, props?: Props, ...children: RenderChild[]): RenderChild;
-export declare function createElement<Props extends {}>(Constructor: Component<Props>, props?: Props, ...children: RenderChild[]): RenderChild;
-export declare function mount(parentElement: Element, root: RenderChild): void;
+export declare function createElement(Constructor: string, props?: ElementProps, ...children: JSXNode[]): JSXNode;
+export declare function createElement<Props extends {}>(Constructor: Component<Props>, props?: Props, ...children: JSXNode[]): JSXNode;
+export declare function createElement<Props extends {}>(Constructor: Component<Props>, props?: Props, ...children: JSXNode[]): JSXNode;
+export declare function mount(parentElement: Element, jsxNode: JSXNode): void;
 export declare const Fragment: ({ children }: {
-    children: RenderChild[];
-}) => RenderChild[];
+    children: JSXNode[];
+}) => JSXNode[];
 //# sourceMappingURL=view.d.ts.map

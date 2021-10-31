@@ -2,7 +2,7 @@ import { Calculation, Model, Collection } from './types';
 export { setLogLevel } from './log';
 import { createElement } from './view';
 export { Fragment, mount } from './view';
-export { Component } from './renderchild';
+export { Component } from './jsx';
 export { ref, Ref, InvariantError, Calculation, Collection, Model, OnCollectionRelease, } from './types';
 export default createElement;
 export declare const VERSION = "development";

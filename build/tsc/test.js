@@ -23,7 +23,6 @@ const makeSuite = ({ name, parent = undefined, only, }) => ({
     only,
 });
 let currentSuite = makeSuite({ name: '', only: false });
-const rootSuite = currentSuite;
 const suites = [];
 suites.push(currentSuite);
 class AssertionError extends Error {
@@ -32,9 +31,6 @@ class AssertionError extends Error {
         this.format = format;
         this.msg = msg;
     }
-}
-async function log(...msgs) {
-    console.log(...msgs);
 }
 export function abstractSuite(name, body) {
     const fixture = makeSuite({ name, parent: undefined, only: false });
@@ -119,20 +115,20 @@ function makeName(node) {
 async function runBeforeAll(name, suite) {
     if (suite) {
         await runBeforeAll(name, suite.parent);
-        for (let beforeAll of suite.beforeAll)
+        for (const beforeAll of suite.beforeAll)
             await beforeAll();
     }
 }
 async function runBeforeEach(ctx, name, suite) {
     if (suite) {
         await runBeforeEach(ctx, name, suite.parent);
-        for (let beforeEach of suite.beforeEach)
+        for (const beforeEach of suite.beforeEach)
             await beforeEach(ctx);
     }
 }
 async function runAfterEach(ctx, name, suite) {
     if (suite) {
-        for (let afterEach of suite.afterEach)
+        for (const afterEach of suite.afterEach)
             await afterEach(ctx);
         await runAfterEach(ctx, name, suite.parent);
     }
@@ -140,7 +136,7 @@ async function runAfterEach(ctx, name, suite) {
 async function runAfterAll(name, suite) {
     if (suite) {
         await runAfterAll(name, suite.parent);
-        for (let afterAll of suite.afterAll)
+        for (const afterAll of suite.afterAll)
             await afterAll();
     }
 }
@@ -149,11 +145,11 @@ let runningSuite = undefined;
 async function runTests() {
     const onlySuites = new Set();
     const onlyTests = new Set();
-    for (let suite of suites) {
+    for (const suite of suites) {
         if (suite.only) {
             onlySuites.add(suite);
         }
-        for (let test of suite.tests) {
+        for (const test of suite.tests) {
             if (suite.only || test.only) {
                 onlySuites.add(suite);
                 onlyTests.add(test);
@@ -161,7 +157,7 @@ async function runTests() {
         }
     }
     const isLimited = onlySuites.size > 0 || onlyTests.size > 0;
-    for (let suite of suites) {
+    for (const suite of suites) {
         const isSuiteSkipped = isLimited && !onlySuites.has(suite);
         runningSuite = suite;
         const suiteName = makeName(suite);
@@ -194,7 +190,7 @@ async function runTests() {
             result: isSuiteSkipped ? 'skip' : 'run',
             phase: 'tests',
         });
-        for (let test of suite.tests) {
+        for (const test of suite.tests) {
             const isTestSkipped = isLimited && !onlyTests.has(test);
             runningTest = test;
             const name = makeName(test);
@@ -441,6 +437,7 @@ function report(info) {
         row.classList.toggle('status_skipped', info.result === 'skip');
         row.classList.toggle('status_passed', info.result === 'pass');
         row.classList.toggle('status_failed', info.result === 'fail');
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         row.querySelector('.row_status').textContent = info.result;
         if (info.result === 'fail') {
             let msg = '';
@@ -453,10 +450,12 @@ function report(info) {
             if (info.e instanceof Error) {
                 msg += `${info.e.stack}\n`;
             }
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
             row.querySelector('.row_msg').textContent = msg;
             row.setAttribute('open', '');
         }
         if (info.result === 'pass') {
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
             row.querySelector('.row_msg').textContent = `Passed in ${info.duration.toFixed(3)}ms`;
         }
     }
@@ -467,6 +466,7 @@ function report(info) {
         row.classList.toggle('status_skipped', info.result === 'skip');
         row.classList.toggle('status_passed', info.result === 'pass');
         row.classList.toggle('status_failed', info.result === 'fail');
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         row.querySelector('.row_status').textContent = info.result;
         if (info.result === 'fail') {
             let msg = '';
@@ -479,10 +479,12 @@ function report(info) {
             if (info.e instanceof Error) {
                 msg += `${info.e.stack}\n`;
             }
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
             row.querySelector('.row_msg').textContent = msg;
             row.setAttribute('open', '');
         }
         if (info.result === 'pass') {
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
             row.querySelector('.row_msg').textContent = `Passed in ${info.selfDuration.toFixed(3)}ms (${info.duration.toFixed(3)}ms including setup)\n`;
         }
     }

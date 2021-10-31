@@ -1,11 +1,11 @@
 import Revise, { mount, Fragment, ref, model, collection, calc, flush, debug, subscribe, setLogLevel, } from '../index';
+/*
+ * Initialize flush subscription, so everything automatically updates on next event loop
+ */
 setLogLevel('debug');
-// Initialize flush subscription, so everything automatically updates
 subscribe(() => {
     setTimeout(() => flush(), 0);
 });
-let maxId = 0;
-const uniqueId = () => `id_${maxId++}`;
 const globalState = model({
     name: 'Groceries',
     items: collection([
@@ -25,9 +25,9 @@ const globalState = model({
 });
 // Exported to window, so you can play with it in the console!
 window.globalState = globalState;
-/*
- * Components
- */
+////////////////////////////////////////////////////////////////////////////////
+// Components
+////////////////////////////////////////////////////////////////////////////////
 const TodoItem = ({ item }) => {
     const onChange = (event) => {
         item.done = event.target.checked;
@@ -39,10 +39,9 @@ const TodoItem = ({ item }) => {
 };
 const TodoList = () => {
     return (Revise("div", { class: "my-2" },
-        Revise("ul", { class: "list-group" }, globalState.items.mapView((item) => (Revise(TodoItem, { item: item }))))));
+        Revise("ul", { class: "list-group" }, calc(() => globalState.items.mapView((item) => (Revise(TodoItem, { item: item })))))));
 };
-const TodoControls = ({}, { onMount }) => {
-    const id = uniqueId();
+const TodoControls = (_props, { onMount }) => {
     const inputRef = ref();
     onMount(() => {
         // Auto-focus the input on render
@@ -77,13 +76,10 @@ const TodoControls = ({}, { onMount }) => {
             onClickAdd();
         }
     };
-    const onRename = () => {
-        globalState.name = prompt('New name');
-    };
     return (Revise(Fragment, null,
         Revise("div", { class: "input-group mb-3" },
-            Revise("label", { class: "input-group-text", for: id }, "Add item"),
-            Revise("input", { id: id, class: "form-control", ref: inputRef, type: "text", value: "Don't forget the milk", "on:keydown": onKeyDown }),
+            Revise("label", { class: "input-group-text", for: "add-item" }, "Add item"),
+            Revise("input", { id: "add-item", class: "form-control", ref: inputRef, type: "text", value: "Don't forget the milk", "on:keydown": onKeyDown }),
             Revise("button", { class: "btn btn-primary", "on:click": onClickAdd }, "+")),
         Revise("div", { class: "input-group mb-3" },
             Revise("button", { class: "btn btn-secondary", disabled: calc(() => globalState.items.every((item) => !item.done)), "on:click": onClickClear }, "Clear completed"))));
@@ -109,7 +105,7 @@ const App = () => {
             Revise("button", { class: "btn btn-warning", "on:click": onClickMutate }, "Mutate items"),
             Revise("button", { class: "btn btn-outline-warning", "on:click": onClickDebug }, "Write graphviz dot to console"))));
 };
-const root = document.getElementById('root');
+const root = document.getElementById('app');
 if (root) {
     mount(root, Revise(App, null));
 }

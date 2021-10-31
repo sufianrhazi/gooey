@@ -17,7 +17,7 @@ const Button = ({ id, onClick, children }) => (Revise("button", { "on:click": on
 const Controls = ({ store }) => {
     let maxId = 0;
     const makeRows = (count) => {
-        var adjectives = [
+        const adjectives = [
             'pretty',
             'large',
             'big',
@@ -44,7 +44,7 @@ const Controls = ({ store }) => {
             'expensive',
             'fancy',
         ];
-        var colours = [
+        const colours = [
             'red',
             'yellow',
             'blue',
@@ -57,7 +57,7 @@ const Controls = ({ store }) => {
             'black',
             'orange',
         ];
-        var nouns = [
+        const nouns = [
             'table',
             'chair',
             'house',
@@ -72,8 +72,8 @@ const Controls = ({ store }) => {
             'mouse',
             'keyboard',
         ];
-        var data = [];
-        for (var i = 0; i < count; i++)
+        const data = [];
+        for (let i = 0; i < count; i++)
             data.push(model({
                 id: maxId++,
                 label: adjectives[_random(adjectives.length)] +
@@ -119,7 +119,7 @@ const Controls = ({ store }) => {
     const swapRows = (e) => {
         e.preventDefault();
         if (store.items.length > 998) {
-            var a = store.items[1];
+            const a = store.items[1];
             store.items[1] = store.items[998];
             store.items[998] = a;
         }

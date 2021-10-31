@@ -1,9 +1,8 @@
-import { name, effect, retain, release, } from './index';
-import { isCalculation, isCollection, isRef, } from './types';
+import { name, effect, retain, release } from './index';
+import { isCalculation, isCollection, isRef } from './types';
 import * as log from './log';
-import { isRenderComponent, isRenderElement, } from './renderchild';
-import { getTreeSlotParent, setTreeSlot, spliceTreeSlot, makeTreeSlot, } from './treeslot';
-function verifyExhausted(value) { }
+import { isRenderComponent, isRenderElement, } from './jsx';
+import { replaceVNode, spliceVNode, makeChildVNode, makeRootVNode, makeEmptyVNode, } from './vnode';
 export function createElement(Constructor, props, ...children) {
     if (typeof Constructor === 'string') {
         return {
@@ -19,9 +18,6 @@ export function createElement(Constructor, props, ...children) {
         props,
         children,
     };
-}
-function insertAt(parentElement, index, child) {
-    parentElement.insertBefore(child, parentElement.childNodes[index + 1] || null);
 }
 const boundEvents = new WeakMap();
 function setAttributeValue(element, key, value) {
@@ -51,41 +47,61 @@ function setAttributeValue(element, key, value) {
         attributes[key] = value;
     }
 }
-function mountTo({ parentElement, treeSlot, mountIndex, root, replacedTreeSlot, }) {
-    if (root === null ||
-        root === undefined ||
-        root === false ||
-        root === true) {
-        setTreeSlot(treeSlot, mountIndex, makeTreeSlot({
-            renderChild: root,
+function renderAppending({ domParent, parentNode, jsxNode, }) {
+    const emptyChildVNode = makeEmptyVNode({
+        domParent,
+        parentNode,
+    });
+    parentNode.children.push(emptyChildVNode);
+    renderReplacing({
+        nodeToReplace: emptyChildVNode,
+        jsxNode,
+    });
+}
+function renderReplacing({ nodeToReplace, jsxNode, }) {
+    if (jsxNode === null ||
+        jsxNode === undefined ||
+        jsxNode === false ||
+        jsxNode === true) {
+        const emptyVNode = makeChildVNode({
+            parentNode: nodeToReplace.parentNode,
+            domParent: nodeToReplace.domParent,
+            jsxNode: jsxNode,
             domNode: null,
             onUnmount: [],
-        }));
-        return;
+        });
+        replaceVNode(nodeToReplace, emptyVNode);
+        return emptyVNode;
     }
-    if (typeof root === 'string') {
-        setTreeSlot(treeSlot, mountIndex, makeTreeSlot({
-            renderChild: root,
-            domNode: document.createTextNode(root),
+    if (typeof jsxNode === 'string') {
+        const stringVNode = makeChildVNode({
+            parentNode: nodeToReplace.parentNode,
+            domParent: nodeToReplace.domParent,
+            jsxNode: jsxNode,
+            domNode: document.createTextNode(jsxNode),
             onUnmount: [],
-        }));
-        return;
+        });
+        replaceVNode(nodeToReplace, stringVNode);
+        return stringVNode;
     }
-    if (typeof root === 'number') {
-        setTreeSlot(treeSlot, mountIndex, makeTreeSlot({
-            renderChild: root,
-            domNode: document.createTextNode(root.toString()),
+    if (typeof jsxNode === 'number') {
+        const numberVNode = makeChildVNode({
+            parentNode: nodeToReplace.parentNode,
+            domParent: nodeToReplace.domParent,
+            jsxNode: jsxNode,
+            domNode: document.createTextNode(jsxNode.toString()),
             onUnmount: [],
-        }));
-        return;
+        });
+        replaceVNode(nodeToReplace, numberVNode);
+        return numberVNode;
     }
-    if (isRenderElement(root)) {
-        const element = document.createElement(root.element);
+    if (isRenderElement(jsxNode)) {
+        const element = document.createElement(jsxNode.element);
         const boundEffects = [];
         let refCallback = undefined;
         // Bind props
-        if (root.props) {
-            Object.entries(root.props).forEach(([key, value]) => {
+        if (jsxNode.props) {
+            Object.entries(jsxNode.props).forEach(([key, value]) => {
                 if (key === 'ref') {
                     if (isRef(value)) {
                         value.current = element;
@@ -100,7 +116,8 @@ function mountTo({ parentElement, treeSlot, mountIndex, root, replacedTreeSlot, 
                     const boundEffect = name(effect(() => {
                         const computedValue = value();
                         setAttributeValue(element, key, computedValue);
-                    }), `view:bindAttribute:${key}:${JSON.stringify(mountIndex)}`);
+                    }), `view:bindAttribute:${key}:` // TODO: figure out how to serialize where we are in the tree. Or maybe it doesn't matter
+                    );
                     retain(boundEffect);
                     boundEffects.push(boundEffect);
                     boundEffect();
@@ -110,8 +127,10 @@ function mountTo({ parentElement, treeSlot, mountIndex, root, replacedTreeSlot, 
                 }
             });
         }
-        const newTreeSlot = makeTreeSlot({
-            renderChild: root,
+        const elementNode = makeChildVNode({
+            parentNode: nodeToReplace.parentNode,
+            domParent: nodeToReplace.domParent,
+            jsxNode: jsxNode,
             domNode: element,
             onUnmount: [
                 () => {
@@ -122,37 +141,38 @@ function mountTo({ parentElement, treeSlot, mountIndex, root, replacedTreeSlot, 
                 },
             ],
         });
-        setTreeSlot(treeSlot, mountIndex, newTreeSlot);
-        root.children.forEach((child, childIndex) => {
-            mountTo({
-                parentElement: element,
-                treeSlot,
-                mountIndex: mountIndex.concat([childIndex]),
-                root: child,
+        replaceVNode(nodeToReplace, elementNode);
+        jsxNode.children.forEach((child) => {
+            renderAppending({
+                domParent: elementNode,
+                parentNode: elementNode,
+                jsxNode: child,
             });
         });
         if (refCallback) {
             refCallback(element);
         }
-        return;
+        return elementNode;
     }
-    if (isCollection(root)) {
-        const trackedCollection = root;
+    if (isCollection(jsxNode)) {
+        const trackedCollection = jsxNode;
         const onUnmount = [];
-        setTreeSlot(treeSlot, mountIndex, makeTreeSlot({
-            renderChild: root,
+        const collectionNode = makeChildVNode({
+            parentNode: nodeToReplace.parentNode,
+            domParent: nodeToReplace.domParent,
+            jsxNode: jsxNode,
             domNode: null,
             onUnmount,
-        }));
+        });
+        replaceVNode(nodeToReplace, collectionNode);
         const unobserve = trackedCollection.observe((event) => {
             if (event.type === 'init') {
                 const { items } = event;
-                items.forEach((renderChild, childIndex) => {
-                    mountTo({
-                        parentElement,
-                        treeSlot,
-                        mountIndex: mountIndex.concat([childIndex]),
-                        root: renderChild,
+                items.forEach((jsxChild) => {
+                    renderAppending({
+                        domParent: collectionNode.domParent,
+                        parentNode: collectionNode,
+                        jsxNode: jsxChild,
                     });
                 });
             }
@@ -161,20 +181,15 @@ function mountTo({ parentElement, treeSlot, mountIndex, root, replacedTreeSlot, 
             }
             else if (event.type === 'splice') {
                 const { count, index, items } = event;
-                const replaceCount = Math.min(count, items.length);
-                const removeCount = count - replaceCount;
-                const insertCount = items.length - replaceCount;
-                const removed = spliceTreeSlot(treeSlot, mountIndex.concat([index]), count, items.map((item) => makeTreeSlot({
-                    renderChild: null,
-                    domNode: null,
-                    onUnmount: [],
-                })));
-                items.forEach((renderChild, childIndex) => {
-                    mountTo({
-                        parentElement,
-                        treeSlot,
-                        mountIndex: mountIndex.concat([index + childIndex]),
-                        root: renderChild,
+                const childNodes = items.map(() => makeEmptyVNode({
+                    domParent: collectionNode.domParent,
+                    parentNode: collectionNode,
+                }));
+                spliceVNode(collectionNode, collectionNode.children[index], count, childNodes);
+                items.forEach((jsxChild, index) => {
+                    renderReplacing({
+                        nodeToReplace: childNodes[index],
+                        jsxNode: jsxChild,
                     });
                 });
             }
@@ -184,109 +199,117 @@ function mountTo({ parentElement, treeSlot, mountIndex, root, replacedTreeSlot, 
         onUnmount.push(() => {
             release(trackedCollection);
         });
-        return;
+        return collectionNode;
     }
-    if (isCalculation(root)) {
-        const trackedCalculation = root;
+    if (isCalculation(jsxNode)) {
+        const trackedCalculation = jsxNode;
         const onUnmount = [];
+        const calculationNode = makeChildVNode({
+            parentNode: nodeToReplace.parentNode,
+            domParent: nodeToReplace.domParent,
+            jsxNode: jsxNode,
+            domNode: null,
+            onUnmount,
+        });
+        replaceVNode(nodeToReplace, calculationNode);
+        // Create a virtual node for the result of the calculation
+        let calculationResultNode = makeEmptyVNode({
+            parentNode: calculationNode,
+            domParent: calculationNode.domParent,
+        });
+        calculationNode.children.push(calculationResultNode);
         const resultEffect = name(effect(() => {
-            const renderChild = trackedCalculation();
-            const { immediateParent, childIndex } = getTreeSlotParent(treeSlot, mountIndex);
-            // Note: We retain ourselves each time it's executed and
-            // release each time we are unmounted.
-            // On update (unmount followed by render), we want to keep this effect alive
-            // If unmounted (unmount not followed by render), we must be culled
-            const replaced = setTreeSlot(treeSlot, mountIndex, makeTreeSlot({
-                renderChild,
-                domNode: null,
-                onUnmount: [() => release(resultEffect)],
-            }));
-            // Hold on to the new effect and release on unmount
-            retain(resultEffect);
-            mountTo({
-                parentElement,
-                treeSlot,
-                mountIndex: mountIndex.concat([0]),
-                root: renderChild,
-                replacedTreeSlot: replaced,
+            const jsxChild = trackedCalculation();
+            calculationResultNode = renderReplacing({
+                nodeToReplace: calculationResultNode,
+                jsxNode: jsxChild,
             });
-        }), `view:calc:${JSON.stringify(mountIndex)}`);
+        }), `view:calc:` // TODO: figure out how to serialize where we are in the tree. Or maybe it doesn't matter
+        );
+        retain(resultEffect);
+        onUnmount.push(() => release(resultEffect));
         resultEffect();
-        return;
+        return calculationNode;
     }
-    if (isRenderComponent(root)) {
-        const Component = root.component;
+    if (isRenderComponent(jsxNode)) {
+        const onUnmount = [];
+        const componentNode = makeChildVNode({
+            parentNode: nodeToReplace.parentNode,
+            domParent: nodeToReplace.domParent,
+            jsxNode: jsxNode,
+            domNode: null,
+            onUnmount,
+        });
+        replaceVNode(nodeToReplace, componentNode);
+        // Create a virtual node for the result of the component render
+        let componentResultNode = makeEmptyVNode({
+            parentNode: componentNode,
+            domParent: componentNode.domParent,
+        });
+        componentNode.children.push(componentResultNode);
+        const Component = jsxNode.component;
         const resultEffect = name(effect(() => {
-            const onUnmount = [];
-            const onMount = [];
-            const renderChild = Component(Object.assign(Object.assign({}, (root.props || {})), { children: root.children }), {
+            const onComponentUnmount = [];
+            const onComponentMount = [];
+            const jsxChild = Component(Object.assign(Object.assign({}, (jsxNode.props || {})), { children: jsxNode.children }), {
                 onUnmount: (unmountCallback) => {
-                    onUnmount.push(unmountCallback);
+                    onComponentUnmount.push(unmountCallback);
                 },
                 onMount: (mountCallback) => {
-                    onMount.push(mountCallback);
+                    onComponentMount.push(mountCallback);
                 },
             });
-            // Note: We retain ourselves each time it's executed and
-            // release each time we are unmounted.
-            // On update (unmount followed by render), we want to keep this effect alive
-            // If unmounted (unmount not followed by render), we must be culled
-            setTreeSlot(treeSlot, mountIndex, makeTreeSlot({
-                renderChild,
-                domNode: null,
-                onUnmount: [() => release(resultEffect), ...onUnmount],
-            }));
-            // Hold on to the new effect and release on unmount
-            retain(resultEffect);
-            mountTo({
-                parentElement,
-                treeSlot,
-                mountIndex: mountIndex.concat([0]),
-                root: renderChild,
+            componentResultNode = renderReplacing({
+                nodeToReplace: componentResultNode,
+                jsxNode: jsxChild,
             });
-            onMount.forEach((mountCallback) => mountCallback());
-        }), `view:component:${root.component.name}:${JSON.stringify(mountIndex)}`);
+            onComponentMount.forEach((mountCallback) => mountCallback());
+        }), `view:component:${jsxNode.component.name}:` // TODO: figure out how to serialize where we are in the tree. Or maybe it doesn't matter
+        );
+        retain(resultEffect);
+        onUnmount.push(() => release(resultEffect));
         resultEffect();
-        return;
+        return componentNode;
     }
-    if (Array.isArray(root)) {
-        const items = root;
-        setTreeSlot(treeSlot, mountIndex, makeTreeSlot({
-            renderChild: root,
+    if (Array.isArray(jsxNode)) {
+        const items = jsxNode;
+        const arrayNode = makeChildVNode({
+            parentNode: nodeToReplace.parentNode,
+            domParent: nodeToReplace.domParent,
+            jsxNode,
             domNode: null,
             onUnmount: [],
-        }));
-        items.forEach((renderChild, childIndex) => {
-            mountTo({
-                parentElement,
-                treeSlot,
-                mountIndex: mountIndex.concat([childIndex]),
-                root: renderChild,
+        });
+        replaceVNode(nodeToReplace, arrayNode);
+        items.forEach((jsxChild) => {
+            renderAppending({
+                domParent: arrayNode.domParent,
+                parentNode: arrayNode,
+                jsxNode: jsxChild,
             });
         });
-        return;
+        return arrayNode;
     }
-    if (typeof root === 'function') {
-        setTreeSlot(treeSlot, mountIndex, makeTreeSlot({
-            renderChild: root,
+    if (typeof jsxNode === 'function') {
+        const functionVNode = makeChildVNode({
+            parentNode: nodeToReplace.parentNode,
+            domParent: nodeToReplace.domParent,
+            jsxNode: jsxNode,
             domNode: null,
             onUnmount: [],
-        }));
-        // TODO: warning: you tried to mount a function to an element? What does react do?
-        return;
+        });
+        replaceVNode(nodeToReplace, functionVNode);
+        log.warn('Attempted to render JSX node that was a function, not rendering anything');
+        return functionVNode;
     }
-    log.assertExhausted(root, 'unexpected render type');
+    log.assertExhausted(jsxNode, 'unexpected render type');
 }
-export function mount(parentElement, root) {
-    mountTo({
-        parentElement,
-        treeSlot: makeTreeSlot({
-            renderChild: null,
-            domNode: parentElement,
-            onUnmount: [],
-        }),
-        mountIndex: [0],
-        root,
+export function mount(parentElement, jsxNode) {
+    const rootNode = makeRootVNode({ domNode: parentElement });
+    renderAppending({
+        domParent: rootNode,
+        parentNode: rootNode,
+        jsxNode: jsxNode,
     });
 }
 export const Fragment = ({ children }) => children;

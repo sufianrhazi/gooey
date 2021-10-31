@@ -45,6 +45,6 @@ export declare function makeCalculation<Ret>(fn: () => Ret): Calculation<Ret>;
 export declare function makeEffect(fn: () => void): Calculation<void>;
 export declare function isCollection(thing: any): thing is Collection<unknown>;
 export declare function isCalculation(thing: any): thing is Calculation<unknown>;
-export declare function isEffect<T>(thing: Calculation<unknown>): boolean;
+export declare function isEffect(thing: Calculation<unknown>): boolean;
 export {};
 //# sourceMappingURL=types.d.ts.map

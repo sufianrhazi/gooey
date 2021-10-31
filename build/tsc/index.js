@@ -27,6 +27,7 @@ export function reset() {
     activeCalculations = [];
     calculationToInvalidationMap = new Map();
     globalDependencyGraph = new DAG();
+    nameMap = new WeakMap();
 }
 export function name(item, name) {
     nameMap.set(item, name);
@@ -110,11 +111,11 @@ export function collection(array) {
         }
         return removed;
     }
-    function pop(val) {
+    function pop() {
         const removed = splice(array.length - 1, 1);
         return removed[0];
     }
-    function shift(val) {
+    function shift() {
         const removed = splice(0, 1);
         return removed[0];
     }
@@ -151,7 +152,7 @@ export function collection(array) {
         //
         // Make it live in the global DAG:
         // - addCollectionDep(proxy, mapped);
-        const unobserve = proxy.observe((event) => {
+        proxy.observe((event) => {
             if (event.type === 'sort') {
                 // TODO: implement mapped sort (reposition items... somehow)
                 return;
