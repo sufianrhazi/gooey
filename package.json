@@ -1,6 +1,6 @@
 {
   "name": "@srhazi/revise",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "A minimal effort UI library",
   "main": "build/tsc/index.js",
   "type": "module",

@@ -479,15 +479,39 @@ function createElement(Constructor, props, ...children) {
   };
 }
 var boundEvents = new WeakMap();
+function setBooleanPropertyValue(element, key, value) {
+  if (element instanceof HTMLInputElement && (key === "checked" || key === "indeterminate") && element[key] !== value) {
+    element[key] = value;
+  }
+  if (element instanceof HTMLOptionElement && key == "selected" && element[key] !== value) {
+    element[key] = value;
+  }
+}
+function setStringPropertyValue(element, key, value) {
+  if (element instanceof HTMLInputElement && key === "value" && element[key] !== value) {
+    element[key] = value;
+  }
+  if (element instanceof HTMLTextAreaElement && key === "value" && element[key] !== value) {
+    element[key] = value;
+  }
+  if (element instanceof HTMLOptionElement && key === "value" && element[key] !== value) {
+    element[key] = value;
+  }
+}
 function setAttributeValue(element, key, value) {
   if (value === null || value === void 0 || value === false) {
     element.removeAttribute(key);
+    setBooleanPropertyValue(element, key, false);
+    setStringPropertyValue(element, key, "");
   } else if (value === true) {
     element.setAttribute(key, "");
+    setBooleanPropertyValue(element, key, true);
   } else if (typeof value === "string") {
     element.setAttribute(key, value);
+    setStringPropertyValue(element, key, value);
   } else if (typeof value === "number") {
     element.setAttribute(key, value.toString());
+    setStringPropertyValue(element, key, value.toString());
   } else if (key.startsWith("on:") && typeof value === "function") {
     const eventName = key.slice(3);
     let attributes = boundEvents.get(element);
@@ -700,6 +724,16 @@ function renderReplacing({ nodeToReplace, jsxNode }) {
         },
         onMount: (mountCallback) => {
           onComponentMount.push(mountCallback);
+        },
+        onEffect: (effectCallback) => {
+          const effectCalc = effect(effectCallback);
+          onComponentMount.push(() => {
+            retain(effectCalc);
+            effectCalc();
+          });
+          onComponentUnmount.push(() => {
+            release(effectCalc);
+          });
         }
       });
       componentResultNode = renderReplacing({
