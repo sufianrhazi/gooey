@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+        <title>Form inputs</title>
+        <style>
+body {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.target {
+    padding: 8px;
+    border: 1px dotted black;
+    margin: 8px 0;
+}
+.target--color input {
+    margin-bottom: 320px;
+}
+
+.target label {
+    display: block;
+}
+
+fieldset {
+    margin: 16px 0;
+}
+
+.log {
+    border: thin solid #aaa;
+    background-color: #ddd;
+    font-family: "Consolas", monospace;
+    font-size: 10px;
+    line-height: 1.2;
+    min-height: calc(12px * 5.5);
+    max-height: calc(12px * 25.5);
+    overflow-y: auto;
+}
+
+.color-block {
+    display: inline-block;
+    padding: 8px 0px;
+    min-height: 24px;
+    min-width: 24px;
+    border: 1px dashed solid;
+}
+
+.buttons {
+    margin: 8px 0;
+}
+.buttons button {
+    background-color: #ddd;
+    color: black;
+    border: thin black solid;
+    border-left: none;
+    border-radius: 0;
+    margin: 0;
+    padding: 4px 8px;
+    background-color: #eee;
+}
+.buttons button:disabled {
+    background-color: #888;
+}
+.buttons button:active {
+    background-color: #ddd;
+}
+.buttons button:first-of-type {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+    border-left: thin black solid;
+}
+.buttons button:last-of-type {
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+        </style>
+    </head>
+    <body>
+        <script src="form-inputs.js"></script>
+    </body>
+</html>

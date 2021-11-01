@@ -68,15 +68,65 @@ export function createElement<Props extends {}>(
 
 const boundEvents = new WeakMap<Element, Record<string, (ev: Event) => void>>();
 
+function setBooleanPropertyValue(
+    element: Element,
+    key: string,
+    value: boolean
+) {
+    if (
+        element instanceof HTMLInputElement &&
+        (key === 'checked' || key === 'indeterminate') &&
+        element[key] !== value
+    ) {
+        element[key] = value;
+    }
+    if (
+        element instanceof HTMLOptionElement &&
+        key == 'selected' &&
+        element[key] !== value
+    ) {
+        element[key] = value;
+    }
+}
+
+function setStringPropertyValue(element: Element, key: string, value: string) {
+    if (
+        element instanceof HTMLInputElement &&
+        key === 'value' &&
+        element[key] !== value
+    ) {
+        element[key] = value;
+    }
+    if (
+        element instanceof HTMLTextAreaElement &&
+        key === 'value' &&
+        element[key] !== value
+    ) {
+        element[key] = value;
+    }
+    if (
+        element instanceof HTMLOptionElement &&
+        key === 'value' &&
+        element[key] !== value
+    ) {
+        element[key] = value;
+    }
+}
+
 function setAttributeValue(element: Element, key: string, value: unknown) {
     if (value === null || value === undefined || value === false) {
         element.removeAttribute(key);
+        setBooleanPropertyValue(element, key, false);
+        setStringPropertyValue(element, key, '');
     } else if (value === true) {
         element.setAttribute(key, '');
+        setBooleanPropertyValue(element, key, true);
     } else if (typeof value === 'string') {
         element.setAttribute(key, value);
+        setStringPropertyValue(element, key, value);
     } else if (typeof value === 'number') {
         element.setAttribute(key, value.toString());
+        setStringPropertyValue(element, key, value.toString());
     } else if (key.startsWith('on:') && typeof value === 'function') {
         const eventName = key.slice(3);
         let attributes = boundEvents.get(element);
@@ -350,6 +400,16 @@ function renderReplacing({
                         },
                         onMount: (mountCallback) => {
                             onComponentMount.push(mountCallback);
+                        },
+                        onEffect: (effectCallback: () => void) => {
+                            const effectCalc = effect(effectCallback);
+                            onComponentMount.push(() => {
+                                retain(effectCalc);
+                                effectCalc();
+                            });
+                            onComponentUnmount.push(() => {
+                                release(effectCalc);
+                            });
                         },
                     }
                 );

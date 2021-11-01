@@ -5,10 +5,12 @@ type PropsWithChildren<P> = P & { children?: JSXNode[] };
 
 type OnUnmountCallback = () => void;
 type OnMountCallback = () => void;
+type EffectCallback = () => void;
 
 type ComponentListeners = {
     onUnmount: (callback: OnUnmountCallback) => void;
     onMount: (callback: OnMountCallback) => void;
+    onEffect: (callback: EffectCallback) => void;
 };
 export type Component<P extends {}> = (
     props: PropsWithChildren<P>,
