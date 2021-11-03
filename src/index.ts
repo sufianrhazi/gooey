@@ -3,6 +3,8 @@ import {
     TypeTag,
     Calculation,
     Model,
+    ModelEvent,
+    ModelObserver,
     Collection,
     CollectionEvent,
     CollectionObserver,
@@ -12,6 +14,7 @@ import {
     isCollection,
     makeCalculation,
     makeEffect,
+    ObserveKey,
 } from './types';
 import * as log from './log';
 export { setLogLevel } from './log';
@@ -72,48 +75,6 @@ export function reset() {
 export function name<T>(item: T, name: string): T {
     nameMap.set(item, name);
     return item;
-}
-
-export function model<T extends {}>(obj: T): Model<T> {
-    if (typeof obj !== 'object' || !obj) {
-        throw new InvariantError('model must be provided an object');
-    }
-
-    const fields: Map<string | number | symbol, ModelField<T>> = new Map();
-
-    const proxy = new Proxy(obj, {
-        get(target: any, key: string | symbol) {
-            if (key === TypeTag) {
-                return 'model';
-            }
-            let field = fields.get(key);
-            if (!field) {
-                field = {
-                    model: proxy,
-                    key,
-                };
-                fields.set(key, field);
-            }
-            addDepToCurrentCalculation(field);
-            return target[key];
-        },
-
-        set(target: any, key: string | number | symbol, value: any) {
-            let field = fields.get(key);
-            if (!field) {
-                field = {
-                    model: proxy,
-                    key,
-                };
-                fields.set(key, field);
-            }
-            processChange(field);
-            target[key] = value;
-            return true;
-        },
-    }) as Model<T>;
-
-    return proxy;
 }
 
 export function collection<T>(array: T[]): Collection<T> {
@@ -181,6 +142,14 @@ export function collection<T>(array: T[]): Collection<T> {
         return array.length;
     }
 
+    function reject(func: (item: T, index: number) => boolean) {
+        for (let i = proxy.length - 1; i >= 0; --i) {
+            if (!func(proxy[i], i)) {
+                proxy.splice(i, 1);
+            }
+        }
+    }
+
     function sort(sorter: (a: T, b: T) => number): T[] {
         // TODO: figure out how to send position differences to observer
         array.sort(sorter);
@@ -209,7 +178,7 @@ export function collection<T>(array: T[]): Collection<T> {
         //
         // Make it live in the global DAG:
         // - addCollectionDep(proxy, mapped);
-        proxy.observe((event) => {
+        proxy[ObserveKey]((event) => {
             if (event.type === 'sort') {
                 // TODO: implement mapped sort (reposition items... somehow)
                 return;
@@ -243,8 +212,9 @@ export function collection<T>(array: T[]): Collection<T> {
         shift,
         push,
         unshift,
-        observe,
+        [ObserveKey]: observe,
         sort,
+        reject,
         mapView,
     };
 
@@ -312,6 +282,161 @@ export function collection<T>(array: T[]): Collection<T> {
 
     return proxy;
 }
+
+const ownKeysField = Symbol('ownKeys');
+export function model<T extends {}>(obj: T): Model<T> {
+    if (typeof obj !== 'object' || !obj) {
+        throw new InvariantError('model must be provided an object');
+    }
+
+    const fields: Map<string | number | symbol, ModelField<T>> = new Map();
+    let observers: ModelObserver[] = [];
+
+    function notify(event: ModelEvent) {
+        observers.forEach((observer) => {
+            observer(event);
+        });
+    }
+
+    function getField(key: string | number | symbol): ModelField<T> {
+        let field = fields.get(key);
+        if (!field) {
+            field = {
+                model: proxy,
+                key,
+            };
+            fields.set(key, field);
+        }
+        return field;
+    }
+
+    const knownFields: Set<string | number | symbol> = new Set(
+        Object.keys(obj)
+    );
+
+    function observe(observer: ModelObserver) {
+        observers.push(observer);
+        observer({
+            type: 'init',
+            keys: Object.keys(obj),
+        });
+        return () => {
+            observers = observers.filter((obs) => obs !== observer);
+        };
+    }
+
+    const methods = {
+        [ObserveKey]: observe,
+    };
+
+    const proxy = new Proxy(obj, {
+        get(target: any, key: string | symbol) {
+            if (key === TypeTag) {
+                return 'model';
+            }
+            if (key in methods) {
+                return (methods as any)[key];
+            }
+            const field = getField(key);
+            addDepToCurrentCalculation(field);
+            return target[key];
+        },
+
+        has(target: any, key: string | symbol) {
+            if (key === TypeTag) {
+                return true;
+            }
+            if (key in methods) {
+                return true;
+            }
+            const field = getField(key);
+            addDepToCurrentCalculation(field);
+            return knownFields.has(key);
+        },
+
+        set(target: any, key: string | number | symbol, value: any) {
+            const field = getField(key);
+            const changed = !knownFields.has(key) || target[key] !== value;
+            target[key] = value;
+            if (changed) {
+                processChange(field);
+                if (!knownFields.has(key)) {
+                    knownFields.add(key);
+                    notify({ type: 'add', key });
+                    if (typeof key !== 'symbol') {
+                        processChange(getField(ownKeysField));
+                    }
+                }
+                notify({ type: 'set', key, value });
+            }
+            return true;
+        },
+
+        deleteProperty(target: any, key: string | number | symbol) {
+            const field = getField(key);
+            const changed = knownFields.has(key);
+            if (changed) {
+                processChange(field);
+                knownFields.delete(key);
+                if (typeof key !== 'symbol') {
+                    processChange(getField(ownKeysField));
+                }
+                notify({ type: 'delete', key });
+            }
+            delete target[key];
+            return true;
+        },
+
+        ownKeys(target: any) {
+            const field = getField(ownKeysField);
+            addDepToCurrentCalculation(field);
+            return Reflect.ownKeys(target);
+        },
+    }) as Model<T>;
+
+    return proxy;
+}
+model.keys = function keys<T>(target: Model<T>): Readonly<Collection<string>> {
+    const view: Collection<string> = collection([]);
+
+    const keysSet = new Set<string>();
+
+    function addKey(key: string | number | symbol) {
+        if (typeof key === 'number' || typeof key === 'string') {
+            const stringKey = key.toString();
+            if (!keysSet.has(stringKey)) {
+                keysSet.add(stringKey);
+                view.push(stringKey);
+            }
+        }
+    }
+
+    function delKey(key: string | number | symbol) {
+        if (typeof key === 'number' || typeof key === 'string') {
+            const stringKey = key.toString();
+            if (keysSet.has(stringKey)) {
+                keysSet.delete(stringKey);
+                view.reject((k) => k !== stringKey);
+            }
+        }
+    }
+
+    target[ObserveKey]((event) => {
+        if (event.type === 'init') {
+            event.keys.forEach((key) => {
+                addKey(key);
+            });
+        }
+        if (event.type === 'add') {
+            addKey(event.key);
+        }
+        if (event.type === 'delete') {
+            delKey(event.key);
+        }
+    });
+
+    return view;
+};
 
 export function calc<Ret>(func: () => Ret): Calculation<Ret> {
     return trackCalculation(func, false);

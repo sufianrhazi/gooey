@@ -3,6 +3,8 @@ export class InvariantError extends Error {}
 export const TypeTag = Symbol('reviseType');
 const CalculationTypeTag = Symbol('calculationType');
 
+export const ObserveKey = Symbol('observe');
+
 export type Ref<T> = {
     [TypeTag]: 'ref';
     current?: T;
@@ -34,18 +36,38 @@ export type CollectionEvent<T> =
 
 export type CollectionObserver<T> = (event: CollectionEvent<T>) => void;
 
+export type ModelEvent =
+    | {
+          type: 'add';
+          key: string | number | symbol;
+      }
+    | {
+          type: 'set';
+          key: string | number | symbol;
+          value: any;
+      }
+    | {
+          type: 'delete';
+          key: string | number | symbol;
+      }
+    | {
+          type: 'init';
+          keys: (string | number | symbol)[];
+      };
+export type ModelObserver = (event: ModelEvent) => void;
+
 export type Model<T> = T & {
     [TypeTag]: 'model';
+    [ObserveKey]: (observer: ModelObserver) => () => void;
 };
 
 type MappingFunction<T, V> = (item: T, index: number, array: T[]) => V;
 export const OnCollectionRelease = Symbol('OnCollectionRelease');
 export interface Collection<T> extends Array<T> {
     [TypeTag]: 'collection';
-    observe(observer: CollectionObserver<T>): () => void;
+    [ObserveKey]: (observer: CollectionObserver<T>) => () => void;
     mapView<V>(fn: MappingFunction<T, V>): Readonly<Collection<V>>;
-    retain(): void;
-    release(): void;
+    reject(fn: (item: T, index: number) => boolean): void;
     [OnCollectionRelease]: (fn: () => void) => void;
 }
 export type Calculation<Result> = (() => Result) & {

@@ -1,5 +1,11 @@
 import { name, effect, retain, release } from './index';
-import { Calculation, isCalculation, isCollection, isRef } from './types';
+import {
+    Calculation,
+    isCalculation,
+    isCollection,
+    isRef,
+    ObserveKey,
+} from './types';
 import * as log from './log';
 import {
     Component,
@@ -286,7 +292,7 @@ function renderReplacing({
         });
         replaceVNode(nodeToReplace, collectionNode);
 
-        const unobserve = trackedCollection.observe((event) => {
+        const unobserve = trackedCollection[ObserveKey]((event) => {
             if (event.type === 'init') {
                 const { items } = event;
                 items.forEach((jsxChild) => {
