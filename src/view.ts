@@ -1,4 +1,5 @@
-import { name, effect, retain, release } from './index';
+import { effect, retain, release } from './calc';
+import { name } from './debug';
 import {
     Calculation,
     isCalculation,
@@ -23,18 +24,6 @@ import {
     makeRootVNode,
     makeEmptyVNode,
 } from './vnode';
-
-declare global {
-    // eslint-disable-next-line @typescript-eslint/no-namespace
-    namespace JSX {
-        interface IntrinsicElements {
-            [unknownElement: string]: {
-                'on:click': (event: MouseEvent) => void;
-            } & any;
-        }
-        type Element = JSXNode;
-    }
-}
 
 export function createElement(
     Constructor: string,

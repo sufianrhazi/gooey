@@ -167,3 +167,15 @@ export function isRenderComponent(
         jsxNode.type === 'component'
     );
 }
+
+declare global {
+    // eslint-disable-next-line @typescript-eslint/no-namespace
+    namespace JSX {
+        interface IntrinsicElements {
+            [unknownElement: string]: {
+                'on:click': (event: MouseEvent) => void;
+            } & any;
+        }
+        type Element = JSXNode;
+    }
+}
