@@ -6,7 +6,6 @@ import Revise, {
     collection,
     flush,
     Component,
-    name,
 } from './index';
 import * as log from './log';
 import { suite, test, beforeEach, assert } from './test';
@@ -90,15 +89,7 @@ suite('mount static', () => {
 
 suite('mount calculations', () => {
     test('renders child calculations as their raw value', () => {
-        mount(
-            testRoot,
-            <div id="ok">
-                {name(
-                    calc(() => 'hello'),
-                    'hello-test'
-                )}
-            </div>
-        );
+        mount(testRoot, <div id="ok">{calc(() => 'hello')}</div>);
         assert.deepEqual(
             (testRoot.querySelector('#ok')!.childNodes[0] as Text).data,
             'hello'
@@ -106,16 +97,7 @@ suite('mount calculations', () => {
     });
 
     test('renders attribute calculations as their raw value', () => {
-        mount(
-            testRoot,
-            <div
-                id="ok"
-                data-whatever={name(
-                    calc(() => 'hello'),
-                    'hello-test'
-                )}
-            />
-        );
+        mount(testRoot, <div id="ok" data-whatever={calc(() => 'hello')} />);
         assert.deepEqual(
             testRoot.querySelector('#ok')!.getAttribute('data-whatever'),
             'hello'
@@ -123,16 +105,8 @@ suite('mount calculations', () => {
     });
 
     test('rerenders child calculations on flush', () => {
-        const state = name(model({ value: 'hello' }), 'state');
-        mount(
-            testRoot,
-            <div id="ok">
-                {name(
-                    calc(() => state.value),
-                    'hello-test'
-                )}
-            </div>
-        );
+        const state = model({ value: 'hello' });
+        mount(testRoot, <div id="ok">{calc(() => state.value)}</div>);
         state.value = 'goodbye';
 
         assert.deepEqual(
@@ -150,16 +124,7 @@ suite('mount calculations', () => {
 
     test('rerenders attribute calculations on flush', () => {
         const state = model({ value: 'hello' });
-        mount(
-            testRoot,
-            <div
-                id="ok"
-                data-value={name(
-                    calc(() => state.value),
-                    'hello-test'
-                )}
-            />
-        );
+        mount(testRoot, <div id="ok" data-value={calc(() => state.value)} />);
         state.value = 'goodbye';
 
         assert.deepEqual(
@@ -177,15 +142,7 @@ suite('mount calculations', () => {
 
     test('child rerenders do not change DOM node reference', () => {
         const state = model({ value: 'hello' });
-        mount(
-            testRoot,
-            <div id="ok">
-                {name(
-                    calc(() => state.value),
-                    'hello-test'
-                )}
-            </div>
-        );
+        mount(testRoot, <div id="ok">{calc(() => state.value)}</div>);
         state.value = 'goodbye';
 
         const okBefore = testRoot.querySelector('#ok');
@@ -197,16 +154,7 @@ suite('mount calculations', () => {
 
     test('attribute rerenders do not change DOM node reference', () => {
         const state = model({ value: 'hello' });
-        mount(
-            testRoot,
-            <div
-                id="ok"
-                data-value={name(
-                    calc(() => state.value),
-                    'hello-test'
-                )}
-            />
-        );
+        mount(testRoot, <div id="ok" data-value={calc(() => state.value)} />);
         state.value = 'goodbye';
 
         const okBefore = testRoot.querySelector('#ok');
@@ -231,13 +179,7 @@ suite('mount components', () => {
             name: 'world',
         });
         const Greet: Component<{}> = () => (
-            <p>
-                Hello{' '}
-                {name(
-                    calc(() => state.name),
-                    'hello-test'
-                )}
-            </p>
+            <p>Hello {calc(() => state.name)}</p>
         );
         mount(testRoot, <Greet />);
 
@@ -272,15 +214,7 @@ suite('mount components', () => {
             name: 'world',
         });
         const Greet: Component<{}> = () => {
-            return (
-                <p id="p">
-                    Hello{' '}
-                    {name(
-                        calc(() => state.name),
-                        'hello-test'
-                    )}
-                </p>
-            );
+            return <p id="p">Hello {calc(() => state.name)}</p>;
         };
         mount(testRoot, <Greet />);
 
@@ -330,14 +264,8 @@ suite('mount arrays', () => {
         mount(
             testRoot,
             <div>
-                {name(
-                    calc(() => items.map((item) => item)),
-                    'arr-1'
-                )}
-                {name(
-                    calc(() => items.map((item) => item)),
-                    'arr-2'
-                )}
+                {calc(() => items.map((item) => item))}
+                {calc(() => items.map((item) => item))}
             </div>
         );
 
@@ -381,15 +309,9 @@ suite('mount arrays', () => {
             testRoot,
             <div>
                 foo
-                {name(
-                    calc(() => items.map((item, idx) => `A:${item}:${idx} `)),
-                    'arr-1'
-                )}
+                {calc(() => items.map((item, idx) => `A:${item}:${idx} `))}
                 bar
-                {name(
-                    calc(() => items.map((item, idx) => `B:${item}:${idx} `)),
-                    'arr-2'
-                )}
+                {calc(() => items.map((item, idx) => `B:${item}:${idx} `))}
                 baz
             </div>
         );
@@ -431,30 +353,24 @@ suite('mount arrays', () => {
             testRoot,
             <div>
                 foo
-                {name(
-                    calc(() =>
-                        items.map((count) => {
-                            const array: string[] = [];
-                            for (let i = 0; i < count; ++i) {
-                                array.push(`A:${i + 1}/${count}`);
-                            }
-                            return array;
-                        })
-                    ),
-                    'arr-1'
+                {calc(() =>
+                    items.map((count) => {
+                        const array: string[] = [];
+                        for (let i = 0; i < count; ++i) {
+                            array.push(`A:${i + 1}/${count}`);
+                        }
+                        return array;
+                    })
                 )}
                 bar
-                {name(
-                    calc(() =>
-                        items.map((count) => {
-                            const array: string[] = [];
-                            for (let i = 0; i < count; ++i) {
-                                array.push(`B:${i + 1}/${count}`);
-                            }
-                            return array;
-                        })
-                    ),
-                    'arr-2'
+                {calc(() =>
+                    items.map((count) => {
+                        const array: string[] = [];
+                        for (let i = 0; i < count; ++i) {
+                            array.push(`B:${i + 1}/${count}`);
+                        }
+                        return array;
+                    })
                 )}
                 baz
             </div>

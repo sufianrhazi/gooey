@@ -462,6 +462,9 @@ function renderReplacing({
     log.assertExhausted(jsxNode, 'unexpected render type');
 }
 
+/**
+ * Mount the provided JSX to an element
+ */
 export function mount(parentElement: Element, jsxNode: JSXNode) {
     const rootNode = makeRootVNode({ domNode: parentElement });
     renderAppending({

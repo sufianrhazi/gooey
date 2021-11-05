@@ -5,6 +5,9 @@ const CalculationTypeTag = Symbol('calculationType');
 
 export const ObserveKey = Symbol('observe');
 
+/**
+ * A ref object that can be passed to native elements.
+ */
 export type Ref<T> = {
     [TypeTag]: 'ref';
     current?: T;
@@ -12,6 +15,10 @@ export type Ref<T> = {
 export function isRef(ref: any): ref is Ref<unknown> {
     return ref && ref[TypeTag] === 'ref';
 }
+
+/**
+ * Make a ref object that can be passed to native elements.
+ */
 export function ref<T>(val?: T): Ref<T> {
     return {
         [TypeTag]: 'ref',
@@ -56,20 +63,48 @@ export type ModelEvent =
       };
 export type ModelObserver = (event: ModelEvent) => void;
 
+/**
+ * A mutable object to hold state
+ */
 export type Model<T> = T & {
     [TypeTag]: 'model';
     [ObserveKey]: (observer: ModelObserver) => () => void;
 };
 
-type MappingFunction<T, V> = (item: T, index: number, array: T[]) => V;
+export type MappingFunction<T, V> = (item: T, index: number) => V;
+export type FilterFunction<T> = (item: T, index: number) => boolean;
+export type FlatMapFunction<T, V> = (item: T, index: number) => V[];
+
 export const OnCollectionRelease = Symbol('OnCollectionRelease');
+
+/**
+ * A mutable array to hold state, with some additional convenience methods
+ */
 export interface Collection<T> extends Array<T> {
     [TypeTag]: 'collection';
     [ObserveKey]: (observer: CollectionObserver<T>) => () => void;
-    mapView<V>(fn: MappingFunction<T, V>): Readonly<Collection<V>>;
+    mapView<V>(fn: MappingFunction<T, V>): View<V>;
+    filterView(fn: FilterFunction<T>): View<T>;
+    flatMapView<V>(fn: MappingFunction<T, V[]>): View<V>;
     reject(fn: (item: T, index: number) => boolean): void;
     [OnCollectionRelease]: (fn: () => void) => void;
 }
+
+/**
+ * A readonly array to hold projected state
+ */
+export interface View<T> extends ReadonlyArray<T> {
+    [TypeTag]: 'collection';
+    [ObserveKey]: (observer: CollectionObserver<T>) => () => void;
+    mapView<V>(fn: MappingFunction<T, V>): View<V>;
+    filterView(fn: FilterFunction<T>): View<T>;
+    flatMapView<V>(fn: MappingFunction<T, V[]>): View<V>;
+    [OnCollectionRelease]: (fn: () => void) => void;
+}
+
+/**
+ * A calculation cell that recalculates when dependencies change
+ */
 export type Calculation<Result> = (() => Result) & {
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
@@ -92,6 +127,10 @@ export function makeEffect(fn: () => void): Calculation<void> {
         [TypeTag]: 'calculation' as const,
         [CalculationTypeTag]: 'effect' as const,
     });
+}
+
+export function isModel(thing: any): thing is Model<unknown> {
+    return !!(thing && (thing as any)[TypeTag] === 'model');
 }
 
 export function isCollection(thing: any): thing is Collection<unknown> {

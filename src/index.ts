@@ -14,7 +14,6 @@ export {
     release,
     debug,
 } from './calc';
-export { name } from './debug';
 
 export {
     ref,

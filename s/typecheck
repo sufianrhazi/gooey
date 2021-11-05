@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")/.."
+# shellcheck disable=SC1091
+source "s/_tools.sh"
+
+echo_info "Cleaning..."
+s/clean
+
+node_modules/.bin/tsc --noEmit -p .

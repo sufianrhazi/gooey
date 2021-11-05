@@ -1,10 +1,12 @@
 import {
     Calculation,
     Collection,
+    Model,
     ModelField,
     isCalculation,
     isEffect,
     isCollection,
+    isModel,
 } from './types';
 
 let nameMap: WeakMap<any, string> = new WeakMap();
@@ -14,15 +16,24 @@ export function clearNames() {
 }
 
 export function debugNameFor(
-    item: Collection<unknown> | Calculation<unknown> | ModelField<unknown>
+    item:
+        | Collection<unknown>
+        | Calculation<unknown>
+        | Model<unknown>
+        | ModelField<unknown>
 ): string {
     if (isCollection(item)) {
-        return `coll:${nameMap.get(item) ?? '?'}`;
+        return `collection:${nameMap.get(item) ?? '?'}`;
     }
     if (isCalculation(item)) {
-        return `${isEffect(item) ? 'eff' : 'comp'}:${nameMap.get(item) ?? '?'}`;
+        return `${isEffect(item) ? 'effect' : 'calc'}:${
+            nameMap.get(item) ?? '?'
+        }`;
     }
-    return `model:${nameMap.get(item.model) ?? '?'}:${String(item.key)}`;
+    if (isModel(item)) {
+        return `model:${nameMap.get(item) ?? '?'}`;
+    }
+    return `field:${nameMap.get(item.model) ?? '?'}:${String(item.key)}`;
 }
 
 export function name<T>(item: T, name: string): T {

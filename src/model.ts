@@ -5,15 +5,17 @@ import {
     ModelEvent,
     ModelObserver,
     Collection,
+    View,
     ModelField,
     ObserveKey,
 } from './types';
 import { collection } from './collection';
 import { addDepToCurrentCalculation, processChange } from './calc';
+import { name, debugNameFor } from './debug';
 
 const ownKeysField = Symbol('ownKeys');
 
-export function model<T extends {}>(obj: T): Model<T> {
+export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
     if (typeof obj !== 'object' || !obj) {
         throw new InvariantError('model must be provided an object');
     }
@@ -34,6 +36,7 @@ export function model<T extends {}>(obj: T): Model<T> {
                 model: proxy,
                 key,
             };
+            if (debugName) name(field, debugName);
             fields.set(key, field);
         }
         return field;
@@ -123,10 +126,13 @@ export function model<T extends {}>(obj: T): Model<T> {
         },
     }) as Model<T>;
 
+    if (debugName) name(proxy, debugName);
+
     return proxy;
 }
-model.keys = function keys<T>(target: Model<T>): Readonly<Collection<string>> {
+model.keys = function keys<T>(target: Model<T>): View<string> {
     const view: Collection<string> = collection([]);
+    name(view, `keys(${debugNameFor(target)})`);
 
     const keysSet = new Set<string>();
 

@@ -41,6 +41,7 @@ const App = () => {
     return (
         <>
             <h1>Bag demo</h1>
+            <p>Key items:</p>
             <ul>
                 {model.keys(bag).mapView((key) => (
                     <li>
@@ -48,6 +49,29 @@ const App = () => {
                     </li>
                 ))}
             </ul>
+
+            <p>Filtered items:</p>
+            <ul>
+                {model.keys(bag)
+                    .filterView(key => (key.length % 2 === 0))
+                    .mapView((key) => (
+                        <li>
+                            {key} = {calc(() => bag[key])}
+                        </li>
+                    ))}
+            </ul>
+
+            <p>FlatMap items:</p>
+            <ul>
+                {model.keys(bag)
+                    .flatMapView(key => ([key, key]))
+                    .mapView((key) => (
+                        <li>
+                            {key} = {calc(() => bag[key])}
+                        </li>
+                    ))}
+            </ul>
+
             <p>
                 <label>
                     Key:{' '}

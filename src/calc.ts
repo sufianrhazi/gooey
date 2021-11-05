@@ -9,7 +9,7 @@ import {
 } from './types';
 import * as log from './log';
 import { DAG } from './dag';
-import { clearNames, debugNameFor } from './debug';
+import { clearNames, debugNameFor, name } from './debug';
 
 let activeCalculations: Calculation<unknown>[] = [];
 let calculationToInvalidationMap: Map<
@@ -24,21 +24,55 @@ let globalDependencyGraph = new DAG<
     Collection<unknown> | Calculation<unknown> | ModelField<unknown>
 >();
 
+let refcountMap: WeakMap<Calculation<any> | Collection<any>, number> =
+    new WeakMap();
+
+/**
+ * Reset all data to a clean slate.
+ */
 export function reset() {
     partialDag = new DAG();
     activeCalculations = [];
     calculationToInvalidationMap = new Map();
 
     globalDependencyGraph = new DAG();
+    refcountMap = new WeakMap();
     clearNames();
 }
 
-export function calc<Ret>(func: () => Ret): Calculation<Ret> {
-    return trackCalculation(func, false);
+/**
+ * Create a calculation cell: while the provided function is executed, all dependencies are tracked.
+ *
+ * The provided function will be recalculated when any of those dependencies are changed. The result of this function is
+ * treated as a dependency, so if recalculations change the result, any dependent calculations are recalculated.
+ */
+export function calc<Ret>(
+    func: () => Ret,
+    debugName?: string
+): Calculation<Ret> {
+    const calculation = trackCalculation(func, false);
+    if (debugName) name(calculation, debugName);
+    return calculation;
 }
 
-export function effect(func: () => void): Calculation<void> {
-    return trackCalculation(func, true);
+/**
+ * Create an effect cell: while the provided function is executed, all dependencies are tracked.
+ *
+ * The provided function will be re-executed when any of those dependencies are changed.
+ *
+ * Effect cells are not be added as dependencies to the current computation.
+ *
+ * Note: Since nothing depends on created effects, they must be be manually retained and released if you want the effect
+ * to re-run when its dependencies change. Failure to do so will not automatically re-run the effect (which may be
+ * desired if you want to trigger behavior only once within a computation)
+ */
+export function effect(
+    func: () => void,
+    debugName?: string
+): Calculation<void> {
+    const calculation = trackCalculation(func, true);
+    if (debugName) name(calculation, debugName);
+    return calculation;
 }
 
 function trackCalculation<Ret>(
@@ -170,6 +204,14 @@ type Listener = () => void;
 let needsFlush = false;
 
 const listeners: Set<Listener> = new Set();
+
+/**
+ * Call provided callback when any pending calculations are created. Use to configure how/when the application flushes calculations.
+ *
+ * If any pending calculations are needed when this function is called, the provided callback is called synchronously.
+ *
+ * Example: subscribe(() => setTimeout(() => flush(), 0));
+ */
 export function subscribe(listener: Listener): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);
@@ -185,7 +227,9 @@ function notify() {
     });
 }
 
-// build_partial_DAG
+/**
+ * Recalculate all pending calculations.
+ */
 export function flush() {
     if (!needsFlush) {
         return;
@@ -214,25 +258,65 @@ export function flush() {
     });
 }
 
+/**
+ * Retain a calculation (increase the refcount)
+ */
 export function retain(item: Calculation<any> | Collection<any>) {
-    log.debug('retain', debugNameFor(item));
-    if (!globalDependencyGraph.hasNode(item)) {
-        globalDependencyGraph.addNode(item);
+    const refcount = refcountMap.get(item) ?? 0;
+    const newRefcount = refcount + 1;
+    if (refcount === 0) {
+        log.debug(
+            `retain ${debugNameFor(
+                item
+            )} retained; refcount ${refcount} -> ${newRefcount}`
+        );
+        if (!globalDependencyGraph.hasNode(item)) {
+            globalDependencyGraph.addNode(item);
+        }
+        globalDependencyGraph.retain(item);
+    } else {
+        log.debug(
+            `retain ${debugNameFor(
+                item
+            )} incremented; refcount ${refcount} -> ${newRefcount}`
+        );
     }
-    globalDependencyGraph.retain(item);
+    refcountMap.set(item, newRefcount);
 }
 
+/**
+ * Release a calculation (decrease the refcount). If the refcount reaches zero, the calculation will be garbage
+ * collected.
+ */
 export function release(item: Calculation<any> | Collection<any>) {
-    log.debug('release', debugNameFor(item));
-    globalDependencyGraph.release(item);
-
-    // Can probably incrementally implement garbage collection via:
-    //
-    // Move retain/release into the DAG and
-    // - ADD a -> b means a is retained
-    // - DEL a -> b means a is released
+    const refcount = refcountMap.get(item) ?? 0;
+    const newRefcount = Math.min(refcount - 1, 0);
+    if (refcount < 1) {
+        log.error(
+            `release called on unretained item ${debugNameFor(item)}`,
+            item
+        );
+    }
+    if (newRefcount < 1) {
+        log.debug(
+            `release ${debugNameFor(
+                item
+            )} released; refcount ${refcount} -> ${newRefcount}`
+        );
+        globalDependencyGraph.release(item);
+    } else {
+        log.debug(
+            `release ${debugNameFor(
+                item
+            )} decremented; refcount ${refcount} -> ${newRefcount}`
+        );
+    }
+    refcountMap.set(item, newRefcount);
 }
 
+/**
+ * Return a graphviz formatted directed graph
+ */
 export function debug(): string {
     return globalDependencyGraph.graphviz((id, item) => {
         return `${id}\n${debugNameFor(item)}`;
