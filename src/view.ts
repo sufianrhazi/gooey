@@ -1,5 +1,5 @@
 import { effect, retain, release } from './calc';
-import { name } from './debug';
+import { debugNameFor } from './debug';
 import {
     Calculation,
     isCalculation,
@@ -222,13 +222,10 @@ function renderReplacing({
                     }
                 }
                 if (isCalculation(value)) {
-                    const boundEffect = name(
-                        effect(() => {
-                            const computedValue = value();
-                            setAttributeValue(element, key, computedValue);
-                        }),
-                        `view:bindAttribute:${key}:` // TODO: figure out how to serialize where we are in the tree. Or maybe it doesn't matter
-                    );
+                    const boundEffect = effect(() => {
+                        const computedValue = value();
+                        setAttributeValue(element, key, computedValue);
+                    }, `viewattr:${key}`);
                     retain(boundEffect);
                     boundEffects.push(boundEffect);
                     boundEffect();
@@ -343,17 +340,14 @@ function renderReplacing({
         });
         calculationNode.children.push(calculationResultNode);
 
-        const resultEffect = name(
-            effect(() => {
-                const jsxChild = trackedCalculation();
+        const resultEffect = effect(() => {
+            const jsxChild = trackedCalculation();
 
-                calculationResultNode = renderReplacing({
-                    nodeToReplace: calculationResultNode,
-                    jsxNode: jsxChild,
-                });
-            }),
-            `view:calc:` // TODO: figure out how to serialize where we are in the tree. Or maybe it doesn't matter
-        );
+            calculationResultNode = renderReplacing({
+                nodeToReplace: calculationResultNode,
+                jsxNode: jsxChild,
+            });
+        }, `viewcalc:${debugNameFor(jsxNode) ?? 'node'}`);
 
         retain(resultEffect);
         onUnmount.push(() => release(resultEffect));
@@ -380,44 +374,49 @@ function renderReplacing({
         componentNode.children.push(componentResultNode);
 
         const Component = jsxNode.component;
-        const resultEffect = name(
-            effect(() => {
-                const onComponentUnmount: Function[] = [];
-                const onComponentMount: Function[] = [];
-                const jsxChild = Component(
-                    {
-                        ...(jsxNode.props || {}),
-                        children: jsxNode.children,
+        const resultEffect = effect(() => {
+            const onComponentUnmount: Function[] = [];
+            const onComponentMount: Function[] = [];
+            const jsxChild = Component(
+                {
+                    ...(jsxNode.props || {}),
+                    children: jsxNode.children,
+                },
+                {
+                    onUnmount: (unmountCallback) => {
+                        onComponentUnmount.push(unmountCallback);
                     },
-                    {
-                        onUnmount: (unmountCallback) => {
-                            onComponentUnmount.push(unmountCallback);
-                        },
-                        onMount: (mountCallback) => {
-                            onComponentMount.push(mountCallback);
-                        },
-                        onEffect: (effectCallback: () => void) => {
-                            const effectCalc = effect(effectCallback);
-                            onComponentMount.push(() => {
-                                retain(effectCalc);
-                                effectCalc();
-                            });
-                            onComponentUnmount.push(() => {
-                                release(effectCalc);
-                            });
-                        },
-                    }
-                );
+                    onMount: (mountCallback) => {
+                        onComponentMount.push(mountCallback);
+                    },
+                    onEffect: (
+                        effectCallback: () => void,
+                        debugName?: string
+                    ) => {
+                        const effectCalc = effect(
+                            effectCallback,
+                            `componenteffect:${jsxNode.component.name}:${
+                                debugName ?? onComponentMount.length
+                            }`
+                        );
+                        onComponentMount.push(() => {
+                            retain(effectCalc);
+                            effectCalc();
+                        });
+                        onComponentUnmount.push(() => {
+                            release(effectCalc);
+                        });
+                    },
+                }
+            );
 
-                componentResultNode = renderReplacing({
-                    nodeToReplace: componentResultNode,
-                    jsxNode: jsxChild,
-                });
+            componentResultNode = renderReplacing({
+                nodeToReplace: componentResultNode,
+                jsxNode: jsxChild,
+            });
 
-                onComponentMount.forEach((mountCallback) => mountCallback());
-            }),
-            `view:component:${jsxNode.component.name}:` // TODO: figure out how to serialize where we are in the tree. Or maybe it doesn't matter
-        );
+            onComponentMount.forEach((mountCallback) => mountCallback());
+        }, `component:${jsxNode.component.name}`);
 
         retain(resultEffect);
         onUnmount.push(() => release(resultEffect));

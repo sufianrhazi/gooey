@@ -285,12 +285,10 @@ export class DAG<Type extends object> {
     graphviz(makeName: (label: string, item: Type) => string) {
         const lines = ['digraph dag {'];
         Object.entries(this.nodes).forEach(([nodeId, node]) => {
+            if (isSentinel(node)) return;
             const props: Record<string, string> = {
-                label: isSentinel(node) ? '<ROOT>' : makeName(nodeId, node),
+                label: makeName(nodeId, node),
             };
-            if (isSentinel(node)) {
-                props.shape = 'circle';
-            }
             lines.push(
                 `  item_${nodeId} [${Object.entries(props)
                     .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
@@ -299,6 +297,11 @@ export class DAG<Type extends object> {
         });
         Object.entries(this.edgeMap).forEach(([fromNodeId, toNodeMap]) => {
             Object.keys(toNodeMap).forEach((toNodeId) => {
+                if (
+                    toNodeId === this.sentinelId ||
+                    fromNodeId === this.sentinelId
+                )
+                    return;
                 lines.push(`  item_${fromNodeId} -> item_${toNodeId};`);
             });
         });

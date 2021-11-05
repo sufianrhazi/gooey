@@ -16,14 +16,23 @@
     "url": "https://git.abstract.properties/revise.git"
   },
   "devDependencies": {
+    "@egjs/hammerjs": "^2.0.17",
     "@types/lodash": "^4.14.174",
+    "@types/vis": "^4.21.22",
     "@typescript-eslint/eslint-plugin": "^5.2.0",
     "@typescript-eslint/parser": "^5.2.0",
+    "component-emitter": "^1.3.0",
     "esbuild": "^0.13.2",
     "eslint": "^8.1.0",
     "eslint-plugin-react": "^7.26.1",
+    "keycharm": "^0.4.0",
     "lodash": "^4.17.21",
     "prettier": "^2.4.1",
-    "typescript": "^4.4.3"
+    "timsort": "^0.3.0",
+    "typescript": "^4.4.3",
+    "uuid": "^8.3.2",
+    "vis-data": "^7.1.2",
+    "vis-network": "^9.1.0",
+    "vis-util": "^5.0.2"
   }
 }

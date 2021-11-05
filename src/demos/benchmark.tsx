@@ -7,7 +7,12 @@ import Revise, {
     Component,
     Model,
     Collection,
+    subscribe,
 } from '../index';
+
+// Disable default flushing
+// eslint-disable-next-line @typescript-eslint/no-empty-function
+subscribe(() => {});
 
 function _random(max: number): number {
     return Math.round(Math.random() * 1000) % max;

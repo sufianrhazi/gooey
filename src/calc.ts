@@ -202,29 +202,31 @@ export function processChange(item: ModelField<unknown>) {
 
 type Listener = () => void;
 let needsFlush = false;
-
-const listeners: Set<Listener> = new Set();
+let subscribeListener: Listener = () => setTimeout(() => flush(), 0);
 
 /**
  * Call provided callback when any pending calculations are created. Use to configure how/when the application flushes calculations.
  *
  * If any pending calculations are needed when this function is called, the provided callback is called synchronously.
  *
- * Example: subscribe(() => setTimeout(() => flush(), 0));
+ * By default, the subscribe mechanism is to call flush() on setTimeout. Calling subscribe removes this default and
+ * replaces it with whatever mechanism you'd like.
+ *
+ * Example: subscribe(() => requestAnimationFrame(() => flush()));
  */
-export function subscribe(listener: Listener): () => void {
-    listeners.add(listener);
-    return () => listeners.delete(listener);
+export function subscribe(listener: Listener): void {
+    subscribeListener = listener;
+    if (needsFlush) {
+        notify();
+    }
 }
 
 function notify() {
-    listeners.forEach((listener) => {
-        try {
-            listener();
-        } catch (e) {
-            log.exception(e, 'unhandled exception in subscriber');
-        }
-    });
+    try {
+        subscribeListener();
+    } catch (e) {
+        log.exception(e, 'uncaught exception in notify');
+    }
 }
 
 /**

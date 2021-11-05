@@ -1,8 +1,6 @@
 import Revise, {
     Fragment,
     Component,
-    subscribe,
-    flush,
     ref,
     mount,
     model,
@@ -10,8 +8,6 @@ import Revise, {
     collection,
     calc,
 } from '../index';
-
-subscribe(() => setTimeout(flush, 0));
 
 const Log: Component<{ messages: Collection<string> }> = (
     { messages },

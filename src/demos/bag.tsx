@@ -3,23 +3,11 @@ import Revise, {
     Fragment,
     Model,
     model,
-    collection,
     calc,
-    flush,
-    debug,
-    subscribe,
-    Component,
-    Collection,
     setLogLevel,
 } from '../index';
 
-/*
- * Initialize flush subscription, so everything automatically updates on next event loop
- */
 setLogLevel('debug');
-subscribe(() => {
-    setTimeout(() => flush(), 0);
-});
 
 const App = () => {
     const bag: Model<Record<string, string>> = model(
@@ -52,8 +40,9 @@ const App = () => {
 
             <p>Filtered items:</p>
             <ul>
-                {model.keys(bag)
-                    .filterView(key => (key.length % 2 === 0))
+                {model
+                    .keys(bag)
+                    .filterView((key) => key.length % 2 === 0)
                     .mapView((key) => (
                         <li>
                             {key} = {calc(() => bag[key])}
@@ -63,8 +52,9 @@ const App = () => {
 
             <p>FlatMap items:</p>
             <ul>
-                {model.keys(bag)
-                    .flatMapView(key => ([key, key]))
+                {model
+                    .keys(bag)
+                    .flatMapView((key) => [key, key])
                     .mapView((key) => (
                         <li>
                             {key} = {calc(() => bag[key])}

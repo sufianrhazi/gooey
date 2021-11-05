@@ -4,23 +4,17 @@ import Revise, {
     Ref,
     ref,
     model,
+    Model,
     collection,
     calc,
-    flush,
     debug,
-    subscribe,
     Component,
     Collection,
     setLogLevel,
 } from '../index';
+import * as vis from 'vis-network/esnext';
 
-/*
- * Initialize flush subscription, so everything automatically updates on next event loop
- */
 setLogLevel('debug');
-subscribe(() => {
-    setTimeout(() => flush(), 0);
-});
 
 ////////////////////////////////////////////////////////////////////////////////
 // Application State
@@ -35,23 +29,24 @@ interface TodoList {
     items: Collection<TodoItem>;
 }
 
-const globalState: TodoList = model({
-    name: 'Groceries',
-    items: collection([
-        model({
-            done: false,
-            task: 'apples',
-        }),
-        model({
-            done: false,
-            task: 'bananas',
-        }),
-        model({
-            done: false,
-            task: 'celery',
-        }),
-    ]),
-});
+function makeTodoListItem(task: string): Model<TodoItem> {
+    return model({ done: false, task }, `TodoItem:${task}`);
+}
+
+const globalState: TodoList = model(
+    {
+        name: 'Groceries',
+        items: collection(
+            [
+                makeTodoListItem('apples'),
+                makeTodoListItem('bananas'),
+                makeTodoListItem('celery'),
+            ],
+            'TodoListItems'
+        ),
+    },
+    'TodoList'
+);
 // Exported to window, so you can play with it in the console!
 (window as any).globalState = globalState;
 
@@ -70,14 +65,16 @@ const TodoItem: Component<{ item: TodoItem }> = ({ item }) => {
                     type="checkbox"
                     class="form-check-input me-3"
                     on:change={onChange}
-                    checked={calc(() => item.done)}
+                    checked={calc(() => item.done, 'ItemCheckbox')}
                 />
                 <span
-                    style={calc(() =>
-                        item.done ? 'text-decoration: line-through' : ''
+                    style={calc(
+                        () =>
+                            item.done ? 'text-decoration: line-through' : '',
+                        'ItemStyle'
                     )}
                 >
-                    {calc(() => item.task)}
+                    {calc(() => item.task, 'ItemName')}
                 </span>
             </label>
         </li>
@@ -88,10 +85,12 @@ const TodoList = () => {
     return (
         <div class="my-2">
             <ul class="list-group">
-                {calc(() =>
-                    globalState.items.mapView((item) => (
-                        <TodoItem item={item} />
-                    ))
+                {calc(
+                    () =>
+                        globalState.items.mapView((item) => (
+                            <TodoItem item={item} />
+                        )),
+                    'ItemList'
                 )}
             </ul>
         </div>
@@ -158,8 +157,9 @@ const TodoControls: Component<{}> = (_props, { onMount }) => {
             <div class="input-group mb-3">
                 <button
                     class="btn btn-secondary"
-                    disabled={calc(() =>
-                        globalState.items.every((item) => !item.done)
+                    disabled={calc(
+                        () => globalState.items.every((item) => !item.done),
+                        'ClearButtonDisabled'
                     )}
                     on:click={onClickClear}
                 >
@@ -171,6 +171,7 @@ const TodoControls: Component<{}> = (_props, { onMount }) => {
 };
 
 const App = () => {
+    const graphvizContainerRef = ref<HTMLElement | undefined>();
     const onClickMutate = () => {
         globalState.items.forEach((item) => {
             item.done = Math.random() < 0.5;
@@ -179,24 +180,52 @@ const App = () => {
     };
 
     const onClickDebug = () => {
-        console.log(debug());
+        if (!graphvizContainerRef.current) return;
+        const parsedData = vis.parseDOTNetwork(debug());
+
+        const data = {
+            nodes: parsedData.nodes,
+            edges: parsedData.edges,
+        };
+
+        const options = parsedData.options;
+        options.width = '1024px';
+        options.height = '1024px';
+        options.layout = {
+            hierarchical: {
+                direction: 'UD',
+                sortMethod: 'directed',
+                shakeTowards: 'leaves',
+            },
+        };
+
+        // create a network
+        new vis.Network(graphvizContainerRef.current, data, options);
     };
 
     return (
-        <div class="container">
-            <h1>List: {calc(() => globalState.name)}</h1>
-            <TodoList />
-            <TodoControls />
-            <hr class="my-4 border border-2 border-dark" />
-            <div class="input-group mb-3">
-                <button class="btn btn-warning" on:click={onClickMutate}>
-                    Mutate items
-                </button>
-                <button class="btn btn-outline-warning" on:click={onClickDebug}>
-                    Write graphviz dot to console
-                </button>
+        <>
+            <div class="container">
+                <h1>List: {calc(() => globalState.name, 'ListName')}</h1>
+                <TodoList />
+                <TodoControls />
+                <hr class="my-4 border border-2 border-dark" />
+                <div class="input-group mb-3">
+                    <button class="btn btn-warning" on:click={onClickMutate}>
+                        Mutate items
+                    </button>
+                    <button
+                        class="btn btn-outline-warning"
+                        on:click={onClickDebug}
+                    >
+                        Render graphviz
+                    </button>
+                </div>
             </div>
-        </div>
+            <div class="container-fluid d-flex my-4 justify-content-center">
+                <div class="border" ref={graphvizContainerRef}></div>
+            </div>
+        </>
     );
 };
 
