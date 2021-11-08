@@ -7,6 +7,9 @@ import {
     CollectionObserver,
     ModelField,
     ObserveKey,
+    GetRawArrayKey,
+    FlushKey,
+    SortFunction,
     MappingFunction,
     FilterFunction,
     FlatMapFunction,
@@ -18,6 +21,37 @@ import {
 } from './calc';
 import { name } from './debug';
 import * as log from './log';
+
+/**
+ * Find the index of `item` using binary search in a sorted array
+ *
+ * Returns [lastComparison, index]
+ * - if lastComparison < 0, item would be inserted before index
+ * - if lastComparison > 0, item would be inserted after index
+ * - if lastComparison == 0, item is compared equal to index
+ */
+function binarySearchIndex<T>(
+    sortedArray: T[],
+    item: T,
+    sorter: SortFunction<T>
+): [lastComparison: number, index: number] {
+    let min = 0;
+    let max = sortedArray.length - 1;
+    let pivot = min;
+    let result = -1; // if sortedArray.length == 0, we want -1, so on a miss, we insert "before" index 0: arr.splice(0, 0, item)
+    while (min <= max) {
+        pivot = (min + max) >> 1; // floor((L+R)/2)
+        result = sorter(item, sortedArray[pivot]);
+        if (result < 0) {
+            max = pivot - 1;
+        } else if (result > 0) {
+            min = pivot + 1;
+        } else {
+            return [result, pivot];
+        }
+    }
+    return [result, pivot];
+}
 
 /**
  * Make a mutable array to hold state, with some additional convenience methods
@@ -46,6 +80,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
             index,
             count,
             items,
+            removed,
         });
 
         // Cases to consider:
@@ -64,6 +99,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
             }
             processChange(getField('length'));
         }
+        processChange(proxy);
         return removed;
     }
 
@@ -95,15 +131,65 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         }
     }
 
-    function sort(sorter: (a: T, b: T) => number): T[] {
-        // TODO: figure out how to send position differences to observer
-        array.sort(sorter);
-        observers.forEach((observer) => {
-            observer({
-                type: 'sort',
-            });
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    function sort(_sorter: never): T[] {
+        throw new Error('sort not implemented');
+    }
+
+    const deferred: (() => void)[] = [];
+
+    function sortedView(
+        sorter: SortFunction<T>,
+        viewDebugName?: string
+    ): View<T> {
+        let sortedDebugName: string | undefined;
+        if (viewDebugName) {
+            sortedDebugName = viewDebugName;
+        } else if (debugName) {
+            sortedDebugName = `${debugName}:sortedView`;
+        }
+        const sorted: Collection<T> = collection([], sortedDebugName);
+        proxy[ObserveKey]((event) => {
+            if (event.type === 'init') {
+                const initialItems = event.items.slice();
+                initialItems.sort(sorter);
+                sorted.push(...initialItems);
+                return;
+            } else if (event.type === 'splice') {
+                deferred.push(() => {
+                    const { items, removed } = event;
+                    // First handle removals
+                    const rawArray = sorted[GetRawArrayKey]();
+                    removed.forEach((removedItem, removedItemIndex) => {
+                        const [lastComparison, index] = binarySearchIndex(
+                            rawArray,
+                            removedItem,
+                            sorter
+                        );
+                        log.assert(
+                            lastComparison === 0,
+                            'Missing item removed from source array in sortedView splice',
+                            { removedItem, removedItemIndex, event }
+                        );
+                        sorted.splice(index, 1);
+                    });
+
+                    // Then handle insertions
+                    items.forEach((item) => {
+                        const [lastComparison, insertionIndex] =
+                            binarySearchIndex(rawArray, item, sorter);
+                        sorted.splice(
+                            lastComparison > 0
+                                ? insertionIndex + 1
+                                : insertionIndex,
+                            0,
+                            item
+                        );
+                    });
+                });
+            }
         });
-        return proxy;
+        return sorted;
     }
 
     function mapView<V>(
@@ -118,15 +204,15 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         }
         const mapped = collection(array.map(mapper), mappedDebugName);
         proxy[ObserveKey]((event) => {
-            if (event.type === 'sort') {
-                // TODO: implement mapped sort (reposition items... somehow)
-                return;
-            } else if (event.type === 'splice') {
-                const { index, count, items } = event;
-                // Well that's deceptively easy
-                mapped.splice(index, count, ...items.map(mapper));
+            if (event.type === 'splice') {
+                deferred.push(() => {
+                    const { index, count, items } = event;
+                    // Well that's deceptively easy
+                    mapped.splice(index, count, ...items.map(mapper));
+                });
             }
         });
+        addCollectionDep(proxy, mapped);
         return mapped;
     }
 
@@ -153,32 +239,32 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         });
 
         proxy[ObserveKey]((event) => {
-            if (event.type === 'sort') {
-                // TODO: implement mapped sort (reposition items... somehow)
-                return;
-            } else if (event.type === 'splice') {
-                const { index, count, items } = event;
-                let realIndex = 0;
-                let realCount = 0;
-                for (let i = 0; i < index; ++i) {
-                    if (filterPresent[i]) {
-                        realIndex++;
+            if (event.type === 'splice') {
+                deferred.push(() => {
+                    const { index, count, items } = event;
+                    let realIndex = 0;
+                    let realCount = 0;
+                    for (let i = 0; i < index; ++i) {
+                        if (filterPresent[i]) {
+                            realIndex++;
+                        }
                     }
-                }
-                for (let i = 0; i < count; ++i) {
-                    if (filterPresent[index + i]) {
-                        realCount++;
+                    for (let i = 0; i < count; ++i) {
+                        if (filterPresent[index + i]) {
+                            realCount++;
+                        }
                     }
-                }
-                const presentItems = items.map(fn);
-                filterPresent.splice(index, count, ...presentItems);
-                filtered.splice(
-                    realIndex,
-                    realCount,
-                    ...items.filter((_value, index) => presentItems[index])
-                );
+                    const presentItems = items.map(fn);
+                    filterPresent.splice(index, count, ...presentItems);
+                    filtered.splice(
+                        realIndex,
+                        realCount,
+                        ...items.filter((_value, index) => presentItems[index])
+                    );
+                });
             }
         });
+        addCollectionDep(proxy, filtered);
         return filtered;
     }
 
@@ -201,31 +287,31 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         });
 
         proxy[ObserveKey]((event) => {
-            if (event.type === 'sort') {
-                // TODO: implement mapped sort (reposition items... somehow)
-                return;
-            } else if (event.type === 'splice') {
-                const { index, count, items } = event;
-                let realIndex = 0;
-                for (let i = 0; i < index; ++i) {
-                    realIndex += flatMapCount[i];
-                }
-                let realCount = 0;
-                for (let i = index; i < index + count; ++i) {
-                    realCount += flatMapCount[i];
-                }
-                // Well that's deceptively easy
-                const realItems: V[] = [];
-                const realItemCount: number[] = [];
-                items.forEach((itemValue, itemIndex) => {
-                    const chunk = fn(itemValue, itemIndex);
-                    realItems.push(...chunk);
-                    realItemCount.push(chunk.length);
+            if (event.type === 'splice') {
+                deferred.push(() => {
+                    const { index, count, items } = event;
+                    let realIndex = 0;
+                    for (let i = 0; i < index; ++i) {
+                        realIndex += flatMapCount[i];
+                    }
+                    let realCount = 0;
+                    for (let i = index; i < index + count; ++i) {
+                        realCount += flatMapCount[i];
+                    }
+                    // Well that's deceptively easy
+                    const realItems: V[] = [];
+                    const realItemCount: number[] = [];
+                    items.forEach((itemValue, itemIndex) => {
+                        const chunk = fn(itemValue, itemIndex);
+                        realItems.push(...chunk);
+                        realItemCount.push(chunk.length);
+                    });
+                    flatMapped.splice(realIndex, realCount, ...realItems);
+                    flatMapCount.splice(index, count, ...realItemCount);
                 });
-                flatMapped.splice(realIndex, realCount, ...realItems);
-                flatMapCount.splice(index, count, ...realItemCount);
             }
         });
+        addCollectionDep(proxy, flatMapped);
         return flatMapped;
     }
 
@@ -244,6 +330,17 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         };
     }
 
+    function flush() {
+        let thunk;
+        while ((thunk = deferred.shift())) {
+            thunk();
+        }
+    }
+
+    function getRawArray() {
+        return array;
+    }
+
     const methods = {
         splice,
         pop,
@@ -251,8 +348,11 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         push,
         unshift,
         [ObserveKey]: observe,
+        [FlushKey]: flush,
+        [GetRawArrayKey]: getRawArray,
         sort,
         reject,
+        sortedView,
         mapView,
         filterView,
         flatMapView,
@@ -271,7 +371,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         return field;
     }
 
-    const proxy = new Proxy(array, {
+    const proxy: Collection<T> = new Proxy(array, {
         get(target: any, key: string | symbol) {
             if (key in methods) {
                 return (methods as any)[key];
@@ -297,11 +397,13 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
             const numericKey = Number(key);
             if (!isNaN(numericKey) && numericKey <= array.length) {
                 set(numericKey, value);
-                return true;
+                // Implicitly calls processChange via splice
+            } else {
+                target[key] = value;
+                const field = getField(key);
+                processChange(field);
+                processChange(proxy);
             }
-            const field = getField(key);
-            processChange(field);
-            target[key] = value;
             return true;
         },
 

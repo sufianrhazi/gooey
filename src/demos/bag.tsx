@@ -3,6 +3,7 @@ import Revise, {
     Fragment,
     Model,
     model,
+    collection,
     calc,
     setLogLevel,
 } from '../index';
@@ -16,10 +17,13 @@ const App = () => {
     const state = model({
         key: '',
         value: '',
+        keysView: true,
     });
+    const keysCollection = collection<string>([]);
 
     const onClickSet = () => {
         bag[state.key] = state.value;
+        keysCollection.push(state.key);
     };
 
     const onClickDelete = () => {
@@ -31,35 +35,54 @@ const App = () => {
             <h1>Bag demo</h1>
             <p>Key items:</p>
             <ul>
-                {model.keys(bag).mapView((key) => (
-                    <li>
-                        {key} = {calc(() => bag[key])}
-                    </li>
-                ))}
+                {calc(() =>
+                    (state.keysView ? model.keys(bag) : keysCollection).mapView(
+                        (key) => (
+                            <li>
+                                {key} = {calc(() => bag[key])}
+                            </li>
+                        )
+                    )
+                )}
             </ul>
 
             <p>Filtered items:</p>
             <ul>
-                {model
-                    .keys(bag)
-                    .filterView((key) => key.length % 2 === 0)
-                    .mapView((key) => (
-                        <li>
-                            {key} = {calc(() => bag[key])}
-                        </li>
-                    ))}
+                {calc(() =>
+                    (state.keysView ? model.keys(bag) : keysCollection)
+                        .filterView((key) => key.length % 2 === 0)
+                        .mapView((key) => (
+                            <li>
+                                {key} = {calc(() => bag[key])}
+                            </li>
+                        ))
+                )}
             </ul>
 
             <p>FlatMap items:</p>
             <ul>
-                {model
-                    .keys(bag)
-                    .flatMapView((key) => [key, key])
-                    .mapView((key) => (
-                        <li>
-                            {key} = {calc(() => bag[key])}
-                        </li>
-                    ))}
+                {calc(() =>
+                    (state.keysView ? model.keys(bag) : keysCollection)
+                        .flatMapView((key) => [key, key])
+                        .mapView((key) => (
+                            <li>
+                                {key} = {calc(() => bag[key])}
+                            </li>
+                        ))
+                )}
+            </ul>
+
+            <p>Sorted items:</p>
+            <ul>
+                {calc(() =>
+                    (state.keysView ? model.keys(bag) : keysCollection)
+                        .sortedView((a, b) => (a === b ? 0 : a < b ? -1 : 1))
+                        .mapView((key) => (
+                            <li>
+                                {key} = {calc(() => bag[key])}
+                            </li>
+                        ))
+                )}
             </ul>
 
             <p>
@@ -93,6 +116,14 @@ const App = () => {
             <button on:click={onClickDelete} disabled={calc(() => !state.key)}>
                 delete key
             </button>
+            <label>
+                <input
+                    type="checkbox"
+                    checked={calc(() => state.keysView)}
+                    on:input={() => (state.keysView = !state.keysView)}
+                />{' '}
+                model.keys
+            </label>
             <p>key: {calc(() => state.key)}</p>
             <p>value: {calc(() => state.value)}</p>
         </>

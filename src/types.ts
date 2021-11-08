@@ -4,6 +4,9 @@ export const TypeTag = Symbol('reviseType');
 const CalculationTypeTag = Symbol('calculationType');
 
 export const ObserveKey = Symbol('observe');
+export const GetRawArrayKey = Symbol('getRawArray');
+export const FlushKey = Symbol('flush');
+export const NotifyKey = Symbol('notifyEvent');
 
 /**
  * A ref object that can be passed to native elements.
@@ -32,13 +35,11 @@ export type CollectionEvent<T> =
           index: number;
           count: number;
           items: readonly T[];
+          removed: readonly T[];
       }
     | {
           type: 'init';
           items: readonly T[];
-      }
-    | {
-          type: 'sort';
       };
 
 export type CollectionObserver<T> = (event: CollectionEvent<T>) => void;
@@ -74,6 +75,7 @@ export type Model<T> = T & {
 export type MappingFunction<T, V> = (item: T, index: number) => V;
 export type FilterFunction<T> = (item: T, index: number) => boolean;
 export type FlatMapFunction<T, V> = (item: T, index: number) => V[];
+export type SortFunction<T> = (a: T, b: T) => number;
 
 export const OnCollectionRelease = Symbol('OnCollectionRelease');
 
@@ -83,11 +85,17 @@ export const OnCollectionRelease = Symbol('OnCollectionRelease');
 export interface Collection<T> extends Array<T> {
     [TypeTag]: 'collection';
     [ObserveKey]: (observer: CollectionObserver<T>) => () => void;
+    [FlushKey]: () => void;
+    [GetRawArrayKey]: () => T[];
     mapView<V>(fn: MappingFunction<T, V>): View<V>;
+    sortedView(fn: SortFunction<T>): View<T>;
     filterView(fn: FilterFunction<T>): View<T>;
     flatMapView<V>(fn: MappingFunction<T, V[]>): View<V>;
     reject(fn: (item: T, index: number) => boolean): void;
     [OnCollectionRelease]: (fn: () => void) => void;
+
+    /** Note: collections do not support sorting. Use sortedView to create a sorted view. */
+    sort(fn: never): never;
 }
 
 /**
@@ -97,6 +105,7 @@ export interface View<T> extends ReadonlyArray<T> {
     [TypeTag]: 'collection';
     [ObserveKey]: (observer: CollectionObserver<T>) => () => void;
     mapView<V>(fn: MappingFunction<T, V>): View<V>;
+    sortedView(fn: SortFunction<T>): View<T>;
     filterView(fn: FilterFunction<T>): View<T>;
     flatMapView<V>(fn: MappingFunction<T, V[]>): View<V>;
     [OnCollectionRelease]: (fn: () => void) => void;

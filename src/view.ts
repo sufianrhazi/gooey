@@ -288,8 +288,6 @@ function renderReplacing({
                         jsxNode: jsxChild,
                     });
                 });
-            } else if (event.type === 'sort') {
-                // TODO: figure out how to do this
             } else if (event.type === 'splice') {
                 const { count, index, items } = event;
                 const childNodes = items.map(() =>

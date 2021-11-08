@@ -2,8 +2,10 @@ import {
     InvariantError,
     Calculation,
     Collection,
+    FlushKey,
     ModelField,
     isCalculation,
+    isCollection,
     makeCalculation,
     makeEffect,
 } from './types';
@@ -144,7 +146,6 @@ export function addDepToCurrentCalculation<T, Ret>(
         if (!globalDependencyGraph.hasNode(dependentCalculation)) {
             globalDependencyGraph.addNode(dependentCalculation);
         }
-        // Confirmed this is correct
         if (globalDependencyGraph.addEdge(item, dependentCalculation)) {
             log.debug(
                 'New global dependency',
@@ -162,7 +163,6 @@ export function addCollectionDep<T, V>(
 ) {
     globalDependencyGraph.addNode(fromNode);
     globalDependencyGraph.addNode(toNode);
-    // Confirmed this is correct
     if (globalDependencyGraph.addEdge(fromNode, toNode)) {
         log.debug(
             'New global collection dependency',
@@ -173,10 +173,12 @@ export function addCollectionDep<T, V>(
     }
 }
 
-export function processChange(item: ModelField<unknown>) {
+export function processChange(item: ModelField<unknown> | Collection<unknown>) {
+    const chain: string[] = [];
     const addNode = (
         node: Collection<unknown> | Calculation<unknown> | ModelField<unknown>
     ) => {
+        chain.push(debugNameFor(node));
         partialDag.addNode(node);
         const dependencies = globalDependencyGraph.getDependencies(node);
         dependencies.forEach((dependentItem) => {
@@ -198,6 +200,7 @@ export function processChange(item: ModelField<unknown>) {
         });
     };
     addNode(item);
+    log.debug('processChange', chain);
 }
 
 type Listener = () => void;
@@ -247,6 +250,9 @@ export function flush() {
                 invalidation();
             }
             item();
+        } else if (isCollection(item)) {
+            log.debug('flushing collection', debugNameFor(item));
+            item[FlushKey]();
         } else {
             log.debug('flushing model', debugNameFor(item));
         }
