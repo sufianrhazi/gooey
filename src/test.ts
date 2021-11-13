@@ -1,29 +1,39 @@
 import { isEqual } from 'lodash';
+import {
+    InitMessage,
+    InitMessageSuite,
+    InitMessageTest,
+    isRequest,
+    isInitRequest,
+    isRunTestRequest,
+    makeResponse,
+    makePartialResponse,
+    RunTestRequest,
+    RunUpdate,
+    RunResponse,
+} from './test/types';
 
 type TestContext = any;
 
-type SuiteAction = () => Promise<void> | void;
 type TestAction = (ctx: TestContext) => Promise<void> | void;
 
 interface Suite {
+    id: number;
     name: string;
-    beforeAll: SuiteAction[];
     beforeEach: TestAction[];
     tests: Test[];
     afterEach: TestAction[];
-    afterAll: SuiteAction[];
     parent: Suite | undefined;
     assertions: number;
-    result: 'PASS' | 'FAIL' | 'NOT RUN';
     only: boolean;
 }
 
 interface Test {
+    id: number;
     name: string;
     impl: TestAction;
-    parent: Suite | undefined;
+    parent: Suite;
     assertions: number;
-    result: 'PASS' | 'FAIL' | 'NOT RUN';
     only: boolean;
 }
 
@@ -31,24 +41,34 @@ function repr(obj: any) {
     return JSON.stringify(obj, null, 4);
 }
 
+let id = 0;
+const makeId = () => ++id;
+
+const suitesById: Record<number, Suite> = {};
+const testsById: Record<number, Test> = {};
+
 const makeTest = ({
     name,
     impl,
-    parent = undefined,
+    parent,
     only,
 }: {
     name: string;
     impl: TestAction;
-    parent?: Suite;
+    parent: Suite;
     only: boolean;
-}): Test => ({
-    name,
-    impl,
-    parent,
-    assertions: 0,
-    result: 'NOT RUN',
-    only,
-});
+}): Test => {
+    const newTest: Test = {
+        id: makeId(),
+        name,
+        impl,
+        parent,
+        assertions: 0,
+        only,
+    };
+    testsById[newTest.id] = newTest;
+    return newTest;
+};
 
 const makeSuite = ({
     name,
@@ -58,18 +78,20 @@ const makeSuite = ({
     name: string;
     parent?: Suite;
     only: boolean;
-}): Suite => ({
-    name,
-    beforeAll: [],
-    beforeEach: [],
-    tests: [],
-    afterEach: [],
-    afterAll: [],
-    parent,
-    assertions: 0,
-    result: 'NOT RUN',
-    only,
-});
+}): Suite => {
+    const newSuite: Suite = {
+        id: makeId(),
+        name,
+        beforeEach: [],
+        tests: [],
+        afterEach: [],
+        parent,
+        assertions: 0,
+        only,
+    };
+    suitesById[newSuite.id] = newSuite;
+    return newSuite;
+};
 
 let currentSuite: Suite = makeSuite({ name: '', only: false });
 
@@ -90,52 +112,22 @@ class AssertionError extends Error {
 
 type Report =
     | {
+          type: 'runtest';
+          result: 'done';
+      }
+    | {
+          type: 'runtest';
+          result: 'error';
+          error: any;
+      }
+    | {
           type: 'internal';
           e: any;
       }
     | {
-          type: 'suite';
-          suite: Suite;
-          result: 'register';
-      }
-    | {
-          type: 'suite';
-          suite: Suite;
-          result: 'pass';
-          duration: number;
-      }
-    | {
-          type: 'suite';
-          suite: Suite;
-          result: 'run';
-          phase: 'beforeAll' | 'tests' | 'afterAll';
-      }
-    | {
-          type: 'suite';
-          suite: Suite;
-          result: 'skip';
-      }
-    | {
-          type: 'suite';
-          suite: Suite;
-          result: 'fail';
-          phase: 'beforeAll' | 'tests' | 'afterAll';
-          e: any;
-      }
-    | {
-          type: 'test';
-          test: Test;
-          result: 'register';
-      }
-    | {
           type: 'test';
           test: Test;
           result: 'run';
-      }
-    | {
-          type: 'test';
-          test: Test;
-          result: 'skip';
       }
     | {
           type: 'test';
@@ -159,11 +151,9 @@ export function abstractSuite(name: string, body: () => void) {
     currentSuite = lastSuite;
     return (name: string, body: () => void, only = false) => {
         const realSuite = makeSuite({ name, parent: currentSuite, only });
-        realSuite.beforeAll = [...fixture.beforeAll];
         realSuite.beforeEach = [...fixture.beforeEach];
         realSuite.tests = [...fixture.tests];
         realSuite.afterEach = [...fixture.afterEach];
-        realSuite.afterAll = [...fixture.afterAll];
 
         currentSuite = realSuite;
         body();
@@ -177,11 +167,6 @@ export function abstractSuite(name: string, body: () => void) {
 
 function suiteInner(name: string, body: () => void, only: boolean) {
     currentSuite = makeSuite({ name, parent: currentSuite, only });
-    report({
-        type: 'suite',
-        suite: currentSuite,
-        result: 'register',
-    });
     body();
     suites.push(currentSuite);
     if (!currentSuite.parent) {
@@ -197,10 +182,6 @@ suite.only = function suiteQnly(name: string, body: () => void) {
     suiteInner(name, body, true);
 };
 
-export function beforeAll(action: SuiteAction) {
-    currentSuite.beforeAll.push(action);
-}
-
 export function beforeEach(action: TestAction) {
     currentSuite.beforeEach.push(action);
 }
@@ -209,17 +190,8 @@ export function afterEach(action: TestAction) {
     currentSuite.afterEach.push(action);
 }
 
-export function afterAll(action: SuiteAction) {
-    currentSuite.afterAll.push(action);
-}
-
 function testInner(name: string, impl: TestAction, only = false) {
     const test = makeTest({ name, impl, parent: currentSuite, only });
-    report({
-        type: 'test',
-        test,
-        result: 'register',
-    });
     currentSuite.tests.push(test);
 }
 export function test(name: string, impl: TestAction) {
@@ -229,171 +201,21 @@ test.only = function testOnly(name: string, impl: TestAction) {
     testInner(name, impl, true);
 };
 
-function makeNameInner(node: Suite | Test) {
-    let name = '';
-    if (node.parent) name = makeNameInner(node.parent);
-    if (name) return `${name}:${node.name}`;
-    return node.name;
-}
-
-function makeName(node: Suite | Test) {
-    return `${makeNameInner(node)}`;
-}
-
-async function runBeforeAll(name: string, suite: Suite | undefined) {
+async function runBeforeEach(ctx: TestContext, suite: Suite | undefined) {
     if (suite) {
-        await runBeforeAll(name, suite.parent);
-        for (const beforeAll of suite.beforeAll) await beforeAll();
-    }
-}
-
-async function runBeforeEach(
-    ctx: TestContext,
-    name: string,
-    suite: Suite | undefined
-) {
-    if (suite) {
-        await runBeforeEach(ctx, name, suite.parent);
+        await runBeforeEach(ctx, suite.parent);
         for (const beforeEach of suite.beforeEach) await beforeEach(ctx);
     }
 }
 
-async function runAfterEach(
-    ctx: TestContext,
-    name: string,
-    suite: Suite | undefined
-) {
+async function runAfterEach(ctx: TestContext, suite: Suite | undefined) {
     if (suite) {
         for (const afterEach of suite.afterEach) await afterEach(ctx);
-        await runAfterEach(ctx, name, suite.parent);
-    }
-}
-
-async function runAfterAll(name: string, suite: Suite | undefined) {
-    if (suite) {
-        await runAfterAll(name, suite.parent);
-        for (const afterAll of suite.afterAll) await afterAll();
+        await runAfterEach(ctx, suite.parent);
     }
 }
 
 let runningTest: Test | undefined = undefined;
-let runningSuite: Suite | undefined = undefined;
-async function runTests() {
-    const onlySuites = new Set<Suite>();
-    const onlyTests = new Set<Test>();
-    for (const suite of suites) {
-        if (suite.only) {
-            onlySuites.add(suite);
-        }
-        for (const test of suite.tests) {
-            if (suite.only || test.only) {
-                onlySuites.add(suite);
-                onlyTests.add(test);
-            }
-        }
-    }
-
-    const isLimited = onlySuites.size > 0 || onlyTests.size > 0;
-
-    for (const suite of suites) {
-        const isSuiteSkipped = isLimited && !onlySuites.has(suite);
-        runningSuite = suite;
-        const suiteName = makeName(suite);
-        const suiteStart = performance.now();
-        report({
-            type: 'suite',
-            suite,
-            result: isSuiteSkipped ? 'skip' : 'run',
-            phase: 'beforeAll',
-        });
-        try {
-            if (!isSuiteSkipped) {
-                await runBeforeAll(suiteName, suite);
-            }
-        } catch (e) {
-            suite.result = 'FAIL';
-            report({
-                type: 'suite',
-                suite,
-                result: 'fail',
-                phase: 'beforeAll',
-                e,
-            });
-            continue;
-        }
-        report({
-            type: 'suite',
-            suite,
-            result: isSuiteSkipped ? 'skip' : 'run',
-            phase: 'tests',
-        });
-        for (const test of suite.tests) {
-            const isTestSkipped = isLimited && !onlyTests.has(test);
-            runningTest = test;
-            const name = makeName(test);
-            report({
-                type: 'test',
-                test,
-                result: isTestSkipped ? 'skip' : 'run',
-            });
-            if (isTestSkipped) continue;
-            const ctx: TestContext = {};
-            try {
-                const testStart = performance.now();
-                await runBeforeEach(ctx, name, suite);
-                const testImplStart = performance.now();
-                await test.impl(ctx);
-                const selfDuration = performance.now() - testImplStart;
-                await runAfterEach(ctx, name, suite);
-                const duration = performance.now() - testStart;
-                test.result = 'PASS';
-                report({
-                    type: 'test',
-                    test,
-                    result: 'pass',
-                    selfDuration,
-                    duration,
-                });
-            } catch (e) {
-                suite.result = 'FAIL';
-                test.result = 'FAIL';
-                report({
-                    type: 'test',
-                    test,
-                    result: 'fail',
-                    e,
-                });
-            }
-        }
-        report({
-            type: 'suite',
-            suite,
-            phase: 'afterAll',
-            result: isSuiteSkipped ? 'skip' : 'run',
-        });
-        try {
-            if (!isSuiteSkipped) {
-                await runAfterAll(suiteName, suite);
-            }
-        } catch (e) {
-            suite.result = 'FAIL';
-            report({
-                type: 'suite',
-                suite,
-                phase: 'afterAll',
-                result: 'fail',
-                e,
-            });
-        }
-        suite.result = 'PASS';
-        report({
-            type: 'suite',
-            suite,
-            result: isSuiteSkipped ? 'skip' : 'pass',
-            duration: performance.now() - suiteStart,
-        });
-    }
-}
 
 function countAssertion() {
     if (!runningTest) {
@@ -401,13 +223,7 @@ function countAssertion() {
             'Internal test integrity issue: assertion performed outside of test?'
         );
     }
-    if (!runningSuite) {
-        throw new Error(
-            'Internal test integrity issue: assertion performed outside of test suite?'
-        );
-    }
     runningTest.assertions += 1;
-    runningSuite.assertions += 1;
 }
 
 export const assert = {
@@ -562,78 +378,9 @@ export const assert = {
     },
 };
 
-const suiteRow = new Map<Suite, Element>();
-const testRow = new Map<Test, Element>();
-
-function getSuiteRow(suite: Suite): Element {
-    let row = suiteRow.get(suite);
-    if (row) return row;
-
-    const name = makeName(suite);
-    row = document.createElement('details');
-    row.className = 'row_suite status_pending';
-
-    const summary = document.createElement('summary');
-    summary.className = 'row_summary';
-    row.appendChild(summary);
-
-    const msgEl = document.createElement('pre');
-    msgEl.className = 'row_msg';
-    row.appendChild(msgEl);
-
-    const nameEl = document.createElement('a');
-    nameEl.href = '#suite=' + encodeURIComponent(name);
-    nameEl.textContent = name;
-    summary.appendChild(nameEl);
-
-    const statusEl = document.createElement('span');
-    statusEl.className = 'row_status';
-    statusEl.textContent = '----';
-    summary.appendChild(statusEl);
-
-    suiteRow.set(suite, row);
-
-    return row;
-}
-
-function getTestRow(test: Test): Element {
-    let row = testRow.get(test);
-    if (row) return row;
-
-    const name = makeName(test);
-    row = document.createElement('details');
-    row.className = 'row_test status_pending';
-
-    const summary = document.createElement('summary');
-    summary.className = 'row_summary';
-    row.appendChild(summary);
-
-    const msgEl = document.createElement('pre');
-    msgEl.className = 'row_msg';
-    row.appendChild(msgEl);
-
-    const nameEl = document.createElement('a');
-    nameEl.href = '#test=' + encodeURIComponent(name);
-    nameEl.textContent = name;
-    summary.appendChild(nameEl);
-
-    const statusEl = document.createElement('span');
-    statusEl.className = 'row_status';
-    statusEl.textContent = '----';
-    summary.appendChild(statusEl);
-
-    testRow.set(test, row);
-
-    return row;
-}
-
 const testRoot = document.createElement('div');
 testRoot.id = 'test-root';
 document.body.appendChild(testRoot);
-
-const testUi = document.createElement('div');
-testUi.id = 'test-ui';
-document.body.appendChild(testUi);
 
 beforeEach(() => {
     while (testRoot.childNodes.length > 0) {
@@ -641,86 +388,225 @@ beforeEach(() => {
     }
 });
 
-function report(info: Report) {
+function formatError(e: any) {
+    let msg = '';
+    if (e instanceof AssertionError) {
+        if (e.msg) {
+            msg += `Message: ${e.msg}\n`;
+        }
+        msg += `Reason: ${e.format()}\n`;
+    }
+    if (e instanceof Error) {
+        msg += `${e.stack}\n`;
+    }
+    return msg === '' ? 'unknown error' : msg;
+}
+
+function sendUpdate(
+    source: MessageEventSource,
+    id: number,
+    response: RunUpdate
+) {
+    source.postMessage(makePartialResponse(id, response));
+}
+
+function sendResponse(
+    source: MessageEventSource,
+    id: number,
+    response: RunResponse
+) {
+    source.postMessage(makeResponse(id, response));
+}
+
+function respond(info: Report, id: number, source: MessageEventSource) {
     if (info.type === 'internal') {
-        alert('Uh oh');
+        sendUpdate(source, id, {
+            type: 'internal',
+            error: formatError(info.e),
+        });
         console.error(info.e);
-    } else if (info.type === 'suite' && info.result === 'register') {
-        testUi.appendChild(getSuiteRow(info.suite));
-    } else if (info.type === 'test' && info.result === 'register') {
-        testUi.appendChild(getTestRow(info.test));
-    } else if (info.type === 'suite') {
-        const row = getSuiteRow(info.suite);
-        row.classList.toggle('status_pending', false);
-        row.classList.toggle('status_running', info.result === 'run');
-        row.classList.toggle('status_skipped', info.result === 'skip');
-        row.classList.toggle('status_passed', info.result === 'pass');
-        row.classList.toggle('status_failed', info.result === 'fail');
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        row.querySelector('.row_status')!.textContent = info.result;
-        if (info.result === 'fail') {
-            let msg = '';
-            if (info.e instanceof AssertionError) {
-                if (info.e.msg) {
-                    msg += `Message: ${info.e.msg}\n`;
-                }
-                msg += `Reason: ${info.e.format()}\n`;
-            }
-            if (info.e instanceof Error) {
-                msg += `${info.e.stack}\n`;
-            }
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            row.querySelector('.row_msg')!.textContent = msg;
-            row.setAttribute('open', '');
-        }
-        if (info.result === 'pass') {
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            row.querySelector(
-                '.row_msg'
-            )!.textContent = `Passed in ${info.duration.toFixed(3)}ms`;
-        }
     } else if (info.type === 'test') {
-        const row = getTestRow(info.test);
-        row.classList.toggle('status_pending', false);
-        row.classList.toggle('status_running', info.result === 'run');
-        row.classList.toggle('status_skipped', info.result === 'skip');
-        row.classList.toggle('status_passed', info.result === 'pass');
-        row.classList.toggle('status_failed', info.result === 'fail');
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        row.querySelector('.row_status')!.textContent = info.result;
-        if (info.result === 'fail') {
-            let msg = '';
-            if (info.e instanceof AssertionError) {
-                if (info.e.msg) {
-                    msg += `Message: ${info.e.msg}\n`;
-                }
-                msg += `Reason: ${info.e.format()}\n`;
-            }
-            if (info.e instanceof Error) {
-                msg += `${info.e.stack}\n`;
-            }
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            row.querySelector('.row_msg')!.textContent = msg;
-            row.setAttribute('open', '');
+        switch (info.result) {
+            case 'fail':
+                sendUpdate(source, id, {
+                    type: 'test',
+                    suiteId: info.test.parent.id,
+                    testId: info.test.id,
+                    result: 'fail',
+                    error: formatError(info.e),
+                });
+                break;
+            case 'pass':
+                sendUpdate(source, id, {
+                    type: 'test',
+                    suiteId: info.test.parent.id,
+                    testId: info.test.id,
+                    result: 'pass',
+                    duration: info.duration,
+                    selfDuration: info.selfDuration,
+                });
+                break;
+            case 'run':
+                sendUpdate(source, id, {
+                    type: 'test',
+                    suiteId: info.test.parent.id,
+                    testId: info.test.id,
+                    result: 'run',
+                });
+                break;
         }
-        if (info.result === 'pass') {
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            row.querySelector(
-                '.row_msg'
-            )!.textContent = `Passed in ${info.selfDuration.toFixed(
-                3
-            )}ms (${info.duration.toFixed(3)}ms including setup)\n`;
+    } else if (info.type === 'runtest') {
+        switch (info.result) {
+            case 'done':
+                sendResponse(source, id, {
+                    type: info.type,
+                    result: 'done',
+                });
+                break;
+            case 'error':
+                sendResponse(source, id, {
+                    type: info.type,
+                    result: 'error',
+                    error: info.error,
+                });
+                break;
         }
     }
 }
 
-setTimeout(async () => {
-    try {
-        await runTests();
-    } catch (e) {
-        report({
-            type: 'internal',
-            e,
+function makeInitPayload(allSuites: Suite[]): InitMessage {
+    const suitesList: InitMessageSuite[] = [];
+    allSuites.forEach((suite) => {
+        const tests: InitMessageTest[] = [];
+        suite.tests.forEach((test) => {
+            tests.push({
+                id: test.id,
+                name: test.name,
+                only: test.only,
+            });
         });
+        suitesList.push({
+            id: suite.id,
+            name: suite.name,
+            parentSuiteId: suite.parent ? suite.parent.id : undefined,
+            tests,
+            only: suite.only,
+        });
+    });
+
+    return {
+        url: window.location.toString(),
+        type: 'init',
+        suites: suitesList,
+    };
+}
+
+async function handleRunTest(
+    event: RunTestRequest,
+    id: number,
+    source: MessageEventSource
+) {
+    const suite = suitesById[event.suiteId];
+    const test = testsById[event.testId];
+    runningTest = test;
+    respond(
+        {
+            type: 'test',
+            test,
+            result: 'run',
+        },
+        id,
+        source
+    );
+    const ctx: TestContext = {};
+    try {
+        const testStart = performance.now();
+        await runBeforeEach(ctx, suite);
+        const testImplStart = performance.now();
+        await test.impl(ctx);
+        const selfDuration = performance.now() - testImplStart;
+        await runAfterEach(ctx, suite);
+        const duration = performance.now() - testStart;
+        respond(
+            {
+                type: 'test',
+                test,
+                result: 'pass',
+                selfDuration,
+                duration,
+            },
+            id,
+            source
+        );
+    } catch (e) {
+        console.error(
+            'Test failure',
+            window.location,
+            suite.name,
+            test.name,
+            e
+        );
+        respond(
+            {
+                type: 'test',
+                test,
+                result: 'fail',
+                e,
+            },
+            id,
+            source
+        );
+        return;
     }
-}, 0);
+}
+
+// Main initialization
+setTimeout(() => 0);
+
+// Event initialization
+window.addEventListener(
+    'message',
+    (event) => {
+        if (event.origin !== window.location.origin) {
+            return;
+        }
+        if (!isRequest(event.data)) {
+            return;
+        }
+        const source = event.source;
+        if (!source) {
+            return;
+        }
+        if (isInitRequest(event.data)) {
+            window.parent.postMessage(
+                makeResponse(event.data.id, makeInitPayload(suites)),
+                window.location.origin
+            );
+        }
+        if (isRunTestRequest(event.data)) {
+            handleRunTest(event.data.request, event.data.id, source)
+                .then(() => {
+                    respond(
+                        {
+                            type: 'runtest',
+                            result: 'done',
+                        },
+                        event.data.id,
+                        source
+                    );
+                })
+                .catch((e) => {
+                    respond(
+                        {
+                            type: 'runtest',
+                            result: 'error',
+                            error: e,
+                        },
+                        event.data.id,
+                        source
+                    );
+                });
+        }
+    },
+    false
+);

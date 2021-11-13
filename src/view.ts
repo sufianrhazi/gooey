@@ -82,6 +82,13 @@ function setBooleanPropertyValue(
     ) {
         element[key] = value;
     }
+    if (
+        element instanceof HTMLDetailsElement &&
+        key == 'open' &&
+        element[key] !== value
+    ) {
+        element[key] = value;
+    }
 }
 
 function setStringPropertyValue(element: Element, key: string, value: string) {

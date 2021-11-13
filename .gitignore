@@ -5,6 +5,7 @@
 /demos/*.js.map
 /test/test-bundle.js
 /test/test-bundle.js.map
+/test-manifest.json
 
 # yarn Zero-Install
 .yarn/*

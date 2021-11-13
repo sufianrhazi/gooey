@@ -50,14 +50,16 @@ module.exports = {
                 },
             },
         ],
+        '@typescript-eslint/no-unused-vars': ['error', { args: 'none' }],
+        'no-unused-vars': ['error', { args: 'none' }],
         'react/jsx-uses-react': 2,
     },
     overrides: [
         {
-            files: [ "src/**.test.*" ],
-            "rules": {
-                "@typescript-eslint/no-non-null-assertion": 0
-            }
-        }
+            files: ['src/**.test.*'],
+            rules: {
+                '@typescript-eslint/no-non-null-assertion': 0,
+            },
+        },
     ],
 };
