@@ -380,7 +380,6 @@ function renderReplacing({
 
         const Component = jsxNode.component;
         const resultEffect = effect(() => {
-            const onComponentUnmount: Function[] = [];
             const onComponentMount: Function[] = [];
             const jsxChild = Component(
                 {
@@ -389,7 +388,7 @@ function renderReplacing({
                 },
                 {
                     onUnmount: (unmountCallback) => {
-                        onComponentUnmount.push(unmountCallback);
+                        onUnmount.push(unmountCallback);
                     },
                     onMount: (mountCallback) => {
                         onComponentMount.push(mountCallback);
@@ -408,7 +407,7 @@ function renderReplacing({
                             retain(effectCalc);
                             effectCalc();
                         });
-                        onComponentUnmount.push(() => {
+                        onUnmount.push(() => {
                             release(effectCalc);
                         });
                     },

@@ -247,6 +247,158 @@ suite('mount components', () => {
 
         assert.isNot(pBefore, pAfter);
     });
+
+    test('components are provided an onMount callback which is called immediately after mounted', () => {
+        const sequence: string[] = [];
+        let queried: null | Element = null;
+        const Greet: Component<{}> = (props, { onMount }) => {
+            sequence.push('render');
+            onMount(() => {
+                sequence.push('onMount');
+                queried = testRoot.querySelector('#p');
+            });
+            return <p id="p">Hello!</p>;
+        };
+
+        mount(testRoot, <Greet />);
+
+        assert.deepEqual(['render', 'onMount'], sequence);
+        assert.isTruthy(queried);
+        assert.is(testRoot.querySelector('#p'), queried);
+    });
+
+    test('components are provided an onMount callback which is called immediately before unmount', () => {
+        const state = model({
+            showingChild: false,
+        });
+        const sequence: string[] = [];
+        let queried: null | Element = null;
+        const Child: Component<{}> = (props, { onMount, onUnmount }) => {
+            sequence.push('render');
+            onMount(() => {
+                sequence.push('onMount');
+            });
+            onUnmount(() => {
+                queried = testRoot.querySelector('#child');
+                sequence.push('onUnmount');
+            });
+            return <p id="child">child</p>;
+        };
+        const Parent: Component<{}> = (props, { onMount }) => {
+            return (
+                <div id="parent">
+                    {calc(() => state.showingChild && <Child />)}
+                </div>
+            );
+        };
+
+        mount(testRoot, <Parent />);
+
+        assert.deepEqual([], sequence);
+
+        state.showingChild = true;
+        flush();
+
+        assert.deepEqual(['render', 'onMount'], sequence);
+        const child = testRoot.querySelector('#child');
+
+        state.showingChild = false;
+        flush();
+
+        assert.deepEqual(['render', 'onMount', 'onUnmount'], sequence);
+        assert.isTruthy(queried);
+        assert.is(child, queried);
+    });
+
+    test('components are provided an onEffect callback which is called only while component is mounted', () => {
+        const state = model({
+            showingChild: false,
+            counter: 0,
+        });
+        const sequence: string[] = [];
+        const Child: Component<{}> = (
+            props,
+            { onMount, onUnmount, onEffect }
+        ) => {
+            sequence.push('render');
+            onMount(() => {
+                sequence.push('onMount');
+            });
+            onUnmount(() => {
+                sequence.push('onUnmount');
+            });
+            onEffect(() => {
+                sequence.push(`effect ${state.counter}`);
+            });
+            return <p id="child">child</p>;
+        };
+        const Parent: Component<{}> = (props, { onMount }) => {
+            return (
+                <div id="parent">
+                    {calc(() => state.showingChild && <Child />)}
+                </div>
+            );
+        };
+
+        mount(testRoot, <Parent />);
+
+        assert.deepEqual([], sequence);
+
+        state.showingChild = true;
+        flush();
+
+        assert.deepEqual(['render', 'onMount', 'effect 0'], sequence);
+
+        state.counter += 1;
+        flush();
+
+        assert.deepEqual(
+            ['render', 'onMount', 'effect 0', 'effect 1'],
+            sequence
+        );
+        state.counter += 1;
+        flush();
+
+        assert.deepEqual(
+            ['render', 'onMount', 'effect 0', 'effect 1', 'effect 2'],
+            sequence
+        );
+        flush();
+        assert.deepEqual(
+            ['render', 'onMount', 'effect 0', 'effect 1', 'effect 2'],
+            sequence
+        );
+
+        state.showingChild = false;
+        flush();
+
+        assert.deepEqual(
+            [
+                'render',
+                'onMount',
+                'effect 0',
+                'effect 1',
+                'effect 2',
+                'onUnmount',
+            ],
+            sequence
+        );
+
+        state.counter += 1;
+        flush();
+
+        assert.deepEqual(
+            [
+                'render',
+                'onMount',
+                'effect 0',
+                'effect 1',
+                'effect 2',
+                'onUnmount',
+            ],
+            sequence
+        );
+    });
 });
 
 suite('mount arrays', () => {
