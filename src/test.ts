@@ -12,6 +12,9 @@ import {
     RunUpdate,
     RunResponse,
 } from './test/types';
+import { setLogLevel } from './log';
+
+setLogLevel('debug');
 
 type TestContext = any;
 
@@ -315,7 +318,7 @@ export const assert = {
             );
         }
     },
-    arrayIncludes: (haystack: any[], needle: any, msg?: string) => {
+    arrayIncludes: (haystack: readonly any[], needle: any, msg?: string) => {
         countAssertion();
         if (!haystack.includes(needle)) {
             throw new AssertionError(
@@ -325,12 +328,33 @@ export const assert = {
             );
         }
     },
-    notArrayIncludes: (haystack: any[], needle: any, msg?: string) => {
+    notArrayIncludes: (haystack: readonly any[], needle: any, msg?: string) => {
         countAssertion();
         if (haystack.includes(needle)) {
             throw new AssertionError(
                 'notArrayIncludes',
                 () => `${repr(needle)} is found within ${repr(haystack)}`,
+                msg
+            );
+        }
+    },
+    arrayEqualsUnsorted: (
+        a: readonly any[],
+        b: readonly any[],
+        msg?: string
+    ) => {
+        const setA = new Set(a);
+        const setB = new Set(b);
+        const isEqual =
+            Array.from(setA).every((a) => setB.has(a)) &&
+            Array.from(setB).every((b) => setA.has(b));
+        if (!isEqual) {
+            throw new AssertionError(
+                'arrayEqualsUnsorted',
+                () =>
+                    `${repr(a)} does not contain the exact same items as ${repr(
+                        b
+                    )}`,
                 msg
             );
         }

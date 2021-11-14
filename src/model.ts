@@ -4,16 +4,20 @@ import {
     Model,
     ModelEvent,
     ModelObserver,
+    OwnKeysField,
     Collection,
     View,
     ModelField,
     ObserveKey,
 } from './types';
 import { collection } from './collection';
-import { addDepToCurrentCalculation, processChange } from './calc';
+import {
+    effect,
+    addManualDep,
+    addDepToCurrentCalculation,
+    processChange,
+} from './calc';
 import { name, debugNameFor } from './debug';
-
-const ownKeysField = Symbol('ownKeys');
 
 export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
     if (typeof obj !== 'object' || !obj) {
@@ -96,7 +100,7 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
                     knownFields.add(key);
                     notify({ type: 'add', key });
                     if (typeof key !== 'symbol') {
-                        processChange(getField(ownKeysField));
+                        processChange(getField(OwnKeysField));
                     }
                 }
                 notify({ type: 'set', key, value });
@@ -111,18 +115,12 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
                 processChange(field);
                 knownFields.delete(key);
                 if (typeof key !== 'symbol') {
-                    processChange(getField(ownKeysField));
+                    processChange(getField(OwnKeysField));
                 }
                 notify({ type: 'delete', key });
             }
             delete target[key];
             return true;
-        },
-
-        ownKeys(target: any) {
-            const field = getField(ownKeysField);
-            addDepToCurrentCalculation(field);
-            return Reflect.ownKeys(target);
         },
     }) as Model<T>;
 
@@ -156,18 +154,31 @@ model.keys = function keys<T>(target: Model<T>): View<string> {
         }
     }
 
+    const events: ModelEvent[] = [];
+
+    // TODO: should this use the same "deferred" mechanism of collections?
+    const updateEffect = effect(() => {
+        target[OwnKeysField]; // Access the Object.keys pesudo-field to ensure this effect tracks key changes
+        let event;
+        while ((event = events.shift())) {
+            if (event.type === 'init') {
+                event.keys.forEach((key) => {
+                    addKey(key);
+                });
+            }
+            if (event.type === 'add') {
+                addKey(event.key);
+            }
+            if (event.type === 'delete') {
+                delKey(event.key);
+            }
+        }
+    });
+    addManualDep(updateEffect, view);
+    updateEffect();
+
     target[ObserveKey]((event) => {
-        if (event.type === 'init') {
-            event.keys.forEach((key) => {
-                addKey(key);
-            });
-        }
-        if (event.type === 'add') {
-            addKey(event.key);
-        }
-        if (event.type === 'delete') {
-            delKey(event.key);
-        }
+        events.push(event);
     });
 
     return view;

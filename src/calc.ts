@@ -2,6 +2,7 @@ import {
     InvariantError,
     Calculation,
     Collection,
+    View,
     FlushKey,
     ModelField,
     isCalculation,
@@ -20,14 +21,16 @@ let calculationToInvalidationMap: Map<
 > = new Map();
 
 let partialDag = new DAG<
-    Collection<unknown> | Calculation<unknown> | ModelField<unknown>
+    Collection<unknown> | Calculation<unknown> | ModelField<unknown> | View<unknown>
 >();
 let globalDependencyGraph = new DAG<
-    Collection<unknown> | Calculation<unknown> | ModelField<unknown>
+    Collection<unknown> | Calculation<unknown> | ModelField<unknown> | View<unknown>
 >();
 
-let refcountMap: WeakMap<Calculation<any> | Collection<any>, number> =
-    new WeakMap();
+let refcountMap: WeakMap<
+    Calculation<any> | Collection<any> | View<any>,
+    number
+> = new WeakMap();
 
 /**
  * Reset all data to a clean slate.
@@ -103,7 +106,7 @@ function trackCalculation<Ret>(
             }
 
             const edgesToRemove: [
-                Collection<any> | Calculation<any> | ModelField<any>,
+                Collection<any> | Calculation<any> | ModelField<any> | View<any>,
                 Calculation<any>
             ][] = globalDependencyGraph
                 .getReverseDependencies(trackedCalculation)
@@ -157,15 +160,15 @@ export function addDepToCurrentCalculation<T, Ret>(
     }
 }
 
-export function addCollectionDep<T, V>(
-    fromNode: Collection<T>,
-    toNode: Collection<V> | ModelField<V>
+export function addManualDep<T, V>(
+    fromNode: Collection<T> | ModelField<T> | Calculation<T>,
+    toNode: Collection<V> | ModelField<V> | Calculation<V>
 ) {
     globalDependencyGraph.addNode(fromNode);
     globalDependencyGraph.addNode(toNode);
     if (globalDependencyGraph.addEdge(fromNode, toNode)) {
         log.debug(
-            'New global collection dependency',
+            'New manual dependency',
             debugNameFor(fromNode),
             '->',
             debugNameFor(toNode)
@@ -176,7 +179,7 @@ export function addCollectionDep<T, V>(
 export function processChange(item: ModelField<unknown> | Collection<unknown>) {
     const chain: string[] = [];
     const addNode = (
-        node: Collection<unknown> | Calculation<unknown> | ModelField<unknown>
+        node: Collection<unknown> | Calculation<unknown> | ModelField<unknown> | View<unknown>
     ) => {
         chain.push(debugNameFor(node));
         partialDag.addNode(node);
@@ -260,6 +263,8 @@ export function flush() {
     globalDependencyGraph.garbageCollect().forEach((item) => {
         if (isCalculation(item)) {
             log.debug('GC calculation', debugNameFor(item));
+        } else if (isCollection(item)) {
+            log.debug('GC collection', debugNameFor(item));
         } else {
             log.debug('GC model', debugNameFor(item));
         }
@@ -269,7 +274,7 @@ export function flush() {
 /**
  * Retain a calculation (increase the refcount)
  */
-export function retain(item: Calculation<any> | Collection<any>) {
+export function retain(item: Calculation<any> | Collection<any> | View<any>) {
     const refcount = refcountMap.get(item) ?? 0;
     const newRefcount = refcount + 1;
     if (refcount === 0) {
@@ -296,7 +301,7 @@ export function retain(item: Calculation<any> | Collection<any>) {
  * Release a calculation (decrease the refcount). If the refcount reaches zero, the calculation will be garbage
  * collected.
  */
-export function release(item: Calculation<any> | Collection<any>) {
+export function release(item: Calculation<any> | Collection<any> | View<any>) {
     const refcount = refcountMap.get(item) ?? 0;
     const newRefcount = Math.min(refcount - 1, 0);
     if (refcount < 1) {

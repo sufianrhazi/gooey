@@ -7,6 +7,7 @@ import {
     isEffect,
     isCollection,
     isModel,
+    View,
 } from './types';
 
 let nameMap: WeakMap<any, string> = new WeakMap();
@@ -18,6 +19,7 @@ export function clearNames() {
 export function debugNameFor(
     item:
         | Collection<unknown>
+        | View<unknown>
         | Calculation<unknown>
         | Model<unknown>
         | ModelField<unknown>
@@ -26,9 +28,8 @@ export function debugNameFor(
         return `collection:${nameMap.get(item) ?? '?'}`;
     }
     if (isCalculation(item)) {
-        return `${isEffect(item) ? 'effect' : 'calc'}:${
-            nameMap.get(item) ?? '?'
-        }`;
+        return `${isEffect(item) ? 'effect' : 'calc'}:${nameMap.get(item) ?? '?'
+            }`;
     }
     if (isModel(item)) {
         return `model:${nameMap.get(item) ?? '?'}`;

@@ -16,7 +16,7 @@ import {
 } from './types';
 import {
     processChange,
-    addCollectionDep,
+    addManualDep,
     addDepToCurrentCalculation,
 } from './calc';
 import { name } from './debug';
@@ -212,7 +212,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                 });
             }
         });
-        addCollectionDep(proxy, mapped);
+        addManualDep(proxy, mapped);
         return mapped;
     }
 
@@ -264,7 +264,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                 });
             }
         });
-        addCollectionDep(proxy, filtered);
+        addManualDep(proxy, filtered);
         return filtered;
     }
 
@@ -311,7 +311,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                 });
             }
         });
-        addCollectionDep(proxy, flatMapped);
+        addManualDep(proxy, flatMapped);
         return flatMapped;
     }
 
@@ -380,7 +380,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                 return 'collection';
             }
             const field = getField(key);
-            addCollectionDep(proxy, field);
+            addManualDep(proxy, field);
             addDepToCurrentCalculation(field);
             return target[key];
         },
