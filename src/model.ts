@@ -149,7 +149,7 @@ model.keys = function keys<T>(target: Model<T>): View<string> {
             const stringKey = key.toString();
             if (keysSet.has(stringKey)) {
                 keysSet.delete(stringKey);
-                view.reject((k) => k !== stringKey);
+                view.reject((k) => k === stringKey);
             }
         }
     }

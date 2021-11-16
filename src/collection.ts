@@ -125,7 +125,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
 
     function reject(func: (item: T, index: number) => boolean) {
         for (let i = proxy.length - 1; i >= 0; --i) {
-            if (!func(proxy[i], i)) {
+            if (func(proxy[i], i)) {
                 proxy.splice(i, 1);
             }
         }
@@ -133,7 +133,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     function sort(_sorter: never): T[] {
-        throw new Error('sort not implemented');
+        throw new Error('Cannot sort collections, use sortedView instead');
     }
 
     const deferred: (() => void)[] = [];
@@ -189,6 +189,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                 });
             }
         });
+        addManualDep(proxy, sorted);
         return sorted;
     }
 

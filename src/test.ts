@@ -41,6 +41,9 @@ interface Test {
 }
 
 function repr(obj: any) {
+    if (obj instanceof RegExp) {
+        return obj.toString();
+    }
     return JSON.stringify(obj, null, 4);
 }
 
@@ -396,6 +399,32 @@ export const assert = {
                     )} assertions in test, but only performed ${repr(
                         currentAssertions
                     )}`,
+                msg
+            );
+        }
+    },
+    throwsMatching: (match: string | RegExp, fn: () => void, msg?: string) => {
+        countAssertion();
+        let err: any = undefined;
+        try {
+            fn();
+        } catch (e) {
+            err = e;
+        }
+        if (!err) {
+            throw new AssertionError(
+                'throwsMatching',
+                () => `expected ${repr(fn)} to throw, but it did not`
+            );
+        }
+        const re = new RegExp(match);
+        if (!re.test(err.message)) {
+            throw new AssertionError(
+                'throwsMatching',
+                () =>
+                    `expected ${repr(fn)} to throw matching ${repr(
+                        match
+                    )}, but it threw:\n\n${repr(err.message)}`,
                 msg
             );
         }
