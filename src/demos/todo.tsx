@@ -12,7 +12,6 @@ import Revise, {
     Collection,
     setLogLevel,
 } from '../index';
-import * as vis from 'vis-network/esnext';
 
 setLogLevel('debug');
 
@@ -180,27 +179,9 @@ const App = () => {
     };
 
     const onClickDebug = () => {
-        if (!graphvizContainerRef.current) return;
-        const parsedData = vis.parseDOTNetwork(debug());
-
-        const data = {
-            nodes: parsedData.nodes,
-            edges: parsedData.edges,
-        };
-
-        const options = parsedData.options;
-        options.width = '1024px';
-        options.height = '1024px';
-        options.layout = {
-            hierarchical: {
-                direction: 'UD',
-                sortMethod: 'directed',
-                shakeTowards: 'leaves',
-            },
-        };
-
-        // create a network
-        new vis.Network(graphvizContainerRef.current, data, options);
+        if (graphvizContainerRef.current) {
+            graphvizContainerRef.current.textContent = debug();
+        }
     };
 
     return (
@@ -218,12 +199,12 @@ const App = () => {
                         class="btn btn-outline-warning"
                         on:click={onClickDebug}
                     >
-                        Render graphviz
+                        Show graphviz
                     </button>
                 </div>
             </div>
             <div class="container-fluid d-flex my-4 justify-content-center">
-                <div class="border" ref={graphvizContainerRef}></div>
+                <pre class="border" ref={graphvizContainerRef}></pre>
             </div>
         </>
     );

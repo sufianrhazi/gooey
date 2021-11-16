@@ -11,7 +11,7 @@ find src -type f -name '*.test.*' | while read -r TEST_SRC; do
     jo src="/$TEST_SRC"
 done | jo -a > test-manifest.json
 
-find demos -type f -name '*.html' | while read -r DEMO_SRC; do
+find src/demos -type f -name '*.html' | while read -r DEMO_SRC; do
     jo src="/$DEMO_SRC"
 done | jo -a > demos-manifest.json
 
