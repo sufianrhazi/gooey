@@ -1,13 +1,5 @@
-import Revise, {
-    Fragment,
-    Component,
-    Collection,
-    Model,
-    collection,
-    calc,
-    model,
-    mount,
-} from './index';
+import type { Component, Collection, Model } from './index';
+import Revise, { Fragment, collection, calc, model, mount } from './index';
 import {
     isInitMessage,
     isRunUpdate,
@@ -29,7 +21,6 @@ const millis = (ms?: number) => `${(ms || 0).toFixed(3)}ms`;
  */
 type TestFileRecord = Model<{
     src: string;
-    buildTarget: string;
     iframe: HTMLIFrameElement;
     suites: Collection<SuiteRecord>;
     active: boolean;
@@ -65,7 +56,7 @@ const uiState = model({
 });
 
 function initializeTestSandbox(
-    testFile: { src: string; buildTarget: string },
+    testFile: { src: string },
     iframeElement: HTMLIFrameElement
 ) {
     iframeElement.addEventListener('load', () => {
@@ -76,9 +67,8 @@ function initializeTestSandbox(
 
         const suites = collection<SuiteRecord>([]);
 
-        testFiles[testFile.buildTarget] = model({
+        testFiles[testFile.src] = model({
             src: testFile.src,
-            buildTarget: testFile.buildTarget,
             iframe: iframeElement,
             suites,
             active: false,
@@ -86,7 +76,8 @@ function initializeTestSandbox(
         });
 
         const script = contentDocument.createElement('script');
-        script.src = testFile.buildTarget;
+        script.setAttribute('type', 'module');
+        script.src = testFile.src;
         script.onload = () => {
             request(
                 contentWindow,
@@ -115,7 +106,7 @@ function initializeTestSandbox(
                         });
                         suites.push(suiteModel);
                     });
-                    testFiles[testFile.buildTarget].initialized = true;
+                    testFiles[testFile.src].initialized = true;
                 })
                 .catch((e) => {
                     console.error('Failed to initialize', testFile, e);
@@ -450,19 +441,18 @@ const TestRunner: Component<{}> = (props, { onMount, onEffect }) => {
                 ))}
             </div>
             <div class="test-sandboxes">
-                {testManifest.map((testFile) => (
+                {testManifest.map((testEntry) => (
                     <iframe
                         class={calc(() =>
                             classes(
-                                testFiles[testFile.buildTarget]?.active &&
-                                    'active'
+                                testFiles[testEntry.src]?.active && 'active'
                             )
                         )}
                         ref={(iframeElement: HTMLIFrameElement | null) => {
                             if (!iframeElement) {
                                 return;
                             }
-                            initializeTestSandbox(testFile, iframeElement);
+                            initializeTestSandbox(testEntry, iframeElement);
                         }}
                         src="testsandbox.html"
                     />

@@ -7,27 +7,12 @@ source "s/_tools.sh"
 echo_info "Cleaning..."
 s/clean
 
-function test_out() {
-    local TEST_SRC
-    local TEST_OUT
-    TEST_SRC="$1"
-    TEST_OUT=$(echo "$TEST_SRC" | sed -E 's/.tsx?/.js/')
-    TEST_OUT="test/${TEST_OUT#src/}"
-    echo "$TEST_OUT"
-}
-
 find src -type f -name '*.test.*' | while read -r TEST_SRC; do
-    TEST_OUT=$(test_out "$TEST_SRC")
-    jo src="$TEST_SRC" buildTarget="$TEST_OUT"
+    jo src="/$TEST_SRC"
 done | jo -a > test-manifest.json
 
-node_modules/.bin/tsc --noEmit -p .
+find demos -type f -name '*.html' | while read -r DEMO_SRC; do
+    jo src="/$DEMO_SRC"
+done | jo -a > demos-manifest.json
 
-cp test/testrunner.css build/testrunner.css
-cp test/testrunner.html build/testrunner.html
-cp test/testsandbox.html build/testsandbox.html
-node_modules/.bin/esbuild "src/testrunner.tsx" --sourcemap --bundle --outfile="build/testrunner.js"
-find src -type f -name '*.test.*' | while read -r TEST_SRC; do
-    TEST_OUT=$(test_out "$TEST_SRC")
-    node_modules/.bin/esbuild "$TEST_SRC" --sourcemap --bundle --outfile="build/$TEST_OUT"
-done
+s/server

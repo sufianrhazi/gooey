@@ -1,7 +1,7 @@
 export { setLogLevel } from './log';
 import { createElement } from './view';
 export { Fragment, mount } from './view';
-export { Component } from './jsx';
+export type { Component } from './jsx';
 export { model } from './model';
 export { collection } from './collection';
 export {
@@ -15,15 +15,8 @@ export {
     debug,
 } from './calc';
 
-export {
-    ref,
-    Ref,
-    InvariantError,
-    Calculation,
-    Collection,
-    Model,
-    OnCollectionRelease,
-} from './types';
+export type { Ref, Calculation, Collection, Model } from './types';
+export { ref, InvariantError, OnCollectionRelease } from './types';
 
 export default createElement;
 

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")/.."
+# shellcheck disable=SC1091
+source "s/_tools.sh"
+
+echo_info "Cleaning..."
+s/clean
+
+echo_info "Running dev server..."
+command -v open >/dev/null && command -v nc > /dev/null && (
+    echo_info "Waiting for test server to start..."
+    ATTEMPTS=0
+    while ! nc -v localhost 3000 < /dev/null > /dev/null 2>&1; do 
+        ATTEMPTS=$((ATTEMPTS + 1))
+        if [[ $ATTEMPTS -gt 20 ]]; then
+            echo_error "Test server did not start?"
+            exit
+        fi
+        sleep 0.1
+    done
+    open 'http://localhost:3000/src/testrunner.html'
+) &
+node_modules/.bin/vite
