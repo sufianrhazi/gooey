@@ -592,3 +592,72 @@ suite('mount arrays', () => {
         );
     });
 });
+
+suite('mount collection mapped view', () => {
+    test('unmodified collection mapView nodes keep references', () => {
+        const items = collection(['foo', 'bar', 'baz']);
+        mount(
+            testRoot,
+            <div>
+                {items.mapView((item) => (
+                    <span data-item>{item}</span>
+                ))}
+            </div>
+        );
+        const origSet: Element[] = [].slice.call(
+            testRoot.querySelectorAll('[data-item]')
+        );
+        origSet[0].setAttribute('tagged', 'yes 0');
+        origSet[1].setAttribute('tagged', 'yes 1');
+        origSet[2].setAttribute('tagged', 'yes 2');
+        items.push('end');
+        items.unshift('start');
+        items.splice(2, 0, 'middle');
+        // start foo middle bar baz end
+        flush();
+        const newSet: Element[] = [].slice.call(
+            testRoot.querySelectorAll('[data-item]')
+        );
+        assert.is(null, newSet[0].getAttribute('tagged'));
+        assert.is('yes 0', newSet[1].getAttribute('tagged'));
+        assert.is(null, newSet[2].getAttribute('tagged'));
+        assert.is('yes 1', newSet[3].getAttribute('tagged'));
+        assert.is('yes 2', newSet[4].getAttribute('tagged'));
+        assert.is(null, newSet[5].getAttribute('tagged'));
+    });
+
+    test('unmodified collection sortedView nodes keep references', () => {
+        const items = collection(['foo', 'bar', 'baz']);
+        mount(
+            testRoot,
+            <div>
+                {items
+                    .sortedView((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+                    .mapView((item) => (
+                        <span data-item>{item}</span>
+                    ))}
+            </div>
+        );
+        const origSet: Element[] = [].slice.call(
+            testRoot.querySelectorAll('[data-item]')
+        );
+        // bar baz foo
+        origSet[0].setAttribute('tagged', 'yes 0');
+        origSet[1].setAttribute('tagged', 'yes 1');
+        origSet[2].setAttribute('tagged', 'yes 2');
+        items.push('aaa');
+        items.unshift('but');
+        items.splice(2, 0, 'zzz');
+        // aaa bar baz but foo zzz
+        flush();
+        const newSet: Element[] = [].slice.call(
+            testRoot.querySelectorAll('[data-item]')
+        );
+        assert.is(null, newSet[0].getAttribute('tagged'));
+        assert.is('yes 0', newSet[1].getAttribute('tagged'));
+        assert.is('yes 1', newSet[2].getAttribute('tagged'));
+        assert.is(null, newSet[3].getAttribute('tagged'));
+        assert.is('yes 2', newSet[4].getAttribute('tagged'));
+        assert.is(null, newSet[5].getAttribute('tagged'));
+    });
+});

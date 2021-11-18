@@ -21,10 +21,16 @@ let calculationToInvalidationMap: Map<
 > = new Map();
 
 let partialDag = new DAG<
-    Collection<unknown> | Calculation<unknown> | ModelField<unknown> | View<unknown>
+    | Collection<unknown>
+    | Calculation<unknown>
+    | ModelField<unknown>
+    | View<unknown>
 >();
 let globalDependencyGraph = new DAG<
-    Collection<unknown> | Calculation<unknown> | ModelField<unknown> | View<unknown>
+    | Collection<unknown>
+    | Calculation<unknown>
+    | ModelField<unknown>
+    | View<unknown>
 >();
 
 let refcountMap: WeakMap<
@@ -106,7 +112,12 @@ function trackCalculation<Ret>(
             }
 
             const edgesToRemove: [
-                Collection<any> | Calculation<any> | ModelField<any> | View<any>,
+                (
+                    | Collection<any>
+                    | Calculation<any>
+                    | ModelField<any>
+                    | View<any>
+                ),
                 Calculation<any>
             ][] = globalDependencyGraph
                 .getReverseDependencies(trackedCalculation)
@@ -179,7 +190,11 @@ export function addManualDep<T, V>(
 export function processChange(item: ModelField<unknown> | Collection<unknown>) {
     const chain: string[] = [];
     const addNode = (
-        node: Collection<unknown> | Calculation<unknown> | ModelField<unknown> | View<unknown>
+        node:
+            | Collection<unknown>
+            | Calculation<unknown>
+            | ModelField<unknown>
+            | View<unknown>
     ) => {
         chain.push(debugNameFor(node));
         partialDag.addNode(node);
@@ -245,6 +260,20 @@ export function flush() {
     needsFlush = false;
     const oldPartialDag = partialDag;
     partialDag = new DAG();
+
+    // First, collect all the unreferenced nodes to avoid calculating stragglers
+    globalDependencyGraph.garbageCollect().forEach((item) => {
+        if (isCalculation(item)) {
+            log.debug('GC calculation', debugNameFor(item));
+        } else if (isCollection(item)) {
+            log.debug('GC collection', debugNameFor(item));
+        } else {
+            log.debug('GC model', debugNameFor(item));
+        }
+        oldPartialDag.removeNode(item);
+    });
+
+    // Then flush dependencies in topological order
     oldPartialDag.visitTopological((item) => {
         if (isCalculation(item)) {
             log.debug('flushing calculation', debugNameFor(item));
@@ -258,15 +287,6 @@ export function flush() {
             item[FlushKey]();
         } else {
             log.debug('flushing model', debugNameFor(item));
-        }
-    });
-    globalDependencyGraph.garbageCollect().forEach((item) => {
-        if (isCalculation(item)) {
-            log.debug('GC calculation', debugNameFor(item));
-        } else if (isCollection(item)) {
-            log.debug('GC collection', debugNameFor(item));
-        } else {
-            log.debug('GC model', debugNameFor(item));
         }
     });
 }
