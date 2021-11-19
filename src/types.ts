@@ -1,4 +1,4 @@
-export class InvariantError extends Error { }
+export class InvariantError extends Error {}
 
 export const TypeTag = Symbol('reviseType');
 const CalculationTypeTag = Symbol('calculationType');
@@ -32,37 +32,37 @@ export function ref<T>(val?: T): Ref<T> {
 
 export type CollectionEvent<T> =
     | {
-        type: 'splice';
-        index: number;
-        count: number;
-        items: readonly T[];
-        removed: readonly T[];
-    }
+          type: 'splice';
+          index: number;
+          count: number;
+          items: readonly T[];
+          removed: readonly T[];
+      }
     | {
-        type: 'init';
-        items: readonly T[];
-    };
+          type: 'init';
+          items: readonly T[];
+      };
 
 export type CollectionObserver<T> = (event: CollectionEvent<T>) => void;
 
 export type ModelEvent =
     | {
-        type: 'add';
-        key: string | number | symbol;
-    }
+          type: 'add';
+          key: string | number | symbol;
+      }
     | {
-        type: 'set';
-        key: string | number | symbol;
-        value: any;
-    }
+          type: 'set';
+          key: string | number | symbol;
+          value: any;
+      }
     | {
-        type: 'delete';
-        key: string | number | symbol;
-    }
+          type: 'delete';
+          key: string | number | symbol;
+      }
     | {
-        type: 'init';
-        keys: (string | number | symbol)[];
-    };
+          type: 'init';
+          keys: (string | number | symbol)[];
+      };
 export type ModelObserver = (event: ModelEvent) => void;
 
 /**
@@ -75,10 +75,10 @@ export type Model<T> = T & {
     [OwnKeysField]: any;
 };
 
-export type MappingFunction<T, V> = (item: T, index: number) => V;
-export type FilterFunction<T> = (item: T, index: number) => boolean;
-export type FlatMapFunction<T, V> = (item: T, index: number) => V[];
-export type SortFunction<T> = (a: T, b: T) => number;
+export type MappingFunction<T, V> = (item: T) => V;
+export type FilterFunction<T> = (item: T) => boolean;
+export type FlatMapFunction<T, V> = (item: T) => V[];
+export type SortKeyFunction<T> = ((item: T) => string) | ((item: T) => number);
 
 export const OnCollectionRelease = Symbol('OnCollectionRelease');
 
@@ -90,15 +90,15 @@ export interface Collection<T> extends Array<T> {
     [ObserveKey]: (observer: CollectionObserver<T>) => () => void;
     [FlushKey]: () => void;
     [GetRawArrayKey]: () => T[];
-    mapView<V>(fn: MappingFunction<T, V>, debugName?: string): View<V>;
-    sortedView(fn: SortFunction<T>, debugName?: string): View<T>;
-    filterView(fn: FilterFunction<T>, debugName?: string): View<T>;
-    flatMapView<V>(fn: MappingFunction<T, V[]>, debugName?: string): View<V>;
-    reject(fn: (item: T, index: number) => boolean): void;
+    mapView<V>(mapFn: MappingFunction<T, V>, debugName?: string): View<V>;
+    sortedView(sortKeyFn: SortKeyFunction<T>, debugName?: string): View<T>;
+    filterView(filterFn: FilterFunction<T>, debugName?: string): View<T>;
+    flatMapView<V>(
+        flatMapFn: MappingFunction<T, V[]>,
+        debugName?: string
+    ): View<V>;
+    reject(shouldReject: (item: T, index: number) => boolean): void;
     [OnCollectionRelease]: (fn: () => void) => void;
-
-    /** Note: collections do not support sorting. Use sortedView to create a sorted view. */
-    sort(fn: never): never;
 }
 
 /**
@@ -108,10 +108,13 @@ export interface View<T> extends ReadonlyArray<T> {
     [TypeTag]: 'collection';
     [ObserveKey]: (observer: CollectionObserver<T>) => () => void;
     [FlushKey]: () => void;
-    mapView<V>(fn: MappingFunction<T, V>, debugName?: string): View<V>;
-    sortedView(fn: SortFunction<T>, debugName?: string): View<T>;
-    filterView(fn: FilterFunction<T>, debugName?: string): View<T>;
-    flatMapView<V>(fn: MappingFunction<T, V[]>, debugName?: string): View<V>;
+    mapView<V>(mapFn: MappingFunction<T, V>, debugName?: string): View<V>;
+    sortedView(sortKeyFn: SortKeyFunction<T>, debugName?: string): View<T>;
+    filterView(filterFn: FilterFunction<T>, debugName?: string): View<T>;
+    flatMapView<V>(
+        flatMapFn: MappingFunction<T, V[]>,
+        debugName?: string
+    ): View<V>;
     [OnCollectionRelease]: (fn: () => void) => void;
 }
 
@@ -146,7 +149,9 @@ export function isModel(thing: any): thing is Model<unknown> {
     return !!(thing && (thing as any)[TypeTag] === 'model');
 }
 
-export function isCollection(thing: any): thing is (Collection<unknown> | View<unknown>) {
+export function isCollection(
+    thing: any
+): thing is Collection<unknown> | View<unknown> {
     return !!(thing && (thing as any)[TypeTag] === 'collection');
 }
 

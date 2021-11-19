@@ -1,20 +1,25 @@
 import {
-    InvariantError,
-    TypeTag,
+    Calculation,
     Collection,
-    View,
     CollectionEvent,
     CollectionObserver,
-    ModelField,
-    ObserveKey,
-    GetRawArrayKey,
-    FlushKey,
-    SortFunction,
-    MappingFunction,
     FilterFunction,
     FlatMapFunction,
+    FlushKey,
+    GetRawArrayKey,
+    InvariantError,
+    MappingFunction,
+    ModelField,
+    ObserveKey,
+    SortKeyFunction,
+    TypeTag,
+    View,
 } from './types';
 import {
+    calc,
+    effect,
+    retain,
+    release,
     processChange,
     addManualDep,
     addDepToCurrentCalculation,
@@ -22,6 +27,16 @@ import {
 import { name } from './debug';
 import * as log from './log';
 
+function compareCalculations(
+    a: Calculation<string | number>,
+    b: typeof a
+): number {
+    const aVal = a();
+    const bVal = b();
+    if (aVal < bVal) return -1;
+    if (aVal > bVal) return 1;
+    return 0;
+}
 /**
  * Find the index of `item` using binary search in a sorted array
  *
@@ -30,10 +45,9 @@ import * as log from './log';
  * - if lastComparison > 0, item would be inserted after index
  * - if lastComparison == 0, item is compared equal to index
  */
-function binarySearchIndex<T>(
-    sortedArray: T[],
-    item: T,
-    sorter: SortFunction<T>
+function binarySearchIndex(
+    sortedArray: Calculation<string | number>[],
+    item: Calculation<string | number>
 ): [lastComparison: number, index: number] {
     let min = 0;
     let max = sortedArray.length - 1;
@@ -41,7 +55,7 @@ function binarySearchIndex<T>(
     let result = -1; // if sortedArray.length == 0, we want -1, so on a miss, we insert "before" index 0: arr.splice(0, 0, item)
     while (min <= max) {
         pivot = (min + max) >> 1; // floor((L+R)/2)
-        result = sorter(item, sortedArray[pivot]);
+        result = compareCalculations(item, sortedArray[pivot]);
         if (result < 0) {
             max = pivot - 1;
         } else if (result > 0) {
@@ -139,57 +153,113 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
     const deferred: (() => void)[] = [];
 
     function sortedView(
-        sorter: SortFunction<T>,
+        keyFn: SortKeyFunction<T>,
         viewDebugName?: string
     ): View<T> {
+        let sortKeysDebugName: string | undefined;
         let sortedDebugName: string | undefined;
         if (viewDebugName) {
+            sortKeysDebugName = `${viewDebugName}:sortKeys`;
             sortedDebugName = viewDebugName;
         } else if (debugName) {
+            sortKeysDebugName = `${debugName}:sortKeys`;
             sortedDebugName = `${debugName}:sortedView`;
         }
+        const sortKeysMap: Map<T, Calculation<string | number>> = new Map();
+        const sortKeys: Collection<Calculation<string | number>> = collection(
+            [],
+            sortKeysDebugName
+        );
+        const sortEffects: Collection<Calculation<void>> = collection(
+            [],
+            sortKeysDebugName
+        );
         const sorted: Collection<T> = collection([], sortedDebugName);
+
+        const rawKeyArray = sortKeys[GetRawArrayKey]();
+
+        function removeItem(removedItem: T) {
+            const removedKeyCalculation = sortKeysMap.get(removedItem);
+            log.assert(
+                removedKeyCalculation,
+                'Missing keyCalculation from removed item',
+                { removedItem }
+            );
+            const [lastComparison, sortedIndex] = binarySearchIndex(
+                rawKeyArray,
+                removedKeyCalculation
+            );
+            log.assert(
+                lastComparison === 0,
+                'Missing item removed from source array in sortedView splice',
+                { removedItem }
+            );
+            sortKeysMap.delete(removedItem);
+            sortKeys.splice(sortedIndex, 1);
+            sorted.splice(sortedIndex, 1);
+            const keyEffect = sortEffects.splice(sortedIndex, 1)[0];
+            release(keyEffect);
+        }
+
+        function addItem(item: T) {
+            let lastKey: string | number = 0; // dummy value
+            const keyCalculation = calc(() => {
+                lastKey = keyFn(item);
+                return lastKey;
+            });
+            let enableEffect = false;
+            const keyEffect = effect(() => {
+                keyCalculation();
+
+                // Find the index without affecting the dependencies
+                if (enableEffect) {
+                    effect(() => {
+                        removeItem(item);
+                        addItem(item);
+                    })();
+                }
+            });
+            keyEffect();
+            enableEffect = true;
+            const [lastComparison, insertionIndex] = binarySearchIndex(
+                rawKeyArray,
+                keyCalculation
+            );
+            const targetIndex =
+                lastComparison > 0 ? insertionIndex + 1 : insertionIndex;
+            sortKeysMap.set(item, keyCalculation);
+            sortKeys.splice(targetIndex, 0, keyCalculation);
+            sorted.splice(targetIndex, 0, item);
+            retain(keyEffect);
+            sortEffects.splice(targetIndex, 0, keyEffect);
+        }
+
         proxy[ObserveKey]((event) => {
             if (event.type === 'init') {
-                const initialItems = event.items.slice();
-                initialItems.sort(sorter);
-                sorted.push(...initialItems);
+                event.items.forEach((item) => {
+                    addItem(item);
+                });
                 return;
             } else if (event.type === 'splice') {
                 deferred.push(() => {
                     const { items, removed } = event;
+
                     // First handle removals
-                    const rawArray = sorted[GetRawArrayKey]();
                     removed.forEach((removedItem, removedItemIndex) => {
-                        const [lastComparison, index] = binarySearchIndex(
-                            rawArray,
-                            removedItem,
-                            sorter
-                        );
-                        log.assert(
-                            lastComparison === 0,
-                            'Missing item removed from source array in sortedView splice',
-                            { removedItem, removedItemIndex, event }
-                        );
-                        sorted.splice(index, 1);
+                        removeItem(removedItem);
                     });
 
                     // Then handle insertions
                     items.forEach((item) => {
-                        const [lastComparison, insertionIndex] =
-                            binarySearchIndex(rawArray, item, sorter);
-                        sorted.splice(
-                            lastComparison > 0
-                                ? insertionIndex + 1
-                                : insertionIndex,
-                            0,
-                            item
-                        );
+                        addItem(item);
                     });
                 });
             }
         });
-        addManualDep(proxy, sorted);
+        addManualDep(proxy, sortKeys);
+        addManualDep(proxy, sortEffects);
+        addManualDep(sortKeys, sorted);
+        addManualDep(sortEffects, sorted);
         return sorted;
     }
 
@@ -203,7 +273,10 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         } else if (debugName) {
             mappedDebugName = `${debugName}:mapView`;
         }
-        const mapped = collection(array.map(mapper), mappedDebugName);
+        const mapped = collection(
+            array.map((item) => mapper(item)),
+            mappedDebugName
+        );
         proxy[ObserveKey]((event) => {
             if (event.type === 'splice') {
                 deferred.push(() => {
@@ -218,7 +291,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
     }
 
     function filterView(
-        fn: FilterFunction<T>,
+        filterFn: FilterFunction<T>,
         viewDebugName?: string
     ): View<T> {
         let mappedDebugName: string | undefined;
@@ -227,40 +300,70 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         } else if (debugName) {
             mappedDebugName = `${debugName}:filterView`;
         }
-        // TODO: this could probably be more efficient, each time splice() is called, we iterate from 0 to index+count
-        // We may be able to precalculate a mapping from index -> filteredIndex
-        const filterPresent: boolean[] = [];
+        // TODO: make more efficient, every item addition/removal is O(length of source collection)
+        // With a tree cache of presence, we could probably make this O(log(length of source collection))
+        // Can this become linear?
+        const presentCache: boolean[] = [];
+        const filterEffects: Map<T, Calculation<void>> = new Map();
         const filtered: Collection<T> = collection([], mappedDebugName);
-        array.forEach((value, index) => {
-            const present = fn(value, index);
-            filterPresent.push(present);
-            if (present) {
-                filtered.push(value);
+
+        function getRealIndex(sourceIndex: number) {
+            let realIndex = 0;
+            for (let i = 0; i < sourceIndex; ++i) {
+                if (presentCache[i]) realIndex++;
             }
-        });
+            return realIndex;
+        }
+
+        function addItem(item: T, sourceIndex: number) {
+            let lastIsPresent = false;
+            const filterCalculation = calc(() => filterFn(item));
+            const filterEffect = effect(() => {
+                const isPresent = filterCalculation();
+                if (isPresent && !lastIsPresent) {
+                    const realIndex = getRealIndex(sourceIndex);
+                    filtered.splice(realIndex, 0, item);
+                }
+                if (!isPresent && lastIsPresent) {
+                    const realIndex = getRealIndex(sourceIndex);
+                    filtered.splice(realIndex, 1);
+                }
+                lastIsPresent = isPresent;
+                presentCache[sourceIndex] = isPresent;
+            });
+            presentCache.splice(sourceIndex, 0, false);
+            filterEffect();
+            filterEffects.set(item, filterEffect);
+            retain(filterEffect);
+        }
+
+        function removeItem(item: T, sourceIndex: number) {
+            const filterEffect = filterEffects.get(item);
+            log.assert(
+                filterEffect,
+                'filterEffect not found when removing item'
+            );
+
+            const isPresent = presentCache[sourceIndex];
+            if (isPresent) {
+                const realIndex = getRealIndex(sourceIndex);
+                filtered.splice(realIndex, 1);
+            }
+            presentCache.splice(sourceIndex, 1);
+            release(filterEffect);
+        }
 
         proxy[ObserveKey]((event) => {
-            if (event.type === 'splice') {
+            if (event.type === 'init') {
+                event.items.forEach((item, index) => addItem(item, index));
+            } else if (event.type === 'splice') {
                 deferred.push(() => {
-                    const { index, count, items } = event;
-                    let realIndex = 0;
-                    let realCount = 0;
-                    for (let i = 0; i < index; ++i) {
-                        if (filterPresent[i]) {
-                            realIndex++;
-                        }
-                    }
-                    for (let i = 0; i < count; ++i) {
-                        if (filterPresent[index + i]) {
-                            realCount++;
-                        }
-                    }
-                    const presentItems = items.map(fn);
-                    filterPresent.splice(index, count, ...presentItems);
-                    filtered.splice(
-                        realIndex,
-                        realCount,
-                        ...items.filter((_value, index) => presentItems[index])
+                    const { index, items, removed } = event;
+                    removed.forEach((item, removeIndex) =>
+                        removeItem(item, index + removeIndex)
+                    );
+                    items.forEach((item, addIndex) =>
+                        addItem(item, index + addIndex)
                     );
                 });
             }
@@ -281,8 +384,8 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         }
         const flatMapped: Collection<V> = collection([], mappedDebugName);
         const flatMapCount: number[] = [];
-        array.forEach((value, index) => {
-            const chunk = fn(value, index);
+        array.forEach((value) => {
+            const chunk = fn(value);
             flatMapped.push(...chunk);
             flatMapCount.push(chunk.length);
         });
@@ -302,8 +405,8 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                     // Well that's deceptively easy
                     const realItems: V[] = [];
                     const realItemCount: number[] = [];
-                    items.forEach((itemValue, itemIndex) => {
-                        const chunk = fn(itemValue, itemIndex);
+                    items.forEach((itemValue) => {
+                        const chunk = fn(itemValue);
                         realItems.push(...chunk);
                         realItemCount.push(chunk.length);
                     });

@@ -25,6 +25,12 @@ suite('mount static', () => {
         assert.is(testRoot.querySelector('#ok')!.textContent, 'Hello, world!');
     });
 
+    test('mount can unmount jsx as html', () => {
+        const unmount = mount(testRoot, <div id="ok">Hello, world!</div>);
+        unmount();
+        assert.is(null, testRoot.querySelector('#ok'));
+    });
+
     [undefined, null, false, true].forEach((value) => {
         test(`mount renders jsx ${value} as nonexistent nodes`, () => {
             mount(testRoot, <div id="ok">{value}</div>);
@@ -399,6 +405,89 @@ suite('mount components', () => {
             sequence
         );
     });
+
+    test('onUnmount called in correct order (children before parent) when entire tree is unmounted', () => {
+        const sequence: string[] = [];
+        let queried: null | Element = null;
+        const Grandchild: Component<{ name: string }> = (
+            { name },
+            { onMount, onUnmount }
+        ) => {
+            sequence.push(`render ${name}`);
+            onMount(() => {
+                sequence.push(`onMount ${name}`);
+            });
+            onUnmount(() => {
+                queried = testRoot.querySelector('#child');
+                sequence.push(`onUnmount ${name}`);
+            });
+            return <p class="grandchild">{name}</p>;
+        };
+        const Child: Component<{ name: string }> = (
+            { name },
+            { onMount, onUnmount }
+        ) => {
+            sequence.push(`render ${name}`);
+            onMount(() => {
+                sequence.push(`onMount ${name}`);
+            });
+            onUnmount(() => {
+                queried = testRoot.querySelector('#child');
+                sequence.push(`onUnmount ${name}`);
+            });
+            return (
+                <p class="child">
+                    <Grandchild name={`${name} 1`} />
+                    <Grandchild name={`${name} 2`} />
+                </p>
+            );
+        };
+        const Parent: Component<{}> = (props, { onMount }) => {
+            return (
+                <div id="parent">
+                    <Child name="a" />
+                    <Child name="b" />
+                </div>
+            );
+        };
+
+        const unmount = mount(testRoot, <Parent />);
+
+        assert.deepEqual(
+            [
+                'render a',
+                'render a 1',
+                'onMount a 1',
+                'render a 2',
+                'onMount a 2',
+                'onMount a',
+                'render b',
+                'render b 1',
+                'onMount b 1',
+                'render b 2',
+                'onMount b 2',
+                'onMount b',
+            ],
+            sequence
+        );
+
+        // clear sequence
+        sequence.splice(0, sequence.length);
+
+        unmount();
+
+        assert.deepEqual(
+            [
+                'onUnmount a 1',
+                'onUnmount a 2',
+                'onUnmount a',
+                'onUnmount b 1',
+                'onUnmount b 2',
+                'onUnmount b',
+            ],
+            sequence
+        );
+    });
 });
 
 suite('mount arrays', () => {
@@ -632,7 +721,7 @@ suite('mount collection mapped view', () => {
             testRoot,
             <div>
                 {items
-                    .sortedView((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+                    .sortedView((item) => item)
                     .mapView((item) => (
                         <span data-item>{item}</span>
                     ))}
