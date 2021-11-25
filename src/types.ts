@@ -14,7 +14,7 @@ export const NotifyKey = Symbol('notifyEvent');
  */
 export type Ref<T> = {
     [TypeTag]: 'ref';
-    current?: T;
+    current: T | undefined;
 };
 export function isRef(ref: any): ref is Ref<unknown> {
     return ref && ref[TypeTag] === 'ref';

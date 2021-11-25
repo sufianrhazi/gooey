@@ -52,19 +52,71 @@ Many functions take an optional `debugName` parameter. This parameter gives the 
 diagnostic logging and other debugging purposes.
 
 
-### mount(target, jsx)
+## Calculations
 
+### calc(fn)
+
+```typescript
+function calc<Ret>(func: () => Ret, debugName?: string | undefined): Calculation<Ret>
 ```
-function mount(target: Element, jsx: JSXNode): () => void
+
+The `calc` function produces a `Calculation` function, which is a type of function which keeps track of dependencies
+read during its execution. Dependencies are all fields on `Model` types, all items within a `View` or `Collection`, or
+any other non-effect `Calculation`. If any of these dependencies change, the calculation is re-executed (on the next
+`flush`).
+
+When used within JSX, calculations are automatically re-rendered when their dependencies change. Calculations may be
+passed directly as JSX nodes, or as props to native elements. No special behavior is performed when passed as props to
+Components. 
+
+For example, here is a counter component that uses calc:
+
+```typescript
+const Counter = () => {
+    const state = model({
+        count: 0,
+    });
+    const onIncrement = () => {
+        state.count += 1;
+    };
+    const isOver10 = calc(() => state.count > 10);
+    return (
+        <div>
+            <p>Current count: {calc(() => state.count)}</p>
+            {calc(() => isOver10() && <p>That's enough!</p>)}
+            <button disabled={isOver10} on:click={onIncrement}>
+                +1
+            </button>
+        </div>
+    );
+};
 ```
 
-The `mount` function mounts the provided `jsx` at the provided `target` DOM node. It returns a function which unmounts
-the provided `jsx`.
+Note: the returned `calc` must be called before it may be re-executed. This is handled by default when a calculation is
+placed in JSX.
 
+Note: if used outside of jsx, calculations must be manually `retain()`ed and `release()`d, otherwise they will not be
+recalculated.
+
+
+### effect(fn)
+
+```typescript
+function effect(func: () => void, debugName?: string | undefined): Calculation<void>
+```
+
+The `effect` function produces a `Calculation` that does not return any values, and does not behave as a dependency.
+Like `calc`, it will be re-executed if any of its dependencies change. Effects can be used to respond to changes in
+dependencies.
+
+Note: effects must be called once before they are re-executed. They must be manually `retain`ed and `release`
+
+
+## Data
 
 ### model(init, debugName)
 
-```
+```typescript
 function model<T>(init: T, debugName?: string): Model<T>
 ```
 
@@ -73,7 +125,7 @@ The `model` function produces `Model` types, which act just like normal JavaScri
 
 ### model.keys(target)
 
-```
+```typescript
 (method) model.keys<T>(target: Model<T>): View<string>
 ```
 
@@ -84,7 +136,7 @@ removed (via `delete`).
 
 ### collection(items)
 
-```
+```typescript
 function collection<T>(array: T[], debugName?: string): Collection<T>
 ```
 
@@ -97,7 +149,7 @@ the `sortedView` method.
 
 #### .reject(shouldReject)
 
-```
+```typescript
 (method) Collection<T>.reject(shouldReject: (item: T, index: number) => boolean): void`
 ```
 
@@ -106,7 +158,7 @@ The `reject` method mutates the collection to remove all items which pass the pr
 
 #### .mapView(mapFn, debugName)
 
-```
+```typescript
 type MappingFunction<T, V> = (item: T) => V
 
 (method) Collection<T>.mapView<V>(mapFn: MappingFunction<T, V>, debugName?: string): View<V>
@@ -122,7 +174,7 @@ once per item, when the item is added to the collection.
 
 #### .flatMapView
 
-```
+```typescript
 type MappingFunction<T, V> = (item: T) => V
 
 (method) Collection<T>.flatMapView<V>(flatMapFn: MappingFunction<T, V[]>, debugName?: string | undefined): View<V>
@@ -138,7 +190,7 @@ called once per item, when the item is added to the collection.
 
 #### .sortedView
 
-```
+```typescript
 type SortKeyFunction<T> = (item: T) => string | number
 
 (method) Collection<T>.sortedView(sortKeyFn: SortKeyFunction<T>, debugName?: string | undefined): View<T>
@@ -157,7 +209,7 @@ resorted in place.
 
 #### .filterView
 
-```
+```typescript
 type FilterFuction<T> = (item: T) => boolean
 
 (method) Collection<T>.filterView(filterFn: FilterFunction<T>, debugName?: string | undefined): View<T>
@@ -182,6 +234,169 @@ act just like read-only JavaScript arrays.
 These views have the same `.mapView`, `.sortedView`, `.filterView`, and `.flatMapView` functions that exist on
 `Collection` types.
 
+
+## DOM
+
+### mount(target, jsx)
+
+```typescript
+function mount(target: Element, jsx: JSXNode): () => void
+```
+
+The `mount` function mounts the provided `jsx` at the provided `target` DOM node. It returns a function which unmounts
+the provided `jsx`.
+
+
+### ref()
+
+```typescript
+type Ref<T> = { current: T | undefined };
+function ref<T>(val?: T): Ref<T>;
+```
+
+The `ref` function produces ref objects which can be passed to native JSX elements. When mounted, the ref's `current`
+property is set to the reference of the native HTML element.
+
+Example:
+
+```typescript
+const CanvasText: Component<{ text: string }> = ({ text }, { onMount }) => {
+  const canvasRef = ref<HTMLCanvasElement>();
+  onMount(() => {
+    const ctx = canvasRef.current.getContext("2d");
+    ctx.font = "50px serif";
+    ctx.lineWidth = 5;
+    ctx.strokeStyle = "#FF0000";
+    ctx.fillStyle = "#FFDDDD";
+    ctx.font = "50px serif";
+    ctx.strokeText(text, 10, 75, 480);
+    ctx.fillText(text, 10, 75, 480);
+  });
+  return <canvas ref={canvasRef} width="500" height="100" />;
+};
+
+mount(document.body, <CanvasText text="Hello, World!" />);
+```
+
+
+## Components
+
+### The Component type
+
+```typescript
+type PropsWithChildren<Props> = Props & { children?: JSXNode[] };
+
+type ComponentListeners = {
+    onUnmount: (callback: OnUnmountCallback) => void;
+    onMount: (callback: OnMountCallback) => void;
+    onEffect: (callback: EffectCallback) => void;
+};
+
+type Component<Props extends {}> = (
+    props: PropsWithChildren<Props>,
+    listeners: ComponentListeners
+) => JSXNode;
+```
+
+Components are user-defined functions which take props and lifecycle event handlers and return JSX. When mounted, a
+Component is treated as a calculation: if in the body of a component, any models, collections, or calculations are read,
+these become dependencies of the component.
+
+If any component's dependencies change, the component will be re-rendered: it is removed from the DOM, the component
+function is re-executed, and the resulting JSX is re-added to the DOM.
+
+There are two (and only two) lifecycle events to every component:
+
+* Callback functions passed to the `onMount` function are called immediately after the component has been mounted to the DOM
+* Callback functions passed to the `onUnmount` function are called immediately before the component has been mounted to the DOM
+
+The `onEffect` function allows the creation of effects which are scoped to the lifetime of the component.
+
+To demonstrate the use of `onEffect`, here's a "log" component which takes a collection of log messages, and scrolls the
+container so that the last log message is visible when additional log messages are added:
+
+```typescript
+const Log: Component<{ messages: Collection<string> }> = (
+    { messages },
+    { onEffect }
+) => {
+    const logRef = ref<HTMLPreElement>();
+    onEffect(() => {
+        if (logRef.current && messages.length > 0) {
+            logRef.current.scrollTop = logRef.current.scrollHeight;
+        }
+    });
+    return (
+        <pre class="log" ref={logRef}>
+            {messages.mapView((message) => `${message}\n`)}
+        </pre>
+    );
+};
+```
+
+
+## Behavior
+
+### flush()
+
+```typescript
+function flush(): void
+```
+
+Manually trigger a recalculation of all calculations and effects that have had their dependencies changed. By default,
+you will never need to call this function, it gets automatically called after a timeout.
+
+
+### subscribe(onReadyToFlush)
+
+```typescript
+function subscribe(onReadyToFlush: () => void): void
+```
+
+By default, Revise will call `flush` automatically once any calculation/effect dependencies have changed after a
+timeout. If you wish to configure this behavior, use the `subscribe` function, which will be called once when a
+`flush()` is necessary.
+
+
+### debug()
+
+```typescript
+function debug(): string
+```
+
+Dump the current dependency graph in a [graphviz DOT file format](https://graphviz.org/doc/info/lang.html). The
+`debugName` values passed to models, collections, calculations, and effects will be represented in this directed graph.
+
+
+### retain(obj); release(obj);
+
+```typescript
+function retain(item: Calculation<any> | Collection<any> | View<any>): void;
+function release(item: Calculation<any> | Collection<any> | View<any>): void;
+```
+
+Note: In typical use, you should not need to use these functions unless you are using `effect` or `calc` outside of
+components. There is no need to ever pass a `Collection` or `View` to these methods; this is only required internally
+within Revise.
+
+Revise automatically stops processing items that are leaf nodes in the dependency tree: if no calculation or effect has
+a dependency on an item, that item is no longer processed further.
+
+The `retain` function adds to the reference count of `item`; the `release` function removes from the reference count of
+`item`. If this reference count is non-zero, the item will be recalculated when its data dependencies change.
+
+If you are using the exported `effect` or `calc` functions outside of calculations, you must manually `retain` and
+`release` these functions, otherwise they will not be processed when their dependencies change.
+
+
+### reset()
+
+```typescript
+function reset(): void
+```
+
+Resets the entire state (releases all retained objects, drops the dependency graph). You should never need to do this
+aside from within a test.
 
 
 Differences from React
@@ -218,12 +433,3 @@ events](https://developer.mozilla.org/en-US/docs/Web/Events/Creating_and_trigger
 also means that `focus` and `blur` events do not bubble. If you want to pay attention to focus entering/leaving a child,
 listen for [`focusin`](https://developer.mozilla.org/en-US/docs/Web/API/Element/focusin_event) and
 [`focusout`](https://developer.mozilla.org/en-US/docs/Web/API/Element/focusout_event) events.
-
-
-Underpinning
-------------
-
-A pure function takes a known, fixed set of input, produces the same result when the input is the same (and does not
-have any side effects). If any of the inputs read by the function were to change, the function may produce a different
-result. If none of the inputs read by the function were to change, the last computed value of the function can be used
-instead of needing to recompute the functien.

@@ -76,7 +76,7 @@ const App = () => {
             <ul>
                 {calc(() =>
                     (state.keysView ? model.keys(bag) : keysCollection)
-                        .sortedView((a, b) => (a === b ? 0 : a < b ? -1 : 1))
+                        .sortedView((item) => item)
                         .mapView((key) => (
                             <li>
                                 {key} = {calc(() => bag[key])}
