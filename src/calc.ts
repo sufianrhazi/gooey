@@ -9,28 +9,24 @@ import {
     isCollection,
     makeCalculation,
     makeEffect,
+    EqualityFunc,
 } from './types';
 import * as log from './log';
 import { DAG } from './dag';
+import { alwaysFalse, strictEqual } from './util';
 import { clearNames, debugNameFor, name } from './debug';
 
-let activeCalculations: Calculation<unknown>[] = [];
-let calculationToInvalidationMap: Map<
-    Calculation<unknown>,
-    Function
+let activeCalculations: Calculation<any>[] = [];
+let calculationToRecalculationMap: Map<
+    Calculation<any>,
+    () => boolean
 > = new Map();
 
 let partialDag = new DAG<
-    | Collection<unknown>
-    | Calculation<unknown>
-    | ModelField<unknown>
-    | View<unknown>
+    Collection<any> | Calculation<any> | ModelField<any> | View<any>
 >();
 let globalDependencyGraph = new DAG<
-    | Collection<unknown>
-    | Calculation<unknown>
-    | ModelField<unknown>
-    | View<unknown>
+    Collection<any> | Calculation<any> | ModelField<any> | View<any>
 >();
 
 let refcountMap: WeakMap<
@@ -44,7 +40,7 @@ let refcountMap: WeakMap<
 export function reset() {
     partialDag = new DAG();
     activeCalculations = [];
-    calculationToInvalidationMap = new Map();
+    calculationToRecalculationMap = new Map();
 
     globalDependencyGraph = new DAG();
     refcountMap = new WeakMap();
@@ -57,11 +53,26 @@ export function reset() {
  * The provided function will be recalculated when any of those dependencies are changed. The result of this function is
  * treated as a dependency, so if recalculations change the result, any dependent calculations are recalculated.
  */
+export function calc<Ret>(func: () => Ret): Calculation<Ret>;
+export function calc<Ret>(func: () => Ret, debugName: string): Calculation<Ret>;
 export function calc<Ret>(
     func: () => Ret,
+    isEqual: EqualityFunc<Ret>
+): Calculation<Ret>;
+export function calc<Ret>(
+    func: () => Ret,
+    isEqual: EqualityFunc<Ret>,
+    debugName: string
+): Calculation<Ret>;
+export function calc<Ret>(
+    func: () => Ret,
+    isEqual?: string | EqualityFunc<Ret>,
     debugName?: string
 ): Calculation<Ret> {
-    const calculation = trackCalculation(func, false);
+    if (typeof isEqual === 'string') debugName = isEqual;
+    if (typeof isEqual !== 'function') isEqual = strictEqual;
+    if (typeof debugName !== 'string') debugName = undefined;
+    const calculation = trackCalculation(func, isEqual, false);
     if (debugName) name(calculation, debugName);
     return calculation;
 }
@@ -81,13 +92,14 @@ export function effect(
     func: () => void,
     debugName?: string
 ): Calculation<void> {
-    const calculation = trackCalculation(func, true);
+    const calculation = trackCalculation(func, alwaysFalse, true);
     if (debugName) name(calculation, debugName);
     return calculation;
 }
 
 function trackCalculation<Ret>(
     func: () => Ret,
+    isEqual: (a: Ret, b: Ret) => boolean,
     isEffect: boolean
 ): Calculation<Ret> {
     if (typeof func !== 'function') {
@@ -96,58 +108,64 @@ function trackCalculation<Ret>(
 
     let result: { result: Ret } | undefined = undefined;
 
-    const invalidate = () => {
-        result = undefined;
-    };
+    // Note: typescript gets confused, this *should* be
+    // - Calculation<Ret> when isEffect is false and
+    // - Calculation<Ret> when isEffect is true, infering Ret to void
+    // But infers to Calculation<void> because makeEffect is present
+    const trackedCalculation: Calculation<Ret> = (
+        isEffect ? makeEffect(runCalculation) : makeCalculation(runCalculation)
+    ) as Calculation<Ret>;
 
-    const trackedCalculation = (isEffect ? makeEffect : makeCalculation)(
-        function runCalculation() {
-            if (!isEffect) {
-                // effects return void, so they **cannot** have an effect on the current calculation
-                addDepToCurrentCalculation(trackedCalculation);
-            }
+    function runCalculation() {
+        if (!isEffect) {
+            // effects return void, so they **cannot** have an effect on the current calculation
+            addDepToCurrentCalculation(trackedCalculation);
+        }
 
-            if (result) {
-                return result.result;
-            }
-
-            const edgesToRemove: [
-                (
-                    | Collection<any>
-                    | Calculation<any>
-                    | ModelField<any>
-                    | View<any>
-                ),
-                Calculation<any>
-            ][] = globalDependencyGraph
-                .getReverseDependencies(trackedCalculation)
-                .map((fromNode) => {
-                    return [fromNode, trackedCalculation];
-                });
-            globalDependencyGraph.removeEdges(edgesToRemove);
-
-            activeCalculations.push(trackedCalculation);
-            result = { result: func() };
-
-            const sanityCheck = activeCalculations.pop();
-            if (sanityCheck !== trackedCalculation) {
-                throw new InvariantError(
-                    'Active calculation stack inconsistency!'
-                );
-            }
+        if (result) {
             return result.result;
         }
-    );
 
+        const edgesToRemove: [
+            Collection<any> | Calculation<any> | ModelField<any> | View<any>,
+            Calculation<any>
+        ][] = globalDependencyGraph
+            .getReverseDependencies(trackedCalculation)
+            .map((fromNode) => {
+                return [fromNode, trackedCalculation];
+            });
+        globalDependencyGraph.removeEdges(edgesToRemove);
+
+        activeCalculations.push(trackedCalculation);
+        result = { result: func() };
+
+        const sanityCheck = activeCalculations.pop();
+        if (sanityCheck !== trackedCalculation) {
+            throw new InvariantError('Active calculation stack inconsistency!');
+        }
+        return result.result;
+    }
     globalDependencyGraph.addNode(trackedCalculation);
 
-    calculationToInvalidationMap.set(trackedCalculation, invalidate);
+    const recalculate = () => {
+        if (!result) {
+            trackedCalculation();
+            return false;
+        }
+        const prevResult = result.result;
+        result = undefined;
+        const newResult = trackedCalculation();
+        const eq = isEqual(prevResult, newResult);
+        if (eq) {
+            // Ensure future invocations reuse original calculated value
+            result = { result: prevResult };
+        }
+        return eq;
+    };
 
-    // Note: typescript gets confused, this *should* be
-    // - Calculation<Ret> when isEffect is true and
-    // - Calculation<Ret> when isEffect is false
-    // But infers to Calculation<void> because makeEffect is present
-    return trackedCalculation as Calculation<Ret>;
+    calculationToRecalculationMap.set(trackedCalculation, recalculate);
+
+    return trackedCalculation;
 }
 
 export function addDepToCurrentCalculation<T, Ret>(
@@ -277,17 +295,17 @@ export function flush() {
     oldPartialDag.visitTopological((item) => {
         if (isCalculation(item)) {
             log.debug('flushing calculation', debugNameFor(item));
-            const invalidation = calculationToInvalidationMap.get(item);
-            if (invalidation) {
-                invalidation();
+            const recalculation = calculationToRecalculationMap.get(item);
+            if (recalculation) {
+                return recalculation();
             }
-            item();
         } else if (isCollection(item)) {
             log.debug('flushing collection', debugNameFor(item));
             item[FlushKey]();
         } else {
             log.debug('flushing model', debugNameFor(item));
         }
+        return false;
     });
 }
 

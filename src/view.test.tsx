@@ -7,13 +7,10 @@ import Revise, {
     flush,
     Component,
 } from './index';
-import * as log from './log';
 import { suite, test, beforeEach, assert } from './test';
 
 const testRoot = document.getElementById('test-root');
 if (!testRoot) throw new Error('oops');
-
-log.setLogLevel('debug');
 
 beforeEach(() => {
     reset();

@@ -237,4 +237,86 @@ suite('effect', () => {
         release(cal);
         release(eff);
     });
+
+    test('calculations can provide custom equality check to prevent recalculation', () => {
+        const calls: string[] = [];
+        const dependency = model({
+            val: { left: 'l', right: 'r' },
+        });
+        //     a
+        //    / \
+        //   b   c
+        //    \ /
+        //     d
+        //
+        const isEqual = (
+            a: { left: string; right: string },
+            b: { left: string; right: string }
+        ) => a.left === b.left && a.right === b.right;
+
+        const d = calc(
+            () => {
+                calls.push('d');
+                return dependency.val;
+            },
+            isEqual,
+            'd'
+        );
+        const b = calc(() => {
+            calls.push('b');
+            return d().left;
+        }, 'b');
+        const c = calc(() => {
+            calls.push('c');
+            return d().right;
+        }, 'c');
+        const a = calc(() => {
+            calls.push('a');
+            return b() + c();
+        }, 'a');
+        retain(a);
+        a();
+
+        assert.deepEqual(['a', 'b', 'd', 'c'], calls);
+
+        dependency.val = {
+            left: 'l',
+            right: 'r',
+        };
+        flush();
+
+        assert.deepEqual(['a', 'b', 'd', 'c', 'd'], calls);
+        release(a);
+    });
+
+    test('calculations can provide custom equality check, which causes prior value to be returned', () => {
+        const dependency = model({
+            val: { left: 'l', right: 'r' },
+        });
+
+        const isEqual = (
+            a: { left: string; right: string },
+            b: { left: string; right: string }
+        ) => a.left === b.left && a.right === b.right;
+
+        const d = calc(
+            () => {
+                return dependency.val;
+            },
+            isEqual,
+            'd'
+        );
+        retain(d);
+        const before = d();
+
+        dependency.val = {
+            left: 'l',
+            right: 'r',
+        };
+        flush();
+
+        const after = d();
+        assert.is(after, before);
+        release(d);
+    });
 });

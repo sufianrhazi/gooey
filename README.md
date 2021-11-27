@@ -57,7 +57,12 @@ diagnostic logging and other debugging purposes.
 ### calc(fn)
 
 ```typescript
-function calc<Ret>(func: () => Ret, debugName?: string | undefined): Calculation<Ret>
+type EqualityFunc<T> = (a: T, b: T) => boolean
+
+function calc<Ret>(func: () => Ret, isEqual: EqualityFunc<Ret>, debugName: string): Calculation<Ret>
+function calc<Ret>(func: () => Ret, isEqual: EqualityFunc<Ret>): Calculation<Ret>
+function calc<Ret>(func: () => Ret, debugName: string): Calculation<Ret>
+function calc<Ret>(func: () => Ret): Calculation<Ret>
 ```
 
 The `calc` function produces a `Calculation` function, which is a type of function which keeps track of dependencies
@@ -68,6 +73,10 @@ any other non-effect `Calculation`. If any of these dependencies change, the cal
 When used within JSX, calculations are automatically re-rendered when their dependencies change. Calculations may be
 passed directly as JSX nodes, or as props to native elements. No special behavior is performed when passed as props to
 Components. 
+
+The `isEqual` function may be passed as an optimization. If a calculation's `isEqual` function returns `true`,
+calculations which are dependent on this calculation will reuse the prior calculated value, and not need to be
+recalculated. This parameter should only be used as an optimization.
 
 For example, here is a counter component that uses calc:
 

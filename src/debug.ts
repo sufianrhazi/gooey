@@ -18,18 +18,19 @@ export function clearNames() {
 
 export function debugNameFor(
     item:
-        | Collection<unknown>
-        | View<unknown>
-        | Calculation<unknown>
-        | Model<unknown>
-        | ModelField<unknown>
+        | Collection<any>
+        | View<any>
+        | Calculation<any>
+        | Model<any>
+        | ModelField<any>
 ): string {
     if (isCollection(item)) {
         return `collection:${nameMap.get(item) ?? '?'}`;
     }
     if (isCalculation(item)) {
-        return `${isEffect(item) ? 'effect' : 'calc'}:${nameMap.get(item) ?? '?'
-            }`;
+        return `${isEffect(item) ? 'effect' : 'calc'}:${
+            nameMap.get(item) ?? '?'
+        }`;
     }
     if (isModel(item)) {
         return `model:${nameMap.get(item) ?? '?'}`;

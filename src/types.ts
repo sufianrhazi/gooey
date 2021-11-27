@@ -75,6 +75,7 @@ export type Model<T> = T & {
     [OwnKeysField]: any;
 };
 
+export type EqualityFunc<T> = (a: T, b: T) => boolean;
 export type MappingFunction<T, V> = (item: T) => V;
 export type FilterFunction<T> = (item: T) => boolean;
 export type FlatMapFunction<T, V> = (item: T) => V[];
@@ -149,13 +150,11 @@ export function isModel(thing: any): thing is Model<unknown> {
     return !!(thing && (thing as any)[TypeTag] === 'model');
 }
 
-export function isCollection(
-    thing: any
-): thing is Collection<unknown> | View<unknown> {
+export function isCollection(thing: any): thing is Collection<any> | View<any> {
     return !!(thing && (thing as any)[TypeTag] === 'collection');
 }
 
-export function isCalculation(thing: any): thing is Calculation<unknown> {
+export function isCalculation(thing: any): thing is Calculation<any> {
     return !!(thing && (thing as any)[TypeTag] === 'calculation');
 }
 
