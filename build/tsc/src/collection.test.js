@@ -1,4 +1,5 @@
 import { suite, test, assert } from './test';
+import { model } from './model';
 import { collection } from './collection';
 import { flush, retain, release } from './calc';
 suite('collection', () => {
@@ -145,14 +146,14 @@ suite('mapView', () => {
 suite('sortedView', () => {
     test('produces a sorted view', () => {
         const phrases = collection(['hi', 'hello', 'howdy'], 'phrases');
-        const sortedPhrases = phrases.sortedView((a, b) => a < b ? -1 : a > b ? 1 : 0);
+        const sortedPhrases = phrases.sortedView((item) => item);
         retain(sortedPhrases);
         assert.deepEqual(['hello', 'hi', 'howdy'], sortedPhrases);
         release(sortedPhrases);
     });
     test('handles push and unshift', () => {
         const phrases = collection(['throws', 'green', 'robot'], 'phrases');
-        const sortedPhrases = phrases.sortedView((a, b) => a < b ? -1 : a > b ? 1 : 0);
+        const sortedPhrases = phrases.sortedView((item) => item);
         retain(sortedPhrases);
         phrases.push('a');
         phrases.unshift('violently');
@@ -162,7 +163,7 @@ suite('sortedView', () => {
     });
     test('handles pop and shift', () => {
         const phrases = collection(['quick', 'brown', 'fox', 'jumped', 'over', 'the', 'lazy', 'dog'], 'phrases');
-        const sortedPhrases = phrases.sortedView((a, b) => a < b ? -1 : a > b ? 1 : 0);
+        const sortedPhrases = phrases.sortedView((item) => item);
         retain(sortedPhrases);
         phrases.pop(); // dog
         phrases.shift(); // quick
@@ -172,7 +173,7 @@ suite('sortedView', () => {
     });
     test('handles splice', () => {
         const phrases = collection(['quick', 'brown', 'fox', 'jumped', 'over', 'the', 'lazy', 'dog'], 'phrases');
-        const sortedPhrases = phrases.sortedView((a, b) => a < b ? -1 : a > b ? 1 : 0);
+        const sortedPhrases = phrases.sortedView((item) => item);
         retain(sortedPhrases);
         phrases.splice(2, 3, 'bear', 'stalked'); // quick brown (fox jumped over -> bear stalked) the lazy dog
         flush();
@@ -181,7 +182,7 @@ suite('sortedView', () => {
     });
     test('handles assignment', () => {
         const phrases = collection(['quick', 'brown', 'fox', 'jumped', 'over', 'the', 'lazy', 'dog'], 'phrases');
-        const sortedPhrases = phrases.sortedView((a, b) => a < b ? -1 : a > b ? 1 : 0);
+        const sortedPhrases = phrases.sortedView((item) => item);
         retain(sortedPhrases);
         phrases[2] = 'tank';
         flush();
@@ -190,13 +191,32 @@ suite('sortedView', () => {
     });
     test('recalculates only on flush', () => {
         const phrases = collection(['quick', 'brown', 'fox', 'jumped', 'over', 'the', 'lazy', 'dog'], 'phrases');
-        const sortedPhrases = phrases.sortedView((a, b) => a < b ? -1 : a > b ? 1 : 0);
+        const sortedPhrases = phrases.sortedView((item) => item);
         retain(sortedPhrases);
         phrases[2] = 'tank';
         assert.deepEqual(['brown', 'dog', 'fox', 'jumped', 'lazy', 'over', 'quick', 'the'], sortedPhrases);
         flush();
         assert.deepEqual(['brown', 'dog', 'jumped', 'lazy', 'over', 'quick', 'tank', 'the'], sortedPhrases);
         release(sortedPhrases);
+    });
+    test('can resort models when the models change', () => {
+        const grape = model({ name: 'grape' });
+        const cherry = model({ name: 'cherry' });
+        const mango = model({ name: 'mango' });
+        const orange = model({ name: 'orange' });
+        const fruit = collection([grape, cherry, orange, mango]);
+        // Simple in-order sorting
+        const sortedFruit = fruit.sortedView((fruit) => fruit.name);
+        assert.is(cherry, sortedFruit[0]);
+        assert.is(grape, sortedFruit[1]);
+        assert.is(mango, sortedFruit[2]);
+        assert.is(orange, sortedFruit[3]);
+        grape.name = 'watermelon';
+        flush();
+        assert.is(cherry, sortedFruit[0]);
+        assert.is(mango, sortedFruit[1]);
+        assert.is(orange, sortedFruit[2]);
+        assert.is(grape, sortedFruit[3]);
     });
 });
 suite('filterView', () => {
@@ -252,6 +272,21 @@ suite('filterView', () => {
         numbers[2] = 2;
         flush();
         assert.deepEqual([4, 2, 6], evenNumbers);
+        release(evenNumbers);
+    });
+    test('treats filterFn as a computation', () => {
+        const three = model({ value: 3 });
+        const four = model({ value: 4 });
+        const five = model({ value: 5 });
+        const six = model({ value: 6 });
+        const seven = model({ value: 7 });
+        const numbers = collection([three, four, five, six, seven], 'numbers');
+        const evenNumbers = numbers.filterView((item) => item.value % 2 === 0);
+        retain(evenNumbers);
+        assert.deepEqual([four, six], evenNumbers);
+        five.value = 50;
+        flush();
+        assert.deepEqual([four, five, six], evenNumbers);
         release(evenNumbers);
     });
 });

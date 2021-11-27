@@ -12,7 +12,7 @@ export declare const NotifyKey: unique symbol;
  */
 export declare type Ref<T> = {
     [TypeTag]: 'ref';
-    current?: T;
+    current: T | undefined;
 };
 export declare function isRef(ref: any): ref is Ref<unknown>;
 /**
@@ -54,10 +54,11 @@ export declare type Model<T> = T & {
     /** internal Object.keys pseudo-result field; only used for tracking key changes */
     [OwnKeysField]: any;
 };
-export declare type MappingFunction<T, V> = (item: T, index: number) => V;
-export declare type FilterFunction<T> = (item: T, index: number) => boolean;
-export declare type FlatMapFunction<T, V> = (item: T, index: number) => V[];
-export declare type SortFunction<T> = (a: T, b: T) => number;
+export declare type EqualityFunc<T> = (a: T, b: T) => boolean;
+export declare type MappingFunction<T, V> = (item: T) => V;
+export declare type FilterFunction<T> = (item: T) => boolean;
+export declare type FlatMapFunction<T, V> = (item: T) => V[];
+export declare type SortKeyFunction<T> = ((item: T) => string) | ((item: T) => number);
 export declare const OnCollectionRelease: unique symbol;
 /**
  * A mutable array to hold state, with some additional convenience methods
@@ -67,14 +68,12 @@ export interface Collection<T> extends Array<T> {
     [ObserveKey]: (observer: CollectionObserver<T>) => () => void;
     [FlushKey]: () => void;
     [GetRawArrayKey]: () => T[];
-    mapView<V>(fn: MappingFunction<T, V>, debugName?: string): View<V>;
-    sortedView(fn: SortFunction<T>, debugName?: string): View<T>;
-    filterView(fn: FilterFunction<T>, debugName?: string): View<T>;
-    flatMapView<V>(fn: MappingFunction<T, V[]>, debugName?: string): View<V>;
-    reject(fn: (item: T, index: number) => boolean): void;
+    mapView<V>(mapFn: MappingFunction<T, V>, debugName?: string): View<V>;
+    sortedView(sortKeyFn: SortKeyFunction<T>, debugName?: string): View<T>;
+    filterView(filterFn: FilterFunction<T>, debugName?: string): View<T>;
+    flatMapView<V>(flatMapFn: MappingFunction<T, V[]>, debugName?: string): View<V>;
+    reject(shouldReject: (item: T, index: number) => boolean): void;
     [OnCollectionRelease]: (fn: () => void) => void;
-    /** Note: collections do not support sorting. Use sortedView to create a sorted view. */
-    sort(fn: never): never;
 }
 /**
  * A readonly array to hold projected state
@@ -83,10 +82,10 @@ export interface View<T> extends ReadonlyArray<T> {
     [TypeTag]: 'collection';
     [ObserveKey]: (observer: CollectionObserver<T>) => () => void;
     [FlushKey]: () => void;
-    mapView<V>(fn: MappingFunction<T, V>, debugName?: string): View<V>;
-    sortedView(fn: SortFunction<T>, debugName?: string): View<T>;
-    filterView(fn: FilterFunction<T>, debugName?: string): View<T>;
-    flatMapView<V>(fn: MappingFunction<T, V[]>, debugName?: string): View<V>;
+    mapView<V>(mapFn: MappingFunction<T, V>, debugName?: string): View<V>;
+    sortedView(sortKeyFn: SortKeyFunction<T>, debugName?: string): View<T>;
+    filterView(filterFn: FilterFunction<T>, debugName?: string): View<T>;
+    flatMapView<V>(flatMapFn: MappingFunction<T, V[]>, debugName?: string): View<V>;
     [OnCollectionRelease]: (fn: () => void) => void;
 }
 /**
@@ -103,8 +102,8 @@ export interface ModelField<T> {
 export declare function makeCalculation<Ret>(fn: () => Ret): Calculation<Ret>;
 export declare function makeEffect(fn: () => void): Calculation<void>;
 export declare function isModel(thing: any): thing is Model<unknown>;
-export declare function isCollection(thing: any): thing is (Collection<unknown> | View<unknown>);
-export declare function isCalculation(thing: any): thing is Calculation<unknown>;
+export declare function isCollection(thing: any): thing is Collection<any> | View<any>;
+export declare function isCalculation(thing: any): thing is Calculation<any>;
 export declare function isEffect(thing: Calculation<unknown>): boolean;
 export {};
 //# sourceMappingURL=types.d.ts.map

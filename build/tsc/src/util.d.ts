@@ -6,4 +6,6 @@ export declare function makePromise<T>(): {
     reject: (val: T) => void;
 };
 export declare function groupBy2<TItem, TOuterKey, TInnerKey, TVal>(items: TItem[], grouper: (item: TItem) => [TOuterKey, TInnerKey, TVal]): Map<TOuterKey, Map<TInnerKey, TVal[]>>;
+export declare function alwaysFalse(): boolean;
+export declare function strictEqual<T>(a: T, b: T): boolean;
 //# sourceMappingURL=util.d.ts.map

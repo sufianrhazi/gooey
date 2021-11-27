@@ -38,7 +38,7 @@ const App = () => {
             calc(() => bag[key])))))),
         Revise("p", null, "Sorted items:"),
         Revise("ul", null, calc(() => (state.keysView ? model.keys(bag) : keysCollection)
-            .sortedView((a, b) => (a === b ? 0 : a < b ? -1 : 1))
+            .sortedView((item) => item)
             .mapView((key) => (Revise("li", null,
             key,
             " = ",

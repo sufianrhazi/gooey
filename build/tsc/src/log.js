@@ -45,7 +45,11 @@ export function invariant(check, ...items) {
 }
 export function assert(check, ...items) {
     if (!check) {
-        error('Assertion failure', check.toString(), 'is not truthy', ...items);
+        error('Assertion failure', check === undefined
+            ? 'undefined'
+            : check === null
+                ? 'null'
+                : check.toString(), 'is not truthy', ...items);
         throw new Error('Assertion failure');
     }
 }

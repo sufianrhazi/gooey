@@ -3,11 +3,11 @@ export declare class DAG<Type extends object> {
     private maxId;
     private sentinelId;
     private idMap;
-    nodes: Record<string, Type | Sentinel>;
-    refCount: Record<string, number>;
-    cullableSet: Record<string, true>;
-    edgeMap: Record<string, Record<string, Type | Sentinel>>;
-    reverseEdgeMap: Record<string, Record<string, Type | Sentinel>>;
+    private nodes;
+    private refCount;
+    private cullableSet;
+    private edgeMap;
+    private reverseEdgeMap;
     constructor();
     getItemId(item: Sentinel | Type): string;
     addNode(node: Type): boolean;
@@ -43,8 +43,19 @@ export declare class DAG<Type extends object> {
     getReverseDependencies(toNode: Type): Type[];
     /**
      * Visit topological graph
+     *
+     * When building topologically sorted list, refcount dirtiness (the number of incoming edges that are from dirty
+     * nodes).
+     *
+     * If a recalculation produces the same value, decrement the refcount on all destination edges.
+     *
+     * If a node while visiting topologically is at 0, no need to recalculate; decrement all of its destination nodes
+     * and proceed.
+     *
+     * This way we can prevent recalculations that are triggered if the calculation is "equal".
+     *
      */
-    visitTopological(callback: (node: Type) => void): void;
+    visitTopological(callback: (node: Type) => boolean): void;
     garbageCollect(): Type[];
     /**
      * Generate a dot file structure of the graph

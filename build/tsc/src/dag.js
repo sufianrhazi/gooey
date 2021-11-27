@@ -218,10 +218,45 @@ export class DAG {
     }
     /**
      * Visit topological graph
+     *
+     * When building topologically sorted list, refcount dirtiness (the number of incoming edges that are from dirty
+     * nodes).
+     *
+     * If a recalculation produces the same value, decrement the refcount on all destination edges.
+     *
+     * If a node while visiting topologically is at 0, no need to recalculate; decrement all of its destination nodes
+     * and proceed.
+     *
+     * This way we can prevent recalculations that are triggered if the calculation is "equal".
+     *
      */
     visitTopological(callback) {
+        // Nodes with no incoming edges must have a dirty count of 1.
+        // This can be determined by marking all destination nodes and if unmarked, set dirty count to 1.
+        const dirtyCount = {};
+        const entryNodes = new Set();
+        Object.keys(this.nodes).forEach((nodeId) => {
+            if (!isSentinel(this.nodes[nodeId])) {
+                dirtyCount[nodeId] = 0;
+                entryNodes.add(nodeId);
+            }
+        });
+        Object.keys(this.edgeMap).forEach((fromId) => {
+            if (!isSentinel(this.nodes[fromId])) {
+                Object.keys(this.edgeMap[fromId]).forEach((toId) => {
+                    dirtyCount[toId] += 1;
+                    entryNodes.delete(toId);
+                });
+            }
+        });
+        entryNodes.forEach((nodeId) => {
+            dirtyCount[nodeId] = 1;
+        });
+        // Build topologically sorted list via DFS visiting exactly once
+        // - When exiting an unvisited node, push to the end of a list
+        // After visiting all nodes, the list is in reverse topological order
         const visited = {};
-        const sorted = [];
+        const sortedIds = [];
         const dfsRecurse = (nodeId) => {
             if (visited[nodeId])
                 return;
@@ -231,15 +266,33 @@ export class DAG {
             });
             const node = this.nodes[nodeId];
             if (!isSentinel(node)) {
-                sorted.unshift(node);
+                sortedIds.push(nodeId);
             }
         };
         Object.keys(this.nodes).forEach((nodeId) => {
             dfsRecurse(nodeId);
         });
-        sorted.forEach((node) => {
-            callback(node);
-        });
+        // Visit the dirty nodes in topological order. If after visiting the node is unchanged, we can decrement the
+        // refcount for all its destination edges.
+        for (let i = sortedIds.length - 1; i >= 0; --i) {
+            const nodeId = sortedIds[i];
+            const node = this.nodes[nodeId];
+            if (!isSentinel(node)) {
+                if (dirtyCount[nodeId] > 0) {
+                    const isEqual = callback(node);
+                    if (isEqual) {
+                        Object.keys(this.edgeMap[nodeId] || {}).forEach((toId) => {
+                            dirtyCount[toId] -= 1;
+                        });
+                    }
+                }
+                else {
+                    Object.keys(this.edgeMap[nodeId] || {}).forEach((toId) => {
+                        dirtyCount[toId] -= 1;
+                    });
+                }
+            }
+        }
     }
     garbageCollect() {
         const culled = [];

@@ -28,4 +28,10 @@ export function groupBy2(items, grouper) {
     });
     return grouped;
 }
+export function alwaysFalse() {
+    return false;
+}
+export function strictEqual(a, b) {
+    return a === b;
+}
 //# sourceMappingURL=util.js.map

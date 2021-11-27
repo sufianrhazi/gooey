@@ -1,4 +1,4 @@
-import { Calculation, Collection, View, ModelField } from './types';
+import { Calculation, Collection, View, ModelField, EqualityFunc } from './types';
 /**
  * Reset all data to a clean slate.
  */
@@ -9,7 +9,10 @@ export declare function reset(): void;
  * The provided function will be recalculated when any of those dependencies are changed. The result of this function is
  * treated as a dependency, so if recalculations change the result, any dependent calculations are recalculated.
  */
-export declare function calc<Ret>(func: () => Ret, debugName?: string): Calculation<Ret>;
+export declare function calc<Ret>(func: () => Ret): Calculation<Ret>;
+export declare function calc<Ret>(func: () => Ret, debugName: string): Calculation<Ret>;
+export declare function calc<Ret>(func: () => Ret, isEqual: EqualityFunc<Ret>): Calculation<Ret>;
+export declare function calc<Ret>(func: () => Ret, isEqual: EqualityFunc<Ret>, debugName: string): Calculation<Ret>;
 /**
  * Create an effect cell: while the provided function is executed, all dependencies are tracked.
  *

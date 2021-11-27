@@ -1,10 +1,8 @@
 import Revise, { reset, mount, calc, model, collection, flush, } from './index';
-import * as log from './log';
 import { suite, test, beforeEach, assert } from './test';
 const testRoot = document.getElementById('test-root');
 if (!testRoot)
     throw new Error('oops');
-log.setLogLevel('debug');
 beforeEach(() => {
     reset();
 });
@@ -12,6 +10,11 @@ suite('mount static', () => {
     test('mount renders jsx as html', () => {
         mount(testRoot, Revise("div", { id: "ok" }, "Hello, world!"));
         assert.is(testRoot.querySelector('#ok').textContent, 'Hello, world!');
+    });
+    test('mount can unmount jsx as html', () => {
+        const unmount = mount(testRoot, Revise("div", { id: "ok" }, "Hello, world!"));
+        unmount();
+        assert.is(null, testRoot.querySelector('#ok'));
     });
     [undefined, null, false, true].forEach((value) => {
         test(`mount renders jsx ${value} as nonexistent nodes`, () => {
@@ -266,6 +269,65 @@ suite('mount components', () => {
             'onUnmount',
         ], sequence);
     });
+    test('onUnmount called in correct order (children before parent) when entire tree is unmounted', () => {
+        const sequence = [];
+        let queried = null;
+        const Grandchild = ({ name }, { onMount, onUnmount }) => {
+            sequence.push(`render ${name}`);
+            onMount(() => {
+                sequence.push(`onMount ${name}`);
+            });
+            onUnmount(() => {
+                queried = testRoot.querySelector('#child');
+                sequence.push(`onUnmount ${name}`);
+            });
+            return Revise("p", { class: "grandchild" }, name);
+        };
+        const Child = ({ name }, { onMount, onUnmount }) => {
+            sequence.push(`render ${name}`);
+            onMount(() => {
+                sequence.push(`onMount ${name}`);
+            });
+            onUnmount(() => {
+                queried = testRoot.querySelector('#child');
+                sequence.push(`onUnmount ${name}`);
+            });
+            return (Revise("p", { class: "child" },
+                Revise(Grandchild, { name: `${name} 1` }),
+                Revise(Grandchild, { name: `${name} 2` })));
+        };
+        const Parent = (props, { onMount }) => {
+            return (Revise("div", { id: "parent" },
+                Revise(Child, { name: "a" }),
+                Revise(Child, { name: "b" })));
+        };
+        const unmount = mount(testRoot, Revise(Parent, null));
+        assert.deepEqual([
+            'render a',
+            'render a 1',
+            'onMount a 1',
+            'render a 2',
+            'onMount a 2',
+            'onMount a',
+            'render b',
+            'render b 1',
+            'onMount b 1',
+            'render b 2',
+            'onMount b 2',
+            'onMount b',
+        ], sequence);
+        // clear sequence
+        sequence.splice(0, sequence.length);
+        unmount();
+        assert.deepEqual([
+            'onUnmount a 1',
+            'onUnmount a 2',
+            'onUnmount a',
+            'onUnmount b 1',
+            'onUnmount b 2',
+            'onUnmount b',
+        ], sequence);
+    });
 });
 suite('mount arrays', () => {
     test('mapping multiple arrays in a row concats as expected', () => {
@@ -410,6 +472,51 @@ suite('mount arrays', () => {
             'B:4/4',
             'baz',
         ]);
+    });
+});
+suite('mount collection mapped view', () => {
+    test('unmodified collection mapView nodes keep references', () => {
+        const items = collection(['foo', 'bar', 'baz']);
+        mount(testRoot, Revise("div", null, items.mapView((item) => (Revise("span", { "data-item": true }, item)))));
+        const origSet = [].slice.call(testRoot.querySelectorAll('[data-item]'));
+        origSet[0].setAttribute('tagged', 'yes 0');
+        origSet[1].setAttribute('tagged', 'yes 1');
+        origSet[2].setAttribute('tagged', 'yes 2');
+        items.push('end');
+        items.unshift('start');
+        items.splice(2, 0, 'middle');
+        // start foo middle bar baz end
+        flush();
+        const newSet = [].slice.call(testRoot.querySelectorAll('[data-item]'));
+        assert.is(null, newSet[0].getAttribute('tagged'));
+        assert.is('yes 0', newSet[1].getAttribute('tagged'));
+        assert.is(null, newSet[2].getAttribute('tagged'));
+        assert.is('yes 1', newSet[3].getAttribute('tagged'));
+        assert.is('yes 2', newSet[4].getAttribute('tagged'));
+        assert.is(null, newSet[5].getAttribute('tagged'));
+    });
+    test('unmodified collection sortedView nodes keep references', () => {
+        const items = collection(['foo', 'bar', 'baz']);
+        mount(testRoot, Revise("div", null, items
+            .sortedView((item) => item)
+            .mapView((item) => (Revise("span", { "data-item": true }, item)))));
+        const origSet = [].slice.call(testRoot.querySelectorAll('[data-item]'));
+        // bar baz foo
+        origSet[0].setAttribute('tagged', 'yes 0');
+        origSet[1].setAttribute('tagged', 'yes 1');
+        origSet[2].setAttribute('tagged', 'yes 2');
+        items.push('aaa');
+        items.unshift('but');
+        items.splice(2, 0, 'zzz');
+        // aaa bar baz but foo zzz
+        flush();
+        const newSet = [].slice.call(testRoot.querySelectorAll('[data-item]'));
+        assert.is(null, newSet[0].getAttribute('tagged'));
+        assert.is('yes 0', newSet[1].getAttribute('tagged'));
+        assert.is('yes 1', newSet[2].getAttribute('tagged'));
+        assert.is(null, newSet[3].getAttribute('tagged'));
+        assert.is('yes 2', newSet[4].getAttribute('tagged'));
+        assert.is(null, newSet[5].getAttribute('tagged'));
     });
 });
 //# sourceMappingURL=view.test.js.map

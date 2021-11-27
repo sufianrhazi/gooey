@@ -93,7 +93,7 @@ function renderAppending({ domParent, parentNode, jsxNode, }) {
         parentNode,
     });
     parentNode.children.push(emptyChildVNode);
-    renderReplacing({
+    return renderReplacing({
         nodeToReplace: emptyChildVNode,
         jsxNode,
     });
@@ -356,11 +356,20 @@ function renderReplacing({ nodeToReplace, jsxNode, }) {
  */
 export function mount(parentElement, jsxNode) {
     const rootNode = makeRootVNode({ domNode: parentElement });
-    renderAppending({
+    const vNode = renderAppending({
         domParent: rootNode,
         parentNode: rootNode,
         jsxNode: jsxNode,
     });
+    return () => {
+        replaceVNode(vNode, makeChildVNode({
+            parentNode: rootNode,
+            domParent: rootNode,
+            jsxNode: null,
+            domNode: null,
+            onUnmount: [],
+        }));
+    };
 }
 export const Fragment = ({ children }) => children;
 //# sourceMappingURL=view.js.map

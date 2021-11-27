@@ -5,7 +5,7 @@ export declare function createElement<Props extends {}>(Constructor: Component<P
 /**
  * Mount the provided JSX to an element
  */
-export declare function mount(parentElement: Element, jsxNode: JSXNode): void;
+export declare function mount(parentElement: Element, jsxNode: JSXNode): () => void;
 export declare const Fragment: ({ children }: {
     children: JSXNode[];
 }) => JSXNode[];
