@@ -365,6 +365,7 @@ function jsxNodeToVNode({
     }
     if (isRenderComponent(jsxNode)) {
         const onUnmount: Function[] = [];
+
         const componentNode = makeChildVNode({
             parentNode: parentNode,
             domParent: domParent,
@@ -375,67 +376,47 @@ function jsxNodeToVNode({
         });
 
         const Component = jsxNode.component;
-        let firstRun = true;
-        const resultEffect = effect(() => {
-            const onComponentMount: Function[] = [];
-            const jsxChild = Component(
-                {
-                    ...(jsxNode.props || {}),
-                    children: jsxNode.children,
+        const onComponentMount: Function[] = [];
+        const jsxChild = Component(
+            {
+                ...(jsxNode.props || {}),
+                children: jsxNode.children,
+            },
+            {
+                onUnmount: (unmountCallback) => {
+                    onUnmount.push(unmountCallback);
                 },
-                {
-                    onUnmount: (unmountCallback) => {
-                        onUnmount.push(unmountCallback);
-                    },
-                    onMount: (mountCallback) => {
-                        onComponentMount.push(mountCallback);
-                    },
-                    onEffect: (
-                        effectCallback: () => void,
-                        debugName?: string
-                    ) => {
-                        const effectCalc = effect(
-                            effectCallback,
-                            `componenteffect:${jsxNode.component.name}:${
-                                debugName ?? onComponentMount.length
-                            }`
-                        );
-                        onComponentMount.push(() => {
-                            retain(effectCalc);
-                            effectCalc();
-                        });
-                        onUnmount.push(() => {
-                            release(effectCalc);
-                        });
-                    },
-                }
-            );
-
-            const childVNode = jsxNodeToVNode({
-                parentNode: componentNode,
-                domParent: componentNode.domParent,
-                jsxNode: jsxChild,
-            });
-            if (firstRun) {
-                firstRun = false;
-                componentNode.children.push(childVNode);
-
-                onComponentMount.forEach((mountCallback) =>
-                    componentNode.onMount.push(mountCallback)
-                );
-            } else {
-                spliceVNode(componentNode, 0, componentNode.children.length, [
-                    childVNode,
-                ]);
-
-                onComponentMount.forEach((mountCallback) => mountCallback());
+                onMount: (mountCallback) => {
+                    onComponentMount.push(mountCallback);
+                },
+                onEffect: (effectCallback: () => void, debugName?: string) => {
+                    const effectCalc = effect(
+                        effectCallback,
+                        `componenteffect:${jsxNode.component.name}:${
+                            debugName ?? onComponentMount.length
+                        }`
+                    );
+                    onComponentMount.push(() => {
+                        retain(effectCalc);
+                        effectCalc();
+                    });
+                    onUnmount.push(() => {
+                        release(effectCalc);
+                    });
+                },
             }
-        }, `component:${jsxNode.component.name}`);
+        );
 
-        retain(resultEffect);
-        onUnmount.push(() => release(resultEffect));
+        const childVNode = jsxNodeToVNode({
+            parentNode: componentNode,
+            domParent: componentNode.domParent,
+            jsxNode: jsxChild,
+        });
+        componentNode.children.push(childVNode);
 
-        resultEffect();
+        onComponentMount.forEach((mountCallback) =>
+            componentNode.onMount.push(mountCallback)
+        );
 
         // Mount self
         mountVNode(componentNode);

@@ -199,24 +199,6 @@ suite('mount components', () => {
         assert.is(testRoot.innerHTML, '<p>Hello there</p>');
     });
 
-    test('components are themselves calculations and rerender upon dependency change', () => {
-        const state = model({
-            name: 'world',
-        });
-        const Greet: Component<{}> = () => {
-            const exclaimed = state.name + '!';
-            return <p>Hello {exclaimed}</p>;
-        };
-        mount(testRoot, <Greet />);
-
-        assert.is(testRoot.innerHTML, '<p>Hello world!</p>');
-
-        state.name = 'there';
-        flush();
-
-        assert.is(testRoot.innerHTML, '<p>Hello there!</p>');
-    });
-
     test('components with calculations do not change roots', () => {
         const state = model({
             name: 'world',
@@ -236,7 +218,7 @@ suite('mount components', () => {
         assert.is(pBefore, pAfter);
     });
 
-    test('components without calculations that rerender *do* change roots', () => {
+    test('components without calculations that read model data *do not* rerender', () => {
         const state = model({
             name: 'world',
         });
@@ -253,7 +235,8 @@ suite('mount components', () => {
 
         const pAfter = testRoot.querySelector('#p');
 
-        assert.isNot(pBefore, pAfter);
+        assert.is(pBefore, pAfter);
+        assert.is('Hello world!', pAfter?.textContent);
     });
 
     test('components are provided an onMount callback which is called immediately after mounted', () => {
@@ -416,7 +399,6 @@ suite('mount components', () => {
 
     test('onUnmount called in correct order (children before parent) when entire tree is unmounted', () => {
         const sequence: string[] = [];
-        let queried: null | Element = null;
         const Grandchild: Component<{ name: string }> = (
             { name },
             { onMount, onUnmount }
@@ -426,7 +408,6 @@ suite('mount components', () => {
                 sequence.push(`onMount ${name}`);
             });
             onUnmount(() => {
-                queried = testRoot.querySelector('#child');
                 sequence.push(`onUnmount ${name}`);
             });
             return <p class="grandchild">{name}</p>;
@@ -440,7 +421,6 @@ suite('mount components', () => {
                 sequence.push(`onMount ${name}`);
             });
             onUnmount(() => {
-                queried = testRoot.querySelector('#child');
                 sequence.push(`onUnmount ${name}`);
             });
             return (

@@ -307,14 +307,9 @@ type Component<Props extends {}> = (
 ) => JSXNode;
 ```
 
-Components are user-defined functions which take props and lifecycle event handlers and return JSX. When mounted, a
-Component is treated as a calculation: if in the body of a component, any models, collections, or calculations are read,
-these become dependencies of the component.
+Components are user-defined functions which take props and lifecycle event handlers and return JSX.
 
-If any component's dependencies change, the component will be re-rendered: it is removed from the DOM, the component
-function is re-executed, and the resulting JSX is re-added to the DOM.
-
-There are two (and only two) lifecycle events to every component:
+Components are never re-rendered. There are two (and only two) lifecycle events to every component:
 
 * Callback functions passed to the `onMount` function are called immediately after the component has been mounted to the DOM
 * Callback functions passed to the `onUnmount` function are called immediately before the component has been mounted to the DOM
@@ -354,6 +349,15 @@ function flush(): void
 
 Manually trigger a recalculation of all calculations and effects that have had their dependencies changed. By default,
 you will never need to call this function, it gets automatically called after a timeout.
+
+
+### nextFlush()
+
+```typescript
+function flush(): Promise<void>
+```
+
+Get a promise which will resolve on the next flush (or immediately, if there is no pending flush).
 
 
 ### subscribe(onReadyToFlush)
