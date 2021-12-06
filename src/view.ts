@@ -14,6 +14,7 @@ import {
     ElementProps,
     isRenderComponent,
     isRenderElement,
+    getElementTypeMapping,
 } from './jsx';
 import {
     VNode,
@@ -63,73 +64,13 @@ export function createElement<Props extends {}>(
 
 const boundEvents = new WeakMap<Element, Record<string, (ev: Event) => void>>();
 
-function setBooleanPropertyValue(
+function setAttributeValue(
+    elementType: string,
     element: Element,
     key: string,
-    value: boolean
+    value: unknown
 ) {
-    if (
-        element instanceof HTMLInputElement &&
-        (key === 'checked' || key === 'indeterminate') &&
-        element[key] !== value
-    ) {
-        element[key] = value;
-    }
-    if (
-        element instanceof HTMLOptionElement &&
-        key == 'selected' &&
-        element[key] !== value
-    ) {
-        element[key] = value;
-    }
-    if (
-        element instanceof HTMLDetailsElement &&
-        key == 'open' &&
-        element[key] !== value
-    ) {
-        element[key] = value;
-    }
-}
-
-function setStringPropertyValue(element: Element, key: string, value: string) {
-    if (
-        element instanceof HTMLInputElement &&
-        key === 'value' &&
-        element[key] !== value
-    ) {
-        element[key] = value;
-    }
-    if (
-        element instanceof HTMLTextAreaElement &&
-        key === 'value' &&
-        element[key] !== value
-    ) {
-        element[key] = value;
-    }
-    if (
-        element instanceof HTMLOptionElement &&
-        key === 'value' &&
-        element[key] !== value
-    ) {
-        element[key] = value;
-    }
-}
-
-function setAttributeValue(element: Element, key: string, value: unknown) {
-    if (value === null || value === undefined || value === false) {
-        element.removeAttribute(key);
-        setBooleanPropertyValue(element, key, false);
-        setStringPropertyValue(element, key, '');
-    } else if (value === true) {
-        element.setAttribute(key, '');
-        setBooleanPropertyValue(element, key, true);
-    } else if (typeof value === 'string') {
-        element.setAttribute(key, value);
-        setStringPropertyValue(element, key, value);
-    } else if (typeof value === 'number') {
-        element.setAttribute(key, value.toString());
-        setStringPropertyValue(element, key, value.toString());
-    } else if (key.startsWith('on:') && typeof value === 'function') {
+    if (key.startsWith('on:') && typeof value === 'function') {
         const eventName = key.slice(3);
         let attributes = boundEvents.get(element);
         if (!attributes) {
@@ -141,6 +82,27 @@ function setAttributeValue(element: Element, key: string, value: unknown) {
         }
         element.addEventListener(eventName, value as any);
         attributes[key] = value as any;
+    } else {
+        const mapping = getElementTypeMapping(elementType, key);
+        if (mapping) {
+            if (mapping.makeAttrValue) {
+                const attributeValue = mapping.makeAttrValue(value);
+                if (attributeValue === undefined) {
+                    element.removeAttribute(key);
+                } else {
+                    element.setAttribute(key, attributeValue);
+                }
+            }
+            if (mapping.idlName && mapping.makeIdlValue) {
+                (element as any)[mapping.idlName] = mapping.makeIdlValue(value);
+            }
+        } else if (value === false || value === undefined || value === null) {
+            element.removeAttribute(key);
+        } else if (value === true) {
+            element.setAttribute(key, '');
+        } else if (typeof value === 'string') {
+            element.setAttribute(key, value);
+        }
     }
 }
 
@@ -216,13 +178,18 @@ function jsxNodeToVNode({
                 if (isCalculation(value)) {
                     const boundEffect = effect(() => {
                         const computedValue = value();
-                        setAttributeValue(element, key, computedValue);
+                        setAttributeValue(
+                            jsxNode.element,
+                            element,
+                            key,
+                            computedValue
+                        );
                     }, `viewattr:${key}`);
                     retain(boundEffect);
                     boundEffects.push(boundEffect);
                     boundEffect();
                 } else {
-                    setAttributeValue(element, key, value);
+                    setAttributeValue(jsxNode.element, element, key, value);
                 }
             });
         }

@@ -1,6 +1,7 @@
 import Revise, {
     Fragment,
     Component,
+    Ref,
     ref,
     mount,
     model,
@@ -359,7 +360,7 @@ const TextLike: Component<{
         value: 'Hello, world!',
         messages: collection<string>([]),
     });
-    const inputRef = ref<HTMLInputElement>();
+    const inputRef: Ref<any> = ref();
 
     function log(message: string) {
         state.messages.push(message);
@@ -476,9 +477,9 @@ const Range: Component<{}> = (props, { onEffect }) => {
                 <input
                     ref={inputRef}
                     type="range"
-                    min="0"
-                    max="100"
-                    step="5"
+                    min={0}
+                    max={100}
+                    step={5}
                     value={calc(() => state.value)}
                     disabled={calc(() => state.disabled)}
                     on:click={logEvent('on:click')}
@@ -574,7 +575,7 @@ const Select: Component<{}> = (props, { onEffect }) => {
                     value={calc(() => state.value)}
                     disabled={calc(() => state.disabled)}
                     multiple={calc(() => state.multiple)}
-                    size={calc(() => (state.multiple ? '5' : undefined))}
+                    size={calc(() => (state.multiple ? 5 : undefined))}
                     on:click={logEvent('on:click select')}
                     on:change={onChange}
                     on:input={logEvent('on:input select')}

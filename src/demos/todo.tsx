@@ -54,7 +54,7 @@ const globalState: TodoList = model(
 ////////////////////////////////////////////////////////////////////////////////
 
 const TodoItem: Component<{ item: TodoItem }> = ({ item }) => {
-    const onChange = (event: InputEvent) => {
+    const onChange = (event: Event) => {
         item.done = (event.target as HTMLInputElement).checked;
     };
     return (
@@ -170,7 +170,7 @@ const TodoControls: Component<{}> = (_props, { onMount }) => {
 };
 
 const App = () => {
-    const graphvizContainerRef = ref<HTMLElement | undefined>();
+    const graphvizContainerRef = ref<HTMLPreElement>();
     const onClickMutate = () => {
         globalState.items.forEach((item) => {
             item.done = Math.random() < 0.5;

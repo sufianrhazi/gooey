@@ -770,7 +770,7 @@ const TestRunner: Component<{}> = (props, { onMount, onEffect }) => {
         });
     });
 
-    const onStopToggle = (e: UIEvent) => {
+    const onStopToggle = (e: Event) => {
         actions.setStopOnFailure(!!(e.target as HTMLInputElement)?.checked);
     };
 
@@ -837,7 +837,7 @@ const TestRunner: Component<{}> = (props, { onMount, onEffect }) => {
                                         'active'
                                 )
                             )}
-                            ref={(iframeElement: HTMLIFrameElement | null) => {
+                            ref={(iframeElement) => {
                                 if (!iframeElement) {
                                     return;
                                 }

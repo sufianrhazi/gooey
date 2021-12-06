@@ -16,7 +16,7 @@ import { DAG } from './dag';
 import { noop, alwaysFalse, strictEqual } from './util';
 import { clearNames, debugNameFor, name } from './debug';
 
-let activeCalculations: Calculation<any>[] = [];
+let activeCalculations: (null | Calculation<any>)[] = [];
 let calculationToRecalculationMap: Map<
     Calculation<any>,
     () => boolean
@@ -97,7 +97,7 @@ export function effect(
     return calculation;
 }
 
-export function untracked(func: () => void): Calculation<void> {
+export function untracked(func: () => void): void {
     activeCalculations.push(null);
     func();
     activeCalculations.pop();
