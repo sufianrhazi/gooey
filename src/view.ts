@@ -18,11 +18,11 @@ import {
 import {
     VNode,
     ChildVNode,
-    replaceVNode,
+    mountVNode,
     spliceVNode,
     makeChildVNode,
     makeRootVNode,
-    makeEmptyVNode,
+    callOnMount,
 } from './vnode';
 
 export function createElement(
@@ -144,31 +144,13 @@ function setAttributeValue(element: Element, key: string, value: unknown) {
     }
 }
 
-function renderAppending({
-    domParent,
+function jsxNodeToVNode({
     parentNode,
+    domParent,
     jsxNode,
 }: {
-    domParent: VNode;
     parentNode: VNode;
-    jsxNode: JSXNode;
-}) {
-    const emptyChildVNode = makeEmptyVNode({
-        domParent,
-        parentNode,
-    });
-    parentNode.children.push(emptyChildVNode);
-    return renderReplacing({
-        nodeToReplace: emptyChildVNode,
-        jsxNode,
-    });
-}
-
-function renderReplacing({
-    nodeToReplace,
-    jsxNode,
-}: {
-    nodeToReplace: ChildVNode;
+    domParent: VNode;
     jsxNode: JSXNode;
 }): ChildVNode {
     if (
@@ -178,35 +160,38 @@ function renderReplacing({
         jsxNode === true
     ) {
         const emptyVNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode,
-            domParent: nodeToReplace.domParent,
+            parentNode: parentNode,
+            domParent: domParent,
             jsxNode: jsxNode,
             domNode: null,
+            onMount: [],
             onUnmount: [],
         });
-        replaceVNode(nodeToReplace, emptyVNode);
+        mountVNode(emptyVNode);
         return emptyVNode;
     }
     if (typeof jsxNode === 'string') {
         const stringVNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode,
-            domParent: nodeToReplace.domParent,
+            parentNode: parentNode,
+            domParent: domParent,
             jsxNode: jsxNode,
             domNode: document.createTextNode(jsxNode),
+            onMount: [],
             onUnmount: [],
         });
-        replaceVNode(nodeToReplace, stringVNode);
+        mountVNode(stringVNode);
         return stringVNode;
     }
     if (typeof jsxNode === 'number') {
         const numberVNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode,
-            domParent: nodeToReplace.domParent,
+            parentNode: parentNode,
+            domParent: domParent,
             jsxNode: jsxNode,
             domNode: document.createTextNode(jsxNode.toString()),
+            onMount: [],
             onUnmount: [],
         });
-        replaceVNode(nodeToReplace, numberVNode);
+        mountVNode(numberVNode);
         return numberVNode;
     }
     if (isRenderElement(jsxNode)) {
@@ -243,10 +228,17 @@ function renderReplacing({
         }
 
         const elementNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode,
-            domParent: nodeToReplace.domParent,
+            parentNode: parentNode,
+            domParent: domParent,
             jsxNode: jsxNode,
             domNode: element,
+            onMount: [
+                () => {
+                    if (refCallback) {
+                        refCallback(element);
+                    }
+                },
+            ],
             onUnmount: [
                 () => {
                     boundEffects.forEach((boundEffect) => release(boundEffect));
@@ -256,19 +248,26 @@ function renderReplacing({
                 },
             ],
         });
-        replaceVNode(nodeToReplace, elementNode);
 
-        jsxNode.children.forEach((child) => {
-            renderAppending({
-                domParent: elementNode,
-                parentNode: elementNode,
-                jsxNode: child,
-            });
-        });
+        elementNode.children.push(
+            ...jsxNode.children.map((childJsxNode) =>
+                jsxNodeToVNode({
+                    domParent: elementNode,
+                    parentNode: elementNode,
+                    jsxNode: childJsxNode,
+                })
+            )
+        );
 
-        if (refCallback) {
-            refCallback(element);
+        // Mount self
+        if (elementNode.mountFragment) {
+            element.appendChild(elementNode.mountFragment);
+            elementNode.mountFragment = null;
         }
+        mountVNode(elementNode);
+        // TODO: At this point, the element's children are mounted to the newly created element, the newly created
+        // element is mounted to the domParent's mountFragment. How do we call all the onMount callbacks? Maybe
+        // the mount() function should call them after it's been mounted?
 
         return elementNode;
     }
@@ -277,44 +276,36 @@ function renderReplacing({
         const onUnmount: (() => void)[] = [];
 
         const collectionNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode,
-            domParent: nodeToReplace.domParent,
+            parentNode: parentNode,
+            domParent: domParent,
             jsxNode: jsxNode,
             domNode: null,
+            onMount: [],
             onUnmount,
         });
-        replaceVNode(nodeToReplace, collectionNode);
 
         const unobserve = trackedCollection[ObserveKey]((event) => {
             if (event.type === 'init') {
                 const { items } = event;
-                items.forEach((jsxChild) => {
-                    renderAppending({
-                        domParent: collectionNode.domParent,
-                        parentNode: collectionNode,
-                        jsxNode: jsxChild,
-                    });
-                });
+                collectionNode.children.push(
+                    ...items.map((jsxChild) =>
+                        jsxNodeToVNode({
+                            domParent: collectionNode.domParent,
+                            parentNode: collectionNode,
+                            jsxNode: jsxChild,
+                        })
+                    )
+                );
             } else if (event.type === 'splice') {
                 const { count, index, items } = event;
-                const childNodes = items.map(() =>
-                    makeEmptyVNode({
+                const childNodes = items.map((jsxChild) =>
+                    jsxNodeToVNode({
                         domParent: collectionNode.domParent,
                         parentNode: collectionNode,
+                        jsxNode: jsxChild,
                     })
                 );
-                spliceVNode(
-                    collectionNode,
-                    collectionNode.children[index],
-                    count,
-                    childNodes
-                );
-                items.forEach((jsxChild, index) => {
-                    renderReplacing({
-                        nodeToReplace: childNodes[index],
-                        jsxNode: jsxChild,
-                    });
-                });
+                spliceVNode(collectionNode, index, count, childNodes);
             }
         });
 
@@ -324,61 +315,67 @@ function renderReplacing({
             release(trackedCollection);
         });
 
+        // Mount self
+        mountVNode(collectionNode);
+
         return collectionNode;
     }
     if (isCalculation(jsxNode)) {
         const trackedCalculation = jsxNode;
         const onUnmount: Function[] = [];
         const calculationNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode,
-            domParent: nodeToReplace.domParent,
+            parentNode: parentNode,
+            domParent: domParent,
             jsxNode: jsxNode,
             domNode: null,
+            onMount: [],
             onUnmount,
         });
-        replaceVNode(nodeToReplace, calculationNode);
 
-        // Create a virtual node for the result of the calculation
-        let calculationResultNode = makeEmptyVNode({
-            parentNode: calculationNode,
-            domParent: calculationNode.domParent,
-        });
-        calculationNode.children.push(calculationResultNode);
-
+        let firstRun = true;
         const resultEffect = effect(() => {
             const jsxChild = trackedCalculation();
-
-            calculationResultNode = renderReplacing({
-                nodeToReplace: calculationResultNode,
+            const childVNode = jsxNodeToVNode({
+                parentNode: calculationNode,
+                domParent: calculationNode.domParent,
                 jsxNode: jsxChild,
             });
+            if (firstRun) {
+                firstRun = false;
+                calculationNode.children.push(childVNode);
+            } else {
+                spliceVNode(
+                    calculationNode,
+                    0,
+                    calculationNode.children.length,
+                    [childVNode]
+                );
+            }
         }, `viewcalc:${debugNameFor(jsxNode) ?? 'node'}`);
 
         retain(resultEffect);
         onUnmount.push(() => release(resultEffect));
 
         resultEffect();
+
+        // Mount self
+        mountVNode(calculationNode);
+
         return calculationNode;
     }
     if (isRenderComponent(jsxNode)) {
         const onUnmount: Function[] = [];
         const componentNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode,
-            domParent: nodeToReplace.domParent,
+            parentNode: parentNode,
+            domParent: domParent,
             jsxNode: jsxNode,
             domNode: null,
+            onMount: [],
             onUnmount,
         });
-        replaceVNode(nodeToReplace, componentNode);
-
-        // Create a virtual node for the result of the component render
-        let componentResultNode = makeEmptyVNode({
-            parentNode: componentNode,
-            domParent: componentNode.domParent,
-        });
-        componentNode.children.push(componentResultNode);
 
         const Component = jsxNode.component;
+        let firstRun = true;
         const resultEffect = effect(() => {
             const onComponentMount: Function[] = [];
             const jsxChild = Component(
@@ -414,52 +411,79 @@ function renderReplacing({
                 }
             );
 
-            componentResultNode = renderReplacing({
-                nodeToReplace: componentResultNode,
+            const childVNode = jsxNodeToVNode({
+                parentNode: componentNode,
+                domParent: componentNode.domParent,
                 jsxNode: jsxChild,
             });
+            if (firstRun) {
+                firstRun = false;
+                componentNode.children.push(childVNode);
 
-            onComponentMount.forEach((mountCallback) => mountCallback());
+                onComponentMount.forEach((mountCallback) =>
+                    componentNode.onMount.push(mountCallback)
+                );
+            } else {
+                spliceVNode(componentNode, 0, componentNode.children.length, [
+                    childVNode,
+                ]);
+
+                onComponentMount.forEach((mountCallback) => mountCallback());
+            }
         }, `component:${jsxNode.component.name}`);
 
         retain(resultEffect);
         onUnmount.push(() => release(resultEffect));
 
         resultEffect();
+
+        // Mount self
+        mountVNode(componentNode);
+
         return componentNode;
     }
     if (Array.isArray(jsxNode)) {
         const items = jsxNode;
         const arrayNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode,
-            domParent: nodeToReplace.domParent,
+            parentNode: parentNode,
+            domParent: domParent,
             jsxNode,
             domNode: null,
+            onMount: [],
             onUnmount: [],
         });
-        replaceVNode(nodeToReplace, arrayNode);
 
-        items.forEach((jsxChild) => {
-            renderAppending({
-                domParent: arrayNode.domParent,
-                parentNode: arrayNode,
-                jsxNode: jsxChild,
-            });
-        });
+        arrayNode.children.push(
+            ...items.map((jsxChild) =>
+                jsxNodeToVNode({
+                    parentNode: arrayNode,
+                    domParent: domParent,
+                    jsxNode: jsxChild,
+                })
+            )
+        );
+
+        // Mount self
+        mountVNode(arrayNode);
+
         return arrayNode;
     }
     if (typeof jsxNode === 'function') {
         const functionVNode = makeChildVNode({
-            parentNode: nodeToReplace.parentNode,
-            domParent: nodeToReplace.domParent,
+            parentNode: parentNode,
+            domParent: domParent,
             jsxNode: jsxNode,
             domNode: null,
+            onMount: [],
             onUnmount: [],
         });
-        replaceVNode(nodeToReplace, functionVNode);
         log.warn(
             'Attempted to render JSX node that was a function, not rendering anything'
         );
+
+        // Mount self
+        mountVNode(functionVNode);
+
         return functionVNode;
     }
     log.assertExhausted(jsxNode, 'unexpected render type');
@@ -470,22 +494,25 @@ function renderReplacing({
  */
 export function mount(parentElement: Element, jsxNode: JSXNode) {
     const rootNode = makeRootVNode({ domNode: parentElement });
-    const vNode = renderAppending({
-        domParent: rootNode,
-        parentNode: rootNode,
-        jsxNode: jsxNode,
-    });
+    rootNode.children.push(
+        jsxNodeToVNode({
+            parentNode: rootNode,
+            domParent: rootNode,
+            jsxNode: jsxNode,
+        })
+    );
+
+    // Mount self
+    if (rootNode.mountFragment) {
+        parentElement.appendChild(rootNode.mountFragment);
+        rootNode.mountFragment = null;
+    }
+
+    // Call onMount callbacks
+    callOnMount(rootNode);
+
     return () => {
-        replaceVNode(
-            vNode,
-            makeChildVNode({
-                parentNode: rootNode,
-                domParent: rootNode,
-                jsxNode: null,
-                domNode: null,
-                onUnmount: [],
-            })
-        );
+        spliceVNode(rootNode, 0, rootNode.children.length, []);
     };
 }
 

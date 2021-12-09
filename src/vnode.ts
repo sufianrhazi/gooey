@@ -1,31 +1,33 @@
 import { JSXNode } from './jsx';
+import { groupBy } from './util';
 import * as log from './log';
 
-const VNodeSymbol = Symbol('VNode');
-
 /**
- * A VNode represents a node in the virtual tree structure
+ * A VNode represents a node in the JSX tree structure
  *
- * Since a JSXNode may render to 0, 1, or many DOM nodes, which may be at any
- * index within the DOM tree.
+ * Since a JSXNode may render to 0, 1, or many DOM nodes, we need to keep track
+ * of the virtual tree structure to understand which index to update within the
+ * DOM tree.
  */
 export type ChildVNode = {
     domNode: Node | null;
     children: VNode[];
     parentNode: VNode;
     domParent: VNode;
+    mountFragment: DocumentFragment | null;
     jsxNode: JSXNode | null;
+    onMount: Function[];
     onUnmount: Function[];
-    [VNodeSymbol]: true;
 };
 export type RootVNode = {
     domNode: Node | null;
     children: VNode[];
     parentNode: null;
     domParent: VNode;
+    mountFragment: DocumentFragment | null;
     jsxNode: JSXNode | null;
+    onMount: Function[];
     onUnmount: Function[];
-    [VNodeSymbol]: true;
 };
 export type VNode = ChildVNode | RootVNode;
 
@@ -35,9 +37,10 @@ export function makeRootVNode({ domNode }: { domNode: Node }): RootVNode {
         children: [],
         parentNode: null,
         domParent: null,
+        mountFragment: document.createDocumentFragment(),
         jsxNode: null,
+        onMount: [],
         onUnmount: [],
-        [VNodeSymbol]: true,
     } as unknown as RootVNode; // We lie here since domParent needs to be self-referential
     rootVNode.domParent = rootVNode;
     return rootVNode;
@@ -47,6 +50,7 @@ export function makeChildVNode({
     jsxNode,
     domNode,
     domParent,
+    onMount,
     onUnmount,
     parentNode,
 }: {
@@ -54,6 +58,7 @@ export function makeChildVNode({
     domParent: VNode;
     jsxNode: JSXNode | null;
     domNode: Node | null;
+    onMount: Function[];
     onUnmount: Function[];
 }): ChildVNode {
     return {
@@ -61,34 +66,43 @@ export function makeChildVNode({
         children: [],
         parentNode,
         domParent,
+        mountFragment: document.createDocumentFragment(),
         jsxNode,
+        onMount,
         onUnmount,
-        [VNodeSymbol]: true,
     };
 }
 
-export function makeEmptyVNode({
-    parentNode,
-    domParent,
-}: {
-    parentNode: VNode;
-    domParent: VNode;
-}): ChildVNode {
-    return {
-        domNode: null,
-        children: [],
-        parentNode,
-        domParent,
-        jsxNode: null,
-        onUnmount: [],
-        [VNodeSymbol]: true,
-    };
-}
-
-export function isVNode(x: any): x is VNode {
-    return !!x[VNodeSymbol];
-}
-
+/**
+ * Get shallow DOM nodes from the virtual tree.
+ *
+ * For example, with this virtual tree:
+ *
+ * <root>
+ *   <A>...</A>
+ *   <B>
+ *     <B1>
+ *      <div id="b_1_1">...</div>
+ *      {false}
+ *      {[
+ *        <div id="b_1_arr_1">...</div>
+ *        <div id="b_1_arr_2">...</div>
+ *      ]}
+ *      <SubComponent>
+ *        <div id="b_1_sub_1">...</div>
+ *        <div id="b_1_sub_2">...</div>
+ *      </SubComponent>
+ *      <div id="b_1_3">...</div>
+ *     </B1>
+ *   </B>
+ *   <C>
+ *     ...
+ *   </C>
+ * </root>
+ *
+ * If getShallowNodes is called with <B> as the target, this would retrieve:
+ * [b_1_1, b_1_arr_1, b_1_arr_2, b_1_sub_1, b_1_sub_2, b_1_3]
+ */
 function getShallowNodes(vNode: VNode): Node[] {
     const nodes: Node[] = [];
     function visit(node: VNode) {
@@ -131,6 +145,26 @@ function getDomParentChildIndex(
     return realIndex;
 }
 
+export function callOnMount(node: VNode) {
+    // Note: we are doing a post-order traversal, so all children onMount are called before parents are called
+    node.children.forEach((child) => callOnMount(child));
+
+    // Call any onMount listeners
+    if (node.onMount) {
+        node.onMount.forEach((onMount) => {
+            try {
+                onMount();
+            } catch (e) {
+                log.exception(
+                    e,
+                    'VNode node raised exception in onMount',
+                    node
+                );
+            }
+        });
+    }
+}
+
 function callOnUnmount(node: VNode) {
     // Note: we are doing a post-order traversal, so all children are released/unmounted before parents are released/unmounted
     node.children.forEach((child) => callOnUnmount(child));
@@ -151,27 +185,21 @@ function callOnUnmount(node: VNode) {
     }
 }
 
-export function replaceVNode(
-    replaceNode: ChildVNode,
-    newNode: VNode
-): VNode | undefined {
-    return spliceVNode(replaceNode.parentNode, replaceNode, 1, [newNode])[0];
+export function mountVNode(vNode: VNode) {
+    if (vNode.domNode && vNode.domParent.mountFragment) {
+        vNode.domParent.mountFragment.appendChild(vNode.domNode);
+    }
 }
 
 export function spliceVNode(
     immediateParent: VNode,
-    replaceNode: VNode | null,
+    childIndex: number,
     removeCount: number,
     newNodes: VNode[]
 ) {
     let domParent: VNode;
-    let childIndex: number;
-    if (replaceNode) {
-        childIndex = immediateParent.children.indexOf(replaceNode);
-        if (childIndex === -1) {
-            childIndex = immediateParent.children.length;
-        }
-        domParent = replaceNode.domParent;
+    if (immediateParent.children[childIndex]) {
+        domParent = immediateParent.children[childIndex].domParent;
     } else {
         childIndex = immediateParent.children.length;
         domParent = immediateParent.domNode
@@ -189,15 +217,25 @@ export function spliceVNode(
         ...newNodes
     );
 
+    // Remove nodes, optimizing for array replacement, where all nodes are completely removed via .replaceChildren()
+    const toRemove: [ParentNode, Node][] = [];
     detachedVNodes.forEach((detachedVNode) => {
         callOnUnmount(detachedVNode);
 
         const nodesToRemove = getShallowNodes(detachedVNode);
         nodesToRemove.forEach((node) => {
             if (node.parentNode) {
-                node.parentNode.removeChild(node);
+                toRemove.push([node.parentNode, node]);
             }
         });
+    });
+    const groupedToRemove = groupBy(toRemove, (item) => item);
+    groupedToRemove.forEach((childNodes, parentNode) => {
+        if (parentNode.childNodes.length === childNodes.length) {
+            parentNode.replaceChildren();
+        } else {
+            childNodes.forEach((child) => parentNode.removeChild(child));
+        }
     });
 
     if (!domParent.domNode) {
@@ -205,19 +243,32 @@ export function spliceVNode(
     }
     const domParentNode = domParent.domNode;
 
-    newNodes.forEach((newNode) => {
-        newNode.parentNode = immediateParent;
-        newNode.domParent = domParent;
-        if (newNode.domNode) {
-            const domIndex = getDomParentChildIndex(
-                domParent,
-                immediateParent,
-                childIndex
-            );
-            const referenceNode: Node | undefined =
-                domParentNode.childNodes[domIndex];
-            domParentNode.insertBefore(newNode.domNode, referenceNode || null);
+    // Insert nodes via fragment with a single DOM operation
+    if (newNodes.length > 0) {
+        const domIndex = getDomParentChildIndex(
+            domParent,
+            immediateParent,
+            childIndex
+        );
+        const referenceNode: Node | undefined =
+            domParentNode.childNodes[domIndex];
+
+        const fragment = document.createDocumentFragment();
+
+        for (let i = 0; i < newNodes.length; ++i) {
+            const newNode = newNodes[i];
+            newNode.parentNode = immediateParent;
+            newNode.domParent = domParent;
+            const nodesToAdd = getShallowNodes(newNode);
+            nodesToAdd.forEach((addNode) => {
+                fragment.appendChild(addNode);
+            });
         }
-    });
+
+        domParentNode.insertBefore(fragment, referenceNode || null);
+        newNodes.forEach((newNode) => {
+            callOnMount(newNode);
+        });
+    }
     return detachedVNodes;
 }

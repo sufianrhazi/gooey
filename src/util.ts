@@ -18,6 +18,23 @@ export function makePromise<T>(): {
     return { promise, resolve, reject };
 }
 
+export function groupBy<TItem, TKey, TVal>(
+    items: TItem[],
+    grouper: (item: TItem) => [TKey, TVal]
+): Map<TKey, TVal[]> {
+    const grouped: Map<TKey, TVal[]> = new Map();
+    items.forEach((item) => {
+        const [key, val] = grouper(item);
+        let inner = grouped.get(key);
+        if (!inner) {
+            inner = [];
+            grouped.set(key, inner);
+        }
+        inner.push(val);
+    });
+    return grouped;
+}
+
 export function groupBy2<TItem, TOuterKey, TInnerKey, TVal>(
     items: TItem[],
     grouper: (item: TItem) => [TOuterKey, TInnerKey, TVal]

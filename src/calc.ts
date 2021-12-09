@@ -248,7 +248,7 @@ export function processChange(item: ModelField<unknown> | Collection<unknown>) {
 type Listener = () => void;
 let needsFlush = false;
 let flushPromise: Promise<void> = Promise.resolve();
-let resolveFlushPromise: Promise<void> = noop;
+let resolveFlushPromise: () => void = noop;
 let subscribeListener: Listener = () => setTimeout(() => flush(), 0);
 
 export function nextFlush() {
