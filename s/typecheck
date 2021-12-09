@@ -8,4 +8,4 @@ echo_info "Cleaning..."
 s/clean
 
 echo_info "Typechecking..."
-node_modules/.bin/tsc --noEmit -p .
+node_modules/.bin/tsc --noEmit "$@" -p .
