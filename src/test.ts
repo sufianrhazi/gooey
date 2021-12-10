@@ -13,12 +13,11 @@ import {
     RunResponse,
 } from './test/types';
 import { setLogLevel } from './log';
-
-setLogLevel('debug');
+import { nextFlush } from './index';
 
 type TestContext = any;
 
-type TestAction = (ctx: TestContext) => Promise<void> | void;
+type TestAction<Ctx = TestContext> = (ctx: Ctx) => Promise<void> | void;
 
 interface Suite {
     id: number;
@@ -218,6 +217,7 @@ async function runAfterEach(ctx: TestContext, suite: Suite | undefined) {
     if (suite) {
         for (const afterEach of suite.afterEach) await afterEach(ctx);
         await runAfterEach(ctx, suite.parent);
+        await nextFlush(); // For good measure, ensure we're flushed
     }
 }
 
@@ -269,7 +269,7 @@ export const assert = {
     },
     isFalsy: (a: any, msg?: string) => {
         countAssertion();
-        if (!a) {
+        if (a) {
             throw new AssertionError(
                 'isFalsy',
                 () => `${repr(a)} is not falsy`,
@@ -429,6 +429,47 @@ export const assert = {
             );
         }
     },
+    medianRuntimeLessThan: (
+        ms: number,
+        fn: (measure: <T>(measurement: () => T) => T) => void,
+        numRuns = 9,
+        msg?: string
+    ) => {
+        const runs: number[] = [];
+        for (let i = 0; i < numRuns; ++i) {
+            const fnStart = performance.now();
+            let didMeasure = false;
+            fn((measurement) => {
+                const start = performance.now();
+                const result = measurement();
+                didMeasure = true;
+                runs.push(performance.now() - start);
+                return result;
+            });
+            const fnDuration = performance.now() - fnStart;
+            if (!didMeasure) {
+                runs.push(fnDuration);
+            }
+        }
+        runs.sort((a, b) => a - b);
+        const median =
+            (runs[Math.floor(runs.length / 2)] +
+                runs[Math.ceil(runs.length / 2)]) /
+            2;
+        countAssertion();
+        if (!(median < ms)) {
+            throw new AssertionError(
+                'medianRuntimeLessThan',
+                () =>
+                    `median run took ${median}ms, which is more than the threshhold of ${ms}ms.\nRuntimes: ${JSON.stringify(
+                        runs,
+                        undefined,
+                        4
+                    )}`,
+                msg
+            );
+        }
+    },
 };
 
 const testRoot = document.createElement('div');
@@ -436,9 +477,7 @@ testRoot.id = 'test-root';
 document.body.appendChild(testRoot);
 
 beforeEach(() => {
-    while (testRoot.childNodes.length > 0) {
-        testRoot.removeChild(testRoot.childNodes[0]);
-    }
+    testRoot.replaceChildren();
 });
 
 function formatError(e: any) {

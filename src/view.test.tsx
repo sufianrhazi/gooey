@@ -6,8 +6,13 @@ import Revise, {
     collection,
     flush,
     Component,
+    getLogLevel,
+    setLogLevel,
+    LogLevel,
+    Collection,
+    Model,
 } from './index';
-import { suite, test, beforeEach, assert } from './test';
+import { suite, test, beforeEach, afterEach, assert } from './test';
 
 const testRoot = document.getElementById('test-root');
 if (!testRoot) throw new Error('oops');
@@ -297,11 +302,15 @@ suite('mount components', () => {
 
         mount(testRoot, <Parent />);
 
+        assert.isTruthy(testRoot.querySelector('#parent'));
+        assert.isFalsy(testRoot.querySelector('#child'));
         assert.deepEqual([], sequence);
 
         state.showingChild = true;
         flush();
 
+        assert.isTruthy(testRoot.querySelector('#parent'));
+        assert.isTruthy(testRoot.querySelector('#child'));
         assert.deepEqual(['render', 'onMount'], sequence);
         const child = testRoot.querySelector('#child');
 
@@ -309,6 +318,8 @@ suite('mount components', () => {
         flush();
 
         assert.deepEqual(['render', 'onMount', 'onUnmount'], sequence);
+        assert.isTruthy(testRoot.querySelector('#parent'));
+        assert.isFalsy(testRoot.querySelector('#child'));
         assert.isTruthy(queried);
         assert.is(child, queried);
     });
@@ -532,6 +543,57 @@ suite('mount arrays', () => {
         );
     });
 
+    test('mapping multiple arrays interspersed concats as expected', () => {
+        const items = collection([
+            'A',
+            'is',
+            'the',
+            'only',
+            'thing',
+            'unless',
+            'letters',
+            'continue',
+        ]);
+
+        mount(
+            testRoot,
+            <div>
+                BEFORE
+                {calc(() => items.map((item) => item))}
+                MIDDLE
+                {calc(() => items.map((item) => item))}
+                AFTER
+            </div>
+        );
+
+        assert.deepEqual(
+            (
+                Array.from(testRoot.querySelector('div')!.childNodes) as Text[]
+            ).map((item) => item.data),
+            [
+                'BEFORE',
+                'A',
+                'is',
+                'the',
+                'only',
+                'thing',
+                'unless',
+                'letters',
+                'continue',
+                'MIDDLE',
+                'A',
+                'is',
+                'the',
+                'only',
+                'thing',
+                'unless',
+                'letters',
+                'continue',
+                'AFTER',
+            ]
+        );
+    });
+
     test('rerendering multiple arrays in a row concats as expected', () => {
         const items = collection([
             'A',
@@ -745,5 +807,271 @@ suite('mount collection mapped view', () => {
         assert.is(null, newSet[3].getAttribute('tagged'));
         assert.is('yes 2', newSet[4].getAttribute('tagged'));
         assert.is(null, newSet[5].getAttribute('tagged'));
+    });
+});
+
+suite('perf tests', () => {
+    let logLevel: LogLevel | null = null;
+
+    beforeEach(() => {
+        logLevel = getLogLevel();
+        setLogLevel('error');
+    });
+
+    afterEach(() => {
+        if (logLevel) setLogLevel(logLevel);
+    });
+
+    test('render 1000 flat items in 25ms', () => {
+        const COUNT = 1000;
+        const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
+        const items = collection<Model<{ id: number }>>([]);
+        for (let i = 0; i < COUNT; ++i) {
+            items.push(model({ id: i }));
+        }
+        const Items = () => (
+            <div>
+                {calc(() => items.mapView((item) => <Item id={item.id} />))}
+            </div>
+        );
+
+        assert.medianRuntimeLessThan(25, (measure) => {
+            const unmount = measure(() => mount(testRoot, <Items />));
+            unmount();
+        });
+    });
+
+    test('add 1 item to end of 1000 flat items in 1ms', () => {
+        const COUNT = 1000;
+        const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
+        const items = collection<Model<{ id: number }>>([]);
+        for (let i = 0; i < COUNT; ++i) {
+            items.push(model({ id: i }));
+        }
+        const Items = () => (
+            <div>
+                {calc(() => items.mapView((item) => <Item id={item.id} />))}
+            </div>
+        );
+
+        const unmount = mount(testRoot, <Items />);
+
+        assert.medianRuntimeLessThan(1, (measure) => {
+            measure(() => {
+                items.push(model({ id: 1001 }));
+                flush();
+            });
+            items.pop();
+            flush();
+        });
+        unmount();
+    });
+
+    test('add 1 item to front of 1000 flat items in 2ms', () => {
+        const COUNT = 1000;
+        const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
+        const items = collection<Model<{ id: number }>>([]);
+        for (let i = 0; i < COUNT; ++i) {
+            items.push(model({ id: i }));
+        }
+        const Items = () => (
+            <div>
+                {calc(() => items.mapView((item) => <Item id={item.id} />))}
+            </div>
+        );
+
+        const unmount = mount(testRoot, <Items />);
+        assert.medianRuntimeLessThan(2, (measure) => {
+            measure(() => {
+                items.unshift(model({ id: 1001 }));
+                flush();
+            });
+            items.shift();
+            flush();
+        });
+        unmount();
+    });
+
+    test('add 1 item to middle of 1000 flat items in 1ms', () => {
+        const COUNT = 1000;
+        const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
+        const items = collection<Model<{ id: number }>>([]);
+        for (let i = 0; i < COUNT; ++i) {
+            items.push(model({ id: i }));
+        }
+        const Items = () => (
+            <div>
+                {calc(() => items.mapView((item) => <Item id={item.id} />))}
+            </div>
+        );
+
+        const unmount = mount(testRoot, <Items />);
+        assert.medianRuntimeLessThan(1, (measure) => {
+            measure(() => {
+                items.splice(500, 0, model({ id: 1001 }));
+                flush();
+            });
+            items.splice(500, 1);
+            flush();
+        });
+        unmount();
+    });
+
+    test('empty 1000 flat items in 10ms', () => {
+        const COUNT = 1000;
+        const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
+        const items = collection<Model<{ id: number }>>([]);
+        for (let i = 0; i < COUNT; ++i) {
+            items.push(model({ id: i }));
+        }
+        const Items = () => (
+            <div>
+                {calc(() => items.mapView((item) => <Item id={item.id} />))}
+            </div>
+        );
+
+        const unmount = mount(testRoot, <Items />);
+        assert.medianRuntimeLessThan(10, (measure) => {
+            const toReadd = measure(() => {
+                const toReadd = items.splice(0, items.length);
+                flush();
+                return toReadd;
+            });
+            items.push(...toReadd);
+            flush();
+        });
+        unmount();
+    });
+
+    test('render 10 * 10 * 10 nested items in 25ms', () => {
+        type Item = Model<{ id: number }>;
+        type Level1 = Collection<Model<{ id: number }>>;
+        type Level2 = Collection<Collection<Model<{ id: number }>>>;
+        type Level3 = Collection<Collection<Collection<Model<{ id: number }>>>>;
+
+        const COUNT = 10;
+        const level3: Level3 = collection([]);
+        for (let j = 0; j < COUNT; ++j) {
+            const level2: Level2 = collection([]);
+            for (let k = 0; k < COUNT; ++k) {
+                const level1: Level1 = collection([]);
+                for (let l = 0; l < COUNT; ++l) {
+                    level1.push(model({ id: l }));
+                }
+                level2.push(level1);
+            }
+            level3.push(level2);
+        }
+
+        const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
+        const items = collection<Model<{ id: number }>>([]);
+        for (let i = 0; i < COUNT; ++i) {
+            items.push(model({ id: i }));
+        }
+        const Level1 = ({ items }: { items: Level1 }) => (
+            <div>
+                {calc(() => items.mapView((item) => <Item id={item.id} />))}
+            </div>
+        );
+        const Level2 = ({ items }: { items: Level2 }) => (
+            <div>
+                {calc(() => items.mapView((item) => <Level1 items={item} />))}
+            </div>
+        );
+        const Level3 = ({ items }: { items: Level3 }) => (
+            <div>
+                {calc(() => items.mapView((item) => <Level2 items={item} />))}
+            </div>
+        );
+
+        assert.medianRuntimeLessThan(25, (measure) => {
+            const unmount = measure(() =>
+                mount(testRoot, <Level3 items={level3} />)
+            );
+            unmount();
+        });
+    });
+
+    test('update 1000 text nodes amongst 1000 flat items in 35ms', () => {
+        const COUNT = 1000;
+        const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
+        const items = collection<Model<{ id: number }>>([]);
+        for (let i = 0; i < COUNT; ++i) {
+            items.push(model({ id: i }));
+        }
+        const Items = () => (
+            <div>
+                {calc(() => items.mapView((item) => <Item id={item.id} />))}
+            </div>
+        );
+
+        const unmount = mount(testRoot, <Items />);
+        assert.medianRuntimeLessThan(35, (measure) => {
+            measure(() => {
+                for (let j = 0; j < COUNT; ++j) {
+                    items[j].id = items[j].id + 1;
+                }
+                flush();
+            });
+        });
+        unmount();
+    });
+
+    test('update 1000 dom trees in 40ms', () => {
+        const COUNT = 1000;
+        const Item = ({ id }: { id: number }) => (
+            <div>
+                {calc(() => (
+                    <div>{id}</div>
+                ))}
+            </div>
+        );
+        const items = collection<Model<{ id: number }>>([]);
+        for (let i = 0; i < COUNT; ++i) {
+            items.push(model({ id: i }));
+        }
+        const Items = () => (
+            <div>
+                {calc(() => items.mapView((item) => <Item id={item.id} />))}
+            </div>
+        );
+
+        const unmount = mount(testRoot, <Items />);
+        assert.medianRuntimeLessThan(40, (measure) => {
+            measure(() => {
+                for (let j = 0; j < COUNT; ++j) {
+                    items[j].id = items[j].id + 1;
+                }
+                flush();
+            });
+        });
+        unmount();
+    });
+
+    test('update 1000 dom attributes in 30ms', () => {
+        const COUNT = 1000;
+        const Item = ({ id }: { id: number }) => (
+            <div data-whatever={calc(() => id)} />
+        );
+        const items = collection<Model<{ id: number }>>([]);
+        for (let i = 0; i < COUNT; ++i) {
+            items.push(model({ id: i }));
+        }
+        const Items = () => (
+            <div>
+                {calc(() => items.mapView((item) => <Item id={item.id} />))}
+            </div>
+        );
+
+        const unmount = mount(testRoot, <Items />);
+        assert.medianRuntimeLessThan(30, (measure) => {
+            measure(() => {
+                for (let j = 0; j < COUNT; ++j) {
+                    items[j].id = items[j].id + 1;
+                }
+                flush();
+            });
+        });
+        unmount();
     });
 });

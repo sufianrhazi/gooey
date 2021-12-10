@@ -664,6 +664,63 @@ const Select: Component<{}> = (props, { onEffect }) => {
     );
 };
 
+const Details: Component<{}> = (props, { onEffect }) => {
+    const state = model({
+        open: false,
+        disabled: false,
+        messages: collection<string>([]),
+    });
+    const detailsRef = ref<HTMLDetailsElement>();
+
+    function log(message: string) {
+        state.messages.push(message);
+    }
+    const logEvent = (name: string) => () =>
+        log(`${name} open=${detailsRef.current?.open}`);
+
+    const onClickToggle = () => {
+        state.open = !state.open;
+    };
+
+    return (
+        <fieldset>
+            <h2>select</h2>
+            <div class="target">
+                <details
+                    ref={detailsRef}
+                    open={calc(() => state.open)}
+                    on:toggle={logEvent('on:toggle details')}
+                    on:click={logEvent('on:click details')}
+                    on:change={logEvent('on:change details')}
+                    on:input={logEvent('on:input details')}
+                    on:focus={logEvent('on:focus details')}
+                    on:blur={logEvent('on:blur details')}
+                >
+                    <summary
+                        on:toggle={logEvent('on:toggle summary')}
+                        on:click={(e) => {
+                            e.preventDefault();
+                            state.open = !state.open;
+                            logEvent('on:click summary')();
+                        }}
+                        on:change={logEvent('on:change summary')}
+                        on:input={logEvent('on:input summary')}
+                        on:focus={logEvent('on:focus summary')}
+                        on:blur={logEvent('on:blur summary')}
+                    >
+                        The summary
+                    </summary>
+                    The details
+                </details>
+            </div>
+            <div class="buttons">
+                <button on:click={onClickToggle}>Toggle open</button>
+            </div>
+            <Log messages={state.messages} />
+        </fieldset>
+    );
+};
+
 mount(
     document.body,
     <div>
@@ -694,5 +751,6 @@ mount(
         <Color />
         <Range />
         <Select />
+        <Details />
     </div>
 );

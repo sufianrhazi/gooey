@@ -1,4 +1,4 @@
-type LogLevel = 'error' | 'warn' | 'info' | 'debug';
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 const levels: Record<LogLevel, number> = {
     error: 0,
     warn: 1,
@@ -7,6 +7,12 @@ const levels: Record<LogLevel, number> = {
 };
 let currentLevel: number = levels.warn;
 
+export function getLogLevel(): LogLevel {
+    if (currentLevel >= levels.info) return 'info';
+    if (currentLevel >= levels.warn) return 'warn';
+    if (currentLevel >= levels.debug) return 'debug';
+    return 'error';
+}
 export function setLogLevel(logLevel: LogLevel) {
     invariant(() => logLevel in levels, logLevel);
     currentLevel = levels[logLevel];

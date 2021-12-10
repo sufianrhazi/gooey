@@ -13,7 +13,7 @@ import {
 } from './types';
 import * as log from './log';
 import { DAG } from './dag';
-import { alwaysFalse, strictEqual } from './util';
+import { noop, alwaysFalse, strictEqual } from './util';
 import { clearNames, debugNameFor, name } from './debug';
 
 let activeCalculations: Calculation<any>[] = [];
@@ -95,6 +95,12 @@ export function effect(
     const calculation = trackCalculation(func, alwaysFalse, true);
     if (debugName) name(calculation, debugName);
     return calculation;
+}
+
+export function untracked(func: () => void): Calculation<void> {
+    activeCalculations.push(null);
+    func();
+    activeCalculations.pop();
 }
 
 function trackCalculation<Ret>(
@@ -241,7 +247,14 @@ export function processChange(item: ModelField<unknown> | Collection<unknown>) {
 
 type Listener = () => void;
 let needsFlush = false;
+let flushPromise: Promise<void> = Promise.resolve();
+let resolveFlushPromise: Promise<void> = noop;
 let subscribeListener: Listener = () => setTimeout(() => flush(), 0);
+
+export function nextFlush() {
+    if (!needsFlush) return Promise.resolve();
+    return flushPromise;
+}
 
 /**
  * Call provided callback when any pending calculations are created. Use to configure how/when the application flushes calculations.
@@ -256,12 +269,15 @@ let subscribeListener: Listener = () => setTimeout(() => flush(), 0);
 export function subscribe(listener: Listener): void {
     subscribeListener = listener;
     if (needsFlush) {
-        notify();
+        subscribeListener();
     }
 }
 
 function notify() {
     try {
+        flushPromise = new Promise((resolve) => {
+            resolveFlushPromise = resolve;
+        });
         subscribeListener();
     } catch (e) {
         log.exception(e, 'uncaught exception in notify');
@@ -307,6 +323,8 @@ export function flush() {
         }
         return false;
     });
+
+    resolveFlushPromise();
 }
 
 /**

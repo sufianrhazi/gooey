@@ -13,6 +13,7 @@ import {
 import { collection } from './collection';
 import {
     effect,
+    untracked,
     addManualDep,
     addDepToCurrentCalculation,
     processChange,
@@ -128,9 +129,11 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
 
     return proxy;
 }
-model.keys = function keys<T>(target: Model<T>): View<string> {
-    const view: Collection<string> = collection([]);
-    name(view, `keys(${debugNameFor(target)})`);
+model.keys = function keys<T>(
+    target: Model<T>,
+    debugName?: string
+): View<keyof T> {
+    const view: Collection<keyof T> = collection([], debugName);
 
     const keysSet = new Set<string>();
 
@@ -139,7 +142,7 @@ model.keys = function keys<T>(target: Model<T>): View<string> {
             const stringKey = key.toString();
             if (!keysSet.has(stringKey)) {
                 keysSet.add(stringKey);
-                view.push(stringKey);
+                view.push(stringKey as keyof T);
             }
         }
     }
@@ -154,31 +157,38 @@ model.keys = function keys<T>(target: Model<T>): View<string> {
         }
     }
 
-    const events: ModelEvent[] = [];
+    const trigger = model({ i: 0 });
+    let events: ModelEvent[] = [];
 
-    // TODO: should this use the same "deferred" mechanism of collections?
     const updateEffect = effect(() => {
-        target[OwnKeysField]; // Access the Object.keys pesudo-field to ensure this effect tracks key changes
-        let event;
-        while ((event = events.shift())) {
-            if (event.type === 'init') {
-                event.keys.forEach((key) => {
-                    addKey(key);
-                });
-            }
-            if (event.type === 'add') {
-                addKey(event.key);
-            }
-            if (event.type === 'delete') {
-                delKey(event.key);
-            }
-        }
+        trigger.i;
+        const toProcess = events;
+        events = [];
+        untracked(() => {
+            toProcess.forEach((event) => {
+                if (event.type === 'add') {
+                    addKey(event.key);
+                }
+                if (event.type === 'delete') {
+                    delKey(event.key);
+                }
+            });
+        });
     });
     addManualDep(updateEffect, view);
     updateEffect();
 
-    target[ObserveKey]((event) => {
-        events.push(event);
+    untracked(() => {
+        target[ObserveKey]((event) => {
+            if (event.type === 'init') {
+                event.keys.forEach((key) => {
+                    addKey(key);
+                });
+            } else {
+                events.push(event);
+            }
+            trigger.i += 1;
+        });
     });
 
     return view;

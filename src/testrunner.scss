@@ -20,24 +20,64 @@
     --color-running-light: #FFD470;
     --color-running-lighter: #FFE099;
 }
-
-body {
-    display: flex;
-    font-family: sans-serif;
+html,body {
     margin: 0;
     padding: 0;
+    font-family: sans-serif;
+}
+body {
+    min-height: 100vh;
+    display: flex;
+    align-items: stretch;
 }
 
 .testrunner {
     flex: 1 0 auto;
     display: flex;
+    border-width: 12px;
+    border-style: solid;
+    border-color: transparent;
 }
+.testrunner--pass {
+    border-color: var(--color-pass);
+}
+.testrunner--fail {
+    border-color: var(--color-fail);
+}
+
 .test-ui {
     font-family: "Anadale Mono", "Menlo", monospace;
     font-size: 11px;
     line-height: 1.2;
     order: 1;
     flex: 0 0 50%;
+}
+.test-ui-controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+button.test-ui-control {
+    cursor: pointer;
+    margin: 4px 8px 4px 0;
+    padding: 8px 12px;
+    border-radius: 4px;
+    background-color: var(--color-white);
+    &:disabled {
+        cursor: auto;
+        background-color: var(--color-grey-3);
+    }
+}
+
+.test-ui-control {
+    margin-right: 8px;
+    font-size: 14px;
+    line-height: 14px;
+    padding: 4px;
+}
+.test-ui-global-state {
+    flex: 1 0 auto;
 }
 .test-sandboxes {
     flex: 0 0 50%;
@@ -56,7 +96,7 @@ body {
 
 .testfile {
     border: thin black solid;
-    margin: 16px 0;
+    margin: 16px 0 0 0;
 }
 
 .testfile__status {
@@ -64,6 +104,17 @@ body {
     background-color: var(--color-black);
     color: var(--color-grey-5);
     padding: 4px;
+    font-weight: bold;
+
+    .testfile--pass & {
+        color: var(--color-pass);
+    }
+    .testfile--fail & {
+        color: var(--color-fail);
+    }
+    .testfile--run & {
+        color: var(--color-running);
+    }
 }
 
 .suite {
@@ -159,6 +210,10 @@ body {
     background-color: var(--color-fail-lighter);
 }
 .test.test--only .test__link:before {
-    content: "ONLY";
-    margin-right: 4px;
+    display: inline;
+    content: "➡ ";
+}
+
+pre {
+    margin: 0;
 }
