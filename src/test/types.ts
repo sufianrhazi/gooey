@@ -176,6 +176,7 @@ export type RunUpdate =
           result: 'pass';
           duration: number;
           selfDuration: number;
+          extraInfo: string[];
       }
     | {
           type: 'test';
@@ -195,7 +196,9 @@ export function isRunUpdate(msg: any): msg is RunUpdate {
         typeof msg.suiteId === 'number' &&
         msg.result === 'pass' &&
         typeof msg.duration === 'number' &&
-        typeof msg.selfDuration === 'number'
+        typeof msg.selfDuration === 'number' &&
+        Array.isArray(msg.extraInfo) &&
+        msg.extraInfo.every((info: any) => typeof info === 'string')
     ) {
         return true;
     }

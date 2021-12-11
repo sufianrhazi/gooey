@@ -12,7 +12,6 @@ import {
     RunUpdate,
     RunResponse,
 } from './test/types';
-import { setLogLevel } from './log';
 import { nextFlush } from './index';
 
 type TestContext = any;
@@ -37,6 +36,7 @@ interface Test {
     parent: Suite;
     assertions: number;
     only: boolean;
+    extraInfo: string[];
 }
 
 function repr(obj: any) {
@@ -70,10 +70,16 @@ const makeTest = ({
         parent,
         assertions: 0,
         only,
+        extraInfo: [],
     };
     testsById[newTest.id] = newTest;
     return newTest;
 };
+
+function resetTestState(testObj: Test) {
+    testObj.assertions = 0;
+    testObj.extraInfo = [];
+}
 
 const makeSuite = ({
     name,
@@ -140,6 +146,7 @@ type Report =
           result: 'pass';
           selfDuration: number;
           duration: number;
+          extraInfo: string[];
       }
     | {
           type: 'test';
@@ -230,6 +237,14 @@ function countAssertion() {
         );
     }
     runningTest.assertions += 1;
+}
+function addTestExtraInfo(info: string) {
+    if (!runningTest) {
+        throw new Error(
+            'Internal test integrity issue: addTestExtraInfo performed outside of test?'
+        );
+    }
+    runningTest.extraInfo.push(info);
 }
 
 export const assert = {
@@ -451,18 +466,30 @@ export const assert = {
                 runs.push(fnDuration);
             }
         }
-        runs.sort((a, b) => a - b);
+        const sortedRuns = runs
+            .map(
+                (run, index) =>
+                    [`run ${index.toString().padStart(2, ' ')}`, run] as const
+            )
+            .sort((a, b) => a[1] - b[1]);
         const median =
-            (runs[Math.floor(runs.length / 2)] +
-                runs[Math.ceil(runs.length / 2)]) /
+            (sortedRuns[Math.floor((numRuns - 1) / 2)][1] +
+                sortedRuns[Math.ceil((numRuns - 1) / 2)][1]) /
             2;
+        addTestExtraInfo(
+            `median run took ${median}ms\nRuntimes: ${JSON.stringify(
+                sortedRuns.map(([msg, ms]) => `${msg}: ${ms}ms`),
+                undefined,
+                4
+            )}`
+        );
         countAssertion();
         if (!(median < ms)) {
             throw new AssertionError(
                 'medianRuntimeLessThan',
                 () =>
                     `median run took ${median}ms, which is more than the threshhold of ${ms}ms.\nRuntimes: ${JSON.stringify(
-                        runs,
+                        sortedRuns.map(([msg, ms]) => `${msg}: ${ms}ms`),
                         undefined,
                         4
                     )}`,
@@ -536,6 +563,7 @@ function respond(info: Report, id: number, source: MessageEventSource) {
                     result: 'pass',
                     duration: info.duration,
                     selfDuration: info.selfDuration,
+                    extraInfo: info.extraInfo,
                 });
                 break;
             case 'run':
@@ -600,6 +628,7 @@ async function handleRunTest(
 ) {
     const suite = suitesById[event.suiteId];
     const test = testsById[event.testId];
+    resetTestState(test);
     runningTest = test;
     respond(
         {
@@ -626,6 +655,7 @@ async function handleRunTest(
                 result: 'pass',
                 selfDuration,
                 duration,
+                extraInfo: test.extraInfo,
             },
             id,
             source

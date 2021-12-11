@@ -41,6 +41,7 @@ type TestFileRecord = Model<{
     status: 'error' | 'loading' | 'ready' | 'fail' | 'pass' | 'run';
     error?: string;
     isOpen: boolean;
+    extraInfo: string[];
 }>;
 
 type SuiteRecord = Model<{
@@ -68,6 +69,7 @@ type TestRecord = Model<{
     selfDuration?: number;
     duration?: number;
     isOpen: boolean;
+    extraInfo: string[];
 }>;
 
 /**
@@ -130,6 +132,7 @@ const { actions, selectors } = (() => {
                 suites: model({}),
                 status: 'loading',
                 isOpen: false,
+                extraInfo: [],
             });
         },
 
@@ -219,18 +222,21 @@ const { actions, selectors } = (() => {
             testId,
             duration,
             selfDuration,
+            extraInfo,
         }: {
             src: string;
             suiteId: number;
             testId: number;
             duration: number;
             selfDuration: number;
+            extraInfo: string[];
         }) => {
             const suite = testFiles[src].suites[suiteId];
             const test = suite.tests[testId];
             test.status = 'pass';
             test.duration = duration;
             test.selfDuration = selfDuration;
+            test.extraInfo = extraInfo;
         },
 
         setSuiteDone: ({
@@ -391,6 +397,7 @@ function initializeTestSandbox(
                                 localOnly: test.only,
                                 status: 'ready',
                                 isOpen: true,
+                                extraInfo: [],
                             });
                         });
                         suites[suite.id] = model({
@@ -532,6 +539,7 @@ async function runTests() {
                                             testId: test.id,
                                             duration: msg.duration,
                                             selfDuration: msg.selfDuration,
+                                            extraInfo: msg.extraInfo,
                                         });
                                         break;
                                     case 'run':
@@ -618,6 +626,11 @@ const TestView: Component<{ test: DeepReadonly<TestRecord> }> = ({ test }) => {
                 () =>
                     test.status === 'fail' &&
                     test.error && <pre>{test.error}</pre>
+            )}
+            {calc(
+                () =>
+                    test.status === 'pass' &&
+                    test.extraInfo.map((info) => <pre>{info}</pre>)
             )}
         </div>
     );

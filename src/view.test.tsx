@@ -1,16 +1,19 @@
 import Revise, {
-    reset,
-    mount,
+    Calculation,
+    Collection,
+    Component,
+    LogLevel,
+    Model,
     calc,
-    model,
     collection,
     flush,
-    Component,
     getLogLevel,
+    model,
+    mount,
+    release,
+    reset,
+    retain,
     setLogLevel,
-    LogLevel,
-    Collection,
-    Model,
 } from './index';
 import { suite, test, beforeEach, afterEach, assert } from './test';
 
@@ -790,6 +793,24 @@ suite('mount collection mapped view', () => {
     });
 });
 
+/*
+test.only('superdebug', () => {
+    setLogLevel('debug');
+    const COUNT = 10;
+    const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
+    const items = collection<Model<{ id: number }>>([]);
+    for (let i = 0; i < COUNT; ++i) {
+        items.push(model({ id: i }));
+    }
+    const Items = () => (
+        <div>{calc(() => items.mapView((item) => <Item id={item.id} />))}</div>
+    );
+
+    const unmount = mount(testRoot, <Items />);
+    unmount();
+});
+*/
+
 suite('perf tests', () => {
     let logLevel: LogLevel | null = null;
 
@@ -802,20 +823,79 @@ suite('perf tests', () => {
         if (logLevel) setLogLevel(logLevel);
     });
 
-    test('render 1000 flat items in 25ms', () => {
+    test('render 1000 flat, static items in 5ms', () => {
         const COUNT = 1000;
-        const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
-        const items = collection<Model<{ id: number }>>([]);
+        const items = collection<{ id: number }>([]);
         for (let i = 0; i < COUNT; ++i) {
-            items.push(model({ id: i }));
+            items.push({ id: i });
         }
+        const Items = () => (
+            <div>
+                {calc(() => items.mapView((item) => <div>{item.id}</div>))}
+            </div>
+        );
+
+        assert.medianRuntimeLessThan(5, (measure) => {
+            const unmount = measure(() => mount(testRoot, <Items />));
+            unmount();
+        });
+    });
+
+    test('render 1000 flat, component items in 7ms', () => {
+        const COUNT = 1000;
+        const items = collection<{ id: number }>([]);
+        for (let i = 0; i < COUNT; ++i) {
+            items.push({ id: i });
+        }
+        const Item = ({ id }: { id: number }) => <div>{id}</div>;
         const Items = () => (
             <div>
                 {calc(() => items.mapView((item) => <Item id={item.id} />))}
             </div>
         );
 
-        assert.medianRuntimeLessThan(25, (measure) => {
+        assert.medianRuntimeLessThan(7, (measure) => {
+            const unmount = measure(() => mount(testRoot, <Items />));
+            unmount();
+        });
+    });
+
+    test('render 1000 flat, dynamic items in 15ms', () => {
+        const COUNT = 1000;
+        const items = collection<Model<{ id: number }>>([]);
+        for (let i = 0; i < COUNT; ++i) {
+            items.push(model({ id: i }));
+        }
+        const Items = () => (
+            <div>
+                {calc(() =>
+                    items.mapView((item) => <div>{calc(() => item.id)}</div>)
+                )}
+            </div>
+        );
+
+        assert.medianRuntimeLessThan(15, (measure) => {
+            const unmount = measure(() => mount(testRoot, <Items />));
+            unmount();
+        });
+    });
+
+    test('render 1000 flat, component+dynamic items in 15ms', () => {
+        const COUNT = 1000;
+        const items = collection<Model<{ id: number }>>([]);
+        for (let i = 0; i < COUNT; ++i) {
+            items.push(model({ id: i }));
+        }
+        const Item = ({ item }: { item: Model<{ id: number }> }) => (
+            <div>{calc(() => item.id)}</div>
+        );
+        const Items = () => (
+            <div>
+                {calc(() => items.mapView((item) => <Item item={item} />))}
+            </div>
+        );
+
+        assert.medianRuntimeLessThan(15, (measure) => {
             const unmount = measure(() => mount(testRoot, <Items />));
             unmount();
         });
@@ -1053,5 +1133,104 @@ suite('perf tests', () => {
             });
         });
         unmount();
+    });
+
+    test('make 3000 calculations', () => {
+        const COUNT = 3000;
+        assert.medianRuntimeLessThan(0, () => {
+            for (let i = 0; i < COUNT; ++i) {
+                calc(() => i);
+            }
+        });
+    });
+
+    test('call 3000 calculations', () => {
+        const COUNT = 3000;
+        const calculations: Calculation<number>[] = [];
+        assert.medianRuntimeLessThan(0, (measure) => {
+            for (let i = 0; i < COUNT; ++i) {
+                const calculation = calc(() => i);
+                retain(calculation);
+                calculations.push(calculation);
+            }
+            measure(() => {
+                for (let i = 0; i < COUNT; ++i) {
+                    calculations[i]();
+                }
+            });
+            for (let i = 0; i < COUNT; ++i) {
+                release(calculations[i]);
+            }
+            calculations.splice(0, calculations.length);
+        });
+    });
+
+    test.only('allocate + retain 3000 calculations', () => {
+        const COUNT = 3000;
+        let calculations: Calculation<number>[] = [];
+        assert.medianRuntimeLessThan(0, (measure) => {
+            measure(() => {
+                for (let i = 0; i < COUNT; ++i) {
+                    const calculation = calc(() => i);
+                    retain(calculation);
+                    calculations.push(calculation);
+                }
+            });
+            for (let i = 0; i < COUNT; ++i) {
+                calculations[i]();
+            }
+            for (let i = 0; i < COUNT; ++i) {
+                release(calculations[i]);
+            }
+            calculations = [];
+        });
+    });
+
+    test('release 3000 calculations', () => {
+        const COUNT = 3000;
+        const calculations: Calculation<number>[] = [];
+        assert.medianRuntimeLessThan(0, (measure) => {
+            for (let i = 0; i < COUNT; ++i) {
+                const calculation = calc(() => i);
+                retain(calculation);
+                calculations.push(calculation);
+            }
+            for (let i = 0; i < COUNT; ++i) {
+                calculations[i]();
+            }
+            measure(() => {
+                for (let i = 0; i < COUNT; ++i) {
+                    release(calculations[i]);
+                }
+            });
+            calculations.splice(0, calculations.length);
+        });
+    });
+
+    test('update 3000 calculations', () => {
+        const COUNT = 3000;
+        const modelObj = model({ num: 0 });
+        const calculations: Calculation<number>[] = [];
+        let runCount = 0;
+        for (let i = 0; i < COUNT; ++i) {
+            const calculation = calc(() => {
+                runCount += 1;
+                return i + modelObj.num;
+            });
+            retain(calculation);
+            calculation();
+            calculations.push(calculation);
+        }
+        assert.medianRuntimeLessThan(0, (measure) => {
+            runCount = 0;
+            measure(() => {
+                modelObj.num += 1;
+                flush();
+            });
+            assert.is(COUNT, runCount);
+        });
+        for (let i = 0; i < COUNT; ++i) {
+            release(calculations[i]);
+        }
     });
 });
