@@ -10,6 +10,7 @@ import {
     makeCalculation,
     makeEffect,
     EqualityFunc,
+    RecalculationTag,
 } from './types';
 import * as log from './log';
 import { DAG } from './dag';
@@ -17,10 +18,6 @@ import { noop, alwaysFalse, strictEqual } from './util';
 import { clearNames, debugNameFor, name } from './debug';
 
 let activeCalculations: (null | Calculation<any>)[] = [];
-let calculationToRecalculationMap: Map<
-    Calculation<any>,
-    () => boolean
-> = new Map();
 
 let partialDag = new DAG<
     Collection<any> | Calculation<any> | ModelField<any> | View<any>
@@ -40,7 +37,6 @@ let refcountMap: WeakMap<
 export function reset() {
     partialDag = new DAG();
     activeCalculations = [];
-    calculationToRecalculationMap = new Map();
 
     globalDependencyGraph = new DAG();
     refcountMap = new WeakMap();
@@ -119,7 +115,9 @@ function trackCalculation<Ret>(
     // - Calculation<Ret> when isEffect is true, infering Ret to void
     // But infers to Calculation<void> because makeEffect is present
     const trackedCalculation: Calculation<Ret> = (
-        isEffect ? makeEffect(runCalculation) : makeCalculation(runCalculation)
+        isEffect
+            ? makeEffect(runCalculation, recalculate)
+            : makeCalculation(runCalculation, recalculate)
     ) as Calculation<Ret>;
 
     function runCalculation() {
@@ -153,7 +151,7 @@ function trackCalculation<Ret>(
     }
     globalDependencyGraph.addNode(trackedCalculation);
 
-    const recalculate = () => {
+    function recalculate() {
         if (!result) {
             trackedCalculation();
             return false;
@@ -167,9 +165,7 @@ function trackCalculation<Ret>(
             result = { result: prevResult };
         }
         return eq;
-    };
-
-    calculationToRecalculationMap.set(trackedCalculation, recalculate);
+    }
 
     return trackedCalculation;
 }
@@ -311,10 +307,8 @@ export function flush() {
     oldPartialDag.visitTopological((item) => {
         if (isCalculation(item)) {
             log.debug('flushing calculation', debugNameFor(item));
-            const recalculation = calculationToRecalculationMap.get(item);
-            if (recalculation) {
-                return recalculation();
-            }
+            const recalculation = item[RecalculationTag];
+            return recalculation();
         } else if (isCollection(item)) {
             log.debug('flushing collection', debugNameFor(item));
             item[FlushKey]();

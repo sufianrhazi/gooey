@@ -2,6 +2,7 @@ export class InvariantError extends Error {}
 
 export const TypeTag = Symbol('reviseType');
 const CalculationTypeTag = Symbol('calculationType');
+export const RecalculationTag = Symbol('recalculate');
 
 export const OwnKeysField = Symbol('ownKeys');
 export const ObserveKey = Symbol('observe');
@@ -125,6 +126,7 @@ export interface View<T> extends ReadonlyArray<T> {
 export type Calculation<Result> = (() => Result) & {
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
+    [RecalculationTag]: () => boolean;
 };
 
 export interface ModelField<T> {
@@ -132,17 +134,25 @@ export interface ModelField<T> {
     key: string | number | symbol;
 }
 
-export function makeCalculation<Ret>(fn: () => Ret): Calculation<Ret> {
+export function makeCalculation<Ret>(
+    fn: () => Ret,
+    recalcFn: () => boolean
+): Calculation<Ret> {
     return Object.assign(fn, {
         [TypeTag]: 'calculation' as const,
         [CalculationTypeTag]: 'calculation' as const,
+        [RecalculationTag]: recalcFn,
     });
 }
 
-export function makeEffect(fn: () => void): Calculation<void> {
+export function makeEffect(
+    fn: () => void,
+    recalcFn: () => boolean
+): Calculation<void> {
     return Object.assign(fn, {
         [TypeTag]: 'calculation' as const,
         [CalculationTypeTag]: 'effect' as const,
+        [RecalculationTag]: recalcFn,
     });
 }
 
