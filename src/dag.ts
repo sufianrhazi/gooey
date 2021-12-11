@@ -25,7 +25,7 @@ export class DAG<Type extends object> {
         this.sentinelId = this.getItemId(sentinel);
     }
 
-    getItemId(item: Sentinel | Type): string {
+    private getItemId(item: Sentinel | Type): string {
         let id;
         if ((id = this.idMap.get(item)) === undefined) {
             id = this.maxId.toString();
@@ -104,7 +104,7 @@ export class DAG<Type extends object> {
     /**
      * Indicate that toNode no longer needs to be updated if fromNode has changed
      */
-    removeEdge(fromNode: Type, toNode: Type): boolean {
+    private removeEdge(fromNode: Type, toNode: Type): boolean {
         const fromId = this.getItemId(fromNode);
         const toId = this.getItemId(toNode);
         const result = this._removeEdge(fromId, toId);
