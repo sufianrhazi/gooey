@@ -73,6 +73,7 @@ export declare type RunUpdate = {
     result: 'pass';
     duration: number;
     selfDuration: number;
+    extraInfo: string[];
 } | {
     type: 'test';
     suiteId: number;

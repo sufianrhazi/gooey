@@ -1,7 +1,7 @@
 import { InvariantError, TypeTag, OwnKeysField, ObserveKey, } from './types';
 import { collection } from './collection';
-import { effect, addManualDep, addDepToCurrentCalculation, processChange, } from './calc';
-import { name, debugNameFor } from './debug';
+import { effect, untracked, addManualDep, addDepToCurrentCalculation, processChange, } from './calc';
+import { name } from './debug';
 export function model(obj, debugName) {
     if (typeof obj !== 'object' || !obj) {
         throw new InvariantError('model must be provided an object');
@@ -99,9 +99,8 @@ export function model(obj, debugName) {
         name(proxy, debugName);
     return proxy;
 }
-model.keys = function keys(target) {
-    const view = collection([]);
-    name(view, `keys(${debugNameFor(target)})`);
+model.keys = function keys(target, debugName) {
+    const view = collection([], debugName);
     const keysSet = new Set();
     function addKey(key) {
         if (typeof key === 'number' || typeof key === 'string') {
@@ -121,29 +120,37 @@ model.keys = function keys(target) {
             }
         }
     }
-    const events = [];
-    // TODO: should this use the same "deferred" mechanism of collections?
+    const trigger = model({ i: 0 });
+    let events = [];
     const updateEffect = effect(() => {
-        target[OwnKeysField]; // Access the Object.keys pesudo-field to ensure this effect tracks key changes
-        let event;
-        while ((event = events.shift())) {
+        trigger.i;
+        const toProcess = events;
+        events = [];
+        untracked(() => {
+            toProcess.forEach((event) => {
+                if (event.type === 'add') {
+                    addKey(event.key);
+                }
+                if (event.type === 'delete') {
+                    delKey(event.key);
+                }
+            });
+        });
+    });
+    addManualDep(updateEffect, view);
+    updateEffect();
+    untracked(() => {
+        target[ObserveKey]((event) => {
             if (event.type === 'init') {
                 event.keys.forEach((key) => {
                     addKey(key);
                 });
             }
-            if (event.type === 'add') {
-                addKey(event.key);
+            else {
+                events.push(event);
             }
-            if (event.type === 'delete') {
-                delKey(event.key);
-            }
-        }
-    });
-    addManualDep(updateEffect, view);
-    updateEffect();
-    target[ObserveKey]((event) => {
-        events.push(event);
+            trigger.i += 1;
+        });
     });
     return view;
 };

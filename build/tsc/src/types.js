@@ -2,6 +2,7 @@ export class InvariantError extends Error {
 }
 export const TypeTag = Symbol('reviseType');
 const CalculationTypeTag = Symbol('calculationType');
+export const RecalculationTag = Symbol('recalculate');
 export const OwnKeysField = Symbol('ownKeys');
 export const ObserveKey = Symbol('observe');
 export const GetRawArrayKey = Symbol('getRawArray');
@@ -20,16 +21,18 @@ export function ref(val) {
     };
 }
 export const OnCollectionRelease = Symbol('OnCollectionRelease');
-export function makeCalculation(fn) {
+export function makeCalculation(fn, recalcFn) {
     return Object.assign(fn, {
         [TypeTag]: 'calculation',
         [CalculationTypeTag]: 'calculation',
+        [RecalculationTag]: recalcFn,
     });
 }
-export function makeEffect(fn) {
+export function makeEffect(fn, recalcFn) {
     return Object.assign(fn, {
         [TypeTag]: 'calculation',
         [CalculationTypeTag]: 'effect',
+        [RecalculationTag]: recalcFn,
     });
 }
 export function isModel(thing) {

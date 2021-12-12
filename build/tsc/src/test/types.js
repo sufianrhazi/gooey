@@ -93,7 +93,9 @@ export function isRunUpdate(msg) {
         typeof msg.suiteId === 'number' &&
         msg.result === 'pass' &&
         typeof msg.duration === 'number' &&
-        typeof msg.selfDuration === 'number') {
+        typeof msg.selfDuration === 'number' &&
+        Array.isArray(msg.extraInfo) &&
+        msg.extraInfo.every((info) => typeof info === 'string')) {
         return true;
     }
     if (msg &&

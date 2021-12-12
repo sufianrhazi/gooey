@@ -25,10 +25,12 @@ export declare function calc<Ret>(func: () => Ret, isEqual: EqualityFunc<Ret>, d
  * desired if you want to trigger behavior only once within a computation)
  */
 export declare function effect(func: () => void, debugName?: string): Calculation<void>;
+export declare function untracked(func: () => void): void;
 export declare function addDepToCurrentCalculation<T, Ret>(item: Calculation<Ret> | ModelField<T>): void;
 export declare function addManualDep<T, V>(fromNode: Collection<T> | ModelField<T> | Calculation<T>, toNode: Collection<V> | ModelField<V> | Calculation<V>): void;
 export declare function processChange(item: ModelField<unknown> | Collection<unknown>): void;
 declare type Listener = () => void;
+export declare function nextFlush(): Promise<void>;
 /**
  * Call provided callback when any pending calculations are created. Use to configure how/when the application flushes calculations.
  *

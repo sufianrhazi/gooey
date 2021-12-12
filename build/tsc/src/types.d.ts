@@ -2,6 +2,7 @@ export declare class InvariantError extends Error {
 }
 export declare const TypeTag: unique symbol;
 declare const CalculationTypeTag: unique symbol;
+export declare const RecalculationTag: unique symbol;
 export declare const OwnKeysField: unique symbol;
 export declare const ObserveKey: unique symbol;
 export declare const GetRawArrayKey: unique symbol;
@@ -94,13 +95,14 @@ export interface View<T> extends ReadonlyArray<T> {
 export declare type Calculation<Result> = (() => Result) & {
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
+    [RecalculationTag]: () => boolean;
 };
 export interface ModelField<T> {
     model: Model<T> | Collection<T>;
     key: string | number | symbol;
 }
-export declare function makeCalculation<Ret>(fn: () => Ret): Calculation<Ret>;
-export declare function makeEffect(fn: () => void): Calculation<void>;
+export declare function makeCalculation<Ret>(fn: () => Ret, recalcFn: () => boolean): Calculation<Ret>;
+export declare function makeEffect(fn: () => void, recalcFn: () => boolean): Calculation<void>;
 export declare function isModel(thing: any): thing is Model<unknown>;
 export declare function isCollection(thing: any): thing is Collection<any> | View<any>;
 export declare function isCalculation(thing: any): thing is Calculation<any>;

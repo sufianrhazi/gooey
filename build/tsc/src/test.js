@@ -1,7 +1,6 @@
 import { isEqual } from 'lodash';
 import { isRequest, isInitRequest, isRunTestRequest, makeResponse, makePartialResponse, } from './test/types';
-import { setLogLevel } from './log';
-setLogLevel('debug');
+import { nextFlush } from './index';
 function repr(obj) {
     if (obj instanceof RegExp) {
         return obj.toString();
@@ -20,10 +19,15 @@ const makeTest = ({ name, impl, parent, only, }) => {
         parent,
         assertions: 0,
         only,
+        extraInfo: [],
     };
     testsById[newTest.id] = newTest;
     return newTest;
 };
+function resetTestState(testObj) {
+    testObj.assertions = 0;
+    testObj.extraInfo = [];
+}
 const makeSuite = ({ name, parent = undefined, only, }) => {
     const newSuite = {
         id: makeId(),
@@ -123,6 +127,7 @@ async function runAfterEach(ctx, suite) {
         for (const afterEach of suite.afterEach)
             await afterEach(ctx);
         await runAfterEach(ctx, suite.parent);
+        await nextFlush(); // For good measure, ensure we're flushed
     }
 }
 let runningTest = undefined;
@@ -131,6 +136,12 @@ function countAssertion() {
         throw new Error('Internal test integrity issue: assertion performed outside of test?');
     }
     runningTest.assertions += 1;
+}
+function addTestExtraInfo(info) {
+    if (!runningTest) {
+        throw new Error('Internal test integrity issue: addTestExtraInfo performed outside of test?');
+    }
+    runningTest.extraInfo.push(info);
 }
 export const assert = {
     fail: (msg) => {
@@ -157,7 +168,7 @@ export const assert = {
     },
     isFalsy: (a, msg) => {
         countAssertion();
-        if (!a) {
+        if (a) {
             throw new AssertionError('isFalsy', () => `${repr(a)} is not falsy`, msg);
         }
     },
@@ -245,14 +256,41 @@ export const assert = {
             throw new AssertionError('throwsMatching', () => `expected ${repr(fn)} to throw matching ${repr(match)}, but it threw:\n\n${repr(err.message)}`, msg);
         }
     },
+    medianRuntimeLessThan: (ms, fn, numRuns = 19, msg) => {
+        const runs = [];
+        for (let i = 0; i < numRuns; ++i) {
+            const fnStart = performance.now();
+            let didMeasure = false;
+            fn((measurement) => {
+                const start = performance.now();
+                const result = measurement();
+                didMeasure = true;
+                runs.push(performance.now() - start);
+                return result;
+            });
+            const fnDuration = performance.now() - fnStart;
+            if (!didMeasure) {
+                runs.push(fnDuration);
+            }
+        }
+        const sortedRuns = runs
+            .map((run, index) => [`run ${index.toString().padStart(2, ' ')}`, run])
+            .sort((a, b) => a[1] - b[1]);
+        const median = (sortedRuns[Math.floor((numRuns - 1) / 2)][1] +
+            sortedRuns[Math.ceil((numRuns - 1) / 2)][1]) /
+            2;
+        addTestExtraInfo(`median run took ${median}ms\nRuntimes: ${JSON.stringify(sortedRuns.map(([msg, ms]) => `${msg}: ${ms}ms`), undefined, 4)}`);
+        countAssertion();
+        if (!(median < ms)) {
+            throw new AssertionError('medianRuntimeLessThan', () => `median run took ${median}ms, which is more than the threshhold of ${ms}ms.\nRuntimes: ${JSON.stringify(sortedRuns.map(([msg, ms]) => `${msg}: ${ms}ms`), undefined, 4)}`, msg);
+        }
+    },
 };
 const testRoot = document.createElement('div');
 testRoot.id = 'test-root';
 document.body.appendChild(testRoot);
 beforeEach(() => {
-    while (testRoot.childNodes.length > 0) {
-        testRoot.removeChild(testRoot.childNodes[0]);
-    }
+    testRoot.replaceChildren();
 });
 function formatError(e) {
     let msg = '';
@@ -300,6 +338,7 @@ function respond(info, id, source) {
                     result: 'pass',
                     duration: info.duration,
                     selfDuration: info.selfDuration,
+                    extraInfo: info.extraInfo,
                 });
                 break;
             case 'run':
@@ -358,6 +397,7 @@ function makeInitPayload(allSuites) {
 async function handleRunTest(event, id, source) {
     const suite = suitesById[event.suiteId];
     const test = testsById[event.testId];
+    resetTestState(test);
     runningTest = test;
     respond({
         type: 'test',
@@ -379,6 +419,7 @@ async function handleRunTest(event, id, source) {
             result: 'pass',
             selfDuration,
             duration,
+            extraInfo: test.extraInfo,
         }, id, source);
     }
     catch (e) {

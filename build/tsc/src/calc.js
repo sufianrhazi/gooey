@@ -1,10 +1,9 @@
-import { InvariantError, FlushKey, isCalculation, isCollection, makeCalculation, makeEffect, } from './types';
+import { InvariantError, FlushKey, isCalculation, isCollection, makeCalculation, makeEffect, RecalculationTag, } from './types';
 import * as log from './log';
 import { DAG } from './dag';
-import { alwaysFalse, strictEqual } from './util';
+import { noop, alwaysFalse, strictEqual } from './util';
 import { clearNames, debugNameFor, name } from './debug';
 let activeCalculations = [];
-let calculationToRecalculationMap = new Map();
 let partialDag = new DAG();
 let globalDependencyGraph = new DAG();
 let refcountMap = new WeakMap();
@@ -14,7 +13,6 @@ let refcountMap = new WeakMap();
 export function reset() {
     partialDag = new DAG();
     activeCalculations = [];
-    calculationToRecalculationMap = new Map();
     globalDependencyGraph = new DAG();
     refcountMap = new WeakMap();
     clearNames();
@@ -48,6 +46,11 @@ export function effect(func, debugName) {
         name(calculation, debugName);
     return calculation;
 }
+export function untracked(func) {
+    activeCalculations.push(null);
+    func();
+    activeCalculations.pop();
+}
 function trackCalculation(func, isEqual, isEffect) {
     if (typeof func !== 'function') {
         throw new InvariantError('calculation must be provided a function');
@@ -57,7 +60,9 @@ function trackCalculation(func, isEqual, isEffect) {
     // - Calculation<Ret> when isEffect is false and
     // - Calculation<Ret> when isEffect is true, infering Ret to void
     // But infers to Calculation<void> because makeEffect is present
-    const trackedCalculation = (isEffect ? makeEffect(runCalculation) : makeCalculation(runCalculation));
+    const trackedCalculation = (isEffect
+        ? makeEffect(runCalculation, recalculate)
+        : makeCalculation(runCalculation, recalculate));
     function runCalculation() {
         if (!isEffect) {
             // effects return void, so they **cannot** have an effect on the current calculation
@@ -66,12 +71,7 @@ function trackCalculation(func, isEqual, isEffect) {
         if (result) {
             return result.result;
         }
-        const edgesToRemove = globalDependencyGraph
-            .getReverseDependencies(trackedCalculation)
-            .map((fromNode) => {
-            return [fromNode, trackedCalculation];
-        });
-        globalDependencyGraph.removeEdges(edgesToRemove);
+        globalDependencyGraph.removeIncoming(trackedCalculation);
         activeCalculations.push(trackedCalculation);
         result = { result: func() };
         const sanityCheck = activeCalculations.pop();
@@ -81,7 +81,7 @@ function trackCalculation(func, isEqual, isEffect) {
         return result.result;
     }
     globalDependencyGraph.addNode(trackedCalculation);
-    const recalculate = () => {
+    function recalculate() {
         if (!result) {
             trackedCalculation();
             return false;
@@ -95,8 +95,7 @@ function trackCalculation(func, isEqual, isEffect) {
             result = { result: prevResult };
         }
         return eq;
-    };
-    calculationToRecalculationMap.set(trackedCalculation, recalculate);
+    }
     return trackedCalculation;
 }
 export function addDepToCurrentCalculation(item) {
@@ -141,7 +140,14 @@ export function processChange(item) {
     log.debug('processChange', chain);
 }
 let needsFlush = false;
+let flushPromise = Promise.resolve();
+let resolveFlushPromise = noop;
 let subscribeListener = () => setTimeout(() => flush(), 0);
+export function nextFlush() {
+    if (!needsFlush)
+        return Promise.resolve();
+    return flushPromise;
+}
 /**
  * Call provided callback when any pending calculations are created. Use to configure how/when the application flushes calculations.
  *
@@ -155,11 +161,14 @@ let subscribeListener = () => setTimeout(() => flush(), 0);
 export function subscribe(listener) {
     subscribeListener = listener;
     if (needsFlush) {
-        notify();
+        subscribeListener();
     }
 }
 function notify() {
     try {
+        flushPromise = new Promise((resolve) => {
+            resolveFlushPromise = resolve;
+        });
         subscribeListener();
     }
     catch (e) {
@@ -193,10 +202,8 @@ export function flush() {
     oldPartialDag.visitTopological((item) => {
         if (isCalculation(item)) {
             log.debug('flushing calculation', debugNameFor(item));
-            const recalculation = calculationToRecalculationMap.get(item);
-            if (recalculation) {
-                return recalculation();
-            }
+            const recalculation = item[RecalculationTag];
+            return recalculation();
         }
         else if (isCollection(item)) {
             log.debug('flushing collection', debugNameFor(item));
@@ -207,6 +214,7 @@ export function flush() {
         }
         return false;
     });
+    resolveFlushPromise();
 }
 /**
  * Retain a calculation (increase the refcount)

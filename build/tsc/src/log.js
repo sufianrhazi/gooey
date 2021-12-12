@@ -5,6 +5,15 @@ const levels = {
     debug: 3,
 };
 let currentLevel = levels.warn;
+export function getLogLevel() {
+    if (currentLevel >= levels.info)
+        return 'info';
+    if (currentLevel >= levels.warn)
+        return 'warn';
+    if (currentLevel >= levels.debug)
+        return 'debug';
+    return 'error';
+}
 export function setLogLevel(logLevel) {
     invariant(() => logLevel in levels, logLevel);
     currentLevel = levels[logLevel];

@@ -10,6 +10,19 @@ export function makePromise() {
     });
     return { promise, resolve, reject };
 }
+export function groupBy(items, grouper) {
+    const grouped = new Map();
+    items.forEach((item) => {
+        const [key, val] = grouper(item);
+        let inner = grouped.get(key);
+        if (!inner) {
+            inner = [];
+            grouped.set(key, inner);
+        }
+        inner.push(val);
+    });
+    return grouped;
+}
 export function groupBy2(items, grouper) {
     const grouped = new Map();
     items.forEach((item) => {

@@ -233,7 +233,7 @@ const Range = (props, { onEffect }) => {
     return (Revise("fieldset", null,
         Revise("h2", null, "input type=\"range\""),
         Revise("div", { class: "target" },
-            Revise("input", { ref: inputRef, type: "range", min: "0", max: "100", step: "5", value: calc(() => state.value), disabled: calc(() => state.disabled), "on:click": logEvent('on:click'), "on:change": onChange, "on:input": logEvent('on:input'), "on:focus": logEvent('on:focus'), "on:blur": logEvent('on:blur') })),
+            Revise("input", { ref: inputRef, type: "range", min: 0, max: 100, step: 5, value: calc(() => state.value), disabled: calc(() => state.disabled), "on:click": logEvent('on:click'), "on:change": onChange, "on:input": logEvent('on:input'), "on:focus": logEvent('on:focus'), "on:blur": logEvent('on:blur') })),
         Revise("div", { class: "buttons" },
             Revise("button", { "on:click": () => {
                     state.disabled = !state.disabled;
@@ -299,7 +299,7 @@ const Select = (props, { onEffect }) => {
     return (Revise("fieldset", null,
         Revise("h2", null, "select"),
         Revise("div", { class: "target" },
-            Revise("select", { ref: inputRef, value: calc(() => state.value), disabled: calc(() => state.disabled), multiple: calc(() => state.multiple), size: calc(() => (state.multiple ? '5' : undefined)), "on:click": logEvent('on:click select'), "on:change": onChange, "on:input": logEvent('on:input select'), "on:focus": logEvent('on:focus select'), "on:blur": logEvent('on:blur select') }, ['a', 'b', 'c', 'd', 'e'].map((item) => (Revise("option", { disabled: calc(() => state.optionDisabled[item]), selected: calc(() => state.multiple
+            Revise("select", { ref: inputRef, value: calc(() => state.value), disabled: calc(() => state.disabled), multiple: calc(() => state.multiple), size: calc(() => (state.multiple ? 5 : undefined)), "on:click": logEvent('on:click select'), "on:change": onChange, "on:input": logEvent('on:input select'), "on:focus": logEvent('on:focus select'), "on:blur": logEvent('on:blur select') }, ['a', 'b', 'c', 'd', 'e'].map((item) => (Revise("option", { disabled: calc(() => state.optionDisabled[item]), selected: calc(() => state.multiple
                     ? state.optionSelected[item]
                     : state.value === item), "on:click": logEvent(`on:click option ${item}`), "on:change": logEvent(`on:change option ${item}`), "on:input": logEvent(`on:input option ${item}`), "on:focus": logEvent(`on:focus option ${item}`), "on:blur": logEvent(`on:blur option ${item}`), value: item },
                 "Option ",
@@ -348,6 +348,34 @@ const Select = (props, { onEffect }) => {
                 item)))),
         Revise(Log, { messages: state.messages })));
 };
+const Details = (props, { onEffect }) => {
+    const state = model({
+        open: false,
+        disabled: false,
+        messages: collection([]),
+    });
+    const detailsRef = ref();
+    function log(message) {
+        state.messages.push(message);
+    }
+    const logEvent = (name) => () => { var _a; return log(`${name} open=${(_a = detailsRef.current) === null || _a === void 0 ? void 0 : _a.open}`); };
+    const onClickToggle = () => {
+        state.open = !state.open;
+    };
+    return (Revise("fieldset", null,
+        Revise("h2", null, "select"),
+        Revise("div", { class: "target" },
+            Revise("details", { ref: detailsRef, open: calc(() => state.open), "on:toggle": logEvent('on:toggle details'), "on:click": logEvent('on:click details'), "on:change": logEvent('on:change details'), "on:input": logEvent('on:input details'), "on:focus": logEvent('on:focus details'), "on:blur": logEvent('on:blur details') },
+                Revise("summary", { "on:toggle": logEvent('on:toggle summary'), "on:click": (e) => {
+                        e.preventDefault();
+                        state.open = !state.open;
+                        logEvent('on:click summary')();
+                    }, "on:change": logEvent('on:change summary'), "on:input": logEvent('on:input summary'), "on:focus": logEvent('on:focus summary'), "on:blur": logEvent('on:blur summary') }, "The summary"),
+                "The details")),
+        Revise("div", { class: "buttons" },
+            Revise("button", { "on:click": onClickToggle }, "Toggle open")),
+        Revise(Log, { messages: state.messages })));
+};
 mount(document.body, Revise("div", null,
     ['button', 'reset', 'submit'].map((inputType) => (Revise(ButtonLike, { inputType: inputType }))),
     Revise(Checkbox, null),
@@ -369,5 +397,6 @@ mount(document.body, Revise("div", null,
     ].map((inputType) => (Revise(TextLike, { inputType: inputType }))),
     Revise(Color, null),
     Revise(Range, null),
-    Revise(Select, null)));
+    Revise(Select, null),
+    Revise(Details, null)));
 //# sourceMappingURL=form-inputs.js.map

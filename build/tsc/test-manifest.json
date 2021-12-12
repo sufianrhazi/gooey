@@ -1,1 +1,1 @@
-[{ "src": "/src/calc.test.ts" }, { "src": "/src/model.test.ts" }, { "src": "/src/index.test.ts" }, { "src": "/src/collection.test.ts" }, { "src": "/src/view.test.tsx" }]
+[{ "src": "/src/calc.test.ts" }, { "src": "/src/model.test.ts" }, { "src": "/src/index.test.ts" }, { "src": "/src/performance.test.tsx" }, { "src": "/src/collection.test.ts" }, { "src": "/src/view.test.tsx" }]

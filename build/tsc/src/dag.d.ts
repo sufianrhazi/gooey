@@ -1,17 +1,13 @@
-import { Sentinel } from './sentinel';
 export declare class DAG<Type extends object> {
-    private maxId;
-    private sentinelId;
+    private nextId;
     private idMap;
-    private nodes;
-    private refCount;
-    private cullableSet;
-    private edgeMap;
-    private reverseEdgeMap;
+    private nodesSet;
+    private retained;
+    private graph;
+    private reverseGraph;
     constructor();
-    getItemId(item: Sentinel | Type): string;
+    private getId;
     addNode(node: Type): boolean;
-    private _addNode;
     hasNode(node: Type): boolean;
     /**
      * Indicate that toNode needs to be updated if fromNode has changed
@@ -19,28 +15,18 @@ export declare class DAG<Type extends object> {
      * Returns true if edge is added
      */
     addEdge(fromNode: Type, toNode: Type): boolean;
-    private _addEdge;
-    /**
-     * Indicate that toNode no longer needs to be updated if fromNode has changed
-     */
-    removeEdge(fromNode: Type, toNode: Type): boolean;
+    private removeNodeInner;
     /**
      * Remove a node and all its edges from the graph, returns true if node not present
      */
     removeNode(node: Type): boolean;
-    private _removeNode;
-    private _removeEdge;
     retain(node: Type): void;
     release(node: Type): void;
-    removeEdges(edges: [Type, Type][]): void;
+    removeIncoming(node: Type): void;
     /**
      * Get list of things need to be updated, when fromNode has changed?
      */
     getDependencies(fromNode: Type): Type[];
-    /**
-     * Get list of things that cause toNode to updated
-     */
-    getReverseDependencies(toNode: Type): Type[];
     /**
      * Visit topological graph
      *
@@ -56,6 +42,13 @@ export declare class DAG<Type extends object> {
      *
      */
     visitTopological(callback: (node: Type) => boolean): void;
+    /**
+     * All nodes that do not lead to a retained (sink) node are considered garbage.
+     *
+     * Note: there may be a much more efficient way than doing this.
+     *
+     * It's possible that we could instead assert that a node is reachable from a retained node prior to calculation, which may be *much* faster in practice.
+     */
     garbageCollect(): Type[];
     /**
      * Generate a dot file structure of the graph

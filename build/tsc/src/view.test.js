@@ -1,4 +1,4 @@
-import Revise, { reset, mount, calc, model, collection, flush, } from './index';
+import Revise, { calc, collection, flush, model, mount, reset, } from './index';
 import { suite, test, beforeEach, assert } from './test';
 const testRoot = document.getElementById('test-root');
 if (!testRoot)
@@ -116,22 +116,6 @@ suite('mount components', () => {
         flush();
         assert.is(testRoot.innerHTML, '<p>Hello there</p>');
     });
-    test('components are themselves calculations and rerender upon dependency change', () => {
-        const state = model({
-            name: 'world',
-        });
-        const Greet = () => {
-            const exclaimed = state.name + '!';
-            return Revise("p", null,
-                "Hello ",
-                exclaimed);
-        };
-        mount(testRoot, Revise(Greet, null));
-        assert.is(testRoot.innerHTML, '<p>Hello world!</p>');
-        state.name = 'there';
-        flush();
-        assert.is(testRoot.innerHTML, '<p>Hello there!</p>');
-    });
     test('components with calculations do not change roots', () => {
         const state = model({
             name: 'world',
@@ -148,7 +132,7 @@ suite('mount components', () => {
         const pAfter = testRoot.querySelector('#p');
         assert.is(pBefore, pAfter);
     });
-    test('components without calculations that rerender *do* change roots', () => {
+    test('components without calculations that read model data *do not* rerender', () => {
         const state = model({
             name: 'world',
         });
@@ -163,7 +147,8 @@ suite('mount components', () => {
         state.name = 'there';
         flush();
         const pAfter = testRoot.querySelector('#p');
-        assert.isNot(pBefore, pAfter);
+        assert.is(pBefore, pAfter);
+        assert.is('Hello world!', pAfter === null || pAfter === void 0 ? void 0 : pAfter.textContent);
     });
     test('components are provided an onMount callback which is called immediately after mounted', () => {
         const sequence = [];
@@ -202,14 +187,20 @@ suite('mount components', () => {
             return (Revise("div", { id: "parent" }, calc(() => state.showingChild && Revise(Child, null))));
         };
         mount(testRoot, Revise(Parent, null));
+        assert.isTruthy(testRoot.querySelector('#parent'));
+        assert.isFalsy(testRoot.querySelector('#child'));
         assert.deepEqual([], sequence);
         state.showingChild = true;
         flush();
+        assert.isTruthy(testRoot.querySelector('#parent'));
+        assert.isTruthy(testRoot.querySelector('#child'));
         assert.deepEqual(['render', 'onMount'], sequence);
         const child = testRoot.querySelector('#child');
         state.showingChild = false;
         flush();
         assert.deepEqual(['render', 'onMount', 'onUnmount'], sequence);
+        assert.isTruthy(testRoot.querySelector('#parent'));
+        assert.isFalsy(testRoot.querySelector('#child'));
         assert.isTruthy(queried);
         assert.is(child, queried);
     });
@@ -271,14 +262,12 @@ suite('mount components', () => {
     });
     test('onUnmount called in correct order (children before parent) when entire tree is unmounted', () => {
         const sequence = [];
-        let queried = null;
         const Grandchild = ({ name }, { onMount, onUnmount }) => {
             sequence.push(`render ${name}`);
             onMount(() => {
                 sequence.push(`onMount ${name}`);
             });
             onUnmount(() => {
-                queried = testRoot.querySelector('#child');
                 sequence.push(`onUnmount ${name}`);
             });
             return Revise("p", { class: "grandchild" }, name);
@@ -289,7 +278,6 @@ suite('mount components', () => {
                 sequence.push(`onMount ${name}`);
             });
             onUnmount(() => {
-                queried = testRoot.querySelector('#child');
                 sequence.push(`onUnmount ${name}`);
             });
             return (Revise("p", { class: "child" },
@@ -305,14 +293,14 @@ suite('mount components', () => {
         assert.deepEqual([
             'render a',
             'render a 1',
-            'onMount a 1',
             'render a 2',
-            'onMount a 2',
-            'onMount a',
             'render b',
             'render b 1',
-            'onMount b 1',
             'render b 2',
+            'onMount a 1',
+            'onMount a 2',
+            'onMount a',
+            'onMount b 1',
             'onMount b 2',
             'onMount b',
         ], sequence);
@@ -361,6 +349,45 @@ suite('mount arrays', () => {
             'unless',
             'letters',
             'continue',
+        ]);
+    });
+    test('mapping multiple arrays interspersed concats as expected', () => {
+        const items = collection([
+            'A',
+            'is',
+            'the',
+            'only',
+            'thing',
+            'unless',
+            'letters',
+            'continue',
+        ]);
+        mount(testRoot, Revise("div", null,
+            "BEFORE",
+            calc(() => items.map((item) => item)),
+            "MIDDLE",
+            calc(() => items.map((item) => item)),
+            "AFTER"));
+        assert.deepEqual(Array.from(testRoot.querySelector('div').childNodes).map((item) => item.data), [
+            'BEFORE',
+            'A',
+            'is',
+            'the',
+            'only',
+            'thing',
+            'unless',
+            'letters',
+            'continue',
+            'MIDDLE',
+            'A',
+            'is',
+            'the',
+            'only',
+            'thing',
+            'unless',
+            'letters',
+            'continue',
+            'AFTER',
         ]);
     });
     test('rerendering multiple arrays in a row concats as expected', () => {
