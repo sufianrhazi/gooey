@@ -4,11 +4,23 @@ cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source "s/_tools.sh"
 
+ARG="$1"
+
+if [ "$ARG" == "-h" ] || [ "$ARG" == "--help" ]; then
+    echo "Usage: $0 [--perf]"
+    exit 1
+fi
+if [ "$ARG" != "--perf" ]; then
+    echo_warn "Note: not running performance tests"
+fi
+
 echo_info "Cleaning..."
 s/clean
 
 find src -type f -name '*.test.*' | while read -r TEST_SRC; do
-    jo src="/$TEST_SRC"
+    if [ "$TEST_SRC" != "src/performance.test.tsx" ] || [ "$ARG" == "--perf" ]; then
+        jo src="/$TEST_SRC"
+    fi
 done | jo -a > test-manifest.json
 
 find src/demos -type f -name '*.html' | while read -r DEMO_SRC; do

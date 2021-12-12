@@ -19,6 +19,9 @@ node_modules/.bin/esbuild build/tsc/index.js --define:VERSION="${VERSION}" --sou
 echo_info "Bundling minified iife..."
 node_modules/.bin/esbuild build/tsc/index.js --define:VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=iife --global-name=Revise --minify --outfile=build/browser/index.min.js
 
+echo_warn "Running tests + performance tests to confirm..."
+s/test --perf
+
 if [ "$1" != "--no-done" ]; then
     echo_good "All done"
 fi

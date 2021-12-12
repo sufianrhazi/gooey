@@ -447,7 +447,7 @@ export const assert = {
     medianRuntimeLessThan: (
         ms: number,
         fn: (measure: <T>(measurement: () => T) => T) => void,
-        numRuns = 9,
+        numRuns = 19,
         msg?: string
     ) => {
         const runs: number[] = [];

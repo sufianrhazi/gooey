@@ -1,7 +1,7 @@
 import { suite, test, assert } from './test';
 import { model } from './model';
 import { collection } from './collection';
-import { flush, calc, effect, retain, release, debug } from './calc';
+import { flush, calc, effect, retain, release } from './calc';
 
 suite('calc', () => {
     test('memoizes when called multiple times', () => {
@@ -138,31 +138,26 @@ suite('calc', () => {
         calculation();
         flush();
 
-        console.log(debug());
         // No dependency on b yet, no effect
         dependency.b = 3;
         flush();
         assert.deepEqual(['call a'], calls);
 
-        console.log(debug());
         // Dependency on a, recalc
         dependency.a = 4;
         flush();
         assert.deepEqual(['call a', 'call a'], calls);
 
-        console.log(debug());
         // Dependency on which, recalc
         dependency.which = 'b';
         flush();
         assert.deepEqual(['call a', 'call a', 'call b'], calls);
 
-        console.log(debug());
         // No longer dependency on a
         dependency.a = 5;
         flush();
         assert.deepEqual(['call a', 'call a', 'call b'], calls);
 
-        console.log(debug());
         // Dependency on b, recalc
         dependency.b = 6;
         flush();
