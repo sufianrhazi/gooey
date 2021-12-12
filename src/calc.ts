@@ -130,15 +130,7 @@ function trackCalculation<Ret>(
             return result.result;
         }
 
-        const edgesToRemove: [
-            Collection<any> | Calculation<any> | ModelField<any> | View<any>,
-            Calculation<any>
-        ][] = globalDependencyGraph
-            .getReverseDependencies(trackedCalculation)
-            .map((fromNode) => {
-                return [fromNode, trackedCalculation];
-            });
-        globalDependencyGraph.removeEdges(edgesToRemove);
+        globalDependencyGraph.removeIncoming(trackedCalculation);
 
         activeCalculations.push(trackedCalculation);
         result = { result: func() };
