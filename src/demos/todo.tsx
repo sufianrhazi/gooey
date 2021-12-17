@@ -86,9 +86,10 @@ const TodoList = () => {
             <ul class="list-group">
                 {calc(
                     () =>
-                        globalState.items.mapView((item) => (
-                            <TodoItem item={item} />
-                        )),
+                        globalState.items.mapView(
+                            (item) => <TodoItem item={item} />,
+                            'globalState.items.mapView'
+                        ),
                     'ItemList'
                 )}
             </ul>
@@ -181,6 +182,7 @@ const App = () => {
     const onClickDebug = () => {
         if (graphvizContainerRef.current) {
             graphvizContainerRef.current.textContent = debug();
+            navigator.clipboard.writeText(debug());
         }
     };
 

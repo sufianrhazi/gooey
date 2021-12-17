@@ -2,7 +2,6 @@ import {
     Calculation,
     Collection,
     CollectionEvent,
-    CollectionObserver,
     FilterFunction,
     FlatMapFunction,
     FlushKey,
@@ -11,15 +10,16 @@ import {
     MappingFunction,
     ModelField,
     ObserveKey,
-    SortKeyFunction,
     TypeTag,
     View,
+    ViewSpec,
 } from './types';
 import {
     calc,
     effect,
     retain,
     release,
+    untracked,
     processChange,
     addManualDep,
     addDepToCurrentCalculation,
@@ -27,45 +27,10 @@ import {
 import { name } from './debug';
 import * as log from './log';
 
-function compareCalculations(
-    a: Calculation<string | number>,
-    b: typeof a
-): number {
-    const aVal = a();
-    const bVal = b();
-    if (aVal < bVal) return -1;
-    if (aVal > bVal) return 1;
-    return 0;
-}
-/**
- * Find the index of `item` using binary search in a sorted array
- *
- * Returns [lastComparison, index]
- * - if lastComparison < 0, item would be inserted before index
- * - if lastComparison > 0, item would be inserted after index
- * - if lastComparison == 0, item is compared equal to index
- */
-function binarySearchIndex(
-    sortedArray: Calculation<string | number>[],
-    item: Calculation<string | number>
-): [lastComparison: number, index: number] {
-    let min = 0;
-    let max = sortedArray.length - 1;
-    let pivot = min;
-    let result = -1; // if sortedArray.length == 0, we want -1, so on a miss, we insert "before" index 0: arr.splice(0, 0, item)
-    while (min <= max) {
-        pivot = (min + max) >> 1; // floor((L+R)/2)
-        result = compareCalculations(item, sortedArray[pivot]);
-        if (result < 0) {
-            max = pivot - 1;
-        } else if (result > 0) {
-            min = pivot + 1;
-        } else {
-            return [result, pivot];
-        }
-    }
-    return [result, pivot];
-}
+// Taken from https://stackoverflow.com/a/67605309
+type ParametersExceptFirst<F> = F extends (arg0: any, ...rest: infer R) => any
+    ? R
+    : never;
 
 /**
  * Make a mutable array to hold state, with some additional convenience methods
@@ -76,12 +41,21 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
     }
 
     const fields: Map<string | number | symbol, ModelField<T>> = new Map();
-    let observers: CollectionObserver<T>[] = [];
+    let observers: ((event: CollectionEvent<T>) => void)[] = [];
+    let events: CollectionEvent<T>[] = [];
 
-    function notify(event: CollectionEvent<T>) {
-        observers.forEach((observer) => {
-            observer(event);
+    function flush() {
+        const toProcess = events;
+        events = [];
+        toProcess.forEach((event) => {
+            observers.forEach((observer) => {
+                observer(event);
+            });
         });
+    }
+    function notify(event: CollectionEvent<T>) {
+        events.push(event);
+        processChange(proxy);
     }
 
     function splice(index: number, count: number, ...items: T[]): T[] {
@@ -113,7 +87,6 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
             }
             processChange(getField('length'));
         }
-        processChange(proxy);
         return removed;
     }
 
@@ -145,304 +118,61 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         }
     }
 
+    function moveSlice(fromIndex: number, fromCount: number, toIndex: number) {
+        if (fromCount <= 0) return; // nothing to slice
+        if (toIndex >= fromIndex && toIndex < fromIndex + fromCount) return; // destination is inside moved slice, so noop
+        const moved = array.splice(fromIndex, fromCount);
+        if (toIndex < fromIndex) {
+            array.splice(toIndex, 0, ...moved);
+        } else {
+            array.splice(toIndex - fromCount, 0, ...moved);
+        }
+        notify({
+            type: 'move',
+            fromIndex,
+            fromCount,
+            toIndex,
+            moved,
+        });
+    }
+
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     function sort(_sorter: never): T[] {
         throw new Error('Cannot sort collections, use sortedView instead');
-    }
-
-    const deferred: (() => void)[] = [];
-
-    function sortedView(
-        keyFn: SortKeyFunction<T>,
-        viewDebugName?: string
-    ): View<T> {
-        let sortKeysDebugName: string | undefined;
-        let sortedDebugName: string | undefined;
-        if (viewDebugName) {
-            sortKeysDebugName = `${viewDebugName}:sortKeys`;
-            sortedDebugName = viewDebugName;
-        } else if (debugName) {
-            sortKeysDebugName = `${debugName}:sortKeys`;
-            sortedDebugName = `${debugName}:sortedView`;
-        }
-        const sortKeysMap: Map<T, Calculation<string | number>> = new Map();
-        const sortKeys: Collection<Calculation<string | number>> = collection(
-            [],
-            sortKeysDebugName
-        );
-        const sortEffects: Collection<Calculation<void>> = collection(
-            [],
-            sortKeysDebugName
-        );
-        const sorted: Collection<T> = collection([], sortedDebugName);
-
-        const rawKeyArray = sortKeys[GetRawArrayKey]();
-
-        function removeItem(removedItem: T) {
-            const removedKeyCalculation = sortKeysMap.get(removedItem);
-            log.assert(
-                removedKeyCalculation,
-                'Missing keyCalculation from removed item',
-                { removedItem }
-            );
-            const [lastComparison, sortedIndex] = binarySearchIndex(
-                rawKeyArray,
-                removedKeyCalculation
-            );
-            log.assert(
-                lastComparison === 0,
-                'Missing item removed from source array in sortedView splice',
-                { removedItem }
-            );
-            sortKeysMap.delete(removedItem);
-            sortKeys.splice(sortedIndex, 1);
-            sorted.splice(sortedIndex, 1);
-            const keyEffect = sortEffects.splice(sortedIndex, 1)[0];
-            release(keyEffect);
-        }
-
-        function addItem(item: T) {
-            let lastKey: string | number = 0; // dummy value
-            const keyCalculation = calc(() => {
-                lastKey = keyFn(item);
-                return lastKey;
-            });
-            let enableEffect = false;
-            const keyEffect = effect(() => {
-                keyCalculation();
-
-                // Find the index without affecting the dependencies
-                if (enableEffect) {
-                    effect(() => {
-                        removeItem(item);
-                        addItem(item);
-                    })();
-                }
-            });
-            keyEffect();
-            enableEffect = true;
-            const [lastComparison, insertionIndex] = binarySearchIndex(
-                rawKeyArray,
-                keyCalculation
-            );
-            const targetIndex =
-                lastComparison > 0 ? insertionIndex + 1 : insertionIndex;
-            sortKeysMap.set(item, keyCalculation);
-            sortKeys.splice(targetIndex, 0, keyCalculation);
-            sorted.splice(targetIndex, 0, item);
-            retain(keyEffect);
-            sortEffects.splice(targetIndex, 0, keyEffect);
-        }
-
-        proxy[ObserveKey]((event) => {
-            if (event.type === 'init') {
-                event.items.forEach((item) => {
-                    addItem(item);
-                });
-                return;
-            } else if (event.type === 'splice') {
-                deferred.push(() => {
-                    const { items, removed } = event;
-
-                    // First handle removals
-                    removed.forEach((removedItem, removedItemIndex) => {
-                        removeItem(removedItem);
-                    });
-
-                    // Then handle insertions
-                    items.forEach((item) => {
-                        addItem(item);
-                    });
-                });
-            }
-        });
-        addManualDep(proxy, sortKeys);
-        addManualDep(proxy, sortEffects);
-        addManualDep(sortKeys, sorted);
-        addManualDep(sortEffects, sorted);
-        return sorted;
-    }
-
-    function mapView<V>(
-        mapper: MappingFunction<T, V>,
-        viewDebugName?: string
-    ): View<V> {
-        let mappedDebugName: string | undefined;
-        if (viewDebugName) {
-            mappedDebugName = viewDebugName;
-        } else if (debugName) {
-            mappedDebugName = `${debugName}:mapView`;
-        }
-        const mapped = collection(
-            array.map((item) => mapper(item)),
-            mappedDebugName
-        );
-        proxy[ObserveKey]((event) => {
-            if (event.type === 'splice') {
-                deferred.push(() => {
-                    const { index, count, items } = event;
-                    // Well that's deceptively easy
-                    mapped.splice(index, count, ...items.map(mapper));
-                });
-            }
-        });
-        addManualDep(proxy, mapped);
-        return mapped;
-    }
-
-    function filterView(
-        filterFn: FilterFunction<T>,
-        viewDebugName?: string
-    ): View<T> {
-        let mappedDebugName: string | undefined;
-        if (viewDebugName) {
-            mappedDebugName = viewDebugName;
-        } else if (debugName) {
-            mappedDebugName = `${debugName}:filterView`;
-        }
-        // TODO: make more efficient, every item addition/removal is O(length of source collection)
-        // With a tree cache of presence, we could probably make this O(log(length of source collection))
-        // Can this become linear?
-        const presentCache: boolean[] = [];
-        const filterEffects: Map<T, Calculation<void>> = new Map();
-        const filtered: Collection<T> = collection([], mappedDebugName);
-
-        function getRealIndex(sourceIndex: number) {
-            let realIndex = 0;
-            for (let i = 0; i < sourceIndex; ++i) {
-                if (presentCache[i]) realIndex++;
-            }
-            return realIndex;
-        }
-
-        function addItem(item: T, sourceIndex: number) {
-            let lastIsPresent = false;
-            const filterCalculation = calc(() => filterFn(item));
-            const filterEffect = effect(() => {
-                const isPresent = filterCalculation();
-                if (isPresent && !lastIsPresent) {
-                    const realIndex = getRealIndex(sourceIndex);
-                    filtered.splice(realIndex, 0, item);
-                }
-                if (!isPresent && lastIsPresent) {
-                    const realIndex = getRealIndex(sourceIndex);
-                    filtered.splice(realIndex, 1);
-                }
-                lastIsPresent = isPresent;
-                presentCache[sourceIndex] = isPresent;
-            });
-            presentCache.splice(sourceIndex, 0, false);
-            filterEffect();
-            filterEffects.set(item, filterEffect);
-            retain(filterEffect);
-        }
-
-        function removeItem(item: T, sourceIndex: number) {
-            const filterEffect = filterEffects.get(item);
-            log.assert(
-                filterEffect,
-                'filterEffect not found when removing item'
-            );
-
-            const isPresent = presentCache[sourceIndex];
-            if (isPresent) {
-                const realIndex = getRealIndex(sourceIndex);
-                filtered.splice(realIndex, 1);
-            }
-            presentCache.splice(sourceIndex, 1);
-            release(filterEffect);
-        }
-
-        proxy[ObserveKey]((event) => {
-            if (event.type === 'init') {
-                event.items.forEach((item, index) => addItem(item, index));
-            } else if (event.type === 'splice') {
-                deferred.push(() => {
-                    const { index, items, removed } = event;
-                    removed.forEach((item, removeIndex) =>
-                        removeItem(item, index + removeIndex)
-                    );
-                    items.forEach((item, addIndex) =>
-                        addItem(item, index + addIndex)
-                    );
-                });
-            }
-        });
-        addManualDep(proxy, filtered);
-        return filtered;
-    }
-
-    function flatMapView<V>(
-        fn: FlatMapFunction<T, V>,
-        viewDebugName?: string
-    ): View<V> {
-        let mappedDebugName: string | undefined;
-        if (viewDebugName) {
-            mappedDebugName = viewDebugName;
-        } else if (debugName) {
-            mappedDebugName = `${debugName}:flatMapView`;
-        }
-        const flatMapped: Collection<V> = collection([], mappedDebugName);
-        const flatMapCount: number[] = [];
-        array.forEach((value) => {
-            const chunk = fn(value);
-            flatMapped.push(...chunk);
-            flatMapCount.push(chunk.length);
-        });
-
-        proxy[ObserveKey]((event) => {
-            if (event.type === 'splice') {
-                deferred.push(() => {
-                    const { index, count, items } = event;
-                    let realIndex = 0;
-                    for (let i = 0; i < index; ++i) {
-                        realIndex += flatMapCount[i];
-                    }
-                    let realCount = 0;
-                    for (let i = index; i < index + count; ++i) {
-                        realCount += flatMapCount[i];
-                    }
-                    // Well that's deceptively easy
-                    const realItems: V[] = [];
-                    const realItemCount: number[] = [];
-                    items.forEach((itemValue) => {
-                        const chunk = fn(itemValue);
-                        realItems.push(...chunk);
-                        realItemCount.push(chunk.length);
-                    });
-                    flatMapped.splice(realIndex, realCount, ...realItems);
-                    flatMapCount.splice(index, count, ...realItemCount);
-                });
-            }
-        });
-        addManualDep(proxy, flatMapped);
-        return flatMapped;
     }
 
     function set(index: number, val: T): void {
         splice(index, 1, val);
     }
 
-    function observe(observer: CollectionObserver<T>) {
+    function observe(observer: (event: CollectionEvent<T>) => void) {
         observers.push(observer);
-        observer({
-            type: 'init',
-            items: array,
-        });
         return () => {
             observers = observers.filter((obs) => obs !== observer);
         };
     }
 
-    function flush() {
-        let thunk;
-        while ((thunk = deferred.shift())) {
-            thunk();
-        }
-    }
-
     function getRawArray() {
         return array;
+    }
+
+    function makeView<V>(
+        spec: ViewSpec<T, V>,
+        viewDebugName?: string | undefined
+    ) {
+        const viewArray: V[] = [];
+        untracked(() => {
+            spec.initialize(viewArray, array);
+        });
+        const view = collection(viewArray, viewDebugName);
+        observe((event: CollectionEvent<T>) => {
+            // TODO: confirm whether or not the untracked call needs to be here. It almost certainly does not.
+            untracked(() => {
+                spec.processEvent(view, event);
+            });
+        });
+        addManualDep(proxy, view);
+        return view;
     }
 
     const methods = {
@@ -451,15 +181,22 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         shift,
         push,
         unshift,
-        [ObserveKey]: observe,
         [FlushKey]: flush,
         [GetRawArrayKey]: getRawArray,
+        [ObserveKey]: observe,
         sort,
         reject,
-        sortedView,
-        mapView,
-        filterView,
-        flatMapView,
+        moveSlice,
+        makeView,
+        mapView: (
+            ...args: ParametersExceptFirst<typeof mapViewImplementation>
+        ) => mapViewImplementation(proxy, ...args),
+        filterView: (
+            ...args: ParametersExceptFirst<typeof filterViewImplementation>
+        ) => filterViewImplementation(proxy, ...args),
+        flatMapView: (
+            ...args: ParametersExceptFirst<typeof flatMapViewImplementation>
+        ) => flatMapViewImplementation(proxy, ...args),
     };
 
     function getField(key: string | number | symbol) {
@@ -484,7 +221,6 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                 return 'collection';
             }
             const field = getField(key);
-            addManualDep(proxy, field);
             addDepToCurrentCalculation(field);
             return target[key];
         },
@@ -506,7 +242,6 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                 target[key] = value;
                 const field = getField(key);
                 processChange(field);
-                processChange(proxy);
             }
             return true;
         },
@@ -530,4 +265,258 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
     if (debugName) name(proxy, debugName);
 
     return proxy;
+}
+
+function mapViewImplementation<T, V>(
+    sourceCollection: Collection<T> | View<T>,
+    mapper: MappingFunction<T, V>,
+    debugName?: string | undefined
+): View<V> {
+    return sourceCollection.makeView(
+        {
+            initialize: (view, items) => {
+                view.push(...items.map((item) => mapper(item)));
+            },
+            processEvent: (view, event) => {
+                if (event.type === 'splice') {
+                    const { index, count, items } = event;
+                    view.splice(
+                        index,
+                        count,
+                        ...items.map((item) => mapper(item))
+                    );
+                } else if (event.type === 'move') {
+                    const { fromIndex, fromCount, toIndex } = event;
+                    view.moveSlice(fromIndex, fromCount, toIndex);
+                }
+            },
+        },
+        debugName
+    );
+}
+
+function filterViewImplementation<T>(
+    sourceCollection: Collection<T> | View<T>,
+    filterFn: FilterFunction<T>,
+    debugName?: string
+): View<T> {
+    const presentCache: boolean[] = [];
+    const filterEffects: [
+        sourceIndex: number,
+        recalculateVisibility: Calculation<void>
+    ][] = [];
+
+    // TODO: This is really slow! Some sequences of operations make this quadratic!!!
+    function getRealIndex(sourceIndex: number) {
+        let count = 0;
+        for (let i = 0; i < sourceIndex; ++i) {
+            if (i >= presentCache.length || presentCache[i]) count += 1;
+        }
+        return count;
+    }
+
+    function addItems(array: T[], addIndex: number, items: readonly T[]) {
+        const effectItems = items.map((item, i) => {
+            let lastIsPresent = false;
+            const filterCalculation = calc(() => filterFn(item));
+            const effectItem: [number, Calculation<void>] = [
+                addIndex + i,
+                effect(() => {
+                    const sourceIndex = effectItem[0];
+                    const isPresent = filterCalculation();
+                    if (isPresent && !lastIsPresent) {
+                        const realIndex = getRealIndex(sourceIndex);
+                        array.splice(realIndex, 0, item);
+                    }
+                    if (!isPresent && lastIsPresent) {
+                        const realIndex = getRealIndex(sourceIndex);
+                        array.splice(realIndex, 1);
+                    }
+                    lastIsPresent = isPresent;
+                    presentCache[sourceIndex] = isPresent;
+                }),
+            ];
+            return effectItem;
+        });
+        filterEffects.splice(addIndex, 0, ...effectItems);
+        for (let i = addIndex + items.length; i < filterEffects.length; ++i) {
+            filterEffects[i][0] = i;
+        }
+        presentCache.splice(addIndex, 0, ...items.map(() => false));
+        effectItems.forEach((effectItem) => {
+            retain(effectItem[1]);
+            effectItem[1]();
+        });
+    }
+
+    function removeItems(array: T[], sourceIndex: number, removeCount: number) {
+        let realIndex = 0;
+        let realRemoveCount = 0;
+        let count = 0;
+        for (let i = 0; i <= sourceIndex + removeCount; ++i) {
+            if (i === sourceIndex) realIndex = count;
+            if (i === sourceIndex + removeCount)
+                realRemoveCount = count - realIndex;
+            if (i > presentCache.length || presentCache[i]) count++;
+        }
+        if (realRemoveCount > 0) {
+            array.splice(realIndex, realRemoveCount);
+        }
+
+        presentCache.splice(sourceIndex, removeCount);
+        const removedEffects = filterEffects.splice(sourceIndex, removeCount);
+        // Update index of effects so they update the correct item after removed
+        for (let i = sourceIndex; i < filterEffects.length; ++i) {
+            filterEffects[i][0] = i;
+        }
+
+        removedEffects.forEach(([oldIndex, filterEffect]) => {
+            release(filterEffect);
+        });
+    }
+
+    return sourceCollection.makeView(
+        {
+            initialize: (array, items) => {
+                addItems(array, 0, items);
+            },
+            processEvent: (view, event) => {
+                if (event.type === 'splice') {
+                    const { index, count, items } = event;
+                    if (count > 0) {
+                        removeItems(view, index, count);
+                    }
+                    addItems(view, index, items);
+                } else if (event.type === 'move') {
+                    const { fromIndex, fromCount, toIndex } = event;
+
+                    // Determine filtered index
+                    let realFromIndex = 0;
+                    let realFromCount = 0;
+                    let realToIndex = 0;
+                    let count = 0;
+                    for (
+                        let i = 0;
+                        i <= Math.max(fromIndex + fromCount, toIndex);
+                        ++i
+                    ) {
+                        if (i === fromIndex) realFromIndex = count;
+                        if (i === fromIndex + realFromCount)
+                            realFromCount = i - realFromIndex;
+                        if (i === toIndex) realToIndex = i;
+                        if (i > presentCache.length || presentCache[i])
+                            count += 1;
+                    }
+
+                    // Splice filterEffects + presentCache
+                    const filterEffectsMoved = filterEffects.splice(
+                        fromIndex,
+                        fromCount
+                    );
+                    const presentCacheMoved = presentCache.splice(
+                        fromIndex,
+                        fromCount
+                    );
+                    if (toIndex < fromIndex) {
+                        filterEffects.splice(toIndex, 0, ...filterEffectsMoved);
+                        presentCache.splice(toIndex, 0, ...presentCacheMoved);
+                    } else {
+                        filterEffects.splice(
+                            toIndex - fromCount,
+                            0,
+                            ...filterEffectsMoved
+                        );
+                        presentCache.splice(
+                            toIndex - fromCount,
+                            0,
+                            ...presentCacheMoved
+                        );
+                    }
+
+                    // update sourceIndex
+                    for (let i = 0; i < filterEffects.length; ++i) {
+                        filterEffects[i][0] = i;
+                    }
+
+                    // Perform move (if needed)
+                    if (realFromCount === 0) return;
+                    view.moveSlice(realFromIndex, realFromCount, realToIndex);
+                }
+            },
+        },
+        debugName
+    );
+}
+
+function flatMapViewImplementation<T, V>(
+    sourceCollection: Collection<T> | View<T>,
+    fn: FlatMapFunction<T, V>,
+    debugName?: string | undefined
+): View<V> {
+    const flatMapCount: number[] = [];
+
+    return sourceCollection.makeView(
+        {
+            initialize: (view, items) => {
+                items.forEach((value) => {
+                    const chunk = fn(value);
+                    view.push(...chunk);
+                    flatMapCount.push(chunk.length);
+                });
+            },
+            processEvent: (view, event) => {
+                if (event.type === 'splice') {
+                    const { index, count, items } = event;
+                    let realIndex = 0;
+                    for (let i = 0; i < index; ++i) {
+                        realIndex += flatMapCount[i];
+                    }
+                    let realCount = 0;
+                    for (let i = index; i < index + count; ++i) {
+                        realCount += flatMapCount[i];
+                    }
+                    // Well that's deceptively easy
+                    const realItems: V[] = [];
+                    const realItemCount: number[] = [];
+                    items.forEach((itemValue) => {
+                        const chunk = fn(itemValue);
+                        realItems.push(...chunk);
+                        realItemCount.push(chunk.length);
+                    });
+                    view.splice(realIndex, realCount, ...realItems);
+                    flatMapCount.splice(index, count, ...realItemCount);
+                } else if (event.type === 'move') {
+                    const { fromIndex, fromCount, toIndex } = event;
+                    let realFromCount = 0;
+                    for (let i = fromIndex; i < fromIndex + fromCount; ++i) {
+                        realFromCount += flatMapCount[i];
+                    }
+
+                    if (realFromCount > 0) {
+                        let realFromIndex = 0;
+                        let realToIndex = 0;
+
+                        const lastIndex = Math.max(fromIndex, toIndex);
+                        let count = 0;
+                        for (let i = 0; i <= lastIndex; ++i) {
+                            if (i === fromIndex) realFromIndex = count;
+                            if (i === toIndex) realToIndex = count;
+                            count += flatMapCount[i];
+                        }
+                        view.moveSlice(
+                            realFromIndex,
+                            realFromCount,
+                            realToIndex
+                        );
+                    }
+                    flatMapCount.splice(
+                        toIndex,
+                        0,
+                        ...flatMapCount.splice(fromIndex, fromCount)
+                    );
+                }
+            },
+        },
+        debugName
+    );
 }

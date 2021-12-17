@@ -195,7 +195,8 @@ export function spliceVNode(
     immediateParent: VNode,
     childIndex: number,
     removeCount: number,
-    newNodes: VNode[]
+    newNodes: VNode[],
+    { runOnMount = true, runOnUnmount = true } = {}
 ) {
     let domParent: VNode;
     if (immediateParent.children[childIndex]) {
@@ -220,7 +221,9 @@ export function spliceVNode(
     // Remove nodes, optimizing for array replacement, where all nodes are completely removed via .replaceChildren()
     const toRemove: [ParentNode, Node][] = [];
     detachedVNodes.forEach((detachedVNode) => {
-        callOnUnmount(detachedVNode);
+        if (runOnUnmount) {
+            callOnUnmount(detachedVNode);
+        }
 
         const nodesToRemove = getShallowNodes(detachedVNode);
         nodesToRemove.forEach((node) => {
@@ -266,9 +269,11 @@ export function spliceVNode(
         }
 
         domParentNode.insertBefore(fragment, referenceNode || null);
-        newNodes.forEach((newNode) => {
-            callOnMount(newNode);
-        });
+        if (runOnMount) {
+            newNodes.forEach((newNode) => {
+                callOnMount(newNode);
+            });
+        }
     }
     return detachedVNodes;
 }

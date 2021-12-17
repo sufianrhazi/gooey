@@ -72,19 +72,6 @@ const App = () => {
                 )}
             </ul>
 
-            <p>Sorted items:</p>
-            <ul>
-                {calc(() =>
-                    (state.keysView ? model.keys(bag) : keysCollection)
-                        .sortedView((item) => item)
-                        .mapView((key) => (
-                            <li>
-                                {key} = {calc(() => bag[key])}
-                            </li>
-                        ))
-                )}
-            </ul>
-
             <p>
                 <label>
                     Key:{' '}

@@ -1,7 +1,7 @@
 import { suite, test, assert } from './test';
 import { model } from './model';
 import { collection } from './collection';
-import { flush, retain, release } from './calc';
+import { calc, flush, retain, release } from './calc';
 
 suite('collection', () => {
     test('reads feel like reads', () => {
@@ -50,6 +50,181 @@ suite('collection', () => {
         const simple = collection([0, 1, 2, 3, 4, 5]);
         simple.reject((n) => n > 1 && n < 4);
         assert.deepEqual([0, 1, 4, 5], simple);
+    });
+
+    test('moveSlice is an in-place movement of a slice (destination after move)', () => {
+        const simple = collection([0, 1, 2, 3, 4, 5]);
+        simple.moveSlice(1, 2, 5);
+        assert.deepEqual([0, 3, 4, 1, 2, 5], simple);
+    });
+    test('moveSlice is an in-place movement of a slice (destination before move)', () => {
+        const simple = collection([0, 1, 2, 3, 4, 5]);
+        simple.moveSlice(3, 2, 1);
+        assert.deepEqual([0, 3, 4, 1, 2, 5], simple);
+    });
+
+    test('splice recalculates indexes modified by splice when length unchanged', () => {
+        const numbers = collection([0, 1, 2, 3, 4, 5, 6]);
+
+        let beforeSpliceCount = 0;
+        const beforeSplice = calc(() => {
+            beforeSpliceCount += 1;
+            return numbers[1];
+        });
+        let inSpliceCount = 0;
+        const inSplice = calc(() => {
+            inSpliceCount += 1;
+            return numbers[3];
+        });
+        let afterSpliceCount = 0;
+        const afterSplice = calc(() => {
+            afterSpliceCount += 1;
+            return numbers[5];
+        });
+
+        retain(beforeSplice);
+        retain(inSplice);
+        retain(afterSplice);
+
+        assert.is(1, beforeSplice());
+        assert.is(3, inSplice());
+        assert.is(5, afterSplice());
+        assert.is(1, beforeSpliceCount);
+        assert.is(1, inSpliceCount);
+        assert.is(1, afterSpliceCount);
+
+        numbers.splice(2, 3, 102, 103, 104);
+        flush();
+
+        assert.is(1, beforeSplice());
+        assert.is(103, inSplice());
+        assert.is(5, afterSplice());
+        assert.is(1, beforeSpliceCount);
+        assert.is(2, inSpliceCount);
+        assert.is(1, afterSpliceCount);
+    });
+
+    test('splice recalculates indexes modified by splice when length reduced', () => {
+        const numbers = collection([0, 1, 2, 3, 4, 5, 6]);
+
+        let beforeSpliceCount = 0;
+        const beforeSplice = calc(() => {
+            beforeSpliceCount += 1;
+            return numbers[1];
+        });
+        let inSpliceCount = 0;
+        const inSplice = calc(() => {
+            inSpliceCount += 1;
+            return numbers[3];
+        });
+        let afterSpliceCount = 0;
+        const afterSplice = calc(() => {
+            afterSpliceCount += 1;
+            return numbers[5];
+        });
+
+        retain(beforeSplice);
+        retain(inSplice);
+        retain(afterSplice);
+
+        assert.is(1, beforeSplice());
+        assert.is(3, inSplice());
+        assert.is(5, afterSplice());
+        assert.is(1, beforeSpliceCount);
+        assert.is(1, inSpliceCount);
+        assert.is(1, afterSpliceCount);
+
+        numbers.splice(2, 3, 102, 103);
+        flush();
+
+        assert.is(1, beforeSplice());
+        assert.is(103, inSplice());
+        assert.is(6, afterSplice());
+        assert.is(1, beforeSpliceCount);
+        assert.is(2, inSpliceCount);
+        assert.is(2, afterSpliceCount);
+    });
+
+    test('splice recalculates indexes modified by splice when length grows', () => {
+        const numbers = collection([0, 1, 2, 3, 4, 5, 6]);
+
+        let beforeSpliceCount = 0;
+        const beforeSplice = calc(() => {
+            beforeSpliceCount += 1;
+            return numbers[1];
+        });
+        let inSpliceCount = 0;
+        const inSplice = calc(() => {
+            inSpliceCount += 1;
+            return numbers[3];
+        });
+        let afterSpliceCount = 0;
+        const afterSplice = calc(() => {
+            afterSpliceCount += 1;
+            return numbers[5];
+        });
+
+        retain(beforeSplice);
+        retain(inSplice);
+        retain(afterSplice);
+
+        assert.is(1, beforeSplice());
+        assert.is(3, inSplice());
+        assert.is(5, afterSplice());
+        assert.is(1, beforeSpliceCount);
+        assert.is(1, inSpliceCount);
+        assert.is(1, afterSpliceCount);
+
+        numbers.splice(2, 3, 102, 103, 104, 105);
+        flush();
+
+        assert.is(1, beforeSplice());
+        assert.is(103, inSplice());
+        assert.is(105, afterSplice());
+        assert.is(1, beforeSpliceCount);
+        assert.is(2, inSpliceCount);
+        assert.is(2, afterSpliceCount);
+    });
+
+    test('splice recalculates indexes modified by splice when length reduced and loses tracked index', () => {
+        const numbers = collection([0, 1, 2, 3, 4, 5, 6]);
+
+        let beforeSpliceCount = 0;
+        const beforeSplice = calc(() => {
+            beforeSpliceCount += 1;
+            return numbers[1];
+        });
+        let inSpliceCount = 0;
+        const inSplice = calc(() => {
+            inSpliceCount += 1;
+            return numbers[3];
+        });
+        let afterSpliceCount = 0;
+        const afterSplice = calc(() => {
+            afterSpliceCount += 1;
+            return numbers[5];
+        });
+
+        retain(beforeSplice);
+        retain(inSplice);
+        retain(afterSplice);
+
+        assert.is(1, beforeSplice());
+        assert.is(3, inSplice());
+        assert.is(5, afterSplice());
+        assert.is(1, beforeSpliceCount);
+        assert.is(1, inSpliceCount);
+        assert.is(1, afterSpliceCount);
+
+        numbers.splice(2, 3);
+        flush();
+
+        assert.is(1, beforeSplice());
+        assert.is(6, inSplice());
+        assert.is(undefined, afterSplice());
+        assert.is(1, beforeSpliceCount);
+        assert.is(2, inSpliceCount);
+        assert.is(2, afterSpliceCount);
     });
 
     test('sort throws exception', () => {
@@ -165,6 +340,28 @@ suite('mapView', () => {
         release(exclaimations);
     });
 
+    test('handles moveSlice, not recalculating moved items', () => {
+        const phrases = collection(
+            ['one', 'two', 'three', 'four', 'five'],
+            'phrases'
+        );
+        let prefix = '';
+        const exclaimations = phrases.mapView(
+            (phrase) => `${prefix}${phrase}!`,
+            'exclaimations'
+        );
+        retain(exclaimations);
+
+        prefix = 'new:';
+        phrases.moveSlice(1, 2, 4);
+        flush();
+        assert.deepEqual(
+            ['one!', 'four!', 'two!', 'three!', 'five!'],
+            exclaimations
+        );
+        release(exclaimations);
+    });
+
     test('handles writes, only recalculating new items', () => {
         const phrases = collection(
             ['hi', 'toRemove', 'toAlsoRemove', 'howdy'],
@@ -220,130 +417,22 @@ suite('mapView', () => {
 
         release(exclaimations);
     });
-});
 
-suite('sortedView', () => {
-    test('produces a sorted view', () => {
-        const phrases = collection(['hi', 'hello', 'howdy'], 'phrases');
-        const sortedPhrases = phrases.sortedView((item) => item);
-        retain(sortedPhrases);
-        assert.deepEqual(['hello', 'hi', 'howdy'], sortedPhrases);
-        release(sortedPhrases);
-    });
+    test('obeys subscription ordering', () => {
+        const phrases = collection(['before'], 'phrases');
+        const exclaimations = phrases.mapView(
+            (phrase) => `${phrase}!`,
+            'exclaimations'
+        );
+        phrases.push('after');
+        retain(exclaimations);
 
-    test('handles push and unshift', () => {
-        const phrases = collection(['throws', 'green', 'robot'], 'phrases');
-        const sortedPhrases = phrases.sortedView((item) => item);
-        retain(sortedPhrases);
-
-        phrases.push('a');
-        phrases.unshift('violently');
+        assert.deepEqual(['before!'], exclaimations);
         flush();
-        assert.deepEqual(
-            ['a', 'green', 'robot', 'throws', 'violently'],
-            sortedPhrases
-        );
-        release(sortedPhrases);
-    });
-
-    test('handles pop and shift', () => {
-        const phrases = collection(
-            ['quick', 'brown', 'fox', 'jumped', 'over', 'the', 'lazy', 'dog'],
-            'phrases'
-        );
-        const sortedPhrases = phrases.sortedView((item) => item);
-        retain(sortedPhrases);
-
-        phrases.pop(); // dog
-        phrases.shift(); // quick
-
+        phrases.push('afterFlush');
+        assert.deepEqual(['before!', 'after!'], exclaimations);
         flush();
-        assert.deepEqual(
-            ['brown', 'fox', 'jumped', 'lazy', 'over', 'the'],
-            sortedPhrases
-        );
-        release(sortedPhrases);
-    });
-
-    test('handles splice', () => {
-        const phrases = collection(
-            ['quick', 'brown', 'fox', 'jumped', 'over', 'the', 'lazy', 'dog'],
-            'phrases'
-        );
-        const sortedPhrases = phrases.sortedView((item) => item);
-        retain(sortedPhrases);
-
-        phrases.splice(2, 3, 'bear', 'stalked'); // quick brown (fox jumped over -> bear stalked) the lazy dog
-
-        flush();
-        assert.deepEqual(
-            ['bear', 'brown', 'dog', 'lazy', 'quick', 'stalked', 'the'],
-            sortedPhrases
-        );
-        release(sortedPhrases);
-    });
-
-    test('handles assignment', () => {
-        const phrases = collection(
-            ['quick', 'brown', 'fox', 'jumped', 'over', 'the', 'lazy', 'dog'],
-            'phrases'
-        );
-        const sortedPhrases = phrases.sortedView((item) => item);
-        retain(sortedPhrases);
-
-        phrases[2] = 'tank';
-
-        flush();
-        assert.deepEqual(
-            ['brown', 'dog', 'jumped', 'lazy', 'over', 'quick', 'tank', 'the'],
-            sortedPhrases
-        );
-        release(sortedPhrases);
-    });
-
-    test('recalculates only on flush', () => {
-        const phrases = collection(
-            ['quick', 'brown', 'fox', 'jumped', 'over', 'the', 'lazy', 'dog'],
-            'phrases'
-        );
-        const sortedPhrases = phrases.sortedView((item) => item);
-        retain(sortedPhrases);
-
-        phrases[2] = 'tank';
-
-        assert.deepEqual(
-            ['brown', 'dog', 'fox', 'jumped', 'lazy', 'over', 'quick', 'the'],
-            sortedPhrases
-        );
-        flush();
-        assert.deepEqual(
-            ['brown', 'dog', 'jumped', 'lazy', 'over', 'quick', 'tank', 'the'],
-            sortedPhrases
-        );
-        release(sortedPhrases);
-    });
-
-    test('can resort models when the models change', () => {
-        const grape = model({ name: 'grape' });
-        const cherry = model({ name: 'cherry' });
-        const mango = model({ name: 'mango' });
-        const orange = model({ name: 'orange' });
-        const fruit = collection([grape, cherry, orange, mango]);
-        // Simple in-order sorting
-        const sortedFruit = fruit.sortedView((fruit) => fruit.name);
-
-        assert.is(cherry, sortedFruit[0]);
-        assert.is(grape, sortedFruit[1]);
-        assert.is(mango, sortedFruit[2]);
-        assert.is(orange, sortedFruit[3]);
-
-        grape.name = 'watermelon';
-        flush();
-
-        assert.is(cherry, sortedFruit[0]);
-        assert.is(mango, sortedFruit[1]);
-        assert.is(orange, sortedFruit[2]);
-        assert.is(grape, sortedFruit[3]);
+        assert.deepEqual(['before!', 'after!', 'afterFlush!'], exclaimations);
     });
 });
 
@@ -388,7 +477,7 @@ suite('filterView', () => {
         release(evenNumbers);
     });
 
-    test('handles splice', () => {
+    test('handles splice when removing hidden item', () => {
         const numbers = collection([3, 4, 5, 6, 7], 'numbers');
         const evenNumbers = numbers.filterView((num) => num % 2 === 0);
         retain(evenNumbers);
@@ -396,6 +485,30 @@ suite('filterView', () => {
         numbers.splice(2, 1, 10, 11, 12); // 5 -> 10, 11, 12
         flush();
         assert.deepEqual([4, 10, 12, 6], evenNumbers);
+
+        release(evenNumbers);
+    });
+
+    test('handles splice when removing visible item', () => {
+        const numbers = collection([3, 4, 5, 6, 7], 'numbers');
+        const evenNumbers = numbers.filterView((num) => num % 2 === 1);
+        retain(evenNumbers);
+
+        numbers.splice(2, 1, 11, 12, 13); // 5 -> 11, 12, 13
+        flush();
+        assert.deepEqual([3, 11, 13, 7], evenNumbers);
+
+        release(evenNumbers);
+    });
+
+    test('handles splice when removing both visible and hidden items', () => {
+        const numbers = collection([3, 4, 5, 6, 7], 'numbers');
+        const evenNumbers = numbers.filterView((num) => num % 2 === 1);
+        retain(evenNumbers);
+
+        numbers.splice(1, 3, 11, 12, 13); // 4, 5, 6 -> 11, 12, 13
+        flush();
+        assert.deepEqual([3, 11, 13, 7], evenNumbers);
 
         release(evenNumbers);
     });
@@ -431,6 +544,55 @@ suite('filterView', () => {
         five.value = 50;
         flush();
         assert.deepEqual([four, five, six], evenNumbers);
+
+        release(evenNumbers);
+    });
+
+    test('handles moveSlice', () => {
+        const three = model({ value: 3 });
+        const four = model({ value: 4 });
+        const five = model({ value: 5 });
+        const six = model({ value: 6 });
+        const seven = model({ value: 7 });
+        const numbers = collection([three, four, five, six, seven], 'numbers');
+        const evenNumbers = numbers.filterView((item) => item.value % 2 === 0);
+        retain(evenNumbers);
+
+        assert.deepEqual([four, six], evenNumbers);
+
+        numbers.moveSlice(2, 3, 0);
+        flush();
+        assert.deepEqual([six, four], evenNumbers);
+
+        release(evenNumbers);
+    });
+
+    test('handles moveSlice after updates', () => {
+        const evenOdd = model({ value: 0 });
+        const three = model({ value: 3 });
+        const four = model({ value: 4 });
+        const five = model({ value: 5 });
+        const six = model({ value: 6 });
+        const seven = model({ value: 7 });
+        const numbers = collection([three, four, five, six, seven], 'numbers');
+        const evenNumbers = numbers.filterView(
+            (item) => item.value % 2 === evenOdd.value
+        );
+        retain(evenNumbers);
+
+        assert.deepEqual([four, six], evenNumbers);
+        evenOdd.value = 1;
+        flush();
+        assert.deepEqual([three, five, seven], evenNumbers);
+        evenOdd.value = 0;
+        flush();
+
+        numbers.moveSlice(2, 3, 0); // three, four, five, six, seven -> five, six, seven, three, four
+        flush();
+        assert.deepEqual([six, four], evenNumbers);
+        evenOdd.value = 1;
+        flush();
+        assert.deepEqual([five, seven, three], evenNumbers);
 
         release(evenNumbers);
     });
@@ -511,6 +673,21 @@ suite('flatMapView', () => {
         numbers[2] = 2;
         flush();
         assert.deepEqual([4, 4, 2, 2, 6, 6], evenDupedNumbers);
+
+        release(evenDupedNumbers);
+    });
+
+    test('handles moveSlice', () => {
+        const numbers = collection([3, 4, 5, 6, 7], 'numbers');
+        const evenDupedNumbers = numbers.flatMapView((num) =>
+            num % 2 === 0 ? [num, num] : [num]
+        );
+        retain(evenDupedNumbers);
+
+        numbers.moveSlice(1, 2, 4); // 3, 6, 4, 5, 7
+        flush();
+
+        assert.deepEqual([3, 6, 6, 4, 4, 5, 7], evenDupedNumbers);
 
         release(evenDupedNumbers);
     });

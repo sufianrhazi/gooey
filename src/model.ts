@@ -1,24 +1,23 @@
 import {
+    Collection,
+    FlushKey,
     InvariantError,
-    TypeTag,
     Model,
     ModelEvent,
-    ModelObserver,
-    OwnKeysField,
-    Collection,
-    View,
     ModelField,
+    ModelObserver,
     ObserveKey,
+    TypeTag,
+    View,
 } from './types';
 import { collection } from './collection';
 import {
-    effect,
     untracked,
     addManualDep,
     addDepToCurrentCalculation,
     processChange,
 } from './calc';
-import { name, debugNameFor } from './debug';
+import { name } from './debug';
 
 export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
     if (typeof obj !== 'object' || !obj) {
@@ -27,11 +26,21 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
 
     const fields: Map<string | number | symbol, ModelField<T>> = new Map();
     let observers: ModelObserver[] = [];
+    let events: ModelEvent[] = [];
+
+    function flush() {
+        const toProcess = events;
+        events = [];
+        toProcess.forEach((event) => {
+            observers.forEach((observer) => {
+                observer(event);
+            });
+        });
+    }
 
     function notify(event: ModelEvent) {
-        observers.forEach((observer) => {
-            observer(event);
-        });
+        events.push(event);
+        processChange(proxy);
     }
 
     function getField(key: string | number | symbol): ModelField<T> {
@@ -53,10 +62,6 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
 
     function observe(observer: ModelObserver) {
         observers.push(observer);
-        observer({
-            type: 'init',
-            keys: Object.keys(obj),
-        });
         return () => {
             observers = observers.filter((obs) => obs !== observer);
         };
@@ -64,6 +69,7 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
 
     const methods = {
         [ObserveKey]: observe,
+        [FlushKey]: flush,
     };
 
     const proxy = new Proxy(obj, {
@@ -100,9 +106,6 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
                 if (!knownFields.has(key)) {
                     knownFields.add(key);
                     notify({ type: 'add', key });
-                    if (typeof key !== 'symbol') {
-                        processChange(getField(OwnKeysField));
-                    }
                 }
                 notify({ type: 'set', key, value });
             }
@@ -115,9 +118,6 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
             if (changed) {
                 processChange(field);
                 knownFields.delete(key);
-                if (typeof key !== 'symbol') {
-                    processChange(getField(OwnKeysField));
-                }
                 notify({ type: 'delete', key });
             }
             delete target[key];
@@ -133,9 +133,15 @@ model.keys = function keys<T>(
     target: Model<T>,
     debugName?: string
 ): View<keyof T> {
-    const view: Collection<keyof T> = collection([], debugName);
+    const initialKeys = untracked(() => {
+        return Object.keys(target);
+    });
+    const view: Collection<keyof T> = collection(
+        initialKeys as (keyof T)[],
+        debugName
+    );
 
-    const keysSet = new Set<string>();
+    const keysSet = new Set<string>(initialKeys);
 
     function addKey(key: string | number | symbol) {
         if (typeof key === 'number' || typeof key === 'string') {
@@ -157,39 +163,19 @@ model.keys = function keys<T>(
         }
     }
 
-    const trigger = model({ i: 0 });
-    let events: ModelEvent[] = [];
-
-    const updateEffect = effect(() => {
-        trigger.i;
-        const toProcess = events;
-        events = [];
-        untracked(() => {
-            toProcess.forEach((event) => {
-                if (event.type === 'add') {
-                    addKey(event.key);
-                }
-                if (event.type === 'delete') {
-                    delKey(event.key);
-                }
+    target[ObserveKey]((event) => {
+        if (event.type === 'add') {
+            untracked(() => {
+                addKey(event.key);
             });
-        });
+        } else if (event.type === 'delete') {
+            untracked(() => {
+                delKey(event.key);
+            });
+        }
     });
-    addManualDep(updateEffect, view);
-    updateEffect();
 
-    untracked(() => {
-        target[ObserveKey]((event) => {
-            if (event.type === 'init') {
-                event.keys.forEach((key) => {
-                    addKey(key);
-                });
-            } else {
-                events.push(event);
-            }
-            trigger.i += 1;
-        });
-    });
+    addManualDep(target, view);
 
     return view;
 };

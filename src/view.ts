@@ -1,4 +1,4 @@
-import { effect, retain, release } from './calc';
+import { effect, retain, release, untracked } from './calc';
 import { debugNameFor } from './debug';
 import {
     Calculation,
@@ -251,28 +251,47 @@ function jsxNodeToVNode({
             onUnmount,
         });
 
-        const unobserve = trackedCollection[ObserveKey]((event) => {
-            if (event.type === 'init') {
-                const { items } = event;
-                collectionNode.children.push(
-                    ...items.map((jsxChild) =>
-                        jsxNodeToVNode({
-                            domParent: collectionNode.domParent,
-                            parentNode: collectionNode,
-                            jsxNode: jsxChild,
-                        })
-                    )
-                );
-            } else if (event.type === 'splice') {
-                const { count, index, items } = event;
-                const childNodes = items.map((jsxChild) =>
+        untracked(() => {
+            collectionNode.children.push(
+                ...trackedCollection.map((jsxChild) =>
                     jsxNodeToVNode({
                         domParent: collectionNode.domParent,
                         parentNode: collectionNode,
                         jsxNode: jsxChild,
                     })
+                )
+            );
+        });
+
+        const unobserve = trackedCollection[ObserveKey]((event) => {
+            if (event.type === 'splice') {
+                untracked(() => {
+                    const { count, index, items } = event;
+                    const childNodes = items.map((jsxChild) =>
+                        jsxNodeToVNode({
+                            domParent: collectionNode.domParent,
+                            parentNode: collectionNode,
+                            jsxNode: jsxChild,
+                        })
+                    );
+                    spliceVNode(collectionNode, index, count, childNodes);
+                });
+            } else if (event.type === 'move') {
+                const { fromIndex, fromCount, toIndex } = event;
+                const moved = spliceVNode(
+                    collectionNode,
+                    fromIndex,
+                    fromCount,
+                    [],
+                    { runOnUnmount: false }
                 );
-                spliceVNode(collectionNode, index, count, childNodes);
+                spliceVNode(
+                    collectionNode,
+                    fromIndex < toIndex ? toIndex - fromCount : toIndex,
+                    0,
+                    moved,
+                    { runOnMount: false }
+                );
             }
         });
 

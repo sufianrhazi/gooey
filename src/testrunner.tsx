@@ -1,5 +1,12 @@
 import type { Component, Collection, View, Model } from './index';
-import Revise, { Fragment, calc, model, mount, nextFlush } from './index';
+import Revise, {
+    Fragment,
+    calc,
+    model,
+    mount,
+    nextFlush,
+    debug,
+} from './index';
 import {
     isInitMessage,
     isRunUpdate,
@@ -10,6 +17,8 @@ import * as log from './log';
 import { request, requestStream } from './test/rpc';
 import { groupBy2 } from './util';
 import testManifest from '../test-manifest.json'; // Generated from s/test
+
+(window as any).graphviz = debug;
 
 function classes(...args: (string | boolean | null | undefined)[]) {
     return args.filter((x) => !!x).join(' ');
@@ -78,13 +87,12 @@ type TestRecord = Model<{
 const { actions, selectors } = (() => {
     const testFiles: Model<Record<string, TestFileRecord>> = model({});
     const testFileKeys = model.keys(testFiles);
-    const sortedTestFileKeys = testFileKeys.sortedView((key) => key);
-    const sortedTestFiles = sortedTestFileKeys.mapView((key) => testFiles[key]);
+    const testFilesView = testFileKeys.mapView((key) => testFiles[key]);
 
     const globalState = calc(() => {
         let anyReady = false;
-        if (sortedTestFiles.length === 0) return 'loading';
-        for (const testFile of sortedTestFiles) {
+        if (testFilesView.length === 0) return 'loading';
+        for (const testFile of testFilesView) {
             switch (testFile.status) {
                 case 'error':
                 case 'fail':
@@ -113,8 +121,8 @@ const { actions, selectors } = (() => {
     const selectors = {
         getTestFile: (src: string): DeepReadonly<TestFileRecord> =>
             testFiles[src],
-        getTestFiles: () => sortedTestFiles,
-        getTestFileKeys: () => sortedTestFileKeys,
+        getTestFiles: () => testFilesView,
+        getTestFileKeys: () => testFileKeys,
         getUiState: (): DeepReadonly<typeof uiState> => uiState,
         getGlobalState: () => globalState,
     };
@@ -733,14 +741,20 @@ const TestFileView: Component<{ testFile: DeepReadonly<TestFileRecord> }> = ({
             >
                 {calc(() => testFile.src)}
             </summary>
-            {calc(() =>
-                model
-                    .keys(testFile.suites)
-                    .mapView((suiteId) =>
-                        calc(() => (
-                            <SuiteView suite={testFile.suites[suiteId]} />
-                        ))
-                    )
+            {calc(
+                () =>
+                    model
+                        .keys(testFile.suites, `${testFile.src} keys`)
+                        .mapView(
+                            (suiteId) =>
+                                calc(() => (
+                                    <SuiteView
+                                        suite={testFile.suites[suiteId]}
+                                    />
+                                )),
+                            `${testFile.src} keys.mapView`
+                        ),
+                `${testFile.src} suites`
             )}
         </details>
     );

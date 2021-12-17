@@ -152,9 +152,6 @@ function collection<T>(array: T[], debugName?: string): Collection<T>
 The `collection` function produces `Collection` types, which act just like normal JavaScript arrays, with some
 additional methods.
 
-Note: the `sort` method normally found on JavaScript arrays is disabled. It will throw an Exception. Instead, use
-the `sortedView` method.
-
 
 #### .reject(shouldReject)
 
@@ -197,25 +194,6 @@ Note: the automatic update is **not** extended to data read while the `flatMapFn
 called once per item, when the item is added to the collection. 
 
 
-#### .sortedView
-
-```typescript
-type SortKeyFunction<T> = (item: T) => string | number
-
-(method) Collection<T>.sortedView(sortKeyFn: SortKeyFunction<T>, debugName?: string | undefined): View<T>
-```
-
-The `sortedView` method produces a `View` holding sorted items from the collection. The provided `sortKeyFn` produces
-numeric or string keys that are comparable with other numbers or keys in the collection.
-
-This view is automatically updated as items in the collection are added (via `push`, `unshift`, `splice`), removed (via
-`pop`, `shift`, `splice`, `reject`), items reassigned, or mutated via any other means.
-
-This automatic update extends to all data read while `sortKeyFn` is performed. That is to say: if a collection of models
-is sorted on a combination of two of the models' keys, if any of these models were mutated, the view will be efficiently
-resorted in place.
-
-
 #### .filterView
 
 ```typescript
@@ -235,13 +213,22 @@ is filtered on a combination of two of the models' keys, if any of these models 
 efficiently re-filtered in place.
 
 
+#### .moveSlice
+
+```typescript
+(method) Collection<T>.moveSlice(fromIndex: number, fromCount: number, toIndex: number): void
+```
+
+The `moveSlice` method allows for moving portions of an array to other indexes. When mounted collections of JSX produced
+by `mapView` is moved, the corresponding DOM nodes are moved *without* any unmounting/mounting or rerendering.
+
+
 ### View types
 
-`Collection`'s `.mapView`, `.sortedView`, `.filterView`, and `.flatMapView` functions produce `Collection` types, which
-act just like read-only JavaScript arrays.
+`Collection`'s `.mapView`, `.filterView`, and `.flatMapView` functions produce `Collection` types, which act just like
+read-only JavaScript arrays.
 
-These views have the same `.mapView`, `.sortedView`, `.filterView`, and `.flatMapView` functions that exist on
-`Collection` types.
+These views have the same `.mapView`, `.filterView`, and `.flatMapView` functions that exist on `Collection` types.
 
 
 ## DOM

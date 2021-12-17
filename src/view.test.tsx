@@ -749,38 +749,76 @@ suite('mount collection mapped view', () => {
         assert.is(null, newSet[5].getAttribute('tagged'));
     });
 
-    test('unmodified collection sortedView nodes keep references', () => {
-        const items = collection(['foo', 'bar', 'baz']);
+    test('unmodified collection mapView nodes keep references when swapped', () => {
+        const items = collection([
+            'zero',
+            'one',
+            'two',
+            'three',
+            'four',
+            'five',
+        ]);
+        const events: string[] = [];
+
+        const Item: Component<{ item: string }> = (
+            { item },
+            { onMount, onUnmount }
+        ) => {
+            onMount(() => events.push(`mount:${item}`));
+            onUnmount(() => events.push(`unmount:${item}`));
+            return <span data-item>{item}</span>;
+        };
         mount(
             testRoot,
             <div>
-                {items
-                    .sortedView((item) => item)
-                    .mapView((item) => (
-                        <span data-item>{item}</span>
-                    ))}
+                {items.mapView((item) => (
+                    <Item item={item} />
+                ))}
             </div>
+        );
+        assert.deepEqual(
+            [
+                'mount:zero',
+                'mount:one',
+                'mount:two',
+                'mount:three',
+                'mount:four',
+                'mount:five',
+            ],
+            events
         );
         const origSet: Element[] = [].slice.call(
             testRoot.querySelectorAll('[data-item]')
         );
-        // bar baz foo
+        // zero one two three four five
         origSet[0].setAttribute('tagged', 'yes 0');
         origSet[1].setAttribute('tagged', 'yes 1');
         origSet[2].setAttribute('tagged', 'yes 2');
-        items.push('aaa');
-        items.unshift('but');
-        items.splice(2, 0, 'zzz');
-        // aaa bar baz but foo zzz
+        origSet[3].setAttribute('tagged', 'yes 3');
+        origSet[4].setAttribute('tagged', 'yes 4');
+        origSet[5].setAttribute('tagged', 'yes 5');
+        items.moveSlice(1, 2, 5);
+        // one four two three five
         flush();
         const newSet: Element[] = [].slice.call(
             testRoot.querySelectorAll('[data-item]')
         );
-        assert.is(null, newSet[0].getAttribute('tagged'));
-        assert.is('yes 0', newSet[1].getAttribute('tagged'));
-        assert.is('yes 1', newSet[2].getAttribute('tagged'));
-        assert.is(null, newSet[3].getAttribute('tagged'));
+        assert.is('yes 0', newSet[0].getAttribute('tagged'));
+        assert.is('yes 3', newSet[1].getAttribute('tagged'));
+        assert.is('yes 4', newSet[2].getAttribute('tagged'));
+        assert.is('yes 1', newSet[3].getAttribute('tagged'));
         assert.is('yes 2', newSet[4].getAttribute('tagged'));
-        assert.is(null, newSet[5].getAttribute('tagged'));
+        assert.is('yes 5', newSet[5].getAttribute('tagged'));
+        assert.deepEqual(
+            [
+                'mount:zero',
+                'mount:one',
+                'mount:two',
+                'mount:three',
+                'mount:four',
+                'mount:five',
+            ],
+            events
+        );
     });
 });

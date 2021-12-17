@@ -2,11 +2,13 @@ import {
     InvariantError,
     Calculation,
     Collection,
+    Model,
     View,
     FlushKey,
     ModelField,
     isCalculation,
     isCollection,
+    isModel,
     makeCalculation,
     makeEffect,
     EqualityFunc,
@@ -20,10 +22,18 @@ import { clearNames, debugNameFor, name } from './debug';
 let activeCalculations: (null | Calculation<any>)[] = [];
 
 let partialDag = new DAG<
-    Collection<any> | Calculation<any> | ModelField<any> | View<any>
+    | Model<any>
+    | Collection<any>
+    | Calculation<any>
+    | ModelField<any>
+    | View<any>
 >();
 let globalDependencyGraph = new DAG<
-    Collection<any> | Calculation<any> | ModelField<any> | View<any>
+    | Model<any>
+    | Collection<any>
+    | Calculation<any>
+    | ModelField<any>
+    | View<any>
 >();
 
 let refcountMap: WeakMap<
@@ -93,10 +103,11 @@ export function effect(
     return calculation;
 }
 
-export function untracked(func: () => void): void {
+export function untracked<TRet>(func: () => TRet): TRet {
     activeCalculations.push(null);
-    func();
+    const result = func();
     activeCalculations.pop();
+    return result;
 }
 
 function trackCalculation<Ret>(
@@ -184,8 +195,13 @@ export function addDepToCurrentCalculation<T, Ret>(
 }
 
 export function addManualDep<T, V>(
-    fromNode: Collection<T> | ModelField<T> | Calculation<T>,
-    toNode: Collection<V> | ModelField<V> | Calculation<V>
+    fromNode:
+        | Model<T>
+        | Collection<T>
+        | View<T>
+        | ModelField<T>
+        | Calculation<T>,
+    toNode: Collection<V> | View<V> | ModelField<V> | Calculation<V>
 ) {
     globalDependencyGraph.addNode(fromNode);
     globalDependencyGraph.addNode(toNode);
@@ -199,7 +215,9 @@ export function addManualDep<T, V>(
     }
 }
 
-export function processChange(item: ModelField<unknown> | Collection<unknown>) {
+export function processChange(
+    item: Model<unknown> | ModelField<unknown> | Collection<unknown>
+) {
     const chain: string[] = [];
     const addNode = (
         node:
@@ -207,6 +225,7 @@ export function processChange(item: ModelField<unknown> | Collection<unknown>) {
             | Calculation<unknown>
             | ModelField<unknown>
             | View<unknown>
+            | Model<unknown>
     ) => {
         chain.push(debugNameFor(node));
         partialDag.addNode(node);
@@ -304,8 +323,11 @@ export function flush() {
         } else if (isCollection(item)) {
             log.debug('flushing collection', debugNameFor(item));
             item[FlushKey]();
-        } else {
+        } else if (isModel(item)) {
             log.debug('flushing model', debugNameFor(item));
+            item[FlushKey]();
+        } else {
+            log.debug('flushing other', debugNameFor(item));
         }
         return false;
     });

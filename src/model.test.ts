@@ -98,12 +98,30 @@ suite('model', () => {
         flush();
         assert.arrayEqualsUnsorted(['foo', 'bar'], keys);
         release(keys);
-        flush(); // TODO: should this be necessary? we flush first, then GC. Should we GC first then flush?
 
         simple.baz = 'new';
         delete simple.foo;
         assert.arrayEqualsUnsorted(['foo', 'bar'], keys);
         flush();
         assert.arrayEqualsUnsorted(['foo', 'bar'], keys);
+    });
+
+    test('model.keys obeys subscription logic/notification', () => {
+        const simple = model<Record<string, any>>({});
+        simple.before = 'before';
+        const keys = model.keys(simple);
+        simple.after = 'after';
+        retain(keys);
+
+        assert.arrayEqualsUnsorted(['before'], keys);
+
+        flush();
+
+        simple.afterFlush = 'afterFlush';
+        assert.arrayEqualsUnsorted(['before', 'after'], keys);
+
+        flush();
+
+        assert.arrayEqualsUnsorted(['before', 'after', 'afterFlush'], keys);
     });
 });
