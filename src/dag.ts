@@ -5,6 +5,7 @@ export class DAG<Type extends object> {
     private idMap: WeakMap<Type, string>;
     private nodesSet: Record<string, Type>;
     private retained: Record<string, true>;
+    private dirtyNodes: Record<string, true>;
 
     private graph: Record<string, Record<string, true>>;
     private reverseGraph: Record<string, Record<string, true>>;
@@ -16,6 +17,7 @@ export class DAG<Type extends object> {
         this.retained = {};
         this.graph = {};
         this.reverseGraph = {};
+        this.dirtyNodes = {};
     }
 
     private getId(node: Type): string {
@@ -39,6 +41,13 @@ export class DAG<Type extends object> {
 
     hasNode(node: Type): boolean {
         return !!this.nodesSet[this.getId(node)];
+    }
+
+    markNodeDirty(node: Type): boolean {
+        const nodeId = this.getId(node);
+        if (this.dirtyNodes[nodeId]) return false;
+        this.dirtyNodes[nodeId] = true;
+        return true;
     }
 
     /**
@@ -77,6 +86,7 @@ export class DAG<Type extends object> {
         delete this.reverseGraph[nodeId];
         delete this.graph[nodeId];
         delete this.nodesSet[nodeId];
+        delete this.dirtyNodes[nodeId];
     }
 
     /**
@@ -123,7 +133,7 @@ export class DAG<Type extends object> {
     }
 
     /**
-     * Visit topological graph
+     * Visit dirty nodes topologically.
      *
      * When building topologically sorted list, refcount dirtiness (the number of incoming edges that are from dirty
      * nodes).
@@ -136,22 +146,12 @@ export class DAG<Type extends object> {
      * This way we can prevent recalculations that are triggered if the calculation is "equal".
      *
      */
-    visitTopological(callback: (node: Type) => boolean) {
-        // Nodes with no incoming edges must have a dirty count of 1.
-        const dirtyCount: Record<string, number> = {};
-        const entryNodes = new Set<string>();
-        Object.keys(this.reverseGraph).forEach((toId) => {
-            const fromIds = Object.keys(this.reverseGraph[toId]);
-            if (fromIds.length === 0) {
-                entryNodes.add(toId);
-                dirtyCount[toId] = 1;
-            } else {
-                dirtyCount[toId] = fromIds.length;
-            }
-        });
+    visitDirtyTopological(callback: (node: Type) => boolean) {
+        // Clear the current set of dirty nodes, retaining the ones visited.
+        const dirtyNodes = this.dirtyNodes;
+        this.dirtyNodes = {};
 
-        // Build topologically sorted list via DFS visiting exactly once
-        // - When exiting an unvisited node, push to the end of a list
+        // Build topologically sorted list via DFS discoverable only from dirty nodes.
         // After visiting all nodes, the list is in reverse topological order
         const visited: Record<string, boolean> = {};
         const sortedIds: string[] = [];
@@ -164,28 +164,25 @@ export class DAG<Type extends object> {
             });
             sortedIds.push(nodeId);
         };
-        Object.keys(this.graph).forEach((nodeId) => {
+        Object.keys(dirtyNodes).forEach((nodeId) => {
             dfsRecurse(nodeId);
         });
 
-        // Visit the dirty nodes in topological order. If after visiting the node is unchanged, we can decrement the
-        // refcount for all its destination edges.
+        // Visit the dirty nodes in topological order.
+        // If a node is not dirty, skip it.
+        // If a node is dirty and the visitor returns true, the node is considered "not dirty" and processing continues
+        // If a node is dirty and the visitor returns false, the node is considered "dirty" and all adjacent destination nodes are marked as dirty.
         for (let i = sortedIds.length - 1; i >= 0; --i) {
             const nodeId = sortedIds[i];
-            if (dirtyCount[nodeId] > 0) {
+            if (dirtyNodes[nodeId]) {
                 const node = this.nodesSet[nodeId];
                 const isEqual = callback(node);
-                if (isEqual) {
+                if (!isEqual) {
                     const toIds = Object.keys(this.graph[nodeId]);
                     toIds.forEach((toId) => {
-                        dirtyCount[toId] -= 1;
+                        dirtyNodes[toId] = true;
                     });
                 }
-            } else {
-                const toIds = Object.keys(this.graph[nodeId]);
-                toIds.forEach((toId) => {
-                    dirtyCount[toId] -= 1;
-                });
             }
         }
     }

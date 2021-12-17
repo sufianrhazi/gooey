@@ -21,13 +21,6 @@ import { clearNames, debugNameFor, name } from './debug';
 
 let activeCalculations: (null | Calculation<any>)[] = [];
 
-let partialDag = new DAG<
-    | Model<any>
-    | Collection<any>
-    | Calculation<any>
-    | ModelField<any>
-    | View<any>
->();
 let globalDependencyGraph = new DAG<
     | Model<any>
     | Collection<any>
@@ -45,7 +38,6 @@ let refcountMap: WeakMap<
  * Reset all data to a clean slate.
  */
 export function reset() {
-    partialDag = new DAG();
     activeCalculations = [];
 
     globalDependencyGraph = new DAG();
@@ -218,38 +210,18 @@ export function addManualDep<T, V>(
 export function processChange(
     item: Model<unknown> | ModelField<unknown> | Collection<unknown>
 ) {
-    const chain: string[] = [];
-    const addNode = (
-        node:
-            | Collection<unknown>
-            | Calculation<unknown>
-            | ModelField<unknown>
-            | View<unknown>
-            | Model<unknown>
-    ) => {
-        chain.push(debugNameFor(node));
-        partialDag.addNode(node);
-        const dependencies = globalDependencyGraph.getDependencies(node);
-        dependencies.forEach((dependentItem) => {
-            if (!partialDag.hasNode(dependentItem)) {
-                addNode(dependentItem);
-            }
-            if (partialDag.addEdge(node, dependentItem)) {
-                log.debug(
-                    'New local dependency',
-                    debugNameFor(item),
-                    '->',
-                    debugNameFor(dependentItem)
-                );
-            }
-            if (!needsFlush) {
-                needsFlush = true;
-                notify();
-            }
-        });
-    };
-    addNode(item);
-    log.debug('processChange', chain);
+    const newNode = globalDependencyGraph.addNode(item);
+    const marked = globalDependencyGraph.markNodeDirty(item);
+    log.debug(
+        'processChange',
+        item,
+        newNode ? 'new' : 'existing',
+        marked ? 'fresh' : 'stale'
+    );
+    if (!needsFlush) {
+        needsFlush = true;
+        notify();
+    }
 }
 
 type Listener = () => void;
@@ -299,8 +271,6 @@ export function flush() {
         return;
     }
     needsFlush = false;
-    const oldPartialDag = partialDag;
-    partialDag = new DAG();
 
     // First, collect all the unreferenced nodes to avoid calculating stragglers
     globalDependencyGraph.garbageCollect().forEach((item) => {
@@ -311,11 +281,10 @@ export function flush() {
         } else {
             log.debug('GC model', debugNameFor(item));
         }
-        oldPartialDag.removeNode(item);
     });
 
     // Then flush dependencies in topological order
-    oldPartialDag.visitTopological((item) => {
+    globalDependencyGraph.visitDirtyTopological((item) => {
         if (isCalculation(item)) {
             log.debug('flushing calculation', debugNameFor(item));
             const recalculation = item[RecalculationTag];
