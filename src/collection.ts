@@ -1,4 +1,5 @@
 import {
+    AddDeferredWorkKey,
     Calculation,
     Collection,
     CollectionEvent,
@@ -10,6 +11,7 @@ import {
     MappingFunction,
     ModelField,
     ObserveKey,
+    Subscription,
     TypeTag,
     View,
     ViewSpec,
@@ -22,6 +24,7 @@ import {
     untracked,
     processChange,
     addManualDep,
+    removeManualDep,
     addDepToCurrentCalculation,
 } from './calc';
 import { name } from './debug';
@@ -42,20 +45,28 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
 
     const fields: Map<string | number | symbol, ModelField<T>> = new Map();
     let observers: ((event: CollectionEvent<T>) => void)[] = [];
-    let events: CollectionEvent<T>[] = [];
+    let deferredTasks: (() => void)[] = [];
+    const subscriptionNode: Subscription = {
+        [TypeTag]: 'subscription',
+    };
+    name(subscriptionNode, `${debugName || '?'}:sub`);
+
+    function addDeferredWork(task: () => void) {
+        deferredTasks.push(task);
+        processChange(proxy);
+    }
 
     function flush() {
-        const toProcess = events;
-        events = [];
-        toProcess.forEach((event) => {
-            observers.forEach((observer) => {
-                observer(event);
-            });
+        const toProcess = deferredTasks;
+        deferredTasks = [];
+        toProcess.forEach((task) => {
+            task();
         });
     }
     function notify(event: CollectionEvent<T>) {
-        events.push(event);
-        processChange(proxy);
+        observers.forEach((observer) => {
+            observer(event);
+        });
     }
 
     function splice(index: number, count: number, ...items: T[]): T[] {
@@ -83,7 +94,11 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
             }
         } else {
             for (let i = index; i < Math.max(newLength, origLength); ++i) {
-                processChange(getField(i.toString()));
+                const field = getField(i.toString());
+                processChange(field);
+                if (i >= newLength) {
+                    removeManualDep(field, subscriptionNode);
+                }
             }
             processChange(getField('length'));
         }
@@ -146,9 +161,17 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
     }
 
     function observe(observer: (event: CollectionEvent<T>) => void) {
+        if (observers.length === 0) {
+            // Initialize the subscription node so events are ordered correctly
+            fields.forEach((field) => {
+                addManualDep(field, subscriptionNode);
+            });
+        }
         observers.push(observer);
+        retain(subscriptionNode);
         return () => {
             observers = observers.filter((obs) => obs !== observer);
+            release(subscriptionNode);
         };
     }
 
@@ -166,12 +189,10 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         });
         const view = collection(viewArray, viewDebugName);
         observe((event: CollectionEvent<T>) => {
-            // TODO: confirm whether or not the untracked call needs to be here. It almost certainly does not.
-            untracked(() => {
-                spec.processEvent(view, event);
-            });
+            view[AddDeferredWorkKey](() => spec.processEvent(view, event));
         });
         addManualDep(proxy, view);
+        addManualDep(subscriptionNode, view);
         return view;
     }
 
@@ -182,6 +203,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         push,
         unshift,
         [FlushKey]: flush,
+        [AddDeferredWorkKey]: addDeferredWork,
         [GetRawArrayKey]: getRawArray,
         [ObserveKey]: observe,
         sort,
@@ -209,6 +231,8 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
             if (debugName) name(field, debugName);
             fields.set(key, field);
         }
+        addManualDep(proxy, field);
+        addManualDep(field, subscriptionNode);
         return field;
     }
 
@@ -234,6 +258,15 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                 // TODO(sufian): maybe support this?
                 return false;
             }
+            if (
+                key === 'length' &&
+                typeof value === 'number' &&
+                value < target.length
+            ) {
+                // Special handling of resizing length smaller than normal length to handle removing of items
+                splice(value, target.length - value);
+                return true;
+            }
             const numericKey = Number(key);
             if (!isNaN(numericKey) && numericKey <= array.length) {
                 set(numericKey, value);
@@ -258,6 +291,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
             const field = getField(key);
             processChange(field); // TODO(sufian): what to do here?
             delete target[key];
+            removeManualDep(field, subscriptionNode);
             return true;
         },
     }) as Collection<T>;

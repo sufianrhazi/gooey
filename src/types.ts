@@ -5,9 +5,11 @@ const CalculationTypeTag = Symbol('calculationType');
 export const RecalculationTag = Symbol('recalculate');
 
 export const ObserveKey = Symbol('observe');
+export const MakeModelViewKey = Symbol('makeModelView');
 export const DeferredKey = Symbol('deferred');
 export const GetRawArrayKey = Symbol('getRawArray');
 export const FlushKey = Symbol('flush');
+export const AddDeferredWorkKey = Symbol('addDeferredWork');
 export const NotifyKey = Symbol('notifyEvent');
 
 /**
@@ -54,6 +56,11 @@ export type Model<T> = T & {
     [TypeTag]: 'model';
     [FlushKey]: () => void;
     [ObserveKey]: (observer: ModelObserver) => () => void;
+    [AddDeferredWorkKey]: (task: () => void) => void;
+    [MakeModelViewKey]: <V>(
+        modelViewSpec: ModelViewSpec<T, V>,
+        debugName?: string
+    ) => View<V>;
 };
 
 export type EqualityFunc<T> = (a: T, b: T) => boolean;
@@ -73,6 +80,18 @@ export interface ViewSpec<T, V> {
      * Process subscription events
      */
     processEvent: (view: Collection<V>, event: CollectionEvent<T>) => void;
+}
+
+export interface ModelViewSpec<T, V> {
+    /**
+     * Mutate `array` to initialize the view
+     */
+    initialize: (array: V[], obj: Readonly<T>) => void;
+
+    /**
+     * Process subscription events
+     */
+    processEvent: (view: Collection<V>, event: ModelEvent) => void;
 }
 
 export type CollectionEvent<T> =
@@ -97,6 +116,7 @@ export type CollectionEvent<T> =
 export interface Collection<T> extends Array<T> {
     [TypeTag]: 'collection';
     [FlushKey]: () => void;
+    [AddDeferredWorkKey]: (task: () => void) => void;
     [ObserveKey]: (
         listener: (observer: CollectionEvent<T>) => void
     ) => () => void;
@@ -113,12 +133,17 @@ export interface Collection<T> extends Array<T> {
     [OnCollectionRelease]: (fn: () => void) => void;
 }
 
+export interface Subscription {
+    [TypeTag]: 'subscription';
+}
+
 /**
  * A readonly array to hold projected state
  */
 export interface View<T> extends ReadonlyArray<T> {
     [TypeTag]: 'collection';
     [FlushKey]: () => void;
+    [AddDeferredWorkKey]: (task: () => void) => void;
     [ObserveKey]: (
         listener: (observer: CollectionEvent<T>) => void
     ) => () => void;
@@ -169,17 +194,40 @@ export function makeEffect(
 }
 
 export function isModel(thing: any): thing is Model<unknown> {
-    return !!(thing && (thing as any)[TypeTag] === 'model');
+    return !!(thing && thing[TypeTag] === 'model');
+}
+
+export function isModelField(thing: any): thing is ModelField<unknown> {
+    return !!(
+        thing &&
+        !thing[TypeTag] &&
+        (isCollection(thing.model) || isModel(thing.model)) &&
+        (typeof thing.key === 'string' ||
+            typeof thing.key === 'number' ||
+            typeof thing.key === 'symbol')
+    );
 }
 
 export function isCollection(thing: any): thing is Collection<any> | View<any> {
-    return !!(thing && (thing as any)[TypeTag] === 'collection');
+    return !!(thing && thing[TypeTag] === 'collection');
 }
 
 export function isCalculation(thing: any): thing is Calculation<any> {
-    return !!(thing && (thing as any)[TypeTag] === 'calculation');
+    return !!(thing && thing[TypeTag] === 'calculation');
 }
 
 export function isEffect(thing: Calculation<unknown>): boolean {
     return thing[CalculationTypeTag] === 'effect';
 }
+
+export function isSubscription(thing: any): thing is Subscription {
+    return !!(thing && thing[TypeTag] === 'subscription');
+}
+
+export type DAGNode<T> =
+    | Model<T>
+    | Collection<T>
+    | Calculation<T>
+    | ModelField<T>
+    | View<T>
+    | Subscription;

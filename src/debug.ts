@@ -1,13 +1,10 @@
 import {
-    Calculation,
-    Collection,
-    Model,
-    ModelField,
+    DAGNode,
     isCalculation,
-    isEffect,
     isCollection,
+    isEffect,
     isModel,
-    View,
+    isSubscription,
 } from './types';
 
 let nameMap: WeakMap<any, string> = new WeakMap();
@@ -16,14 +13,7 @@ export function clearNames() {
     nameMap = new WeakMap();
 }
 
-export function debugNameFor(
-    item:
-        | Collection<any>
-        | View<any>
-        | Calculation<any>
-        | Model<any>
-        | ModelField<any>
-): string {
+export function debugNameFor(item: DAGNode<any>): string {
     if (isCollection(item)) {
         return `collection:${nameMap.get(item) ?? '?'}`;
     }
@@ -34,6 +24,9 @@ export function debugNameFor(
     }
     if (isModel(item)) {
         return `model:${nameMap.get(item) ?? '?'}`;
+    }
+    if (isSubscription(item)) {
+        return `sub:${nameMap.get(item) ?? '?'}`;
     }
     return `field:${nameMap.get(item.model) ?? '?'}:${String(item.key)}`;
 }

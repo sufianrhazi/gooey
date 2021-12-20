@@ -2,13 +2,14 @@ import {
     InvariantError,
     Calculation,
     Collection,
-    Model,
     View,
+    DAGNode,
     FlushKey,
     ModelField,
     isCalculation,
     isCollection,
     isModel,
+    isModelField,
     makeCalculation,
     makeEffect,
     EqualityFunc,
@@ -21,13 +22,7 @@ import { clearNames, debugNameFor, name } from './debug';
 
 let activeCalculations: (null | Calculation<any>)[] = [];
 
-let globalDependencyGraph = new DAG<
-    | Model<any>
-    | Collection<any>
-    | Calculation<any>
-    | ModelField<any>
-    | View<any>
->();
+let globalDependencyGraph = new DAG<DAGNode<any>>();
 
 let refcountMap: WeakMap<
     Calculation<any> | Collection<any> | View<any>,
@@ -186,15 +181,7 @@ export function addDepToCurrentCalculation<T, Ret>(
     }
 }
 
-export function addManualDep<T, V>(
-    fromNode:
-        | Model<T>
-        | Collection<T>
-        | View<T>
-        | ModelField<T>
-        | Calculation<T>,
-    toNode: Collection<V> | View<V> | ModelField<V> | Calculation<V>
-) {
+export function addManualDep<T, V>(fromNode: DAGNode<T>, toNode: DAGNode<V>) {
     globalDependencyGraph.addNode(fromNode);
     globalDependencyGraph.addNode(toNode);
     if (globalDependencyGraph.addEdge(fromNode, toNode)) {
@@ -207,9 +194,21 @@ export function addManualDep<T, V>(
     }
 }
 
-export function processChange(
-    item: Model<unknown> | ModelField<unknown> | Collection<unknown>
+export function removeManualDep<T, V>(
+    fromNode: DAGNode<T>,
+    toNode: DAGNode<V>
 ) {
+    if (globalDependencyGraph.removeEdge(fromNode, toNode)) {
+        log.debug(
+            'Removed manual dependency',
+            debugNameFor(fromNode),
+            '->',
+            debugNameFor(toNode)
+        );
+    }
+}
+
+export function processChange(item: DAGNode<any>) {
     const newNode = globalDependencyGraph.addNode(item);
     const marked = globalDependencyGraph.markNodeDirty(item);
     log.debug(
@@ -307,7 +306,7 @@ export function flush() {
 /**
  * Retain a calculation (increase the refcount)
  */
-export function retain(item: Calculation<any> | Collection<any> | View<any>) {
+export function retain(item: DAGNode<any>) {
     const refcount = refcountMap.get(item) ?? 0;
     const newRefcount = refcount + 1;
     if (refcount === 0) {
@@ -334,7 +333,7 @@ export function retain(item: Calculation<any> | Collection<any> | View<any>) {
  * Release a calculation (decrease the refcount). If the refcount reaches zero, the calculation will be garbage
  * collected.
  */
-export function release(item: Calculation<any> | Collection<any> | View<any>) {
+export function release(item: DAGNode<any>) {
     const refcount = refcountMap.get(item) ?? 0;
     const newRefcount = Math.min(refcount - 1, 0);
     if (refcount < 1) {
@@ -365,6 +364,19 @@ export function release(item: Calculation<any> | Collection<any> | View<any>) {
  */
 export function debug(): string {
     return globalDependencyGraph.graphviz((id, item) => {
-        return `${id}\n${debugNameFor(item)}`;
+        let subgraph: object | undefined = undefined;
+        if (isModel(item)) {
+            subgraph = item;
+        }
+        if (isCollection(item)) {
+            subgraph = item;
+        }
+        if (isModelField(item)) {
+            subgraph = item.model;
+        }
+        return {
+            label: `${id}\n${debugNameFor(item)}`,
+            subgraph,
+        };
     });
 }

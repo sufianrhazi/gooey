@@ -16,6 +16,7 @@
     "url": "https://git.abstract.properties/revise.git"
   },
   "devDependencies": {
+    "@hpcc-js/wasm": "^1.12.7",
     "@types/lodash": "^4.14.174",
     "@typescript-eslint/eslint-plugin": "^5.2.0",
     "@typescript-eslint/parser": "^5.2.0",

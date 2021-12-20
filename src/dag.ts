@@ -1,4 +1,5 @@
 import * as log from './log';
+import { groupBy } from './util';
 
 export class DAG<Type extends object> {
     private nextId: number;
@@ -71,7 +72,25 @@ export class DAG<Type extends object> {
         return true;
     }
 
+    /**
+     * Returns true if edge is removed
+     */
+    removeEdge(fromNode: Type, toNode: Type): boolean {
+        const fromId = this.getId(fromNode);
+        const toId = this.getId(toNode);
+        if (!this.nodesSet[fromId]) return false;
+        if (!this.nodesSet[toId]) return false;
+        if (!this.graph[fromId][toId]) return false;
+        delete this.graph[fromId][toId];
+        delete this.reverseGraph[toId][fromId];
+        return true;
+    }
+
     private removeNodeInner(nodeId: string) {
+        log.assert(
+            !this.retained[nodeId],
+            'attempted to remove a retained node'
+        ); // Is this right?
         const toIds = Object.keys(this.graph[nodeId]);
         const fromIds = Object.keys(this.reverseGraph[nodeId]);
 
@@ -87,6 +106,7 @@ export class DAG<Type extends object> {
         delete this.graph[nodeId];
         delete this.nodesSet[nodeId];
         delete this.dirtyNodes[nodeId];
+        delete this.retained[nodeId];
     }
 
     /**
@@ -225,23 +245,58 @@ export class DAG<Type extends object> {
     /**
      * Generate a dot file structure of the graph
      */
-    graphviz(makeName: (label: string, item: Type) => string) {
-        const lines = ['digraph dag {'];
+    graphviz(
+        getAttributes: (
+            label: string,
+            item: Type
+        ) => { label: string; subgraph: object | undefined }
+    ) {
+        const lines = [
+            'digraph dag {',
+            'graph [rankdir="LR"];',
+            'node [style="filled", fillcolor="#DDDDDD"];',
+        ];
 
-        Object.keys(this.graph).forEach((nodeId) => {
-            const node = this.nodesSet[nodeId];
-            const props: Record<string, string> = {
-                shape: this.retained[nodeId] ? 'box' : 'ellipse',
-                label: makeName(nodeId, node),
-            };
-            lines.push(
-                `  item_${nodeId} [${Object.entries(props)
-                    .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
-                    .join(',')}];`
+        const nodeIds = Object.keys(this.graph);
+        const nodeAttributes: Record<
+            string,
+            { label: string; subgraph: object | undefined }
+        > = {};
+        nodeIds.forEach((nodeId) => {
+            nodeAttributes[nodeId] = getAttributes(
+                nodeId,
+                this.nodesSet[nodeId]
             );
         });
+        const groupedNodes = groupBy(nodeIds, (nodeId) => {
+            return [nodeAttributes[nodeId].subgraph, nodeId];
+        });
 
-        Object.keys(this.graph).forEach((fromId) => {
+        let clusterId = 0;
+        groupedNodes.forEach((nodeIds, group) => {
+            if (group)
+                lines.push(
+                    `subgraph cluster_${clusterId++} {`,
+                    'style="filled";',
+                    'color="#AAAAAA";'
+                );
+            nodeIds.forEach((nodeId) => {
+                const props: Record<string, string> = {
+                    shape: this.retained[nodeId] ? 'box' : 'ellipse',
+                    label: nodeAttributes[nodeId].label,
+                };
+                lines.push(
+                    `  item_${nodeId} [${Object.entries(props)
+                        .map(
+                            ([key, value]) => `${key}=${JSON.stringify(value)}`
+                        )
+                        .join(',')}];`
+                );
+            });
+            if (group) lines.push('}');
+        });
+
+        nodeIds.forEach((fromId) => {
             Object.keys(this.graph[fromId]).forEach((toId) => {
                 lines.push(`  item_${fromId} -> item_${toId};`);
             });

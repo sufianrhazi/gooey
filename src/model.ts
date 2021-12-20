@@ -1,19 +1,25 @@
 import {
-    Collection,
+    AddDeferredWorkKey,
     FlushKey,
     InvariantError,
+    MakeModelViewKey,
+    ModelViewSpec,
     Model,
     ModelEvent,
     ModelField,
     ModelObserver,
     ObserveKey,
+    Subscription,
     TypeTag,
     View,
 } from './types';
 import { collection } from './collection';
 import {
     untracked,
+    retain,
+    release,
     addManualDep,
+    removeManualDep,
     addDepToCurrentCalculation,
     processChange,
 } from './calc';
@@ -26,21 +32,29 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
 
     const fields: Map<string | number | symbol, ModelField<T>> = new Map();
     let observers: ModelObserver[] = [];
-    let events: ModelEvent[] = [];
+    let deferredTasks: (() => void)[] = [];
+    const subscriptionNode: Subscription = {
+        [TypeTag]: 'subscription',
+    };
+    name(subscriptionNode, `${debugName || '?'}:sub`);
+
+    function addDeferredWork(task: () => void) {
+        deferredTasks.push(task);
+        processChange(proxy);
+    }
 
     function flush() {
-        const toProcess = events;
-        events = [];
-        toProcess.forEach((event) => {
-            observers.forEach((observer) => {
-                observer(event);
-            });
+        const toProcess = deferredTasks;
+        deferredTasks = [];
+        toProcess.forEach((task) => {
+            task();
         });
     }
 
     function notify(event: ModelEvent) {
-        events.push(event);
-        processChange(proxy);
+        observers.forEach((observer) => {
+            observer(event);
+        });
     }
 
     function getField(key: string | number | symbol): ModelField<T> {
@@ -52,6 +66,10 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
             };
             if (debugName) name(field, debugName);
             fields.set(key, field);
+            addManualDep(proxy, field);
+            if (observers.length > 0) {
+                addManualDep(field, subscriptionNode);
+            }
         }
         return field;
     }
@@ -61,15 +79,42 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
     );
 
     function observe(observer: ModelObserver) {
+        if (observers.length === 0) {
+            // Initialize the subscription node so events are ordered correctly
+            fields.forEach((field) => {
+                addManualDep(field, subscriptionNode);
+            });
+        }
+        addManualDep(proxy, subscriptionNode);
         observers.push(observer);
+        retain(subscriptionNode);
         return () => {
             observers = observers.filter((obs) => obs !== observer);
+            release(subscriptionNode);
         };
+    }
+
+    function makeModelView<V>(
+        spec: ModelViewSpec<T, V>,
+        viewDebugName?: string | undefined
+    ) {
+        const viewArray: V[] = [];
+        untracked(() => {
+            spec.initialize(viewArray, obj);
+        });
+        const view = collection(viewArray, viewDebugName);
+        observe((event: ModelEvent) => {
+            view[AddDeferredWorkKey](() => spec.processEvent(view, event));
+        });
+        addManualDep(subscriptionNode, view);
+        return view;
     }
 
     const methods = {
         [ObserveKey]: observe,
         [FlushKey]: flush,
+        [AddDeferredWorkKey]: addDeferredWork,
+        [MakeModelViewKey]: makeModelView,
     };
 
     const proxy = new Proxy(obj, {
@@ -121,6 +166,7 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
                 notify({ type: 'delete', key });
             }
             delete target[key];
+            removeManualDep(field, subscriptionNode);
             return true;
         },
     }) as Model<T>;
@@ -132,50 +178,40 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
 model.keys = function keys<T>(
     target: Model<T>,
     debugName?: string
-): View<keyof T> {
-    const initialKeys = untracked(() => {
-        return Object.keys(target);
-    });
-    const view: Collection<keyof T> = collection(
-        initialKeys as (keyof T)[],
+): View<string> {
+    const keysSet = new Set<string>();
+
+    const view = target[MakeModelViewKey]<string>(
+        {
+            initialize: (array, obj) => {
+                const keys = Object.keys(obj);
+                array.push(...keys);
+                keys.forEach((key) => keysSet.add(key));
+            },
+            processEvent: (modelView, event) => {
+                if (event.type === 'add') {
+                    const { key } = event;
+                    if (typeof key === 'number' || typeof key === 'string') {
+                        const stringKey = key.toString();
+                        if (!keysSet.has(stringKey)) {
+                            keysSet.add(stringKey);
+                            modelView.push(stringKey);
+                        }
+                    }
+                } else if (event.type === 'delete') {
+                    const { key } = event;
+                    if (typeof key === 'number' || typeof key === 'string') {
+                        const stringKey = key.toString();
+                        if (keysSet.has(stringKey)) {
+                            keysSet.delete(stringKey);
+                            modelView.reject((k) => k === stringKey);
+                        }
+                    }
+                }
+            },
+        },
         debugName
     );
-
-    const keysSet = new Set<string>(initialKeys);
-
-    function addKey(key: string | number | symbol) {
-        if (typeof key === 'number' || typeof key === 'string') {
-            const stringKey = key.toString();
-            if (!keysSet.has(stringKey)) {
-                keysSet.add(stringKey);
-                view.push(stringKey as keyof T);
-            }
-        }
-    }
-
-    function delKey(key: string | number | symbol) {
-        if (typeof key === 'number' || typeof key === 'string') {
-            const stringKey = key.toString();
-            if (keysSet.has(stringKey)) {
-                keysSet.delete(stringKey);
-                view.reject((k) => k === stringKey);
-            }
-        }
-    }
-
-    target[ObserveKey]((event) => {
-        if (event.type === 'add') {
-            untracked(() => {
-                addKey(event.key);
-            });
-        } else if (event.type === 'delete') {
-            untracked(() => {
-                delKey(event.key);
-            });
-        }
-    });
-
-    addManualDep(target, view);
 
     return view;
 };

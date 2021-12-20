@@ -46,7 +46,7 @@ const millis = (ms?: number) => `${(ms || 0).toFixed(3)}ms`;
 type TestFileRecord = Model<{
     src: string;
     iframe: HTMLIFrameElement;
-    suites: Model<Record<number, SuiteRecord>>;
+    suites: Model<Record<number | string, SuiteRecord>>;
     status: 'error' | 'loading' | 'ready' | 'fail' | 'pass' | 'run';
     error?: string;
     isOpen: boolean;
@@ -59,7 +59,7 @@ type SuiteRecord = Model<{
     name: string;
     only: boolean;
     localOnly: boolean;
-    tests: Model<Record<number, TestRecord>>;
+    tests: Model<Record<number | string, TestRecord>>;
     parentSuiteId: number | undefined;
     status: 'error' | 'ready' | 'fail' | 'pass' | 'run';
     error?: string;
@@ -144,7 +144,10 @@ const { actions, selectors } = (() => {
             });
         },
 
-        setTestFileSuites(src: string, suites: Record<number, SuiteRecord>) {
+        setTestFileSuites(
+            src: string,
+            suites: Record<number | string, SuiteRecord>
+        ) {
             testFiles[src].suites = model(suites);
             testFiles[src].status = 'ready';
             testFiles[src].isOpen = Object.values(suites).some(
@@ -392,9 +395,11 @@ function initializeTestSandbox(
                 isInitMessage
             )
                 .then((initMessage) => {
-                    const suites: Record<number, SuiteRecord> = {};
+                    const suites: Record<number | string, SuiteRecord> = {};
                     initMessage.suites.forEach((suite) => {
-                        const tests = model<Record<number, TestRecord>>({});
+                        const tests = model<
+                            Record<number | string, TestRecord>
+                        >({});
                         suite.tests.forEach((test) => {
                             tests[test.id] = model({
                                 testFileSrc: testFile.src,

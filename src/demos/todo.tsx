@@ -1,19 +1,39 @@
+import { graphviz } from '@hpcc-js/wasm';
 import Revise, {
-    mount,
-    Fragment,
-    Ref,
-    ref,
-    model,
-    Model,
-    collection,
-    calc,
-    debug,
-    Component,
     Collection,
-    setLogLevel,
+    Component,
+    Fragment,
+    Model,
+    Ref,
+    calc,
+    collection,
+    debug,
+    flush,
+    model,
+    mount,
+    ref,
+    subscribe,
 } from '../index';
 
-setLogLevel('debug');
+const graphvizRef = ref<HTMLDivElement>();
+
+function debugGraph() {
+    graphviz.layout(debug(), 'svg', 'dot').then((svg) => {
+        if (graphvizRef.current) {
+            graphvizRef.current.innerHTML = svg;
+        }
+    });
+}
+
+subscribe(() => {
+    setTimeout(() => {
+        flush();
+        debugGraph();
+    }, 0);
+});
+setTimeout(() => {
+    debugGraph();
+}, 0);
 
 ////////////////////////////////////////////////////////////////////////////////
 // Application State
@@ -171,19 +191,11 @@ const TodoControls: Component<{}> = (_props, { onMount }) => {
 };
 
 const App = () => {
-    const graphvizContainerRef = ref<HTMLPreElement>();
     const onClickMutate = () => {
         globalState.items.forEach((item) => {
             item.done = Math.random() < 0.5;
             item.task = item.task + '!';
         });
-    };
-
-    const onClickDebug = () => {
-        if (graphvizContainerRef.current) {
-            graphvizContainerRef.current.textContent = debug();
-            navigator.clipboard.writeText(debug());
-        }
     };
 
     return (
@@ -197,16 +209,10 @@ const App = () => {
                     <button class="btn btn-warning" on:click={onClickMutate}>
                         Mutate items
                     </button>
-                    <button
-                        class="btn btn-outline-warning"
-                        on:click={onClickDebug}
-                    >
-                        Show graphviz
-                    </button>
                 </div>
             </div>
             <div class="container-fluid d-flex my-4 justify-content-center">
-                <pre class="border" ref={graphvizContainerRef}></pre>
+                <div class="border" ref={graphvizRef} />
             </div>
         </>
     );
