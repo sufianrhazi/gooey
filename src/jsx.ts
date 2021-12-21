@@ -52,22 +52,6 @@ export function isRenderElement(
 
 type EventHandler<T> = (event: T) => void;
 
-export type ElementProps = {
-    // TODO: generate this from spec
-} & {
-    [key: `on:${string}`]: EventHandler<Event>;
-    [key: string]:
-        | Function
-        | string
-        | number
-        | boolean
-        | null
-        | undefined
-        | Calculation<
-              () => Function | string | number | boolean | null | undefined
-          >;
-};
-
 export type RenderComponent<Props extends {}> = {
     type: 'component';
     component: Component<Props>;

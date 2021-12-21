@@ -529,25 +529,6 @@ suite('filterView', () => {
         release(evenNumbers);
     });
 
-    test('treats filterFn as a computation', () => {
-        const three = model({ value: 3 });
-        const four = model({ value: 4 });
-        const five = model({ value: 5 });
-        const six = model({ value: 6 });
-        const seven = model({ value: 7 });
-        const numbers = collection([three, four, five, six, seven], 'numbers');
-        const evenNumbers = numbers.filterView((item) => item.value % 2 === 0);
-        retain(evenNumbers);
-
-        assert.deepEqual([four, six], evenNumbers);
-
-        five.value = 50;
-        flush();
-        assert.deepEqual([four, five, six], evenNumbers);
-
-        release(evenNumbers);
-    });
-
     test('handles moveSlice', () => {
         const three = model({ value: 3 });
         const four = model({ value: 4 });
@@ -563,36 +544,6 @@ suite('filterView', () => {
         numbers.moveSlice(2, 3, 0);
         flush();
         assert.deepEqual([six, four], evenNumbers);
-
-        release(evenNumbers);
-    });
-
-    test('handles moveSlice after updates', () => {
-        const evenOdd = model({ value: 0 });
-        const three = model({ value: 3 });
-        const four = model({ value: 4 });
-        const five = model({ value: 5 });
-        const six = model({ value: 6 });
-        const seven = model({ value: 7 });
-        const numbers = collection([three, four, five, six, seven], 'numbers');
-        const evenNumbers = numbers.filterView(
-            (item) => item.value % 2 === evenOdd.value
-        );
-        retain(evenNumbers);
-
-        assert.deepEqual([four, six], evenNumbers);
-        evenOdd.value = 1;
-        flush();
-        assert.deepEqual([three, five, seven], evenNumbers);
-        evenOdd.value = 0;
-        flush();
-
-        numbers.moveSlice(2, 3, 0); // three, four, five, six, seven -> five, six, seven, three, four
-        flush();
-        assert.deepEqual([six, four], evenNumbers);
-        evenOdd.value = 1;
-        flush();
-        assert.deepEqual([five, seven, three], evenNumbers);
 
         release(evenNumbers);
     });

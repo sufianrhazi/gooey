@@ -208,9 +208,8 @@ if the item will exist in the retured view.
 This view is automatically updated as items in the collection are added (via `push`, `unshift`, `splice`), removed (via
 `pop`, `shift`, `splice`, `reject`), items reassigned, or mutated via any other means.
 
-This automatic update extends to all data read while `filterFn` is performed. That is to say: if a collection of models
-is filtered on a combination of two of the models' keys, if any of these models were mutated, the view will be
-efficiently re-filtered in place.
+Note: the automatic update is **not** extended to data read while the `filterView` method is performed. `filterFn` gets
+called once per item, when the item is added to the collection. 
 
 
 #### .moveSlice

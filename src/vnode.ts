@@ -12,7 +12,6 @@ import * as log from './log';
 export type ChildVNode = {
     domNode: Node | null;
     children: VNode[];
-    parentNode: VNode;
     domParent: VNode;
     mountFragment: DocumentFragment | null;
     jsxNode: JSXNode | null;
@@ -22,7 +21,6 @@ export type ChildVNode = {
 export type RootVNode = {
     domNode: Node | null;
     children: VNode[];
-    parentNode: null;
     domParent: VNode;
     mountFragment: DocumentFragment | null;
     jsxNode: JSXNode | null;
@@ -35,7 +33,6 @@ export function makeRootVNode({ domNode }: { domNode: Node }): RootVNode {
     const rootVNode: RootVNode = {
         domNode,
         children: [],
-        parentNode: null,
         domParent: null,
         mountFragment: document.createDocumentFragment(),
         jsxNode: null,
@@ -52,9 +49,7 @@ export function makeChildVNode({
     domParent,
     onMount,
     onUnmount,
-    parentNode,
 }: {
-    parentNode: VNode;
     domParent: VNode;
     jsxNode: JSXNode | null;
     domNode: Node | null;
@@ -64,9 +59,8 @@ export function makeChildVNode({
     return {
         domNode,
         children: [],
-        parentNode,
         domParent,
-        mountFragment: document.createDocumentFragment(),
+        mountFragment: domNode ? document.createDocumentFragment() : null,
         jsxNode,
         onMount,
         onUnmount,
@@ -260,7 +254,6 @@ export function spliceVNode(
 
         for (let i = 0; i < newNodes.length; ++i) {
             const newNode = newNodes[i];
-            newNode.parentNode = immediateParent;
             newNode.domParent = domParent;
             const nodesToAdd = getShallowNodes(newNode);
             nodesToAdd.forEach((addNode) => {

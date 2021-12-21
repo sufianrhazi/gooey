@@ -107,11 +107,9 @@ function setAttributeValue(
 }
 
 function jsxNodeToVNode({
-    parentNode,
     domParent,
     jsxNode,
 }: {
-    parentNode: VNode;
     domParent: VNode;
     jsxNode: JSXNode;
 }): ChildVNode {
@@ -122,7 +120,6 @@ function jsxNodeToVNode({
         jsxNode === true
     ) {
         const emptyVNode = makeChildVNode({
-            parentNode: parentNode,
             domParent: domParent,
             jsxNode: jsxNode,
             domNode: null,
@@ -134,7 +131,6 @@ function jsxNodeToVNode({
     }
     if (typeof jsxNode === 'string') {
         const stringVNode = makeChildVNode({
-            parentNode: parentNode,
             domParent: domParent,
             jsxNode: jsxNode,
             domNode: document.createTextNode(jsxNode),
@@ -146,7 +142,6 @@ function jsxNodeToVNode({
     }
     if (typeof jsxNode === 'number') {
         const numberVNode = makeChildVNode({
-            parentNode: parentNode,
             domParent: domParent,
             jsxNode: jsxNode,
             domNode: document.createTextNode(jsxNode.toString()),
@@ -195,7 +190,6 @@ function jsxNodeToVNode({
         }
 
         const elementNode = makeChildVNode({
-            parentNode: parentNode,
             domParent: domParent,
             jsxNode: jsxNode,
             domNode: element,
@@ -215,15 +209,11 @@ function jsxNodeToVNode({
                 },
             ],
         });
-
-        elementNode.children.push(
-            ...jsxNode.children.map((childJsxNode) =>
-                jsxNodeToVNode({
-                    domParent: elementNode,
-                    parentNode: elementNode,
-                    jsxNode: childJsxNode,
-                })
-            )
+        elementNode.children = jsxNode.children.map((childJsxNode) =>
+            jsxNodeToVNode({
+                domParent: elementNode,
+                jsxNode: childJsxNode,
+            })
         );
 
         // Mount self
@@ -232,9 +222,6 @@ function jsxNodeToVNode({
             elementNode.mountFragment = null;
         }
         mountVNode(elementNode);
-        // TODO: At this point, the element's children are mounted to the newly created element, the newly created
-        // element is mounted to the domParent's mountFragment. How do we call all the onMount callbacks? Maybe
-        // the mount() function should call them after it's been mounted?
 
         return elementNode;
     }
@@ -243,7 +230,6 @@ function jsxNodeToVNode({
         const onUnmount: (() => void)[] = [];
 
         const collectionNode = makeChildVNode({
-            parentNode: parentNode,
             domParent: domParent,
             jsxNode: jsxNode,
             domNode: null,
@@ -256,7 +242,6 @@ function jsxNodeToVNode({
                 ...trackedCollection.map((jsxChild) =>
                     jsxNodeToVNode({
                         domParent: collectionNode.domParent,
-                        parentNode: collectionNode,
                         jsxNode: jsxChild,
                     })
                 )
@@ -270,7 +255,6 @@ function jsxNodeToVNode({
                     const childNodes = items.map((jsxChild) =>
                         jsxNodeToVNode({
                             domParent: collectionNode.domParent,
-                            parentNode: collectionNode,
                             jsxNode: jsxChild,
                         })
                     );
@@ -310,7 +294,6 @@ function jsxNodeToVNode({
         const trackedCalculation = jsxNode;
         const onUnmount: Function[] = [];
         const calculationNode = makeChildVNode({
-            parentNode: parentNode,
             domParent: domParent,
             jsxNode: jsxNode,
             domNode: null,
@@ -322,7 +305,6 @@ function jsxNodeToVNode({
         const resultEffect = effect(() => {
             const jsxChild = trackedCalculation();
             const childVNode = jsxNodeToVNode({
-                parentNode: calculationNode,
                 domParent: calculationNode.domParent,
                 jsxNode: jsxChild,
             });
@@ -353,7 +335,6 @@ function jsxNodeToVNode({
         const onUnmount: Function[] = [];
 
         const componentNode = makeChildVNode({
-            parentNode: parentNode,
             domParent: domParent,
             jsxNode: jsxNode,
             domNode: null,
@@ -394,7 +375,6 @@ function jsxNodeToVNode({
         );
 
         const childVNode = jsxNodeToVNode({
-            parentNode: componentNode,
             domParent: componentNode.domParent,
             jsxNode: jsxChild,
         });
@@ -412,7 +392,6 @@ function jsxNodeToVNode({
     if (Array.isArray(jsxNode)) {
         const items = jsxNode;
         const arrayNode = makeChildVNode({
-            parentNode: parentNode,
             domParent: domParent,
             jsxNode,
             domNode: null,
@@ -423,7 +402,6 @@ function jsxNodeToVNode({
         arrayNode.children.push(
             ...items.map((jsxChild) =>
                 jsxNodeToVNode({
-                    parentNode: arrayNode,
                     domParent: domParent,
                     jsxNode: jsxChild,
                 })
@@ -437,7 +415,6 @@ function jsxNodeToVNode({
     }
     if (typeof jsxNode === 'function') {
         const functionVNode = makeChildVNode({
-            parentNode: parentNode,
             domParent: domParent,
             jsxNode: jsxNode,
             domNode: null,
@@ -463,7 +440,6 @@ export function mount(parentElement: Element, jsxNode: JSXNode) {
     const rootNode = makeRootVNode({ domNode: parentElement });
     rootNode.children.push(
         jsxNodeToVNode({
-            parentNode: rootNode,
             domParent: rootNode,
             jsxNode: jsxNode,
         })

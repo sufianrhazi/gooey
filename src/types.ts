@@ -7,7 +7,6 @@ export const RecalculationTag = Symbol('recalculate');
 export const ObserveKey = Symbol('observe');
 export const MakeModelViewKey = Symbol('makeModelView');
 export const DeferredKey = Symbol('deferred');
-export const GetRawArrayKey = Symbol('getRawArray');
 export const FlushKey = Symbol('flush');
 export const AddDeferredWorkKey = Symbol('addDeferredWork');
 export const NotifyKey = Symbol('notifyEvent');
@@ -72,9 +71,9 @@ export const OnCollectionRelease = Symbol('OnCollectionRelease');
 
 export interface ViewSpec<T, V> {
     /**
-     * Mutate `array` to initialize the view
+     * Return initial items
      */
-    initialize: (array: V[], items: readonly T[]) => void;
+    initialize: (items: readonly T[]) => V[];
 
     /**
      * Process subscription events
@@ -84,9 +83,9 @@ export interface ViewSpec<T, V> {
 
 export interface ModelViewSpec<T, V> {
     /**
-     * Mutate `array` to initialize the view
+     * Return initial items
      */
-    initialize: (array: V[], obj: Readonly<T>) => void;
+    initialize: (obj: Readonly<T>) => V[];
 
     /**
      * Process subscription events
@@ -120,7 +119,6 @@ export interface Collection<T> extends Array<T> {
     [ObserveKey]: (
         listener: (observer: CollectionEvent<T>) => void
     ) => () => void;
-    [GetRawArrayKey]: () => T[];
     makeView<V>(viewSpec: ViewSpec<T, V>, debugName?: string): View<V>;
     mapView<V>(mapFn: MappingFunction<T, V>, debugName?: string): View<V>;
     filterView(filterFn: FilterFunction<T>, debugName?: string): View<T>;

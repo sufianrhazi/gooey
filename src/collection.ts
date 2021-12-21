@@ -1,12 +1,10 @@
 import {
     AddDeferredWorkKey,
-    Calculation,
     Collection,
     CollectionEvent,
     FilterFunction,
     FlatMapFunction,
     FlushKey,
-    GetRawArrayKey,
     InvariantError,
     MappingFunction,
     ModelField,
@@ -17,8 +15,6 @@ import {
     ViewSpec,
 } from './types';
 import {
-    calc,
-    effect,
     retain,
     release,
     untracked,
@@ -175,18 +171,11 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         };
     }
 
-    function getRawArray() {
-        return array;
-    }
-
     function makeView<V>(
         spec: ViewSpec<T, V>,
         viewDebugName?: string | undefined
     ) {
-        const viewArray: V[] = [];
-        untracked(() => {
-            spec.initialize(viewArray, array);
-        });
+        const viewArray: V[] = untracked(() => spec.initialize(array));
         const view = collection(viewArray, viewDebugName);
         observe((event: CollectionEvent<T>) => {
             view[AddDeferredWorkKey](() => spec.processEvent(view, event));
@@ -204,7 +193,6 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         unshift,
         [FlushKey]: flush,
         [AddDeferredWorkKey]: addDeferredWork,
-        [GetRawArrayKey]: getRawArray,
         [ObserveKey]: observe,
         sort,
         reject,
@@ -289,7 +277,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                 return false;
             }
             const field = getField(key);
-            processChange(field); // TODO(sufian): what to do here?
+            processChange(field); // Anything depending on this value will need to be recalculated
             delete target[key];
             removeManualDep(field, subscriptionNode);
             return true;
@@ -306,25 +294,10 @@ function mapViewImplementation<T, V>(
     mapper: MappingFunction<T, V>,
     debugName?: string | undefined
 ): View<V> {
-    return sourceCollection.makeView(
-        {
-            initialize: (view, items) => {
-                view.push(...items.map((item) => mapper(item)));
-            },
-            processEvent: (view, event) => {
-                if (event.type === 'splice') {
-                    const { index, count, items } = event;
-                    view.splice(
-                        index,
-                        count,
-                        ...items.map((item) => mapper(item))
-                    );
-                } else if (event.type === 'move') {
-                    const { fromIndex, fromCount, toIndex } = event;
-                    view.moveSlice(fromIndex, fromCount, toIndex);
-                }
-            },
-        },
+    // map is a specialization of flatMap
+    return flatMapViewImplementation(
+        sourceCollection,
+        (item) => [mapper(item)],
         debugName
     );
 }
@@ -334,150 +307,10 @@ function filterViewImplementation<T>(
     filterFn: FilterFunction<T>,
     debugName?: string
 ): View<T> {
-    const presentCache: boolean[] = [];
-    const filterEffects: [
-        sourceIndex: number,
-        recalculateVisibility: Calculation<void>
-    ][] = [];
-
-    // TODO: This is really slow! Some sequences of operations make this quadratic!!!
-    function getRealIndex(sourceIndex: number) {
-        let count = 0;
-        for (let i = 0; i < sourceIndex; ++i) {
-            if (i >= presentCache.length || presentCache[i]) count += 1;
-        }
-        return count;
-    }
-
-    function addItems(array: T[], addIndex: number, items: readonly T[]) {
-        const effectItems = items.map((item, i) => {
-            let lastIsPresent = false;
-            const filterCalculation = calc(() => filterFn(item));
-            const effectItem: [number, Calculation<void>] = [
-                addIndex + i,
-                effect(() => {
-                    const sourceIndex = effectItem[0];
-                    const isPresent = filterCalculation();
-                    if (isPresent && !lastIsPresent) {
-                        const realIndex = getRealIndex(sourceIndex);
-                        array.splice(realIndex, 0, item);
-                    }
-                    if (!isPresent && lastIsPresent) {
-                        const realIndex = getRealIndex(sourceIndex);
-                        array.splice(realIndex, 1);
-                    }
-                    lastIsPresent = isPresent;
-                    presentCache[sourceIndex] = isPresent;
-                }),
-            ];
-            return effectItem;
-        });
-        filterEffects.splice(addIndex, 0, ...effectItems);
-        for (let i = addIndex + items.length; i < filterEffects.length; ++i) {
-            filterEffects[i][0] = i;
-        }
-        presentCache.splice(addIndex, 0, ...items.map(() => false));
-        effectItems.forEach((effectItem) => {
-            retain(effectItem[1]);
-            effectItem[1]();
-        });
-    }
-
-    function removeItems(array: T[], sourceIndex: number, removeCount: number) {
-        let realIndex = 0;
-        let realRemoveCount = 0;
-        let count = 0;
-        for (let i = 0; i <= sourceIndex + removeCount; ++i) {
-            if (i === sourceIndex) realIndex = count;
-            if (i === sourceIndex + removeCount)
-                realRemoveCount = count - realIndex;
-            if (i > presentCache.length || presentCache[i]) count++;
-        }
-        if (realRemoveCount > 0) {
-            array.splice(realIndex, realRemoveCount);
-        }
-
-        presentCache.splice(sourceIndex, removeCount);
-        const removedEffects = filterEffects.splice(sourceIndex, removeCount);
-        // Update index of effects so they update the correct item after removed
-        for (let i = sourceIndex; i < filterEffects.length; ++i) {
-            filterEffects[i][0] = i;
-        }
-
-        removedEffects.forEach(([oldIndex, filterEffect]) => {
-            release(filterEffect);
-        });
-    }
-
-    return sourceCollection.makeView(
-        {
-            initialize: (array, items) => {
-                addItems(array, 0, items);
-            },
-            processEvent: (view, event) => {
-                if (event.type === 'splice') {
-                    const { index, count, items } = event;
-                    if (count > 0) {
-                        removeItems(view, index, count);
-                    }
-                    addItems(view, index, items);
-                } else if (event.type === 'move') {
-                    const { fromIndex, fromCount, toIndex } = event;
-
-                    // Determine filtered index
-                    let realFromIndex = 0;
-                    let realFromCount = 0;
-                    let realToIndex = 0;
-                    let count = 0;
-                    for (
-                        let i = 0;
-                        i <= Math.max(fromIndex + fromCount, toIndex);
-                        ++i
-                    ) {
-                        if (i === fromIndex) realFromIndex = count;
-                        if (i === fromIndex + realFromCount)
-                            realFromCount = i - realFromIndex;
-                        if (i === toIndex) realToIndex = i;
-                        if (i > presentCache.length || presentCache[i])
-                            count += 1;
-                    }
-
-                    // Splice filterEffects + presentCache
-                    const filterEffectsMoved = filterEffects.splice(
-                        fromIndex,
-                        fromCount
-                    );
-                    const presentCacheMoved = presentCache.splice(
-                        fromIndex,
-                        fromCount
-                    );
-                    if (toIndex < fromIndex) {
-                        filterEffects.splice(toIndex, 0, ...filterEffectsMoved);
-                        presentCache.splice(toIndex, 0, ...presentCacheMoved);
-                    } else {
-                        filterEffects.splice(
-                            toIndex - fromCount,
-                            0,
-                            ...filterEffectsMoved
-                        );
-                        presentCache.splice(
-                            toIndex - fromCount,
-                            0,
-                            ...presentCacheMoved
-                        );
-                    }
-
-                    // update sourceIndex
-                    for (let i = 0; i < filterEffects.length; ++i) {
-                        filterEffects[i][0] = i;
-                    }
-
-                    // Perform move (if needed)
-                    if (realFromCount === 0) return;
-                    view.moveSlice(realFromIndex, realFromCount, realToIndex);
-                }
-            },
-        },
+    // filter is a specialization of flatMap
+    return flatMapViewImplementation(
+        sourceCollection,
+        (item) => (filterFn(item) ? [item] : []),
         debugName
     );
 }
@@ -491,12 +324,14 @@ function flatMapViewImplementation<T, V>(
 
     return sourceCollection.makeView(
         {
-            initialize: (view, items) => {
+            initialize: (items) => {
+                const flatMapItems: V[] = [];
                 items.forEach((value) => {
                     const chunk = fn(value);
-                    view.push(...chunk);
+                    flatMapItems.push(...chunk);
                     flatMapCount.push(chunk.length);
                 });
+                return flatMapItems;
             },
             processEvent: (view, event) => {
                 if (event.type === 'splice') {
