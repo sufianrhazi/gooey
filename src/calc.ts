@@ -5,7 +5,6 @@ import {
     View,
     DAGNode,
     FlushKey,
-    ModelField,
     isCalculation,
     isCollection,
     isModel,
@@ -22,7 +21,7 @@ import { clearNames, debugNameFor, name } from './debug';
 
 let activeCalculations: (null | Calculation<any>)[] = [];
 
-let globalDependencyGraph = new DAG<DAGNode<any>>();
+let globalDependencyGraph = new DAG<DAGNode>();
 
 let refcountMap: WeakMap<
     Calculation<any> | Collection<any> | View<any>,
@@ -160,9 +159,7 @@ function trackCalculation<Ret>(
     return trackedCalculation;
 }
 
-export function addDepToCurrentCalculation<T, Ret>(
-    item: Calculation<Ret> | ModelField<T>
-) {
+export function addDepToCurrentCalculation(item: DAGNode) {
     const dependentCalculation =
         activeCalculations[activeCalculations.length - 1];
     if (dependentCalculation) {
@@ -181,7 +178,7 @@ export function addDepToCurrentCalculation<T, Ret>(
     }
 }
 
-export function addManualDep<T, V>(fromNode: DAGNode<T>, toNode: DAGNode<V>) {
+export function addManualDep(fromNode: DAGNode, toNode: DAGNode) {
     globalDependencyGraph.addNode(fromNode);
     globalDependencyGraph.addNode(toNode);
     if (globalDependencyGraph.addEdge(fromNode, toNode)) {
@@ -194,10 +191,7 @@ export function addManualDep<T, V>(fromNode: DAGNode<T>, toNode: DAGNode<V>) {
     }
 }
 
-export function removeManualDep<T, V>(
-    fromNode: DAGNode<T>,
-    toNode: DAGNode<V>
-) {
+export function removeManualDep(fromNode: DAGNode, toNode: DAGNode) {
     if (globalDependencyGraph.removeEdge(fromNode, toNode)) {
         log.debug(
             'Removed manual dependency',
@@ -208,7 +202,7 @@ export function removeManualDep<T, V>(
     }
 }
 
-export function processChange(item: DAGNode<any>) {
+export function processChange(item: DAGNode) {
     const newNode = globalDependencyGraph.addNode(item);
     const marked = globalDependencyGraph.markNodeDirty(item);
     log.debug(
@@ -306,7 +300,7 @@ export function flush() {
 /**
  * Retain a calculation (increase the refcount)
  */
-export function retain(item: DAGNode<any>) {
+export function retain(item: DAGNode) {
     const refcount = refcountMap.get(item) ?? 0;
     const newRefcount = refcount + 1;
     if (refcount === 0) {
@@ -333,7 +327,7 @@ export function retain(item: DAGNode<any>) {
  * Release a calculation (decrease the refcount). If the refcount reaches zero, the calculation will be garbage
  * collected.
  */
-export function release(item: DAGNode<any>) {
+export function release(item: DAGNode) {
     const refcount = refcountMap.get(item) ?? 0;
     const newRefcount = Math.min(refcount - 1, 0);
     if (refcount < 1) {

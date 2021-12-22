@@ -18,7 +18,7 @@ export {
 } from './calc';
 
 export type { Ref, Calculation, Collection, View, Model } from './types';
-export { ref, InvariantError, OnCollectionRelease } from './types';
+export { ref, InvariantError } from './types';
 
 export default createElement;
 

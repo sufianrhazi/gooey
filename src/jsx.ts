@@ -1,4 +1,4 @@
-import { Ref, Calculation, Collection } from './types';
+import { TypeTag, Ref, Calculation, Collection } from './types';
 
 // General component props
 type PropsWithChildren<P> = P & { children?: JSXNode[] };
@@ -34,7 +34,7 @@ export type JSXNode =
     | Collection<JSXNodeSingle>;
 
 export type RenderElement<ElementName extends keyof JSX.IntrinsicElements> = {
-    type: 'element';
+    [TypeTag]: 'element';
     element: ElementName;
     props?: JSX.IntrinsicElements[ElementName];
     children: JSXNode[];
@@ -45,15 +45,13 @@ export function isRenderElement(
     return !!(
         jsxNode &&
         typeof jsxNode === 'object' &&
-        'type' in jsxNode &&
-        jsxNode.type === 'element'
+        !Array.isArray(jsxNode) &&
+        jsxNode[TypeTag] === 'element'
     );
 }
 
-type EventHandler<T> = (event: T) => void;
-
 export type RenderComponent<Props extends {}> = {
-    type: 'component';
+    [TypeTag]: 'component';
     component: Component<Props>;
     props?: Props;
     children: JSXNode[];
@@ -64,8 +62,8 @@ export function isRenderComponent(
     return !!(
         jsxNode &&
         typeof jsxNode === 'object' &&
-        'type' in jsxNode &&
-        jsxNode.type === 'component'
+        !Array.isArray(jsxNode) &&
+        jsxNode[TypeTag] === 'component'
     );
 }
 
@@ -403,7 +401,7 @@ interface JSXElementInterface {
     translate?: '' | 'yes' | 'no' | undefined;
 }
 
-const HTMLElementMap: PropertyMap<
+export const HTMLElementMap: PropertyMap<
     JSXElementInterface,
     HTMLElement & MissingFromTypescriptHTMLElementProperties
 > = {

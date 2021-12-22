@@ -13,7 +13,7 @@ export function clearNames() {
     nameMap = new WeakMap();
 }
 
-export function debugNameFor(item: DAGNode<any>): string {
+export function debugNameFor(item: DAGNode): string {
     if (isCollection(item)) {
         return `collection:${nameMap.get(item) ?? '?'}`;
     }

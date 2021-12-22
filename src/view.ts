@@ -6,12 +6,12 @@ import {
     isCollection,
     isRef,
     ObserveKey,
+    TypeTag,
 } from './types';
 import * as log from './log';
 import {
     Component,
     JSXNode,
-    ElementProps,
     isRenderComponent,
     isRenderElement,
     getElementTypeMapping,
@@ -28,7 +28,7 @@ import {
 
 export function createElement(
     Constructor: string,
-    props?: ElementProps,
+    props?: any,
     ...children: JSXNode[]
 ): JSXNode;
 export function createElement<Props extends {}>(
@@ -43,19 +43,19 @@ export function createElement<Props extends {}>(
 ): JSXNode;
 export function createElement<Props extends {}>(
     Constructor: string | Component<Props>,
-    props?: ElementProps | Props,
+    props?: any | Props,
     ...children: JSXNode[]
 ): JSXNode {
     if (typeof Constructor === 'string') {
         return {
-            type: 'element',
+            [TypeTag]: 'element',
             element: Constructor,
             props,
             children,
         };
     }
     return {
-        type: 'component',
+        [TypeTag]: 'component',
         component: Constructor,
         props,
         children,
