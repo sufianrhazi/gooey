@@ -340,7 +340,7 @@ suite('perf tests', () => {
         unmount();
     });
 
-    test('update 1000 dom attributes in 25ms', () => {
+    test('update 1000 dom attributes in 9ms', () => {
         const COUNT = 1000;
         const Item = ({ item }: { item: Model<{ id: number }> }) => (
             <div data-whatever={calc(() => item.id)} />
@@ -356,7 +356,7 @@ suite('perf tests', () => {
         );
 
         const unmount = mount(testRoot, <Items />);
-        assert.medianRuntimeLessThan(25, (measure) => {
+        assert.medianRuntimeLessThan(9, (measure) => {
             measure(() => {
                 for (let j = 0; j < COUNT; ++j) {
                     items[j].id = items[j].id + 1;
@@ -367,19 +367,19 @@ suite('perf tests', () => {
         unmount();
     });
 
-    test('make 1000 calculations in 1ms', () => {
+    test('make 1000 calculations in 0.5ms', () => {
         const COUNT = 1000;
-        assert.medianRuntimeLessThan(1, () => {
+        assert.medianRuntimeLessThan(0.5, () => {
             for (let i = 0; i < COUNT; ++i) {
                 calc(() => i);
             }
         });
     });
 
-    test('call 1000 calculations in 1ms', () => {
+    test('call 1000 calculations in 0.25ms', () => {
         const COUNT = 1000;
         const calculations: Calculation<number>[] = [];
-        assert.medianRuntimeLessThan(1, (measure) => {
+        assert.medianRuntimeLessThan(0.25, (measure) => {
             for (let i = 0; i < COUNT; ++i) {
                 const calculation = calc(() => i);
                 retain(calculation);
@@ -397,10 +397,10 @@ suite('perf tests', () => {
         });
     });
 
-    test('allocate + retain 1000 calculations in 2ms', () => {
+    test('allocate + retain 1000 calculations in 1ms', () => {
         const COUNT = 1000;
         let calculations: Calculation<number>[] = [];
-        assert.medianRuntimeLessThan(2, (measure) => {
+        assert.medianRuntimeLessThan(1, (measure) => {
             measure(() => {
                 for (let i = 0; i < COUNT; ++i) {
                     const calculation = calc(() => i);
@@ -418,10 +418,10 @@ suite('perf tests', () => {
         });
     });
 
-    test('release 1000 calculations in 1ms', () => {
+    test('release 1000 calculations in 0.25ms', () => {
         const COUNT = 1000;
         const calculations: Calculation<number>[] = [];
-        assert.medianRuntimeLessThan(1, (measure) => {
+        assert.medianRuntimeLessThan(0.25, (measure) => {
             for (let i = 0; i < COUNT; ++i) {
                 const calculation = calc(() => i);
                 retain(calculation);
@@ -439,7 +439,7 @@ suite('perf tests', () => {
         });
     });
 
-    test('update 1000 calculations in 3ms', () => {
+    test('update 1000 calculations in 2ms', () => {
         const COUNT = 1000;
         const modelObj = model({ num: 0 });
         const calculations: Calculation<number>[] = [];
@@ -451,7 +451,7 @@ suite('perf tests', () => {
             calculation();
             calculations.push(calculation);
         }
-        assert.medianRuntimeLessThan(3, (measure) => {
+        assert.medianRuntimeLessThan(2, (measure) => {
             measure(() => {
                 modelObj.num += 1;
                 flush();
