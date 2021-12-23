@@ -92,6 +92,7 @@ const { actions, selectors } = (() => {
     const globalState = calc(() => {
         let anyReady = false;
         if (testFilesView.length === 0) return 'loading';
+        if (uiState.isActive) return 'run';
         for (const testFile of testFilesView) {
             switch (testFile.status) {
                 case 'error':
@@ -113,9 +114,11 @@ const { actions, selectors } = (() => {
     const uiState = model<{
         stopOnFailure: boolean;
         error: string | null;
+        isActive: boolean;
     }>({
         stopOnFailure: true,
         error: null,
+        isActive: false,
     });
 
     const selectors = {
@@ -127,6 +130,9 @@ const { actions, selectors } = (() => {
         getGlobalState: () => globalState,
     };
     const actions = {
+        setIsRunning: (isRunning: boolean) => {
+            uiState.isActive = isRunning;
+        },
         registerTestFile: ({
             src,
             iframe,
@@ -439,150 +445,164 @@ function initializeTestSandbox(
  * Actions
  */
 async function runTests() {
-    const allSuites: [
-        DeepReadonly<TestFileRecord>,
-        DeepReadonly<SuiteRecord>,
-        DeepReadonly<TestRecord>
-    ][] = [];
-    let toRun: [
-        DeepReadonly<TestFileRecord>,
-        DeepReadonly<SuiteRecord>,
-        DeepReadonly<TestRecord>
-    ][] = [];
+    actions.setIsRunning(true);
+    try {
+        const allSuites: [
+            DeepReadonly<TestFileRecord>,
+            DeepReadonly<SuiteRecord>,
+            DeepReadonly<TestRecord>
+        ][] = [];
+        let toRun: [
+            DeepReadonly<TestFileRecord>,
+            DeepReadonly<SuiteRecord>,
+            DeepReadonly<TestRecord>
+        ][] = [];
 
-    // Determine tests to run; clear out prior results
-    for (const testFile of selectors.getTestFiles()) {
-        actions.clearTestFileResults(testFile.src);
-        for (const suite of Object.values(testFile.suites)) {
-            if (suite.localOnly) {
-                Object.values(suite.tests).forEach((test) => {
-                    allSuites.push([testFile, suite, test]);
-                    toRun.push([testFile, suite, test]);
-                });
-            } else {
-                for (const test of Object.values(suite.tests)) {
-                    allSuites.push([testFile, suite, test]);
-                    if (test.localOnly) {
+        // Determine tests to run; clear out prior results
+        for (const testFile of selectors.getTestFiles()) {
+            actions.clearTestFileResults(testFile.src);
+            for (const suite of Object.values(testFile.suites)) {
+                if (suite.localOnly) {
+                    Object.values(suite.tests).forEach((test) => {
+                        allSuites.push([testFile, suite, test]);
                         toRun.push([testFile, suite, test]);
+                    });
+                } else {
+                    for (const test of Object.values(suite.tests)) {
+                        allSuites.push([testFile, suite, test]);
+                        if (test.localOnly) {
+                            toRun.push([testFile, suite, test]);
+                        }
                     }
                 }
             }
         }
-    }
-    if (toRun.length === 0) {
-        toRun = allSuites;
-    }
-
-    const groupedTests = groupBy2(toRun, (item) => [item[0], item[1], item[2]]);
-
-    // Run selected tests
-    for (const [testFile, suites] of groupedTests) {
-        const contentWindow = testFile.iframe.contentWindow;
-        if (!contentWindow) {
-            console.error('No content window!?');
-            continue;
+        if (toRun.length === 0) {
+            toRun = allSuites;
         }
 
-        actions.setTestFileRunning(testFile.src);
-        const failedSuites = new Set<DeepReadonly<SuiteRecord>>();
-        for (const [suite, tests] of suites) {
-            actions.setSuiteRunning(testFile.src, suite.id);
-            const failedTests = new Set<DeepReadonly<TestRecord>>();
-            for (const test of tests) {
-                actions.setTestRunning({
-                    src: testFile.src,
-                    suiteId: suite.id,
-                    testId: test.id,
-                });
-                await nextFlush();
-                const stream = requestStream(
-                    contentWindow,
-                    makeRunTestRequest({
+        const groupedTests = groupBy2(toRun, (item) => [
+            item[0],
+            item[1],
+            item[2],
+        ]);
+
+        // Run selected tests
+        for (const [testFile, suites] of groupedTests) {
+            const contentWindow = testFile.iframe.contentWindow;
+            if (!contentWindow) {
+                console.error('No content window!?');
+                continue;
+            }
+
+            actions.setTestFileRunning(testFile.src);
+            const failedSuites = new Set<DeepReadonly<SuiteRecord>>();
+            for (const [suite, tests] of suites) {
+                actions.setSuiteRunning(testFile.src, suite.id);
+                const failedTests = new Set<DeepReadonly<TestRecord>>();
+                for (const test of tests) {
+                    actions.setTestRunning({
+                        src: testFile.src,
                         suiteId: suite.id,
                         testId: test.id,
-                    })
-                );
-                for await (const msg of stream) {
-                    if (isRunUpdate(msg)) {
-                        switch (msg.type) {
-                            case 'internal':
-                                actions.setInternalError({
-                                    src: testFile.src,
-                                    suiteId: suite.id,
-                                    testId: test.id,
-                                    error: msg.error,
-                                });
-                                throw new Error('Internal error: ' + msg.error);
-                                break;
-                            case 'test': {
-                                if (msg.suiteId !== suite.id) {
+                    });
+                    await nextFlush();
+                    const stream = requestStream(
+                        contentWindow,
+                        makeRunTestRequest({
+                            suiteId: suite.id,
+                            testId: test.id,
+                        })
+                    );
+                    for await (const msg of stream) {
+                        if (isRunUpdate(msg)) {
+                            switch (msg.type) {
+                                case 'internal':
+                                    actions.setInternalError({
+                                        src: testFile.src,
+                                        suiteId: suite.id,
+                                        testId: test.id,
+                                        error: msg.error,
+                                    });
                                     throw new Error(
-                                        'Malformed message; suite mismatch'
+                                        'Internal error: ' + msg.error
                                     );
-                                }
-                                switch (msg.result) {
-                                    case 'fail':
-                                        actions.setTestFail({
-                                            src: testFile.src,
-                                            suiteId: suite.id,
-                                            testId: test.id,
-                                            error: msg.error,
-                                        });
-                                        failedSuites.add(suite);
-                                        failedTests.add(test);
-                                        if (
-                                            selectors.getUiState().stopOnFailure
-                                        ) {
-                                            actions.setSuiteDone({
+                                    break;
+                                case 'test': {
+                                    if (msg.suiteId !== suite.id) {
+                                        throw new Error(
+                                            'Malformed message; suite mismatch'
+                                        );
+                                    }
+                                    switch (msg.result) {
+                                        case 'fail':
+                                            actions.setTestFail({
                                                 src: testFile.src,
                                                 suiteId: suite.id,
-                                                numFailures: failedTests.size,
+                                                testId: test.id,
+                                                error: msg.error,
                                             });
-                                            actions.setTestFileDone({
+                                            failedSuites.add(suite);
+                                            failedTests.add(test);
+                                            if (
+                                                selectors.getUiState()
+                                                    .stopOnFailure
+                                            ) {
+                                                actions.setSuiteDone({
+                                                    src: testFile.src,
+                                                    suiteId: suite.id,
+                                                    numFailures:
+                                                        failedTests.size,
+                                                });
+                                                actions.setTestFileDone({
+                                                    src: testFile.src,
+                                                    numFailures:
+                                                        failedSuites.size,
+                                                });
+                                                return;
+                                            }
+                                            break;
+                                        case 'pass':
+                                            actions.setTestPass({
                                                 src: testFile.src,
-                                                numFailures: failedSuites.size,
+                                                suiteId: suite.id,
+                                                testId: test.id,
+                                                duration: msg.duration,
+                                                selfDuration: msg.selfDuration,
+                                                extraInfo: msg.extraInfo,
                                             });
-                                            return;
-                                        }
-                                        break;
-                                    case 'pass':
-                                        actions.setTestPass({
-                                            src: testFile.src,
-                                            suiteId: suite.id,
-                                            testId: test.id,
-                                            duration: msg.duration,
-                                            selfDuration: msg.selfDuration,
-                                            extraInfo: msg.extraInfo,
-                                        });
-                                        break;
-                                    case 'run':
-                                        break;
-                                    default:
-                                        log.assertExhausted(msg);
+                                            break;
+                                        case 'run':
+                                            break;
+                                        default:
+                                            log.assertExhausted(msg);
+                                    }
+                                    break;
                                 }
-                                break;
                             }
                         }
-                    }
-                    if (isRunResponse(msg)) {
-                        switch (msg.type) {
-                            case 'runtest':
-                                break;
+                        if (isRunResponse(msg)) {
+                            switch (msg.type) {
+                                case 'runtest':
+                                    break;
+                            }
                         }
+                        await nextFlush();
                     }
-                    await nextFlush();
                 }
+                actions.setSuiteDone({
+                    src: testFile.src,
+                    suiteId: suite.id,
+                    numFailures: failedTests.size,
+                });
             }
-            actions.setSuiteDone({
+            actions.setTestFileDone({
                 src: testFile.src,
-                suiteId: suite.id,
-                numFailures: failedTests.size,
+                numFailures: failedSuites.size,
             });
         }
-        actions.setTestFileDone({
-            src: testFile.src,
-            numFailures: failedSuites.size,
-        });
+    } finally {
+        actions.setIsRunning(false);
     }
 }
 

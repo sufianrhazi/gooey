@@ -451,18 +451,25 @@ export const assert = {
         msg?: string
     ) => {
         const runs: number[] = [];
-        for (let i = 0; i < numRuns; ++i) {
+        let isWarm = false;
+        const startTime = performance.now();
+        while (runs.length < numRuns) {
+            if (!isWarm && performance.now() - startTime > 1000) {
+                isWarm = true;
+            }
             const fnStart = performance.now();
             let didMeasure = false;
             fn((measurement) => {
                 const start = performance.now();
                 const result = measurement();
                 didMeasure = true;
-                runs.push(performance.now() - start);
+                if (isWarm) {
+                    runs.push(performance.now() - start);
+                }
                 return result;
             });
             const fnDuration = performance.now() - fnStart;
-            if (!didMeasure) {
+            if (isWarm && !didMeasure) {
                 runs.push(fnDuration);
             }
         }
