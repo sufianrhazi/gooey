@@ -266,15 +266,18 @@ export function flush() {
     needsFlush = false;
 
     // First, collect all the unreferenced nodes to avoid calculating stragglers
-    globalDependencyGraph.garbageCollect().forEach((item) => {
-        if (isCalculation(item)) {
-            log.debug('GC calculation', debugNameFor(item));
-        } else if (isCollection(item)) {
-            log.debug('GC collection', debugNameFor(item));
-        } else {
-            log.debug('GC model', debugNameFor(item));
-        }
-    });
+    const removed = globalDependencyGraph.garbageCollect();
+    if (log.getLogLevel() === 'debug') {
+        removed.forEach((item) => {
+            if (isCalculation(item)) {
+                log.debug('GC calculation', debugNameFor(item));
+            } else if (isCollection(item)) {
+                log.debug('GC collection', debugNameFor(item));
+            } else {
+                log.debug('GC model', debugNameFor(item));
+            }
+        });
+    }
 
     // Then flush dependencies in topological order
     globalDependencyGraph.visitDirtyTopological((item) => {
