@@ -13,8 +13,6 @@ import {
 import { collection } from './collection';
 import {
     untracked,
-    retain,
-    release,
     addManualDep,
     removeManualDep,
     addDepToCurrentCalculation,
@@ -111,10 +109,8 @@ export function trackedData<
             });
         }
         observers.push(observer);
-        retain(subscriptionNode);
         return () => {
             observers = observers.filter((obs) => obs !== observer);
-            release(subscriptionNode);
             if (observers.length === 0) {
                 // Deinitialize the subscription node so events are ordered correctly
                 fields.forEach((field) => {
