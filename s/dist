@@ -7,7 +7,7 @@ source "s/_tools.sh"
 
 VERSION=$(jq .version package.json)
 
-STATUS_OUT=$(git status --porcelain | wc -l)
+STATUS_OUT=$(git status --porcelain | grep -v '^M  package.json$' | wc -l)
 if [ "$STATUS_OUT" -gt 0 ]; then
     echo_error "ERROR: git state not clean, refusing to build"
     git status
