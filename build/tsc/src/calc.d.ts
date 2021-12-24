@@ -1,4 +1,4 @@
-import { Calculation, Collection, View, ModelField, EqualityFunc } from './types';
+import { Calculation, DAGNode, EqualityFunc } from './types';
 /**
  * Reset all data to a clean slate.
  */
@@ -25,10 +25,11 @@ export declare function calc<Ret>(func: () => Ret, isEqual: EqualityFunc<Ret>, d
  * desired if you want to trigger behavior only once within a computation)
  */
 export declare function effect(func: () => void, debugName?: string): Calculation<void>;
-export declare function untracked(func: () => void): void;
-export declare function addDepToCurrentCalculation<T, Ret>(item: Calculation<Ret> | ModelField<T>): void;
-export declare function addManualDep<T, V>(fromNode: Collection<T> | ModelField<T> | Calculation<T>, toNode: Collection<V> | ModelField<V> | Calculation<V>): void;
-export declare function processChange(item: ModelField<unknown> | Collection<unknown>): void;
+export declare function untracked<TRet>(func: () => TRet): TRet;
+export declare function addDepToCurrentCalculation(item: DAGNode): void;
+export declare function addManualDep(fromNode: DAGNode, toNode: DAGNode): void;
+export declare function removeManualDep(fromNode: DAGNode, toNode: DAGNode): void;
+export declare function processChange(item: DAGNode): void;
 declare type Listener = () => void;
 export declare function nextFlush(): Promise<void>;
 /**
@@ -49,12 +50,12 @@ export declare function flush(): void;
 /**
  * Retain a calculation (increase the refcount)
  */
-export declare function retain(item: Calculation<any> | Collection<any> | View<any>): void;
+export declare function retain(item: DAGNode): void;
 /**
  * Release a calculation (decrease the refcount). If the refcount reaches zero, the calculation will be garbage
  * collected.
  */
-export declare function release(item: Calculation<any> | Collection<any> | View<any>): void;
+export declare function release(item: DAGNode): void;
 /**
  * Return a graphviz formatted directed graph
  */

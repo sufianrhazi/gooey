@@ -1,12 +1,14 @@
 export class InvariantError extends Error {
 }
 export const TypeTag = Symbol('reviseType');
+export const DataTypeTag = Symbol('dataTypeTag');
 const CalculationTypeTag = Symbol('calculationType');
 export const RecalculationTag = Symbol('recalculate');
-export const OwnKeysField = Symbol('ownKeys');
 export const ObserveKey = Symbol('observe');
-export const GetRawArrayKey = Symbol('getRawArray');
+export const MakeModelViewKey = Symbol('makeModelView');
+export const DeferredKey = Symbol('deferred');
 export const FlushKey = Symbol('flush');
+export const AddDeferredWorkKey = Symbol('addDeferredWork');
 export const NotifyKey = Symbol('notifyEvent');
 export function isRef(ref) {
     return ref && ref[TypeTag] === 'ref';
@@ -20,7 +22,6 @@ export function ref(val) {
         current: val,
     };
 }
-export const OnCollectionRelease = Symbol('OnCollectionRelease');
 export function makeCalculation(fn, recalcFn) {
     return Object.assign(fn, {
         [TypeTag]: 'calculation',
@@ -36,15 +37,28 @@ export function makeEffect(fn, recalcFn) {
     });
 }
 export function isModel(thing) {
-    return !!(thing && thing[TypeTag] === 'model');
+    return !!(thing &&
+        thing[TypeTag] === 'data' &&
+        thing[DataTypeTag] === 'model');
+}
+export function isModelField(thing) {
+    return !!(thing &&
+        !thing[TypeTag] &&
+        !!thing.model &&
+        !!thing.model[DataTypeTag]);
 }
 export function isCollection(thing) {
-    return !!(thing && thing[TypeTag] === 'collection');
+    return !!(thing &&
+        thing[TypeTag] === 'data' &&
+        thing[DataTypeTag] === 'collection');
 }
 export function isCalculation(thing) {
     return !!(thing && thing[TypeTag] === 'calculation');
 }
 export function isEffect(thing) {
     return thing[CalculationTypeTag] === 'effect';
+}
+export function isSubscription(thing) {
+    return !!(thing && thing[TypeTag] === 'subscription');
 }
 //# sourceMappingURL=types.js.map

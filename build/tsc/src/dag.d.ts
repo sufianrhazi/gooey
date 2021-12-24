@@ -3,18 +3,24 @@ export declare class DAG<Type extends object> {
     private idMap;
     private nodesSet;
     private retained;
+    private dirtyNodes;
     private graph;
     private reverseGraph;
     constructor();
     private getId;
     addNode(node: Type): boolean;
     hasNode(node: Type): boolean;
+    markNodeDirty(node: Type): boolean;
     /**
      * Indicate that toNode needs to be updated if fromNode has changed
      *
      * Returns true if edge is added
      */
     addEdge(fromNode: Type, toNode: Type): boolean;
+    /**
+     * Returns true if edge is removed
+     */
+    removeEdge(fromNode: Type, toNode: Type): boolean;
     private removeNodeInner;
     /**
      * Remove a node and all its edges from the graph, returns true if node not present
@@ -28,7 +34,7 @@ export declare class DAG<Type extends object> {
      */
     getDependencies(fromNode: Type): Type[];
     /**
-     * Visit topological graph
+     * Visit dirty nodes topologically.
      *
      * When building topologically sorted list, refcount dirtiness (the number of incoming edges that are from dirty
      * nodes).
@@ -41,7 +47,7 @@ export declare class DAG<Type extends object> {
      * This way we can prevent recalculations that are triggered if the calculation is "equal".
      *
      */
-    visitTopological(callback: (node: Type) => boolean): void;
+    visitDirtyTopological(callback: (node: Type) => boolean): void;
     /**
      * All nodes that do not lead to a retained (sink) node are considered garbage.
      *
@@ -53,6 +59,9 @@ export declare class DAG<Type extends object> {
     /**
      * Generate a dot file structure of the graph
      */
-    graphviz(makeName: (label: string, item: Type) => string): string;
+    graphviz(getAttributes: (label: string, item: Type) => {
+        label: string;
+        subgraph: object | undefined;
+    }): string;
 }
 //# sourceMappingURL=dag.d.ts.map

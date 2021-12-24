@@ -1,14 +1,15 @@
+import { TypeTag } from './types';
 export function isRenderElement(jsxNode) {
     return !!(jsxNode &&
         typeof jsxNode === 'object' &&
-        'type' in jsxNode &&
-        jsxNode.type === 'element');
+        !Array.isArray(jsxNode) &&
+        jsxNode[TypeTag] === 'element');
 }
 export function isRenderComponent(jsxNode) {
     return !!(jsxNode &&
         typeof jsxNode === 'object' &&
-        'type' in jsxNode &&
-        jsxNode.type === 'component');
+        !Array.isArray(jsxNode) &&
+        jsxNode[TypeTag] === 'component');
 }
 /*
  * Interfaces adopted from HTML Living Standard Last Updated 30 November 2021: https://html.spec.whatwg.org/
@@ -36,7 +37,7 @@ function attrStringArrayToWsString(val) {
         return undefined;
     return val.join(' ');
 }
-const HTMLElementMap = {
+export const HTMLElementMap = {
     accesskey: {
         makeAttrValue: attrIdentity,
         idlName: 'accessKey',

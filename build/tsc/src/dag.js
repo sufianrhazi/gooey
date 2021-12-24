@@ -1,4 +1,5 @@
 import * as log from './log';
+import { groupBy } from './util';
 export class DAG {
     constructor() {
         Object.defineProperty(this, "nextId", {
@@ -25,6 +26,12 @@ export class DAG {
             writable: true,
             value: void 0
         });
+        Object.defineProperty(this, "dirtyNodes", {
+            enumerable: true,
+            configurable: true,
+            writable: true,
+            value: void 0
+        });
         Object.defineProperty(this, "graph", {
             enumerable: true,
             configurable: true,
@@ -43,6 +50,7 @@ export class DAG {
         this.retained = {};
         this.graph = {};
         this.reverseGraph = {};
+        this.dirtyNodes = {};
     }
     getId(node) {
         let id = this.idMap.get(node);
@@ -65,6 +73,13 @@ export class DAG {
     hasNode(node) {
         return !!this.nodesSet[this.getId(node)];
     }
+    markNodeDirty(node) {
+        const nodeId = this.getId(node);
+        if (this.dirtyNodes[nodeId])
+            return false;
+        this.dirtyNodes[nodeId] = true;
+        return true;
+    }
     /**
      * Indicate that toNode needs to be updated if fromNode has changed
      *
@@ -79,7 +94,24 @@ export class DAG {
         this.reverseGraph[toId][fromId] = true;
         return true;
     }
+    /**
+     * Returns true if edge is removed
+     */
+    removeEdge(fromNode, toNode) {
+        const fromId = this.getId(fromNode);
+        const toId = this.getId(toNode);
+        if (!this.nodesSet[fromId])
+            return false;
+        if (!this.nodesSet[toId])
+            return false;
+        if (!this.graph[fromId][toId])
+            return false;
+        delete this.graph[fromId][toId];
+        delete this.reverseGraph[toId][fromId];
+        return true;
+    }
     removeNodeInner(nodeId) {
+        log.assert(!this.retained[nodeId], 'attempted to remove a retained node'); // Is this right?
         const toIds = Object.keys(this.graph[nodeId]);
         const fromIds = Object.keys(this.reverseGraph[nodeId]);
         // delete fromId -> nodeId for fromId in fromIds
@@ -93,6 +125,8 @@ export class DAG {
         delete this.reverseGraph[nodeId];
         delete this.graph[nodeId];
         delete this.nodesSet[nodeId];
+        delete this.dirtyNodes[nodeId];
+        delete this.retained[nodeId];
     }
     /**
      * Remove a node and all its edges from the graph, returns true if node not present
@@ -132,7 +166,7 @@ export class DAG {
         return Object.keys(this.graph[nodeId]).map((toId) => this.nodesSet[toId]);
     }
     /**
-     * Visit topological graph
+     * Visit dirty nodes topologically.
      *
      * When building topologically sorted list, refcount dirtiness (the number of incoming edges that are from dirty
      * nodes).
@@ -145,22 +179,11 @@ export class DAG {
      * This way we can prevent recalculations that are triggered if the calculation is "equal".
      *
      */
-    visitTopological(callback) {
-        // Nodes with no incoming edges must have a dirty count of 1.
-        const dirtyCount = {};
-        const entryNodes = new Set();
-        Object.keys(this.reverseGraph).forEach((toId) => {
-            const fromIds = Object.keys(this.reverseGraph[toId]);
-            if (fromIds.length === 0) {
-                entryNodes.add(toId);
-                dirtyCount[toId] = 1;
-            }
-            else {
-                dirtyCount[toId] = fromIds.length;
-            }
-        });
-        // Build topologically sorted list via DFS visiting exactly once
-        // - When exiting an unvisited node, push to the end of a list
+    visitDirtyTopological(callback) {
+        // Clear the current set of dirty nodes, retaining the ones visited.
+        const dirtyNodes = this.dirtyNodes;
+        this.dirtyNodes = {};
+        // Build topologically sorted list via DFS discoverable only from dirty nodes.
         // After visiting all nodes, the list is in reverse topological order
         const visited = {};
         const sortedIds = [];
@@ -174,28 +197,24 @@ export class DAG {
             });
             sortedIds.push(nodeId);
         };
-        Object.keys(this.graph).forEach((nodeId) => {
+        Object.keys(dirtyNodes).forEach((nodeId) => {
             dfsRecurse(nodeId);
         });
-        // Visit the dirty nodes in topological order. If after visiting the node is unchanged, we can decrement the
-        // refcount for all its destination edges.
+        // Visit the dirty nodes in topological order.
+        // If a node is not dirty, skip it.
+        // If a node is dirty and the visitor returns true, the node is considered "not dirty" and processing continues
+        // If a node is dirty and the visitor returns false, the node is considered "dirty" and all adjacent destination nodes are marked as dirty.
         for (let i = sortedIds.length - 1; i >= 0; --i) {
             const nodeId = sortedIds[i];
-            if (dirtyCount[nodeId] > 0) {
+            if (dirtyNodes[nodeId]) {
                 const node = this.nodesSet[nodeId];
                 const isEqual = callback(node);
-                if (isEqual) {
+                if (!isEqual) {
                     const toIds = Object.keys(this.graph[nodeId]);
                     toIds.forEach((toId) => {
-                        dirtyCount[toId] -= 1;
+                        dirtyNodes[toId] = true;
                     });
                 }
-            }
-            else {
-                const toIds = Object.keys(this.graph[nodeId]);
-                toIds.forEach((toId) => {
-                    dirtyCount[toId] -= 1;
-                });
             }
         }
     }
@@ -234,19 +253,37 @@ export class DAG {
     /**
      * Generate a dot file structure of the graph
      */
-    graphviz(makeName) {
-        const lines = ['digraph dag {'];
-        Object.keys(this.graph).forEach((nodeId) => {
-            const node = this.nodesSet[nodeId];
-            const props = {
-                shape: this.retained[nodeId] ? 'box' : 'ellipse',
-                label: makeName(nodeId, node),
-            };
-            lines.push(`  item_${nodeId} [${Object.entries(props)
-                .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
-                .join(',')}];`);
+    graphviz(getAttributes) {
+        const lines = [
+            'digraph dag {',
+            'graph [rankdir="LR"];',
+            'node [style="filled", fillcolor="#DDDDDD"];',
+        ];
+        const nodeIds = Object.keys(this.graph);
+        const nodeAttributes = {};
+        nodeIds.forEach((nodeId) => {
+            nodeAttributes[nodeId] = getAttributes(nodeId, this.nodesSet[nodeId]);
         });
-        Object.keys(this.graph).forEach((fromId) => {
+        const groupedNodes = groupBy(nodeIds, (nodeId) => {
+            return [nodeAttributes[nodeId].subgraph, nodeId];
+        });
+        let clusterId = 0;
+        groupedNodes.forEach((nodeIds, group) => {
+            if (group)
+                lines.push(`subgraph cluster_${clusterId++} {`, 'style="filled";', 'color="#AAAAAA";');
+            nodeIds.forEach((nodeId) => {
+                const props = {
+                    shape: this.retained[nodeId] ? 'box' : 'ellipse',
+                    label: nodeAttributes[nodeId].label,
+                };
+                lines.push(`  item_${nodeId} [${Object.entries(props)
+                    .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+                    .join(',')}];`);
+            });
+            if (group)
+                lines.push('}');
+        });
+        nodeIds.forEach((fromId) => {
             Object.keys(this.graph[fromId]).forEach((toId) => {
                 lines.push(`  item_${fromId} -> item_${toId};`);
             });

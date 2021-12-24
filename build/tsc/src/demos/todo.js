@@ -1,5 +1,22 @@
-import Revise, { mount, Fragment, ref, model, collection, calc, debug, setLogLevel, } from '../index';
-setLogLevel('debug');
+import { graphviz } from '@hpcc-js/wasm';
+import Revise, { Fragment, calc, collection, debug, flush, model, mount, ref, subscribe, } from '../index';
+const graphvizRef = ref();
+function debugGraph() {
+    graphviz.layout(debug(), 'svg', 'dot').then((svg) => {
+        if (graphvizRef.current) {
+            graphvizRef.current.innerHTML = svg;
+        }
+    });
+}
+subscribe(() => {
+    setTimeout(() => {
+        flush();
+        debugGraph();
+    }, 0);
+});
+setTimeout(() => {
+    debugGraph();
+}, 0);
 function makeTodoListItem(task) {
     return model({ done: false, task }, `TodoItem:${task}`);
 }
@@ -27,7 +44,7 @@ const TodoItem = ({ item }) => {
 };
 const TodoList = () => {
     return (Revise("div", { class: "my-2" },
-        Revise("ul", { class: "list-group" }, calc(() => globalState.items.mapView((item) => (Revise(TodoItem, { item: item }))), 'ItemList'))));
+        Revise("ul", { class: "list-group" }, calc(() => globalState.items.mapView((item) => Revise(TodoItem, { item: item }), 'globalState.items.mapView'), 'ItemList'))));
 };
 const TodoControls = (_props, { onMount }) => {
     const inputRef = ref();
@@ -73,17 +90,11 @@ const TodoControls = (_props, { onMount }) => {
             Revise("button", { class: "btn btn-secondary", disabled: calc(() => globalState.items.every((item) => !item.done), 'ClearButtonDisabled'), "on:click": onClickClear }, "Clear completed"))));
 };
 const App = () => {
-    const graphvizContainerRef = ref();
     const onClickMutate = () => {
         globalState.items.forEach((item) => {
             item.done = Math.random() < 0.5;
             item.task = item.task + '!';
         });
-    };
-    const onClickDebug = () => {
-        if (graphvizContainerRef.current) {
-            graphvizContainerRef.current.textContent = debug();
-        }
     };
     return (Revise(Fragment, null,
         Revise("div", { class: "container" },
@@ -94,10 +105,9 @@ const App = () => {
             Revise(TodoControls, null),
             Revise("hr", { class: "my-4 border border-2 border-dark" }),
             Revise("div", { class: "input-group mb-3" },
-                Revise("button", { class: "btn btn-warning", "on:click": onClickMutate }, "Mutate items"),
-                Revise("button", { class: "btn btn-outline-warning", "on:click": onClickDebug }, "Show graphviz"))),
+                Revise("button", { class: "btn btn-warning", "on:click": onClickMutate }, "Mutate items"))),
         Revise("div", { class: "container-fluid d-flex my-4 justify-content-center" },
-            Revise("pre", { class: "border", ref: graphvizContainerRef }))));
+            Revise("div", { class: "border", ref: graphvizRef }))));
 };
 const root = document.getElementById('app');
 if (root) {

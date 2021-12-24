@@ -9,7 +9,6 @@ import { JSXNode } from './jsx';
 export declare type ChildVNode = {
     domNode: Node | null;
     children: VNode[];
-    parentNode: VNode;
     domParent: VNode;
     mountFragment: DocumentFragment | null;
     jsxNode: JSXNode | null;
@@ -19,7 +18,6 @@ export declare type ChildVNode = {
 export declare type RootVNode = {
     domNode: Node | null;
     children: VNode[];
-    parentNode: null;
     domParent: VNode;
     mountFragment: DocumentFragment | null;
     jsxNode: JSXNode | null;
@@ -30,8 +28,7 @@ export declare type VNode = ChildVNode | RootVNode;
 export declare function makeRootVNode({ domNode }: {
     domNode: Node;
 }): RootVNode;
-export declare function makeChildVNode({ jsxNode, domNode, domParent, onMount, onUnmount, parentNode, }: {
-    parentNode: VNode;
+export declare function makeChildVNode({ jsxNode, domNode, domParent, onMount, onUnmount, }: {
     domParent: VNode;
     jsxNode: JSXNode | null;
     domNode: Node | null;
@@ -40,5 +37,8 @@ export declare function makeChildVNode({ jsxNode, domNode, domParent, onMount, o
 }): ChildVNode;
 export declare function callOnMount(node: VNode): void;
 export declare function mountVNode(vNode: VNode): void;
-export declare function spliceVNode(immediateParent: VNode, childIndex: number, removeCount: number, newNodes: VNode[]): VNode[];
+export declare function spliceVNode(immediateParent: VNode, childIndex: number, removeCount: number, newNodes: VNode[], { runOnMount, runOnUnmount }?: {
+    runOnMount?: boolean | undefined;
+    runOnUnmount?: boolean | undefined;
+}): VNode[];
 //# sourceMappingURL=vnode.d.ts.map

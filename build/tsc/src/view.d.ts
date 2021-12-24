@@ -1,5 +1,5 @@
-import { Component, JSXNode, ElementProps } from './jsx';
-export declare function createElement(Constructor: string, props?: ElementProps, ...children: JSXNode[]): JSXNode;
+import { Component, JSXNode } from './jsx';
+export declare function createElement(Constructor: string, props?: any, ...children: JSXNode[]): JSXNode;
 export declare function createElement<Props extends {}>(Constructor: Component<Props>, props?: Props, ...children: JSXNode[]): JSXNode;
 export declare function createElement<Props extends {}>(Constructor: Component<Props>, props?: Props, ...children: JSXNode[]): JSXNode;
 /**

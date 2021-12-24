@@ -1,6 +1,5 @@
 .gitkeep
 /node_modules/
-/build/
 /demos/*.js
 /demos/*.js.map
 /demos-manifest.json

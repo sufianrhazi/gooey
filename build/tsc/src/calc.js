@@ -1,17 +1,15 @@
-import { InvariantError, FlushKey, isCalculation, isCollection, makeCalculation, makeEffect, RecalculationTag, } from './types';
+import { InvariantError, FlushKey, isCalculation, isCollection, isModel, isModelField, makeCalculation, makeEffect, RecalculationTag, } from './types';
 import * as log from './log';
 import { DAG } from './dag';
 import { noop, alwaysFalse, strictEqual } from './util';
 import { clearNames, debugNameFor, name } from './debug';
 let activeCalculations = [];
-let partialDag = new DAG();
 let globalDependencyGraph = new DAG();
 let refcountMap = new WeakMap();
 /**
  * Reset all data to a clean slate.
  */
 export function reset() {
-    partialDag = new DAG();
     activeCalculations = [];
     globalDependencyGraph = new DAG();
     refcountMap = new WeakMap();
@@ -48,8 +46,9 @@ export function effect(func, debugName) {
 }
 export function untracked(func) {
     activeCalculations.push(null);
-    func();
+    const result = func();
     activeCalculations.pop();
+    return result;
 }
 function trackCalculation(func, isEqual, isEffect) {
     if (typeof func !== 'function') {
@@ -106,7 +105,8 @@ export function addDepToCurrentCalculation(item) {
             globalDependencyGraph.addNode(dependentCalculation);
         }
         if (globalDependencyGraph.addEdge(item, dependentCalculation)) {
-            log.debug('New global dependency', debugNameFor(item), '->', debugNameFor(dependentCalculation));
+            DEBUG &&
+                log.debug('New global dependency', debugNameFor(item), '->', debugNameFor(dependentCalculation));
         }
     }
 }
@@ -114,30 +114,25 @@ export function addManualDep(fromNode, toNode) {
     globalDependencyGraph.addNode(fromNode);
     globalDependencyGraph.addNode(toNode);
     if (globalDependencyGraph.addEdge(fromNode, toNode)) {
-        log.debug('New manual dependency', debugNameFor(fromNode), '->', debugNameFor(toNode));
+        DEBUG &&
+            log.debug('New manual dependency', debugNameFor(fromNode), '->', debugNameFor(toNode));
+    }
+}
+export function removeManualDep(fromNode, toNode) {
+    if (globalDependencyGraph.removeEdge(fromNode, toNode)) {
+        DEBUG &&
+            log.debug('Removed manual dependency', debugNameFor(fromNode), '->', debugNameFor(toNode));
     }
 }
 export function processChange(item) {
-    const chain = [];
-    const addNode = (node) => {
-        chain.push(debugNameFor(node));
-        partialDag.addNode(node);
-        const dependencies = globalDependencyGraph.getDependencies(node);
-        dependencies.forEach((dependentItem) => {
-            if (!partialDag.hasNode(dependentItem)) {
-                addNode(dependentItem);
-            }
-            if (partialDag.addEdge(node, dependentItem)) {
-                log.debug('New local dependency', debugNameFor(item), '->', debugNameFor(dependentItem));
-            }
-            if (!needsFlush) {
-                needsFlush = true;
-                notify();
-            }
-        });
-    };
-    addNode(item);
-    log.debug('processChange', chain);
+    const newNode = globalDependencyGraph.addNode(item);
+    const marked = globalDependencyGraph.markNodeDirty(item);
+    DEBUG &&
+        log.debug('processChange', item, newNode ? 'new' : 'existing', marked ? 'fresh' : 'stale');
+    if (!needsFlush) {
+        needsFlush = true;
+        notify();
+    }
 }
 let needsFlush = false;
 let flushPromise = Promise.resolve();
@@ -183,34 +178,37 @@ export function flush() {
         return;
     }
     needsFlush = false;
-    const oldPartialDag = partialDag;
-    partialDag = new DAG();
     // First, collect all the unreferenced nodes to avoid calculating stragglers
-    globalDependencyGraph.garbageCollect().forEach((item) => {
-        if (isCalculation(item)) {
-            log.debug('GC calculation', debugNameFor(item));
-        }
-        else if (isCollection(item)) {
-            log.debug('GC collection', debugNameFor(item));
-        }
-        else {
-            log.debug('GC model', debugNameFor(item));
-        }
-        oldPartialDag.removeNode(item);
-    });
+    const removed = globalDependencyGraph.garbageCollect();
+    DEBUG &&
+        removed.forEach((item) => {
+            if (isCalculation(item)) {
+                log.debug('GC calculation', debugNameFor(item));
+            }
+            else if (isCollection(item)) {
+                log.debug('GC collection', debugNameFor(item));
+            }
+            else {
+                log.debug('GC model', debugNameFor(item));
+            }
+        });
     // Then flush dependencies in topological order
-    oldPartialDag.visitTopological((item) => {
+    globalDependencyGraph.visitDirtyTopological((item) => {
         if (isCalculation(item)) {
-            log.debug('flushing calculation', debugNameFor(item));
+            DEBUG && log.debug('flushing calculation', debugNameFor(item));
             const recalculation = item[RecalculationTag];
             return recalculation();
         }
         else if (isCollection(item)) {
-            log.debug('flushing collection', debugNameFor(item));
+            DEBUG && log.debug('flushing collection', debugNameFor(item));
+            item[FlushKey]();
+        }
+        else if (isModel(item)) {
+            DEBUG && log.debug('flushing model', debugNameFor(item));
             item[FlushKey]();
         }
         else {
-            log.debug('flushing model', debugNameFor(item));
+            DEBUG && log.debug('flushing other', debugNameFor(item));
         }
         return false;
     });
@@ -224,14 +222,16 @@ export function retain(item) {
     const refcount = (_a = refcountMap.get(item)) !== null && _a !== void 0 ? _a : 0;
     const newRefcount = refcount + 1;
     if (refcount === 0) {
-        log.debug(`retain ${debugNameFor(item)} retained; refcount ${refcount} -> ${newRefcount}`);
+        DEBUG &&
+            log.debug(`retain ${debugNameFor(item)} retained; refcount ${refcount} -> ${newRefcount}`);
         if (!globalDependencyGraph.hasNode(item)) {
             globalDependencyGraph.addNode(item);
         }
         globalDependencyGraph.retain(item);
     }
     else {
-        log.debug(`retain ${debugNameFor(item)} incremented; refcount ${refcount} -> ${newRefcount}`);
+        DEBUG &&
+            log.debug(`retain ${debugNameFor(item)} incremented; refcount ${refcount} -> ${newRefcount}`);
     }
     refcountMap.set(item, newRefcount);
 }
@@ -247,11 +247,13 @@ export function release(item) {
         log.error(`release called on unretained item ${debugNameFor(item)}`, item);
     }
     if (newRefcount < 1) {
-        log.debug(`release ${debugNameFor(item)} released; refcount ${refcount} -> ${newRefcount}`);
+        DEBUG &&
+            log.debug(`release ${debugNameFor(item)} released; refcount ${refcount} -> ${newRefcount}`);
         globalDependencyGraph.release(item);
     }
     else {
-        log.debug(`release ${debugNameFor(item)} decremented; refcount ${refcount} -> ${newRefcount}`);
+        DEBUG &&
+            log.debug(`release ${debugNameFor(item)} decremented; refcount ${refcount} -> ${newRefcount}`);
     }
     refcountMap.set(item, newRefcount);
 }
@@ -260,7 +262,20 @@ export function release(item) {
  */
 export function debug() {
     return globalDependencyGraph.graphviz((id, item) => {
-        return `${id}\n${debugNameFor(item)}`;
+        let subgraph = undefined;
+        if (isModel(item)) {
+            subgraph = item;
+        }
+        if (isCollection(item)) {
+            subgraph = item;
+        }
+        if (isModelField(item)) {
+            subgraph = item.model;
+        }
+        return {
+            label: `${id}\n${debugNameFor(item)}`,
+            subgraph,
+        };
     });
 }
 //# sourceMappingURL=calc.js.map

@@ -4,7 +4,6 @@ export function makeRootVNode({ domNode }) {
     const rootVNode = {
         domNode,
         children: [],
-        parentNode: null,
         domParent: null,
         mountFragment: document.createDocumentFragment(),
         jsxNode: null,
@@ -14,13 +13,12 @@ export function makeRootVNode({ domNode }) {
     rootVNode.domParent = rootVNode;
     return rootVNode;
 }
-export function makeChildVNode({ jsxNode, domNode, domParent, onMount, onUnmount, parentNode, }) {
+export function makeChildVNode({ jsxNode, domNode, domParent, onMount, onUnmount, }) {
     return {
         domNode,
         children: [],
-        parentNode,
         domParent,
-        mountFragment: document.createDocumentFragment(),
+        mountFragment: domNode ? document.createDocumentFragment() : null,
         jsxNode,
         onMount,
         onUnmount,
@@ -127,7 +125,7 @@ export function mountVNode(vNode) {
         vNode.domParent.mountFragment.appendChild(vNode.domNode);
     }
 }
-export function spliceVNode(immediateParent, childIndex, removeCount, newNodes) {
+export function spliceVNode(immediateParent, childIndex, removeCount, newNodes, { runOnMount = true, runOnUnmount = true } = {}) {
     let domParent;
     if (immediateParent.children[childIndex]) {
         domParent = immediateParent.children[childIndex].domParent;
@@ -143,7 +141,9 @@ export function spliceVNode(immediateParent, childIndex, removeCount, newNodes) 
     // Remove nodes, optimizing for array replacement, where all nodes are completely removed via .replaceChildren()
     const toRemove = [];
     detachedVNodes.forEach((detachedVNode) => {
-        callOnUnmount(detachedVNode);
+        if (runOnUnmount) {
+            callOnUnmount(detachedVNode);
+        }
         const nodesToRemove = getShallowNodes(detachedVNode);
         nodesToRemove.forEach((node) => {
             if (node.parentNode) {
@@ -171,7 +171,6 @@ export function spliceVNode(immediateParent, childIndex, removeCount, newNodes) 
         const fragment = document.createDocumentFragment();
         for (let i = 0; i < newNodes.length; ++i) {
             const newNode = newNodes[i];
-            newNode.parentNode = immediateParent;
             newNode.domParent = domParent;
             const nodesToAdd = getShallowNodes(newNode);
             nodesToAdd.forEach((addNode) => {
@@ -179,9 +178,11 @@ export function spliceVNode(immediateParent, childIndex, removeCount, newNodes) 
             });
         }
         domParentNode.insertBefore(fragment, referenceNode || null);
-        newNodes.forEach((newNode) => {
-            callOnMount(newNode);
-        });
+        if (runOnMount) {
+            newNodes.forEach((newNode) => {
+                callOnMount(newNode);
+            });
+        }
     }
     return detachedVNodes;
 }

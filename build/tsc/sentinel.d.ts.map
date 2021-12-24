@@ -1,1 +1,0 @@
-{"version":3,"file":"sentinel.d.ts","sourceRoot":"","sources":["../../src/sentinel.ts"],"names":[],"mappings":"AAAA,OAAO,CAAC,MAAM,cAAc,EAAE,OAAO,MAAM,CAAC;AAE5C;;GAEG;AACH,oBAAY,QAAQ,GAAG,QAAQ,CAAC;IAC5B,CAAC,cAAc,CAAC,EAAE,IAAI,CAAC;CAC1B,CAAC,CAAC;AAEH,eAAO,MAAM,QAAQ;sBAHC,IAAI;EAGY,CAAC;AAEvC,eAAO,MAAM,UAAU,UAAW,GAAG;sBALf,IAAI;EAOzB,CAAC"}

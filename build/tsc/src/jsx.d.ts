@@ -1,4 +1,4 @@
-import { Ref, Calculation, Collection } from './types';
+import { TypeTag, Ref, Calculation, Collection } from './types';
 declare type PropsWithChildren<P> = P & {
     children?: JSXNode[];
 };
@@ -18,19 +18,14 @@ declare type JsxRawNode = string | number | boolean | null | undefined | Functio
 declare type JSXNodeSingle = JsxRawNode | Calculation<JsxRawNode> | Calculation<JsxRawNode[]> | RenderElement<any> | RenderComponent<any>;
 export declare type JSXNode = JSXNodeSingle | JSXNodeSingle[] | Collection<JSXNodeSingle>;
 export declare type RenderElement<ElementName extends keyof JSX.IntrinsicElements> = {
-    type: 'element';
+    [TypeTag]: 'element';
     element: ElementName;
     props?: JSX.IntrinsicElements[ElementName];
     children: JSXNode[];
 };
 export declare function isRenderElement(jsxNode: JSXNode): jsxNode is RenderElement<any>;
-declare type EventHandler<T> = (event: T) => void;
-export declare type ElementProps = {} & {
-    [key: `on:${string}`]: EventHandler<Event>;
-    [key: string]: Function | string | number | boolean | null | undefined | Calculation<() => Function | string | number | boolean | null | undefined>;
-};
 export declare type RenderComponent<Props extends {}> = {
-    type: 'component';
+    [TypeTag]: 'component';
     component: Component<Props>;
     props?: Props;
     children: JSXNode[];
@@ -155,6 +150,7 @@ interface JSXElementInterface {
     title?: string | undefined;
     translate?: '' | 'yes' | 'no' | undefined;
 }
+export declare const HTMLElementMap: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
 interface JSXAnchorElementInterface extends JSXElementInterface {
     /** Address of the hyperlink */
     href?: string | undefined;
