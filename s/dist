@@ -4,14 +4,24 @@ cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source "s/_tools.sh"
 
+
 VERSION=$(jq .version package.json)
 
-echo_warn "Cleaning..."
+STATUS_OUT=$(git status --porcelain | wc -l)
+if [ "$STATUS_OUT" -gt 0 ]; then
+    echo_error "ERROR: git state not clean, refusing to build"
+    git status
+    exit 1
+fi
+
+# Start from a clean slate
 s/clean
+
+echo_warn "rm -rf build/"
+rm -rf build/
 
 echo_info "Building via tsc..."
 node_modules/.bin/tsc -p .
-
 echo_info "Bundling esm..."
 node_modules/.bin/esbuild build/tsc/src/index.js --define:DEBUG=false --define:VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=esm --outdir=build/esm
 echo_info "Bundling cjs..."
@@ -20,6 +30,7 @@ echo_info "Bundling iife..."
 node_modules/.bin/esbuild build/tsc/src/index.js --define:DEBUG=false --define:VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=iife --global-name=Revise --outfile=build/browser/index.js
 echo_info "Bundling minified iife..."
 node_modules/.bin/esbuild build/tsc/src/index.js --define:DEBUG=false --define:VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=iife --global-name=Revise --minify --outfile=build/browser/index.min.js
+git add .
 
 echo_warn "Running tests + performance tests to confirm..."
 s/test --perf

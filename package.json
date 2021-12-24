@@ -2,7 +2,7 @@
   "name": "@srhazi/revise",
   "version": "0.2.0",
   "description": "A minimal effort UI library",
-  "main": "build/cjs/index.js",
+  "main": "build/esm/index.js",
   "type": "module",
   "types": "build/tsc/src/index.d.ts",
   "scripts": {

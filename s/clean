@@ -4,6 +4,11 @@ cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source "s/_tools.sh"
 
+echo_info "Checking requirements..."
 s/check_requirements
-git clean -f -d build/
+
+echo_info "Installing dependencies..."
 yarn
+
+echo_info "Cleaning git..."
+git clean -i

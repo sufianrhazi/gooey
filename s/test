@@ -4,6 +4,12 @@ cd "$(dirname "$0")/.."
 # shellcheck disable=SC1091
 source "s/_tools.sh"
 
+echo_info "Checking requirements..."
+s/check_requirements
+
+echo_info "Installing dependencies..."
+yarn
+
 ARG="$1"
 
 if [ "$ARG" == "-h" ] || [ "$ARG" == "--help" ]; then
@@ -13,9 +19,6 @@ fi
 if [ "$ARG" != "--perf" ]; then
     echo_warn "Note: not running performance tests"
 fi
-
-echo_info "Cleaning..."
-s/clean
 
 find src -type f -name '*.test.*' | while read -r TEST_SRC; do
     if [ "$TEST_SRC" != "src/performance.test.tsx" ] || [ "$ARG" == "--perf" ]; then
