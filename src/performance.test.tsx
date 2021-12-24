@@ -367,9 +367,9 @@ suite('perf tests', () => {
         unmount();
     });
 
-    test('make 1000 calculations in 0.5ms', () => {
+    test('make 1000 calculations in 0.75ms', () => {
         const COUNT = 1000;
-        assert.medianRuntimeLessThan(0.5, () => {
+        assert.medianRuntimeLessThan(0.75, () => {
             for (let i = 0; i < COUNT; ++i) {
                 calc(() => i);
             }
@@ -397,10 +397,10 @@ suite('perf tests', () => {
         });
     });
 
-    test('allocate + retain 1000 calculations in 1ms', () => {
+    test('allocate + retain 1000 calculations in 1.5ms', () => {
         const COUNT = 1000;
         let calculations: Calculation<number>[] = [];
-        assert.medianRuntimeLessThan(1, (measure) => {
+        assert.medianRuntimeLessThan(1.5, (measure) => {
             measure(() => {
                 for (let i = 0; i < COUNT; ++i) {
                     const calculation = calc(() => i);
