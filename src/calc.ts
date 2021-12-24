@@ -168,12 +168,13 @@ export function addDepToCurrentCalculation(item: DAGNode) {
             globalDependencyGraph.addNode(dependentCalculation);
         }
         if (globalDependencyGraph.addEdge(item, dependentCalculation)) {
-            log.debug(
-                'New global dependency',
-                debugNameFor(item),
-                '->',
-                debugNameFor(dependentCalculation)
-            );
+            DEBUG &&
+                log.debug(
+                    'New global dependency',
+                    debugNameFor(item),
+                    '->',
+                    debugNameFor(dependentCalculation)
+                );
         }
     }
 }
@@ -182,35 +183,38 @@ export function addManualDep(fromNode: DAGNode, toNode: DAGNode) {
     globalDependencyGraph.addNode(fromNode);
     globalDependencyGraph.addNode(toNode);
     if (globalDependencyGraph.addEdge(fromNode, toNode)) {
-        log.debug(
-            'New manual dependency',
-            debugNameFor(fromNode),
-            '->',
-            debugNameFor(toNode)
-        );
+        DEBUG &&
+            log.debug(
+                'New manual dependency',
+                debugNameFor(fromNode),
+                '->',
+                debugNameFor(toNode)
+            );
     }
 }
 
 export function removeManualDep(fromNode: DAGNode, toNode: DAGNode) {
     if (globalDependencyGraph.removeEdge(fromNode, toNode)) {
-        log.debug(
-            'Removed manual dependency',
-            debugNameFor(fromNode),
-            '->',
-            debugNameFor(toNode)
-        );
+        DEBUG &&
+            log.debug(
+                'Removed manual dependency',
+                debugNameFor(fromNode),
+                '->',
+                debugNameFor(toNode)
+            );
     }
 }
 
 export function processChange(item: DAGNode) {
     const newNode = globalDependencyGraph.addNode(item);
     const marked = globalDependencyGraph.markNodeDirty(item);
-    log.debug(
-        'processChange',
-        item,
-        newNode ? 'new' : 'existing',
-        marked ? 'fresh' : 'stale'
-    );
+    DEBUG &&
+        log.debug(
+            'processChange',
+            item,
+            newNode ? 'new' : 'existing',
+            marked ? 'fresh' : 'stale'
+        );
     if (!needsFlush) {
         needsFlush = true;
         notify();
@@ -267,7 +271,7 @@ export function flush() {
 
     // First, collect all the unreferenced nodes to avoid calculating stragglers
     const removed = globalDependencyGraph.garbageCollect();
-    if (log.getLogLevel() === 'debug') {
+    DEBUG &&
         removed.forEach((item) => {
             if (isCalculation(item)) {
                 log.debug('GC calculation', debugNameFor(item));
@@ -277,22 +281,21 @@ export function flush() {
                 log.debug('GC model', debugNameFor(item));
             }
         });
-    }
 
     // Then flush dependencies in topological order
     globalDependencyGraph.visitDirtyTopological((item) => {
         if (isCalculation(item)) {
-            log.debug('flushing calculation', debugNameFor(item));
+            DEBUG && log.debug('flushing calculation', debugNameFor(item));
             const recalculation = item[RecalculationTag];
             return recalculation();
         } else if (isCollection(item)) {
-            log.debug('flushing collection', debugNameFor(item));
+            DEBUG && log.debug('flushing collection', debugNameFor(item));
             item[FlushKey]();
         } else if (isModel(item)) {
-            log.debug('flushing model', debugNameFor(item));
+            DEBUG && log.debug('flushing model', debugNameFor(item));
             item[FlushKey]();
         } else {
-            log.debug('flushing other', debugNameFor(item));
+            DEBUG && log.debug('flushing other', debugNameFor(item));
         }
         return false;
     });
@@ -307,21 +310,23 @@ export function retain(item: DAGNode) {
     const refcount = refcountMap.get(item) ?? 0;
     const newRefcount = refcount + 1;
     if (refcount === 0) {
-        log.debug(
-            `retain ${debugNameFor(
-                item
-            )} retained; refcount ${refcount} -> ${newRefcount}`
-        );
+        DEBUG &&
+            log.debug(
+                `retain ${debugNameFor(
+                    item
+                )} retained; refcount ${refcount} -> ${newRefcount}`
+            );
         if (!globalDependencyGraph.hasNode(item)) {
             globalDependencyGraph.addNode(item);
         }
         globalDependencyGraph.retain(item);
     } else {
-        log.debug(
-            `retain ${debugNameFor(
-                item
-            )} incremented; refcount ${refcount} -> ${newRefcount}`
-        );
+        DEBUG &&
+            log.debug(
+                `retain ${debugNameFor(
+                    item
+                )} incremented; refcount ${refcount} -> ${newRefcount}`
+            );
     }
     refcountMap.set(item, newRefcount);
 }
@@ -340,18 +345,20 @@ export function release(item: DAGNode) {
         );
     }
     if (newRefcount < 1) {
-        log.debug(
-            `release ${debugNameFor(
-                item
-            )} released; refcount ${refcount} -> ${newRefcount}`
-        );
+        DEBUG &&
+            log.debug(
+                `release ${debugNameFor(
+                    item
+                )} released; refcount ${refcount} -> ${newRefcount}`
+            );
         globalDependencyGraph.release(item);
     } else {
-        log.debug(
-            `release ${debugNameFor(
-                item
-            )} decremented; refcount ${refcount} -> ${newRefcount}`
-        );
+        DEBUG &&
+            log.debug(
+                `release ${debugNameFor(
+                    item
+                )} decremented; refcount ${refcount} -> ${newRefcount}`
+            );
     }
     refcountMap.set(item, newRefcount);
 }

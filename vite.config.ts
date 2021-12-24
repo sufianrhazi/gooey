@@ -25,4 +25,7 @@ export default defineConfig({
             },
         },
     },
+    define: {
+        DEBUG: false,
+    },
 });

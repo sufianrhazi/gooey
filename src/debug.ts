@@ -14,6 +14,9 @@ export function clearNames() {
 }
 
 export function debugNameFor(item: DAGNode): string {
+    if (!DEBUG) {
+        return '';
+    }
     if (isCollection(item)) {
         return `collection:${nameMap.get(item) ?? '?'}`;
     }
@@ -32,6 +35,7 @@ export function debugNameFor(item: DAGNode): string {
 }
 
 export function name<T>(item: T, name: string): T {
+    if (!DEBUG) return item;
     nameMap.set(item, name);
     return item;
 }
