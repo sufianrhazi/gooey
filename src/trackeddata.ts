@@ -5,6 +5,7 @@ import {
     AddDeferredWorkKey,
     FlushKey,
     ObserveKey,
+    NotifyKey,
     TypeTag,
     DataTypeTag,
     ModelField,
@@ -127,7 +128,9 @@ export function trackedData<
         const viewArray: V[] = untracked(() => spec.initialize(initialValue));
         const view = collection(viewArray, viewDebugName);
         observe((event: TEvent) => {
-            view[AddDeferredWorkKey](() => spec.processEvent(view, event));
+            view[AddDeferredWorkKey](() =>
+                spec.processEvent(view, event, viewArray)
+            );
         });
         addManualDep(proxy, view);
         addManualDep(subscriptionNode, view);
@@ -152,10 +155,11 @@ export function trackedData<
         [FlushKey]: flush,
         [AddDeferredWorkKey]: addDeferredWork,
         [ObserveKey]: observe,
+        [NotifyKey]: notify,
         ...bindMethods({
             addDeferredWork,
-            notify,
             observe,
+            notify,
             makeView,
             subscriptionNode,
             processFieldChange,

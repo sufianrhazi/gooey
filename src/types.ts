@@ -1,4 +1,4 @@
-export class InvariantError extends Error { }
+export class InvariantError extends Error {}
 
 export const TypeTag = Symbol('reviseType');
 export const DataTypeTag = Symbol('dataTypeTag');
@@ -7,10 +7,9 @@ export const RecalculationTag = Symbol('recalculate');
 
 export const ObserveKey = Symbol('observe');
 export const MakeModelViewKey = Symbol('makeModelView');
-export const DeferredKey = Symbol('deferred');
 export const FlushKey = Symbol('flush');
 export const AddDeferredWorkKey = Symbol('addDeferredWork');
-export const NotifyKey = Symbol('notifyEvent');
+export const NotifyKey = Symbol('notify');
 
 /**
  * A ref object that can be passed to native elements.
@@ -35,18 +34,18 @@ export function ref<T>(val?: T): Ref<T> {
 
 export type ModelEvent =
     | {
-        type: 'add';
-        key: string | number | symbol;
-    }
+          type: 'add';
+          key: string | number | symbol;
+      }
     | {
-        type: 'set';
-        key: string | number | symbol;
-        value: any;
-    }
+          type: 'set';
+          key: string | number | symbol;
+          value: any;
+      }
     | {
-        type: 'delete';
-        key: string | number | symbol;
-    };
+          type: 'delete';
+          key: string | number | symbol;
+      };
 export type ModelObserver = (event: ModelEvent) => void;
 
 export type EqualityFunc<T> = (a: T, b: T) => boolean;
@@ -63,24 +62,32 @@ export interface ViewSpec<TInitialize, TItem, TEvent> {
     /**
      * Process subscription events
      */
-    processEvent: (view: Collection<TItem>, event: TEvent) => void;
+    processEvent: (
+        view: Collection<TItem>,
+        event: TEvent,
+        initialValue: TItem[]
+    ) => void;
 }
 
 export type CollectionEvent<T> =
     | {
-        type: 'splice';
-        index: number;
-        count: number;
-        items: readonly T[];
-        removed: readonly T[];
-    }
+          type: 'splice';
+          index: number;
+          count: number;
+          items: readonly T[];
+          removed: readonly T[];
+      }
     | {
-        type: 'move';
-        fromIndex: number;
-        fromCount: number;
-        toIndex: number;
-        moved: readonly T[];
-    };
+          type: 'move';
+          fromIndex: number;
+          fromCount: number;
+          toIndex: number;
+          moved: readonly T[];
+      }
+    | {
+          type: 'sort';
+          indexes: readonly number[];
+      };
 
 export type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementation & {
     [TypeTag]: 'data';
@@ -88,7 +95,8 @@ export type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementation & {
     [FlushKey]: () => void;
     [AddDeferredWorkKey]: (task: () => void) => void;
     [ObserveKey]: (listener: (observer: TEvent) => void) => () => void;
-}
+    [NotifyKey]: (event: TEvent) => void;
+};
 
 /**
  * A mutable object to hold state
@@ -103,7 +111,11 @@ export type Model<T> = TrackedData<T, 'model', ModelEvent> & {
 /**
  * A mutable array to hold state, with some additional convenience methods
  */
-export type Collection<T> = TrackedData<Array<T>, 'collection', CollectionEvent<T>> & {
+export type Collection<T> = TrackedData<
+    Array<T>,
+    'collection',
+    CollectionEvent<T>
+> & {
     makeView<V>(
         viewSpec: ViewSpec<readonly T[], V, CollectionEvent<T>>,
         debugName?: string
@@ -116,12 +128,16 @@ export type Collection<T> = TrackedData<Array<T>, 'collection', CollectionEvent<
     ): View<V>;
     reject(shouldReject: (item: T, index: number) => boolean): void;
     moveSlice(fromIndex: number, fromCount: number, toIndex: number): void;
-}
+};
 
 /**
  * A readonly array to hold projected state
  */
-export type View<T> = TrackedData<ReadonlyArray<T>, 'collection', CollectionEvent<T>> & {
+export type View<T> = TrackedData<
+    ReadonlyArray<T>,
+    'collection',
+    CollectionEvent<T>
+> & {
     makeView<V>(
         viewSpec: ViewSpec<readonly T[], V, CollectionEvent<T>>,
         debugName?: string
@@ -132,7 +148,7 @@ export type View<T> = TrackedData<ReadonlyArray<T>, 'collection', CollectionEven
         flatMapFn: MappingFunction<T, V[]>,
         debugName?: string
     ): View<V>;
-}
+};
 
 export interface Subscription {
     [TypeTag]: 'subscription';

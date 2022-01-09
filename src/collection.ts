@@ -1,14 +1,26 @@
 import {
     Collection,
-    CollectionEvent,
     FilterFunction,
     FlatMapFunction,
     InvariantError,
     MappingFunction,
     View,
-    ViewSpec,
+    NotifyKey,
 } from './types';
+import * as log from './log';
 import { trackedData } from './trackeddata';
+
+// https://tc39.es/ecma262/multipage/indexed-collections.html#sec-sortcompare
+function defaultSort(x: any, y: any) {
+    if (x === undefined && y === undefined) return 0;
+    if (x === undefined) return 1;
+    if (y === undefined) return -1;
+    const xStr = '' + x;
+    const yStr = '' + y;
+    if (xStr < yStr) return -1;
+    if (xStr > yStr) return 1;
+    return 0;
+}
 
 /**
  * Make a mutable array to hold state, with some additional convenience methods
@@ -158,11 +170,37 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                     moved,
                 });
             },
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
-            sort: function sort(_sorter: never): T[] {
-                throw new Error(
-                    'Cannot sort collections, use sortedView instead'
+            sort: function sort(
+                this: Collection<T>,
+                sorter: (a: T, b: T) => number = defaultSort
+            ): T[] {
+                const arrayWithIndexes: [T, number][] = array.map(
+                    (item, index) => [item, index]
                 );
+                array.sort(sorter);
+                arrayWithIndexes.sort((ai, bi) => sorter(ai[0], bi[0]));
+                notify({
+                    type: 'sort',
+                    indexes: arrayWithIndexes.map((pair) => pair[1]),
+                });
+                return this;
+            },
+            reverse: function reverse(
+                this: Collection<T>,
+                sorter: (a: T, b: T) => number = defaultSort
+            ): T[] {
+                if (array.length === 0) return this;
+                array.reverse();
+                // Simulate a resort
+                const indexes: number[] = [];
+                for (let i = array.length - 1; i >= 0; --i) {
+                    indexes.push(i);
+                }
+                notify({
+                    type: 'sort',
+                    indexes,
+                });
+                return this;
             },
             makeView,
             mapView: function mapView<V>(
@@ -235,7 +273,7 @@ function flatMapViewImplementation<T, V>(
                 });
                 return flatMapItems;
             },
-            processEvent: (view, event) => {
+            processEvent: (view, event, rawArray) => {
                 if (event.type === 'splice') {
                     const { index, count, items } = event;
                     let realIndex = 0;
@@ -284,6 +322,39 @@ function flatMapViewImplementation<T, V>(
                         toIndex,
                         0,
                         ...flatMapCount.splice(fromIndex, fromCount)
+                    );
+                } else if (event.type === 'sort') {
+                    const { indexes } = event;
+
+                    const flatMapIndexes: number[] = [];
+                    let accumulatorIndex = 0;
+                    for (let i = 0; i < flatMapCount.length; ++i) {
+                        flatMapIndexes.push(accumulatorIndex);
+                        accumulatorIndex += flatMapCount[i];
+                    }
+
+                    const copiedSource = rawArray.slice();
+                    const newIndexes: number[] = [];
+                    let destIndex = 0;
+                    indexes.forEach((sourceIndex) => {
+                        const realCount = flatMapCount[sourceIndex];
+                        if (realCount === 0) return;
+                        const realIndex = flatMapIndexes[sourceIndex];
+                        for (let i = 0; i < realCount; ++i) {
+                            newIndexes.push(realIndex + i);
+                            rawArray[destIndex] = copiedSource[realIndex + i];
+                            destIndex += 1;
+                        }
+                    });
+
+                    view[NotifyKey]({
+                        type: 'sort',
+                        indexes: newIndexes,
+                    });
+                } else {
+                    log.assertExhausted(
+                        event,
+                        'unhandled collection event type'
                     );
                 }
             },

@@ -895,7 +895,7 @@ const TestRunner: Component<{}> = (props, { onMount, onEffect }) => {
                                 }
                                 initializeTestSandbox(testEntry, iframeElement);
                             }}
-                            src="testsandbox.html"
+                            src={`testsandbox.html#${encodeURI(testEntry.src)}`}
                         />
                     ))
                 )}

@@ -401,11 +401,12 @@ aside from within a test.
 Differences from React
 ----------------------
 
-Revise has fewer moving parts than React. There are no component classes, no hooks, and no lifecycle events.
+Revise has fewer moving parts than React. There are no component classes, no component state, no hooks, and no lifecycle
+events.
 
-Component functions get called exactly once in their lifecycle: when they are to be rendered. Instead of lifecycle
-events, component functions are passed a second parameter which is an object containing a few subscription callbacks.
-These callbacks are:
+Component functions get called exactly once in their lifecycle: when they are to be rendered. Components do not
+re-render. Instead of lifecycle events, component functions are passed a second parameter which is an object containing
+a few subscription callbacks. These callbacks are:
 * `onUnmount(callback: () => void)`: called immediately before all of the DOM nodes rendered by the component are
   removed from the DOM.
 * `onMount(callback: () => void)`: called immediately after all of the DOM nodes rendered by the component have been
@@ -415,11 +416,14 @@ Native elements behave slightly differently:
 * The `className` prop is not used. Use `class` instead.
 * The `style` prop is not an object, it is a `string`.
 
-There is no `cloneElement`, `isValidElement`, or `React.Children` equivalent.
+There currently is no `cloneElement` equivalent.
 
-Ref objects do not exist, there are only ref callbacks. There is no `createRef` or `forwardRef` equivalent. On native
-elements, the `ref` property may be used. On component functions, the `ref` property is not specially treated and may be
-used like any other property.
+There is no `isValidElement` or `React.Children` equivalent.
+
+The `ref` function is equivalent to `createRef()` / `useRef()` equivalent, except refs can only have default behavior
+when placed on native JSX elements. On component functions, the `ref` property is not specially treated and may be used
+like any other property. If you want something akin to `useImperativeHandle`, give your component a `ref` prop and
+assign the interface to `ref.current` in either the component body or within its `onMount` handler.
 
 The `children` component prop is an array of JSX elements. There is no difference between a `Fragment` and an array: In
 fact, the definition of `Fragment` is: `({ children }) => children`.

@@ -1,6 +1,8 @@
 import { effect, retain, release, untracked } from './calc';
 import { debugNameFor } from './debug';
 import {
+    Collection,
+    View,
     Calculation,
     isCalculation,
     isCollection,
@@ -226,7 +228,7 @@ function jsxNodeToVNode({
         return elementNode;
     }
     if (isCollection(jsxNode)) {
-        const trackedCollection = jsxNode;
+        const trackedCollection: Collection<any> | View<any> = jsxNode;
         const onUnmount: (() => void)[] = [];
 
         const collectionNode = makeChildVNode({
@@ -276,6 +278,23 @@ function jsxNodeToVNode({
                     moved,
                     { runOnMount: false }
                 );
+            } else if (event.type === 'sort') {
+                const { indexes } = event;
+                const removedVNodes = spliceVNode(
+                    collectionNode,
+                    0,
+                    indexes.length,
+                    [],
+                    { runOnUnmount: false }
+                );
+                const sortedVNodes = indexes.map(
+                    (newIndex) => removedVNodes[newIndex]
+                );
+                spliceVNode(collectionNode, 0, 0, sortedVNodes, {
+                    runOnMount: false,
+                });
+            } else {
+                log.assertExhausted(event, 'unhandled collection event');
             }
         });
 

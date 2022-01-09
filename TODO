@@ -4,17 +4,18 @@ Model internals:
 
 Collection internals:
 [ ] Make .flatMapView recalculate automatically if feasible (will also apply to .filterView and .mapView)
-[ ] Either: Make .sort work + add new 'sort' event; Or: .sortedView()
+[x] Make .sort work + add new 'sort' event
+[ ] Consider adding .sortedView()
 
 DAG internals:
 [ ] get the right balance of fast + not too much GC so we add and free the same items constantly + not recalculating things that aren't needed
 [ ] group topographic sorting by disconnected components; opportunity to defer processing of disconnected components to later
 
 View internals:
-[ ] Add a Provider equivalent (build a map of Context to Calculation<T> in the vdom; add a getContext(ctx: Context<T>): Calculation<T> callback to components
+[ ] Add a Context.Provider equivalent (build a map of Context to Calculation<T> in the vdom; add a getContext(ctx: Context<T>): Calculation<T> callback to components
 [ ] Better error handling... somehow
 [ ] Portals; do they make sense? Do they hijack event bubbling somehow?
-[ ] Allow somehow for reparenting of a DOM subtree? Use case: moving an item between two lists without unmounting/remounting the item
+[ ] Maybe allow for reparenting of a DOM subtree? Use case: moving an item between two lists without unmounting/remounting the item
 [ ] Have an opinion on controlled vs uncontrolled components
 [ ] Could this play well with web components?
 [ ] Consider the pros/cons of the style prop as a string / object

@@ -227,12 +227,16 @@ suite('collection', () => {
         assert.is(2, afterSpliceCount);
     });
 
-    test('sort throws exception', () => {
+    test('sort performs sort synchronously', () => {
         const simple = collection([0, 1, 2, 3, 4, 5]);
-        assert.throwsMatching(
-            /Cannot sort collections, use sortedView instead/,
-            () => (simple as any).sort((a: number, b: number) => b - a)
-        );
+        simple.sort((a, b) => b - a);
+        assert.deepEqual([5, 4, 3, 2, 1, 0], simple);
+    });
+
+    test('sort performs default JS sort if omitted', () => {
+        const simple = collection([7, 8, 9, 10, 11, 12]);
+        simple.sort();
+        assert.deepEqual([10, 11, 12, 7, 8, 9], simple);
     });
 });
 
@@ -434,6 +438,61 @@ suite('mapView', () => {
         flush();
         assert.deepEqual(['before!', 'after!', 'afterFlush!'], exclaimations);
     });
+
+    test('handles sort', () => {
+        const phrases = collection([
+            'a',
+            'quick',
+            'brown',
+            'fox',
+            'jumps',
+            'over',
+            'the',
+            'lazy',
+            'dog',
+        ]);
+        const reversedPhrases = phrases.mapView((phrase) =>
+            Array.from(phrase).reverse().join('')
+        );
+        retain(reversedPhrases);
+        phrases.sort();
+
+        flush();
+        assert.deepEqual(
+            [
+                'a',
+                'nworb',
+                'god',
+                'xof',
+                'spmuj',
+                'yzal',
+                'revo',
+                'kciuq',
+                'eht',
+            ],
+            reversedPhrases
+        );
+
+        phrases[1] = 'HELLO';
+
+        flush();
+        assert.deepEqual(
+            [
+                'a',
+                'OLLEH',
+                'god',
+                'xof',
+                'spmuj',
+                'yzal',
+                'revo',
+                'kciuq',
+                'eht',
+            ],
+            reversedPhrases
+        );
+
+        release(reversedPhrases);
+    });
 });
 
 suite('filterView', () => {
@@ -547,6 +606,36 @@ suite('filterView', () => {
 
         release(evenNumbers);
     });
+
+    test('handles sort', () => {
+        const phrases = collection([
+            'a',
+            'quick',
+            'brown',
+            'fox',
+            'jumps',
+            'over',
+            'the',
+            'lazy',
+            'dog',
+        ]);
+        const evenPhrases = phrases.filterView(
+            (phrase) => phrase.length % 2 === 0
+        );
+        retain(evenPhrases);
+        phrases.sort();
+
+        flush();
+        assert.deepEqual(['lazy', 'over'], evenPhrases);
+
+        phrases[7] = 'ZERO';
+        phrases[6] = 'WHAT';
+
+        flush();
+        assert.deepEqual(['lazy', 'WHAT', 'ZERO'], evenPhrases);
+
+        release(evenPhrases);
+    });
 });
 
 suite('flatMapView', () => {
@@ -641,5 +730,67 @@ suite('flatMapView', () => {
         assert.deepEqual([3, 6, 6, 4, 4, 5, 7], evenDupedNumbers);
 
         release(evenDupedNumbers);
+    });
+
+    test('handles sort', () => {
+        const phrases = collection([
+            'a',
+            'quick',
+            'brown',
+            'fox',
+            'jumps',
+            'over',
+            'the',
+            'lazy',
+            'dog',
+        ]);
+        const flatMapped = phrases.flatMapView((phrase) =>
+            phrase.length % 2
+                ? [Array.from(phrase).join('-')]
+                : [phrase, phrase.toUpperCase()]
+        );
+        retain(flatMapped);
+        phrases.sort();
+
+        flush();
+        assert.deepEqual(
+            [
+                'a',
+                'b-r-o-w-n',
+                'd-o-g',
+                'f-o-x',
+                'j-u-m-p-s',
+                'lazy',
+                'LAZY',
+                'over',
+                'OVER',
+                'q-u-i-c-k',
+                't-h-e',
+            ],
+            flatMapped
+        );
+
+        phrases[1] = 'blue'; // brown -> blue
+        phrases[5] = 'sad'; // lazy -> sad
+
+        flush();
+        assert.deepEqual(
+            [
+                'a',
+                'blue',
+                'BLUE',
+                'd-o-g',
+                'f-o-x',
+                'j-u-m-p-s',
+                's-a-d',
+                'over',
+                'OVER',
+                'q-u-i-c-k',
+                't-h-e',
+            ],
+            flatMapped
+        );
+
+        release(flatMapped);
     });
 });

@@ -64,7 +64,7 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
                     const view = collection(viewArray, viewDebugName);
                     observe((event: ModelEvent) => {
                         view[AddDeferredWorkKey](() =>
-                            spec.processEvent(view, event)
+                            spec.processEvent(view, event, viewArray)
                         );
                     });
                     addManualDep(subscriptionNode, view);

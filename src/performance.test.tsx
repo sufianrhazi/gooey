@@ -220,11 +220,15 @@ suite('perf tests', () => {
         type Level3 = Collection<Collection<Collection<Model<{ id: number }>>>>;
 
         const COUNT = 10;
-        const level3: Level3 = collection([]);
+        const level3: Level3 = collection<
+            Collection<Collection<Model<{ id: number }>>>
+        >([]);
         for (let j = 0; j < COUNT; ++j) {
-            const level2: Level2 = collection([]);
+            const level2: Level2 = collection<
+                Collection<Model<{ id: number }>>
+            >([]);
             for (let k = 0; k < COUNT; ++k) {
-                const level1: Level1 = collection([]);
+                const level1: Level1 = collection<Model<{ id: number }>>([]);
                 for (let l = 0; l < COUNT; ++l) {
                     level1.push(model({ id: l }));
                 }
@@ -269,11 +273,15 @@ suite('perf tests', () => {
         type Level3 = Collection<Collection<Collection<Model<{ id: number }>>>>;
 
         const COUNT = 10;
-        const level3: Level3 = collection([]);
+        const level3: Level3 = collection<
+            Collection<Collection<Model<{ id: number }>>>
+        >([]);
         for (let j = 0; j < COUNT; ++j) {
-            const level2: Level2 = collection([]);
+            const level2: Level2 = collection<
+                Collection<Model<{ id: number }>>
+            >([]);
             for (let k = 0; k < COUNT; ++k) {
-                const level1: Level1 = collection([]);
+                const level1: Level1 = collection<Model<{ id: number }>>([]);
                 for (let l = 0; l < COUNT; ++l) {
                     level1.push(model({ id: l }));
                 }

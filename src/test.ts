@@ -14,6 +14,15 @@ import {
 } from './test/types';
 import { nextFlush } from './index';
 
+const makeUniqueId = (() => {
+    let uniqueId = 0;
+    return () => {
+        const id = uniqueId;
+        uniqueId += 1;
+        return id;
+    };
+})();
+
 type TestContext = any;
 
 type TestAction<Ctx = TestContext> = (ctx: Ctx) => Promise<void> | void;
@@ -381,7 +390,7 @@ export const assert = {
         countAssertion();
         if (!isEqual(a, b)) {
             throw new AssertionError(
-                'isEqual',
+                'deepEqual',
                 () => `${repr(a)} not deeply equal to ${repr(b)}`,
                 msg
             );
@@ -504,6 +513,42 @@ export const assert = {
             );
         }
     },
+    fuzz: <T>({
+        generateItem,
+        checkItem,
+        count = 1000,
+    }: {
+        generateItem: (priorItems: readonly T[]) => T;
+        checkItem: (item: T) => void;
+        count?: number;
+    }) => {
+        const priorItems: T[] = [];
+        for (let i = 0; i < count; ++i) {
+            const item = generateItem(priorItems);
+            priorItems.push(item);
+            try {
+                checkItem(item);
+            } catch (e) {
+                const uniqueId = makeUniqueId();
+                const globalName = `$fuzz${uniqueId}`;
+                (window as any)[globalName] = item;
+                throw new AssertionError(
+                    'fuzz',
+                    () =>
+                        `${formatError(e)}
+
+The above error occured during fuzz run ${i}
+Fuzz input stored as ${globalName} on iframe window name="${window.name}":
+---
+${repr(item)}
+---
+
+Retrieve via: window.open('', "${window.name}").${globalName}
+`
+                );
+            }
+        }
+    },
 };
 
 const testRoot = document.createElement('div');
@@ -621,6 +666,7 @@ function makeInitPayload(allSuites: Suite[]): InitMessage {
         });
     });
 
+    window.name = window.location.hash;
     return {
         url: window.location.toString(),
         type: 'init',

@@ -45,7 +45,7 @@ interface TodoItem {
 
 interface TodoList {
     name: string;
-    items: Collection<TodoItem>;
+    items: Collection<Model<TodoItem>>;
 }
 
 function makeTodoListItem(task: string): Model<TodoItem> {
