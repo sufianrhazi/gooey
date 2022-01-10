@@ -167,9 +167,8 @@ const Controls = ({ store }: { store: Model<Store> }) => {
     const swapRows = (e: MouseEvent) => {
         e.preventDefault();
         if (store.items.length > 998) {
-            const a = store.items[1];
-            store.items[1] = store.items[998];
-            store.items[998] = a;
+            store.items.moveSlice(998, 1, 1);
+            store.items.moveSlice(2, 1, 999);
         }
         flush();
     };
