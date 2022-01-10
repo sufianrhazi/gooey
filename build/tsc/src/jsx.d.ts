@@ -1,4 +1,4 @@
-import { TypeTag, Ref, Calculation, Collection } from './types';
+import { TypeTag, Ref, Calculation, Collection, Context } from './types';
 declare type PropsWithChildren<P> = P & {
     children?: JSXNode[];
 };
@@ -9,13 +9,14 @@ declare type ComponentListeners = {
     onUnmount: (callback: OnUnmountCallback) => void;
     onMount: (callback: OnMountCallback) => void;
     onEffect: (callback: EffectCallback) => void;
+    getContext: <TVal>(context: Context<TVal>) => TVal;
 };
 export declare type Component<P extends {}> = (props: PropsWithChildren<P>, listeners: ComponentListeners) => JSXNode;
 declare type JsxRawNode = string | number | boolean | null | undefined | Function;
 /**
  * The type returnable by JSX (raw nodes)
  */
-declare type JSXNodeSingle = JsxRawNode | Calculation<JsxRawNode> | Calculation<JsxRawNode[]> | RenderElement<any> | RenderComponent<any>;
+declare type JSXNodeSingle = JsxRawNode | Calculation<JsxRawNode> | Calculation<JsxRawNode[]> | RenderElement<any> | RenderComponent<any> | RenderProvider<any>;
 export declare type JSXNode = JSXNodeSingle | JSXNodeSingle[] | Collection<JSXNodeSingle>;
 export declare type RenderElement<ElementName extends keyof JSX.IntrinsicElements> = {
     [TypeTag]: 'element';
@@ -31,6 +32,13 @@ export declare type RenderComponent<Props extends {}> = {
     children: JSXNode[];
 };
 export declare function isRenderComponent(jsxNode: JSXNode): jsxNode is RenderComponent<any>;
+export declare type RenderProvider<TValue> = {
+    [TypeTag]: 'provider';
+    context: Context<TValue>;
+    value: TValue;
+    children: JSXNode[];
+};
+export declare function isRenderProvider(jsxNode: JSXNode): jsxNode is RenderProvider<any>;
 interface MissingFromTypescriptHTMLElementProperties {
     ariaColIndexText?: string | undefined;
     ariaInvalid?: string | undefined;

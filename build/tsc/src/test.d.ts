@@ -29,6 +29,11 @@ export declare const assert: {
     assertionCount: (num: number, msg?: string | undefined) => void;
     throwsMatching: (match: string | RegExp, fn: () => void, msg?: string | undefined) => void;
     medianRuntimeLessThan: (ms: number, fn: (measure: <T>(measurement: () => T) => T) => void, numRuns?: number, msg?: string | undefined) => void;
+    fuzz: <T_1>({ generateItem, checkItem, count, }: {
+        generateItem: (priorItems: readonly T_1[]) => T_1;
+        checkItem: (item: T_1) => void;
+        count?: number | undefined;
+    }) => void;
 };
 export {};
 //# sourceMappingURL=test.d.ts.map

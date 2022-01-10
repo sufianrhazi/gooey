@@ -6,7 +6,6 @@ declare const CalculationTypeTag: unique symbol;
 export declare const RecalculationTag: unique symbol;
 export declare const ObserveKey: unique symbol;
 export declare const MakeModelViewKey: unique symbol;
-export declare const DeferredKey: unique symbol;
 export declare const FlushKey: unique symbol;
 export declare const AddDeferredWorkKey: unique symbol;
 export declare const NotifyKey: unique symbol;
@@ -46,7 +45,7 @@ export interface ViewSpec<TInitialize, TItem, TEvent> {
     /**
      * Process subscription events
      */
-    processEvent: (view: Collection<TItem>, event: TEvent) => void;
+    processEvent: (view: Collection<TItem>, event: TEvent, initialValue: TItem[]) => void;
 }
 export declare type CollectionEvent<T> = {
     type: 'splice';
@@ -60,6 +59,9 @@ export declare type CollectionEvent<T> = {
     fromCount: number;
     toIndex: number;
     moved: readonly T[];
+} | {
+    type: 'sort';
+    indexes: readonly number[];
 };
 export declare type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementation & {
     [TypeTag]: 'data';
@@ -67,6 +69,7 @@ export declare type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementa
     [FlushKey]: () => void;
     [AddDeferredWorkKey]: (task: () => void) => void;
     [ObserveKey]: (listener: (observer: TEvent) => void) => () => void;
+    [NotifyKey]: (event: TEvent) => void;
 };
 /**
  * A mutable object to hold state
@@ -97,6 +100,22 @@ export declare type View<T> = TrackedData<ReadonlyArray<T>, 'collection', Collec
 export interface Subscription {
     [TypeTag]: 'subscription';
 }
+/**
+ * A key-value pair that is active for a subtree
+ */
+export interface Context<TValue> {
+    /**
+     * Note: although this function has a signature, it does not actually take arguments when called directly.
+     *
+     * This is solely present so that TypeScript can auto-complete the "value" prop of Contexts
+     */
+    (unusedOnlyForJsxTypeInferrence?: {
+        value: TValue;
+    }): TValue;
+    [TypeTag]: 'context';
+}
+export declare function createContext<TValue>(val: TValue): Context<TValue>;
+export declare function isContext(val: any): val is Context<any>;
 /**
  * A calculation cell that recalculates when dependencies change
  */

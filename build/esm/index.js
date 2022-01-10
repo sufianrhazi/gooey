@@ -1,4 +1,11 @@
-// build/tsc/src/log.js
+var __defProp = Object.defineProperty;
+var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __publicField = (obj, key, value) => {
+  __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
+  return value;
+};
+
+// src/log.ts
 var levels = {
   error: 0,
   warn: 1,
@@ -53,7 +60,7 @@ function assertExhausted(context, ...items) {
   throw new Error("Assertion failure");
 }
 
-// build/tsc/src/types.js
+// src/types.ts
 var InvariantError = class extends Error {
 };
 var TypeTag = Symbol("reviseType");
@@ -62,10 +69,9 @@ var CalculationTypeTag = Symbol("calculationType");
 var RecalculationTag = Symbol("recalculate");
 var ObserveKey = Symbol("observe");
 var MakeModelViewKey = Symbol("makeModelView");
-var DeferredKey = Symbol("deferred");
 var FlushKey = Symbol("flush");
 var AddDeferredWorkKey = Symbol("addDeferredWork");
-var NotifyKey = Symbol("notifyEvent");
+var NotifyKey = Symbol("notify");
 function isRef(ref2) {
   return ref2 && ref2[TypeTag] === "ref";
 }
@@ -74,6 +80,14 @@ function ref(val) {
     [TypeTag]: "ref",
     current: val
   };
+}
+function createContext(val) {
+  return Object.assign(() => val, {
+    [TypeTag]: "context"
+  });
+}
+function isContext(val) {
+  return !!(val && val[TypeTag] === "context");
 }
 function makeCalculation(fn, recalcFn) {
   return Object.assign(fn, {
@@ -108,7 +122,7 @@ function isSubscription(thing) {
   return !!(thing && thing[TypeTag] === "subscription");
 }
 
-// build/tsc/src/util.js
+// src/util.ts
 var noop = () => {
 };
 function groupBy(items, grouper) {
@@ -131,51 +145,16 @@ function strictEqual(a, b) {
   return a === b;
 }
 
-// build/tsc/src/dag.js
+// src/dag.ts
 var DAG = class {
   constructor() {
-    Object.defineProperty(this, "nextId", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "idMap", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "nodesSet", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "retained", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "dirtyNodes", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "graph", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
-    Object.defineProperty(this, "reverseGraph", {
-      enumerable: true,
-      configurable: true,
-      writable: true,
-      value: void 0
-    });
+    __publicField(this, "nextId");
+    __publicField(this, "idMap");
+    __publicField(this, "nodesSet");
+    __publicField(this, "retained");
+    __publicField(this, "dirtyNodes");
+    __publicField(this, "graph");
+    __publicField(this, "reverseGraph");
     this.nextId = 1;
     this.idMap = new WeakMap();
     this.nodesSet = {};
@@ -374,29 +353,28 @@ var DAG = class {
   }
 };
 
-// build/tsc/src/debug.js
+// src/debug.ts
 var nameMap = new WeakMap();
 function clearNames() {
   nameMap = new WeakMap();
 }
 function debugNameFor(item) {
-  var _a, _b, _c, _d, _e;
   if (true) {
     return "";
   }
   if (isCollection(item)) {
-    return `collection:${(_a = nameMap.get(item)) !== null && _a !== void 0 ? _a : "?"}`;
+    return `collection:${nameMap.get(item) ?? "?"}`;
   }
   if (isCalculation(item)) {
-    return `${isEffect(item) ? "effect" : "calc"}:${(_b = nameMap.get(item)) !== null && _b !== void 0 ? _b : "?"}`;
+    return `${isEffect(item) ? "effect" : "calc"}:${nameMap.get(item) ?? "?"}`;
   }
   if (isModel(item)) {
-    return `model:${(_c = nameMap.get(item)) !== null && _c !== void 0 ? _c : "?"}`;
+    return `model:${nameMap.get(item) ?? "?"}`;
   }
   if (isSubscription(item)) {
-    return `sub:${(_d = nameMap.get(item)) !== null && _d !== void 0 ? _d : "?"}`;
+    return `sub:${nameMap.get(item) ?? "?"}`;
   }
-  return `field:${(_e = nameMap.get(item.model)) !== null && _e !== void 0 ? _e : "?"}:${String(item.key)}`;
+  return `field:${nameMap.get(item.model) ?? "?"}:${String(item.key)}`;
 }
 function name(item, name2) {
   if (true)
@@ -405,7 +383,7 @@ function name(item, name2) {
   return item;
 }
 
-// build/tsc/src/calc.js
+// src/calc.ts
 var activeCalculations = [];
 var globalDependencyGraph = new DAG();
 var refcountMap = new WeakMap();
@@ -562,8 +540,7 @@ function flush() {
   resolveFlushPromise();
 }
 function retain(item) {
-  var _a;
-  const refcount = (_a = refcountMap.get(item)) !== null && _a !== void 0 ? _a : 0;
+  const refcount = refcountMap.get(item) ?? 0;
   const newRefcount = refcount + 1;
   if (refcount === 0) {
     false;
@@ -577,8 +554,7 @@ function retain(item) {
   refcountMap.set(item, newRefcount);
 }
 function release(item) {
-  var _a;
-  const refcount = (_a = refcountMap.get(item)) !== null && _a !== void 0 ? _a : 0;
+  const refcount = refcountMap.get(item) ?? 0;
   const newRefcount = Math.min(refcount - 1, 0);
   if (refcount < 1) {
     error(`release called on unretained item ${debugNameFor(item)}`, item);
@@ -611,32 +587,47 @@ ${debugNameFor(item)}`,
   });
 }
 
-// build/tsc/src/jsx.js
+// src/jsx.ts
 function isRenderElement(jsxNode) {
   return !!(jsxNode && typeof jsxNode === "object" && !Array.isArray(jsxNode) && jsxNode[TypeTag] === "element");
 }
 function isRenderComponent(jsxNode) {
   return !!(jsxNode && typeof jsxNode === "object" && !Array.isArray(jsxNode) && jsxNode[TypeTag] === "component");
 }
+function isRenderProvider(jsxNode) {
+  return !!(jsxNode && typeof jsxNode === "object" && !Array.isArray(jsxNode) && jsxNode[TypeTag] === "provider");
+}
 function attrIdentity(val) {
   return val;
 }
 function attrBooleanToEmptyString(val) {
-  return val ? "" : void 0;
+  if (!val)
+    return void 0;
+  return "";
 }
 function attrNumberToString(val) {
+  if (val === void 0)
+    return void 0;
   return val.toString();
 }
 function attrStringOrNumberToString(val) {
+  if (val === void 0)
+    return void 0;
   return val.toString();
 }
 function attrStringOrNumberToNumber(val) {
+  if (val === void 0)
+    return void 0;
   return typeof val === "number" ? val : parseInt(val);
 }
 function attrYesNo(val) {
+  if (val === void 0)
+    return void 0;
   return val === "no" ? false : true;
 }
 function attrStringArrayToWsString(val) {
+  if (val === void 0)
+    return void 0;
   if (val.length === 0)
     return void 0;
   return val.join(" ");
@@ -2329,11 +2320,10 @@ var ElementTypeMapping = {
   wbr: HTMLElementMap
 };
 function getElementTypeMapping(elementName, property) {
-  var _a;
-  return (_a = ElementTypeMapping[elementName]) === null || _a === void 0 ? void 0 : _a[property];
+  return ElementTypeMapping[elementName]?.[property];
 }
 
-// build/tsc/src/vnode.js
+// src/vnode.ts
 function makeRootVNode({ domNode }) {
   const rootVNode = {
     domNode,
@@ -2347,7 +2337,13 @@ function makeRootVNode({ domNode }) {
   rootVNode.domParent = rootVNode;
   return rootVNode;
 }
-function makeChildVNode({ jsxNode, domNode, domParent, onMount, onUnmount }) {
+function makeChildVNode({
+  jsxNode,
+  domNode,
+  domParent,
+  onMount,
+  onUnmount
+}) {
   return {
     domNode,
     children: [],
@@ -2477,13 +2473,21 @@ function spliceVNode(immediateParent, childIndex, removeCount, newNodes, { runOn
   return detachedVNodes;
 }
 
-// build/tsc/src/view.js
+// src/view.ts
 function createElement(Constructor, props, ...children) {
   if (typeof Constructor === "string") {
     return {
       [TypeTag]: "element",
       element: Constructor,
       props,
+      children
+    };
+  }
+  if (isContext(Constructor)) {
+    return {
+      [TypeTag]: "provider",
+      context: Constructor,
+      value: props.value,
       children
     };
   }
@@ -2531,8 +2535,11 @@ function setAttributeValue(elementType, element, key, value) {
     }
   }
 }
-function jsxNodeToVNode({ domParent, jsxNode }) {
-  var _a;
+function jsxNodeToVNode({
+  domParent,
+  jsxNode,
+  contextMap
+}) {
   if (jsxNode === null || jsxNode === void 0 || jsxNode === false || jsxNode === true) {
     const emptyVNode = makeChildVNode({
       domParent,
@@ -2617,7 +2624,8 @@ function jsxNodeToVNode({ domParent, jsxNode }) {
     });
     elementNode.children = jsxNode.children.map((childJsxNode) => jsxNodeToVNode({
       domParent: elementNode,
-      jsxNode: childJsxNode
+      jsxNode: childJsxNode,
+      contextMap
     }));
     if (elementNode.mountFragment) {
       element.appendChild(elementNode.mountFragment);
@@ -2639,7 +2647,8 @@ function jsxNodeToVNode({ domParent, jsxNode }) {
     untracked(() => {
       collectionNode.children.push(...trackedCollection.map((jsxChild) => jsxNodeToVNode({
         domParent: collectionNode.domParent,
-        jsxNode: jsxChild
+        jsxNode: jsxChild,
+        contextMap
       })));
     });
     const unobserve = trackedCollection[ObserveKey]((event) => {
@@ -2648,7 +2657,8 @@ function jsxNodeToVNode({ domParent, jsxNode }) {
           const { count, index, items } = event;
           const childNodes = items.map((jsxChild) => jsxNodeToVNode({
             domParent: collectionNode.domParent,
-            jsxNode: jsxChild
+            jsxNode: jsxChild,
+            contextMap
           }));
           spliceVNode(collectionNode, index, count, childNodes);
         });
@@ -2656,6 +2666,15 @@ function jsxNodeToVNode({ domParent, jsxNode }) {
         const { fromIndex, fromCount, toIndex } = event;
         const moved = spliceVNode(collectionNode, fromIndex, fromCount, [], { runOnUnmount: false });
         spliceVNode(collectionNode, fromIndex < toIndex ? toIndex - fromCount : toIndex, 0, moved, { runOnMount: false });
+      } else if (event.type === "sort") {
+        const { indexes } = event;
+        const removedVNodes = spliceVNode(collectionNode, 0, indexes.length, [], { runOnUnmount: false });
+        const sortedVNodes = indexes.map((newIndex) => removedVNodes[newIndex]);
+        spliceVNode(collectionNode, 0, 0, sortedVNodes, {
+          runOnMount: false
+        });
+      } else {
+        assertExhausted(event, "unhandled collection event");
       }
     });
     retain(trackedCollection);
@@ -2681,7 +2700,8 @@ function jsxNodeToVNode({ domParent, jsxNode }) {
       const jsxChild = trackedCalculation();
       const childVNode = jsxNodeToVNode({
         domParent: calculationNode.domParent,
-        jsxNode: jsxChild
+        jsxNode: jsxChild,
+        contextMap
       });
       if (firstRun) {
         firstRun = false;
@@ -2689,12 +2709,31 @@ function jsxNodeToVNode({ domParent, jsxNode }) {
       } else {
         spliceVNode(calculationNode, 0, calculationNode.children.length, [childVNode]);
       }
-    }, `viewcalc:${(_a = debugNameFor(jsxNode)) !== null && _a !== void 0 ? _a : "node"}`);
+    }, `viewcalc:${debugNameFor(jsxNode) ?? "node"}`);
     retain(resultEffect);
     onUnmount.push(() => release(resultEffect));
     resultEffect();
     mountVNode(calculationNode);
     return calculationNode;
+  }
+  if (isRenderProvider(jsxNode)) {
+    const renderProvider = jsxNode;
+    const providerNode = makeChildVNode({
+      domParent,
+      jsxNode,
+      domNode: null,
+      onMount: [],
+      onUnmount: []
+    });
+    const subMap = new Map(contextMap);
+    subMap.set(renderProvider.context, renderProvider.value);
+    providerNode.children.push(...renderProvider.children.map((jsxChild) => jsxNodeToVNode({
+      domParent,
+      jsxNode: jsxChild,
+      contextMap: subMap
+    })));
+    mountVNode(providerNode);
+    return providerNode;
   }
   if (isRenderComponent(jsxNode)) {
     const onUnmount = [];
@@ -2705,9 +2744,9 @@ function jsxNodeToVNode({ domParent, jsxNode }) {
       onMount: [],
       onUnmount
     });
-    const Component = jsxNode.component;
+    const Component2 = jsxNode.component;
     const onComponentMount = [];
-    const jsxChild = Component({
+    const jsxChild = Component2({
       ...jsxNode.props || {},
       children: jsxNode.children
     }, {
@@ -2718,7 +2757,7 @@ function jsxNodeToVNode({ domParent, jsxNode }) {
         onComponentMount.push(mountCallback);
       },
       onEffect: (effectCallback, debugName) => {
-        const effectCalc = effect(effectCallback, `componenteffect:${jsxNode.component.name}:${debugName !== null && debugName !== void 0 ? debugName : onComponentMount.length}`);
+        const effectCalc = effect(effectCallback, `componenteffect:${jsxNode.component.name}:${debugName ?? onComponentMount.length}`);
         onComponentMount.push(() => {
           retain(effectCalc);
           effectCalc();
@@ -2726,11 +2765,18 @@ function jsxNodeToVNode({ domParent, jsxNode }) {
         onUnmount.push(() => {
           release(effectCalc);
         });
+      },
+      getContext: (context) => {
+        if (contextMap.has(context)) {
+          return contextMap.get(context);
+        }
+        return context();
       }
     });
     const childVNode = jsxNodeToVNode({
       domParent: componentNode.domParent,
-      jsxNode: jsxChild
+      jsxNode: jsxChild,
+      contextMap
     });
     componentNode.children.push(childVNode);
     onComponentMount.forEach((mountCallback) => componentNode.onMount.push(mountCallback));
@@ -2748,7 +2794,8 @@ function jsxNodeToVNode({ domParent, jsxNode }) {
     });
     arrayNode.children.push(...items.map((jsxChild) => jsxNodeToVNode({
       domParent,
-      jsxNode: jsxChild
+      jsxNode: jsxChild,
+      contextMap
     })));
     mountVNode(arrayNode);
     return arrayNode;
@@ -2771,7 +2818,8 @@ function mount(parentElement, jsxNode) {
   const rootNode = makeRootVNode({ domNode: parentElement });
   rootNode.children.push(jsxNodeToVNode({
     domParent: rootNode,
-    jsxNode
+    jsxNode,
+    contextMap: new Map()
   }));
   if (rootNode.mountFragment) {
     parentElement.appendChild(rootNode.mountFragment);
@@ -2784,7 +2832,22 @@ function mount(parentElement, jsxNode) {
 }
 var Fragment = ({ children }) => children;
 
-// build/tsc/src/collection.js
+// src/collection.ts
+function defaultSort(x, y) {
+  if (x === void 0 && y === void 0)
+    return 0;
+  if (x === void 0)
+    return 1;
+  if (y === void 0)
+    return -1;
+  const xStr = "" + x;
+  const yStr = "" + y;
+  if (xStr < yStr)
+    return -1;
+  if (xStr > yStr)
+    return 1;
+  return 0;
+}
 function collection(array, debugName) {
   if (!Array.isArray(array)) {
     throw new InvariantError("collection must be provided an array");
@@ -2813,7 +2876,15 @@ function collection(array, debugName) {
       delete target[key];
       return true;
     }
-  }, ({ notify: notify2, subscriptionNode, makeView, observe, addDeferredWork, processFieldChange, removeSubscriptionField }) => ({
+  }, ({
+    notify: notify2,
+    subscriptionNode,
+    makeView,
+    observe,
+    addDeferredWork,
+    processFieldChange,
+    removeSubscriptionField
+  }) => ({
     splice: function splice(index, count, ...items) {
       if (count < 1 && items.length === 0)
         return [];
@@ -2885,8 +2956,29 @@ function collection(array, debugName) {
         moved
       });
     },
-    sort: function sort(_sorter) {
-      throw new Error("Cannot sort collections, use sortedView instead");
+    sort: function sort(sorter = defaultSort) {
+      const arrayWithIndexes = array.map((item, index) => [item, index]);
+      array.sort(sorter);
+      arrayWithIndexes.sort((ai, bi) => sorter(ai[0], bi[0]));
+      notify2({
+        type: "sort",
+        indexes: arrayWithIndexes.map((pair) => pair[1])
+      });
+      return this;
+    },
+    reverse: function reverse(sorter = defaultSort) {
+      if (array.length === 0)
+        return this;
+      array.reverse();
+      const indexes = [];
+      for (let i = array.length - 1; i >= 0; --i) {
+        indexes.push(i);
+      }
+      notify2({
+        type: "sort",
+        indexes
+      });
+      return this;
     },
     makeView,
     mapView: function mapView(mapper, debugName2) {
@@ -2918,7 +3010,7 @@ function flatMapViewImplementation(sourceCollection, fn, debugName) {
       });
       return flatMapItems;
     },
-    processEvent: (view, event) => {
+    processEvent: (view, event, rawArray) => {
       if (event.type === "splice") {
         const { index, count, items } = event;
         let realIndex = 0;
@@ -2959,12 +3051,40 @@ function flatMapViewImplementation(sourceCollection, fn, debugName) {
           view.moveSlice(realFromIndex, realFromCount, realToIndex);
         }
         flatMapCount.splice(toIndex, 0, ...flatMapCount.splice(fromIndex, fromCount));
+      } else if (event.type === "sort") {
+        const { indexes } = event;
+        const flatMapIndexes = [];
+        let accumulatorIndex = 0;
+        for (let i = 0; i < flatMapCount.length; ++i) {
+          flatMapIndexes.push(accumulatorIndex);
+          accumulatorIndex += flatMapCount[i];
+        }
+        const copiedSource = rawArray.slice();
+        const newIndexes = [];
+        let destIndex = 0;
+        indexes.forEach((sourceIndex) => {
+          const realCount = flatMapCount[sourceIndex];
+          if (realCount === 0)
+            return;
+          const realIndex = flatMapIndexes[sourceIndex];
+          for (let i = 0; i < realCount; ++i) {
+            newIndexes.push(realIndex + i);
+            rawArray[destIndex] = copiedSource[realIndex + i];
+            destIndex += 1;
+          }
+        });
+        view[NotifyKey]({
+          type: "sort",
+          indexes: newIndexes
+        });
+      } else {
+        assertExhausted(event, "unhandled collection event type");
       }
     }
   }, debugName);
 }
 
-// build/tsc/src/trackeddata.js
+// src/trackeddata.ts
 function trackedData(initialValue, typeTag, implSpec, bindMethods, debugName) {
   const fields = new Map();
   let observers = [];
@@ -3009,7 +3129,7 @@ function trackedData(initialValue, typeTag, implSpec, bindMethods, debugName) {
     const viewArray = untracked(() => spec.initialize(initialValue));
     const view = collection(viewArray, viewDebugName);
     observe((event) => {
-      view[AddDeferredWorkKey](() => spec.processEvent(view, event));
+      view[AddDeferredWorkKey](() => spec.processEvent(view, event, viewArray));
     });
     addManualDep(proxy, view);
     addManualDep(subscriptionNode, view);
@@ -3031,10 +3151,11 @@ function trackedData(initialValue, typeTag, implSpec, bindMethods, debugName) {
     [FlushKey]: flush2,
     [AddDeferredWorkKey]: addDeferredWork,
     [ObserveKey]: observe,
+    [NotifyKey]: notify2,
     ...bindMethods({
       addDeferredWork,
-      notify: notify2,
       observe,
+      notify: notify2,
       makeView,
       subscriptionNode,
       processFieldChange,
@@ -3108,7 +3229,7 @@ function trackedData(initialValue, typeTag, implSpec, bindMethods, debugName) {
   return proxy;
 }
 
-// build/tsc/src/model.js
+// src/model.ts
 function model(obj, debugName) {
   if (typeof obj !== "object" || !obj) {
     throw new InvariantError("model must be provided an object");
@@ -3148,7 +3269,7 @@ function model(obj, debugName) {
         const viewArray = untracked(() => spec.initialize(obj));
         const view = collection(viewArray, viewDebugName);
         observe((event) => {
-          view[AddDeferredWorkKey](() => spec.processEvent(view, event));
+          view[AddDeferredWorkKey](() => spec.processEvent(view, event, viewArray));
         });
         addManualDep(subscriptionNode, view);
         return view;
@@ -3189,15 +3310,16 @@ model.keys = function keys(target, debugName) {
   return view;
 };
 
-// build/tsc/src/index.js
+// src/index.ts
 var src_default = createElement;
-var VERSION = "development";
+var VERSION = "0.2.0";
 export {
   Fragment,
   InvariantError,
   VERSION,
   calc,
   collection,
+  createContext,
   debug2 as debug,
   src_default as default,
   effect,

@@ -6,8 +6,8 @@ export type { Component } from './jsx';
 export { model } from './model';
 export { collection } from './collection';
 export { calc, effect, reset, subscribe, flush, nextFlush, retain, release, debug, } from './calc';
-export type { Ref, Calculation, Collection, View, Model } from './types';
-export { ref, InvariantError } from './types';
+export type { Ref, Calculation, Collection, View, Model, Context, } from './types';
+export { ref, createContext, InvariantError } from './types';
 export default createElement;
-export declare const VERSION = "development";
+export declare const VERSION: string;
 //# sourceMappingURL=index.d.ts.map

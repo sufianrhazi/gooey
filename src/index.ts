@@ -29,4 +29,4 @@ export { ref, createContext, InvariantError } from './types';
 
 export default createElement;
 
-export const VERSION = 'development';
+export const VERSION = LIB_VERSION;

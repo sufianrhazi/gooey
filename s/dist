@@ -20,16 +20,16 @@ s/clean
 echo_warn "rm -rf build/"
 rm -rf build/
 
-echo_info "Building via tsc..."
+echo_info "Building types from tsc..."
 node_modules/.bin/tsc -p .
 echo_info "Bundling esm..."
-node_modules/.bin/esbuild build/tsc/src/index.js --define:DEBUG=false --define:VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=esm --outdir=build/esm
+node_modules/.bin/esbuild src/index.ts --define:DEBUG=false --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=esm --outdir=build/esm
 echo_info "Bundling cjs..."
-node_modules/.bin/esbuild build/tsc/src/index.js --define:DEBUG=false --define:VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=cjs --outfile=build/cjs/index.js
+node_modules/.bin/esbuild src/index.ts --define:DEBUG=false --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=cjs --outfile=build/cjs/index.js
 echo_info "Bundling iife..."
-node_modules/.bin/esbuild build/tsc/src/index.js --define:DEBUG=false --define:VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=iife --global-name=Revise --outfile=build/browser/index.js
+node_modules/.bin/esbuild src/index.ts --define:DEBUG=false --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=iife --global-name=Revise --outfile=build/browser/index.js
 echo_info "Bundling minified iife..."
-node_modules/.bin/esbuild build/tsc/src/index.js --define:DEBUG=false --define:VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=iife --global-name=Revise --minify --outfile=build/browser/index.min.js
+node_modules/.bin/esbuild src/index.ts --define:DEBUG=false --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=iife --global-name=Revise --minify --outfile=build/browser/index.min.js
 git add .
 
 echo_warn "Running tests + performance tests to confirm..."
