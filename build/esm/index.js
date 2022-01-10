@@ -3312,7 +3312,7 @@ model.keys = function keys(target, debugName) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = "0.2.0";
+var VERSION = "0.3.0";
 export {
   Fragment,
   InvariantError,

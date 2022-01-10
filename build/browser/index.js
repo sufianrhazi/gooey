@@ -3344,7 +3344,7 @@ ${debugNameFor(item)}`,
 
   // src/index.ts
   var src_default = createElement;
-  var VERSION = "0.2.0";
+  var VERSION = "0.3.0";
   return src_exports;
 })();
 //# sourceMappingURL=index.js.map
