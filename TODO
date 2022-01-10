@@ -13,6 +13,7 @@ DAG internals:
 
 View internals:
 [x] Add a Context.Provider equivalent
+[ ] Revisit how attr*, makeAttrValue, and makeIdlValue work; How to reduce the amount of data structures? How to ensure unexpected values are handled correctly?
 [ ] Have an opinion on controlled vs uncontrolled components
 [ ] Better error handling... somehow
 [ ] Portals; do they make sense? Do they hijack event bubbling somehow?

@@ -93,22 +93,36 @@ export function isRenderProvider(
 function attrIdentity<T>(val: T): T {
     return val;
 }
-function attrBooleanToEmptyString(val: boolean): string | undefined {
-    return val ? '' : undefined;
+function attrBooleanToEmptyString(
+    val: boolean | undefined
+): string | undefined {
+    if (!val) return undefined;
+    return '';
 }
-function attrNumberToString(val: number): string {
+function attrNumberToString(val: number | undefined): string | undefined {
+    if (val === undefined) return undefined;
     return val.toString();
 }
-function attrStringOrNumberToString(val: string | number): string {
+function attrStringOrNumberToString(
+    val: string | number | undefined
+): string | undefined {
+    if (val === undefined) return undefined;
     return val.toString();
 }
-function attrStringOrNumberToNumber(val: string | number): number {
+function attrStringOrNumberToNumber(
+    val: string | number | undefined
+): number | undefined {
+    if (val === undefined) return undefined;
     return typeof val === 'number' ? val : parseInt(val);
 }
-function attrYesNo(val: '' | 'yes' | 'no'): boolean {
+function attrYesNo(val: '' | 'yes' | 'no' | undefined): boolean | undefined {
+    if (val === undefined) return undefined;
     return val === 'no' ? false : true;
 }
-function attrStringArrayToWsString(val: string[]): string | undefined {
+function attrStringArrayToWsString(
+    val: string[] | undefined
+): string | undefined {
+    if (val === undefined) return undefined;
     if (val.length === 0) return undefined;
     return val.join(' ');
 }
