@@ -1,4 +1,4 @@
-import { TypeTag, Ref, Calculation, Collection } from './types';
+import { TypeTag, Ref, Calculation, Collection, Context } from './types';
 
 // General component props
 type PropsWithChildren<P> = P & { children?: JSXNode[] };
@@ -11,6 +11,7 @@ type ComponentListeners = {
     onUnmount: (callback: OnUnmountCallback) => void;
     onMount: (callback: OnMountCallback) => void;
     onEffect: (callback: EffectCallback) => void;
+    getContext: <TVal>(context: Context<TVal>) => TVal;
 };
 export type Component<P extends {}> = (
     props: PropsWithChildren<P>,
@@ -27,7 +28,8 @@ type JSXNodeSingle =
     | Calculation<JsxRawNode>
     | Calculation<JsxRawNode[]>
     | RenderElement<any>
-    | RenderComponent<any>;
+    | RenderComponent<any>
+    | RenderProvider<any>;
 export type JSXNode =
     | JSXNodeSingle
     | JSXNodeSingle[]
@@ -64,6 +66,24 @@ export function isRenderComponent(
         typeof jsxNode === 'object' &&
         !Array.isArray(jsxNode) &&
         jsxNode[TypeTag] === 'component'
+    );
+}
+
+export type RenderProvider<TValue> = {
+    [TypeTag]: 'provider';
+    context: Context<TValue>;
+    value: TValue;
+    children: JSXNode[];
+};
+
+export function isRenderProvider(
+    jsxNode: JSXNode
+): jsxNode is RenderProvider<any> {
+    return !!(
+        jsxNode &&
+        typeof jsxNode === 'object' &&
+        !Array.isArray(jsxNode) &&
+        jsxNode[TypeTag] === 'provider'
     );
 }
 

@@ -6,6 +6,7 @@ import Revise, {
     model,
     mount,
     reset,
+    createContext,
 } from './index';
 import { suite, test, beforeEach, assert } from './test';
 
@@ -965,6 +966,68 @@ suite('mount collection mapped view', () => {
                 'mount:five',
             ],
             events
+        );
+    });
+});
+
+suite('createContext', () => {
+    test('uses default context value when missing', () => {
+        const CtxA = createContext<string>('hello');
+        const CtxB = createContext<number>(42);
+        const MyComponent: Component<{ id: string }> = (
+            { id },
+            { getContext }
+        ) => (
+            <div id={id}>
+                CtxA={getContext(CtxA)}, CtxB={getContext(CtxB)}
+            </div>
+        );
+        mount(
+            testRoot,
+            <div>
+                <MyComponent id="neither" />
+            </div>
+        );
+        assert.is(
+            'CtxA=hello, CtxB=42',
+            testRoot.querySelector('#neither')!.textContent
+        );
+    });
+
+    test('can have multiple different contexts', () => {
+        const CtxA = createContext<string>('hello');
+        const CtxB = createContext<number>(42);
+        const MyComponent: Component<{ id: string }> = (
+            { id },
+            { getContext }
+        ) => (
+            <div id={id}>
+                CtxA={getContext(CtxA)}, CtxB={getContext(CtxB)}
+            </div>
+        );
+        mount(
+            testRoot,
+            <div>
+                <CtxA value="outer">
+                    <CtxB value={999}>
+                        <MyComponent id="outer-first" />
+                    </CtxB>
+                </CtxA>
+                <CtxB value={111}>
+                    <CtxA value="inner">
+                        <MyComponent id="inner-first" />
+                    </CtxA>
+                </CtxB>
+            </div>
+        );
+
+        assert.is(
+            'CtxA=outer, CtxB=999',
+            testRoot.querySelector('#outer-first')!.textContent
+        );
+        assert.is(
+            'CtxA=inner, CtxB=111',
+            testRoot.querySelector('#inner-first')!.textContent
         );
     });
 });

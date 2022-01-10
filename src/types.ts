@@ -155,6 +155,29 @@ export interface Subscription {
 }
 
 /**
+ * A key-value pair that is active for a subtree
+ */
+export interface Context<TValue> {
+    /**
+     * Note: although this function has a signature, it does not actually take arguments when called directly.
+     *
+     * This is solely present so that TypeScript can auto-complete the "value" prop of Contexts
+     */
+    (unusedOnlyForJsxTypeInferrence?: { value: TValue }): TValue;
+    [TypeTag]: 'context';
+}
+
+export function createContext<TValue>(val: TValue): Context<TValue> {
+    return Object.assign(() => val, {
+        [TypeTag]: 'context' as const,
+    });
+}
+
+export function isContext(val: any): val is Context<any> {
+    return !!(val && val[TypeTag] === 'context');
+}
+
+/**
  * A calculation cell that recalculates when dependencies change
  */
 export type Calculation<Result> = (() => Result) & {

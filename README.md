@@ -285,6 +285,7 @@ type ComponentListeners = {
     onUnmount: (callback: OnUnmountCallback) => void;
     onMount: (callback: OnMountCallback) => void;
     onEffect: (callback: EffectCallback) => void;
+    getContext: <ContextValue>(context: Context<ContextValue>) => ContextValue;
 };
 
 type Component<Props extends {}> = (
@@ -299,6 +300,8 @@ Components are never re-rendered. There are two (and only two) lifecycle events 
 
 * Callback functions passed to the `onMount` function are called immediately after the component has been mounted to the DOM
 * Callback functions passed to the `onUnmount` function are called immediately before the component has been mounted to the DOM
+
+The `getContext` function allows the component to read context values. See the `createContext` section below.
 
 The `onEffect` function allows the creation of effects which are scoped to the lifetime of the component.
 
@@ -322,6 +325,39 @@ const Log: Component<{ messages: Collection<string> }> = (
         </pre>
     );
 };
+```
+
+
+## createContext()
+
+Contexts can be used to set values that can be retrieved from child subtrees.
+
+```
+function createContext<T>(value: T): ContextProvider<T>
+```
+
+Create a new context that has a default value. The returned ContextProvider can be used to set the value of this context
+for a JSX subtree.
+
+For example:
+
+```typescript
+const ColorContext = createContext<'red' | 'blue'>('red');
+
+const MyComponent: Component<{ message: string }> = ({ message }, { getContext }) => (
+  <div style={`color: ${getContext(ColorContext) === 'red' ? '#FFDDDD' : '#DDDDFF'}`}>
+    {message}
+  </div>
+);
+
+mount(document.body, (
+  <div>
+    <ColorContext value="blue">
+      <MyComponent message="This text would be blue" />
+    </ColorContext>
+    <MyComponent message="And this text would be red, the default" />
+  </div>
+));
 ```
 
 
@@ -419,6 +455,9 @@ Native elements behave slightly differently:
 There currently is no `cloneElement` equivalent.
 
 There is no `isValidElement` or `React.Children` equivalent.
+
+Contexts returned by `createContext` are opaque values. There is no `MyContext.Provider` or `MyContext.Consumer`; to
+read a context, a component must use its provided `getContext()` callback.
 
 The `ref` function is equivalent to `createRef()` / `useRef()` equivalent, except refs can only have default behavior
 when placed on native JSX elements. On component functions, the `ref` property is not specially treated and may be used

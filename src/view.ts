@@ -4,6 +4,8 @@ import {
     Collection,
     View,
     Calculation,
+    Context,
+    isContext,
     isCalculation,
     isCollection,
     isRef,
@@ -16,6 +18,7 @@ import {
     JSXNode,
     isRenderComponent,
     isRenderElement,
+    isRenderProvider,
     getElementTypeMapping,
 } from './jsx';
 import {
@@ -33,9 +36,9 @@ export function createElement(
     props?: any,
     ...children: JSXNode[]
 ): JSXNode;
-export function createElement<Props extends {}>(
-    Constructor: Component<Props>,
-    props?: Props,
+export function createElement<TContext>(
+    Constructor: Context<TContext>,
+    props: { value: TContext },
     ...children: JSXNode[]
 ): JSXNode;
 export function createElement<Props extends {}>(
@@ -44,8 +47,13 @@ export function createElement<Props extends {}>(
     ...children: JSXNode[]
 ): JSXNode;
 export function createElement<Props extends {}>(
-    Constructor: string | Component<Props>,
-    props?: any | Props,
+    Constructor: Component<Props>,
+    props?: Props,
+    ...children: JSXNode[]
+): JSXNode;
+export function createElement<TContext, Props extends {}>(
+    Constructor: string | Component<Props> | Context<TContext>,
+    props?: any | Props | { value: TContext },
     ...children: JSXNode[]
 ): JSXNode {
     if (typeof Constructor === 'string') {
@@ -56,9 +64,17 @@ export function createElement<Props extends {}>(
             children,
         };
     }
+    if (isContext(Constructor)) {
+        return {
+            [TypeTag]: 'provider',
+            context: Constructor,
+            value: props.value,
+            children,
+        };
+    }
     return {
         [TypeTag]: 'component',
-        component: Constructor,
+        component: Constructor as Component<Props>,
         props,
         children,
     };
@@ -111,9 +127,11 @@ function setAttributeValue(
 function jsxNodeToVNode({
     domParent,
     jsxNode,
+    contextMap,
 }: {
     domParent: VNode;
     jsxNode: JSXNode;
+    contextMap: Map<Context<any>, any>;
 }): ChildVNode {
     if (
         jsxNode === null ||
@@ -215,6 +233,7 @@ function jsxNodeToVNode({
             jsxNodeToVNode({
                 domParent: elementNode,
                 jsxNode: childJsxNode,
+                contextMap,
             })
         );
 
@@ -245,6 +264,7 @@ function jsxNodeToVNode({
                     jsxNodeToVNode({
                         domParent: collectionNode.domParent,
                         jsxNode: jsxChild,
+                        contextMap,
                     })
                 )
             );
@@ -258,6 +278,7 @@ function jsxNodeToVNode({
                         jsxNodeToVNode({
                             domParent: collectionNode.domParent,
                             jsxNode: jsxChild,
+                            contextMap,
                         })
                     );
                     spliceVNode(collectionNode, index, count, childNodes);
@@ -326,6 +347,7 @@ function jsxNodeToVNode({
             const childVNode = jsxNodeToVNode({
                 domParent: calculationNode.domParent,
                 jsxNode: jsxChild,
+                contextMap,
             });
             if (firstRun) {
                 firstRun = false;
@@ -349,6 +371,34 @@ function jsxNodeToVNode({
         mountVNode(calculationNode);
 
         return calculationNode;
+    }
+    if (isRenderProvider(jsxNode)) {
+        const renderProvider = jsxNode;
+        const providerNode = makeChildVNode({
+            domParent: domParent,
+            jsxNode,
+            domNode: null,
+            onMount: [],
+            onUnmount: [],
+        });
+
+        const subMap = new Map(contextMap);
+        subMap.set(renderProvider.context, renderProvider.value);
+
+        providerNode.children.push(
+            ...renderProvider.children.map((jsxChild) =>
+                jsxNodeToVNode({
+                    domParent: domParent,
+                    jsxNode: jsxChild,
+                    contextMap: subMap,
+                })
+            )
+        );
+
+        // Mount self
+        mountVNode(providerNode);
+
+        return providerNode;
     }
     if (isRenderComponent(jsxNode)) {
         const onUnmount: Function[] = [];
@@ -390,12 +440,19 @@ function jsxNodeToVNode({
                         release(effectCalc);
                     });
                 },
+                getContext: <TVal>(context: Context<TVal>): TVal => {
+                    if (contextMap.has(context)) {
+                        return contextMap.get(context);
+                    }
+                    return context();
+                },
             }
         );
 
         const childVNode = jsxNodeToVNode({
             domParent: componentNode.domParent,
             jsxNode: jsxChild,
+            contextMap,
         });
         componentNode.children.push(childVNode);
 
@@ -423,6 +480,7 @@ function jsxNodeToVNode({
                 jsxNodeToVNode({
                     domParent: domParent,
                     jsxNode: jsxChild,
+                    contextMap,
                 })
             )
         );
@@ -461,6 +519,7 @@ export function mount(parentElement: Element, jsxNode: JSXNode) {
         jsxNodeToVNode({
             domParent: rootNode,
             jsxNode: jsxNode,
+            contextMap: new Map(),
         })
     );
 
