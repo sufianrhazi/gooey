@@ -9,6 +9,7 @@ import {
     isCollection,
     isModel,
     isModelField,
+    isSubscription,
     makeCalculation,
     makeEffect,
     EqualityFunc,
@@ -167,25 +168,52 @@ export function addDepToCurrentCalculation(item: DAGNode) {
         if (!globalDependencyGraph.hasNode(dependentCalculation)) {
             globalDependencyGraph.addNode(dependentCalculation);
         }
-        if (globalDependencyGraph.addEdge(item, dependentCalculation)) {
-            DEBUG &&
-                log.debug(
-                    'New global dependency',
-                    debugNameFor(item),
-                    '->',
-                    debugNameFor(dependentCalculation)
-                );
-        }
+        globalDependencyGraph.addEdge(
+            item,
+            dependentCalculation,
+            DAG.EDGE_HARD
+        );
+        DEBUG &&
+            log.debug(
+                'New global dependency',
+                debugNameFor(item),
+                '->',
+                debugNameFor(dependentCalculation)
+            );
     }
 }
 
 export function addManualDep(fromNode: DAGNode, toNode: DAGNode) {
     globalDependencyGraph.addNode(fromNode);
     globalDependencyGraph.addNode(toNode);
-    if (globalDependencyGraph.addEdge(fromNode, toNode)) {
+    globalDependencyGraph.addEdge(fromNode, toNode, DAG.EDGE_HARD);
+    DEBUG &&
+        log.debug(
+            'New manual dependency',
+            debugNameFor(fromNode),
+            '->',
+            debugNameFor(toNode)
+        );
+}
+
+export function addOrderingDep(fromNode: DAGNode, toNode: DAGNode) {
+    globalDependencyGraph.addNode(fromNode);
+    globalDependencyGraph.addNode(toNode);
+    globalDependencyGraph.addEdge(fromNode, toNode, DAG.EDGE_SOFT);
+    DEBUG &&
+        log.debug(
+            'New manual ordering dependency',
+            debugNameFor(fromNode),
+            '->',
+            debugNameFor(toNode)
+        );
+}
+
+export function removeManualDep(fromNode: DAGNode, toNode: DAGNode) {
+    if (globalDependencyGraph.removeEdge(fromNode, toNode, DAG.EDGE_HARD)) {
         DEBUG &&
             log.debug(
-                'New manual dependency',
+                'Removed manual dependency',
                 debugNameFor(fromNode),
                 '->',
                 debugNameFor(toNode)
@@ -193,11 +221,11 @@ export function addManualDep(fromNode: DAGNode, toNode: DAGNode) {
     }
 }
 
-export function removeManualDep(fromNode: DAGNode, toNode: DAGNode) {
-    if (globalDependencyGraph.removeEdge(fromNode, toNode)) {
+export function removeOrderingDep(fromNode: DAGNode, toNode: DAGNode) {
+    if (globalDependencyGraph.removeEdge(fromNode, toNode, DAG.EDGE_SOFT)) {
         DEBUG &&
             log.debug(
-                'Removed manual dependency',
+                'Removed manual ordering dependency',
                 debugNameFor(fromNode),
                 '->',
                 debugNameFor(toNode)
@@ -377,6 +405,9 @@ export function debug(): string {
         }
         if (isModelField(item)) {
             subgraph = item.model;
+        }
+        if (isSubscription(item)) {
+            subgraph = item.item;
         }
         return {
             label: `${id}\n${debugNameFor(item)}`,

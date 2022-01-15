@@ -345,6 +345,31 @@ export const assert = {
             );
         }
     },
+    arrayIs: <T>(expected: T[], received: T[], msg?: string) => {
+        countAssertion();
+        if (expected.length !== received.length) {
+            throw new AssertionError(
+                'arrayIs',
+                () =>
+                    `${repr(expected)} differs in length from ${repr(
+                        received
+                    )}`,
+                msg
+            );
+        }
+        for (let i = 0; i < expected.length; ++i) {
+            if (expected[i] !== received[i]) {
+                throw new AssertionError(
+                    'arrayIs',
+                    () =>
+                        `Index ${i} mismatch: ${repr(
+                            expected[i]
+                        )} is not ${repr(received[i])}`,
+                    msg
+                );
+            }
+        }
+    },
     arrayIncludes: (haystack: readonly any[], needle: any, msg?: string) => {
         countAssertion();
         if (!haystack.includes(needle)) {
@@ -466,9 +491,11 @@ export const assert = {
             if (!isWarm && performance.now() - startTime > 1000) {
                 isWarm = true;
             }
+            if (typeof gc === 'function') gc();
             const fnStart = performance.now();
             let didMeasure = false;
             fn((measurement) => {
+                if (typeof gc === 'function') gc();
                 const start = performance.now();
                 const result = measurement();
                 didMeasure = true;

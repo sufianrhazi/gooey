@@ -1,6 +1,7 @@
 import Revise, {
     Component,
     calc,
+    ref,
     collection,
     flush,
     model,
@@ -390,6 +391,47 @@ suite('mount components', () => {
                 'onUnmount',
             ],
             sequence
+        );
+    });
+
+    test('onEffect is called *after* mounted calculations are updated', () => {
+        const operations: string[] = [];
+        const data = model({
+            value: 'before',
+        });
+        const Child: Component<{}> = (_props, { onMount, onEffect }) => {
+            const divRef = ref<HTMLDivElement>();
+
+            onEffect(() => {
+                operations.push(
+                    `child:onEffect1:${data.value}:${
+                        divRef.current!.textContent
+                    }`
+                );
+            });
+
+            return (
+                <div ref={divRef}>
+                    {calc(() => {
+                        operations.push(`child:calc1:${data.value}`);
+                        return data.value;
+                    })}
+                </div>
+            );
+        };
+
+        mount(testRoot, <Child />);
+        data.value = 'after';
+        flush();
+
+        assert.deepEqual(
+            [
+                'child:calc1:before',
+                'child:onEffect1:before:before',
+                'child:calc1:after',
+                'child:onEffect1:after:after',
+            ],
+            operations
         );
     });
 

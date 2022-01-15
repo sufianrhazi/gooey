@@ -14,6 +14,8 @@ import Revise, {
     setLogLevel,
     reset,
 } from './index';
+import { DAG } from './dag';
+import { randint } from './util';
 import { suite, test, beforeEach, afterEach, assert } from './test';
 
 const testRoot = document.getElementById('test-root');
@@ -23,13 +25,20 @@ suite('perf tests', () => {
     let logLevel: LogLevel | null = null;
 
     beforeEach(() => {
+        if (typeof gc === 'undefined') {
+            assert.fail(
+                'No global gc() function found. With chrome, pass --js-flags="--expose-gc"'
+            );
+        }
         reset();
         logLevel = getLogLevel();
         setLogLevel('error');
+        gc();
     });
 
     afterEach(() => {
         if (logLevel) setLogLevel(logLevel);
+        gc();
     });
 
     test('render 1000 flat, static items in 5ms', () => {
@@ -468,5 +477,99 @@ suite('perf tests', () => {
         for (let i = 0; i < COUNT; ++i) {
             release(calculations[i]);
         }
+    });
+
+    test('add 1k nodes in 0.5ms', () => {
+        const COUNT = 1_000;
+        const objects: { i: number }[] = [];
+        for (let i = 0; i < COUNT; ++i) {
+            objects.push({ i });
+        }
+        assert.medianRuntimeLessThan(0.5, (measure) => {
+            // Build a random graph of 10k nodes and edges all consolidating on a single destination node
+            const dag = new DAG();
+            measure(() => {
+                for (let i = 0; i < COUNT; ++i) {
+                    dag.addNode(objects[i]);
+                }
+            });
+        });
+    });
+
+    test('add 1k edges in 1ms', () => {
+        const COUNT = 1_000;
+        const objects: { i: number }[] = [];
+        for (let i = 0; i < COUNT; ++i) {
+            objects.push({ i });
+        }
+        assert.medianRuntimeLessThan(1, (measure) => {
+            // Build a random graph of 10k nodes and edges all consolidating on a single destination node
+            const dag = new DAG();
+            for (let i = 0; i < COUNT; ++i) {
+                dag.addNode(objects[i]);
+            }
+            const edges: [number, number][] = [];
+            for (let i = 0; i < COUNT - 1; ++i) {
+                const candidate = randint(i + 1, COUNT);
+                edges.push([i, candidate]);
+            }
+            measure(() => {
+                edges.forEach(([fromIndex, toIndex]) => {
+                    dag.addEdge(
+                        objects[fromIndex],
+                        objects[toIndex],
+                        DAG.EDGE_HARD
+                    );
+                });
+            });
+        });
+    });
+
+    test('garbage collect lk nodes in 4ms', () => {
+        const COUNT = 1_000;
+        const objects: { i: number }[] = [];
+        for (let i = 0; i < COUNT; ++i) {
+            objects.push({ i });
+        }
+
+        assert.medianRuntimeLessThan(4, (measure) => {
+            // Build a random graph of 10k nodes and edges all consolidating on a single destination node
+            const dag = new DAG();
+            for (let i = 0; i < COUNT; ++i) {
+                dag.addNode(objects[i]);
+            }
+            for (let i = 0; i < COUNT - 1; ++i) {
+                const candidate = randint(i + 1, COUNT);
+                dag.addEdge(objects[i], objects[candidate], DAG.EDGE_HARD);
+            }
+            measure(() => {
+                dag.garbageCollect();
+            });
+        });
+    });
+
+    test('toposort 10% dirty nodes in a 1k graph in 2ms', () => {
+        const COUNT = 1_000;
+        const objects: { i: number }[] = [];
+        for (let i = 0; i < COUNT; ++i) {
+            objects.push({ i });
+        }
+        assert.medianRuntimeLessThan(2, (measure) => {
+            // Build a random graph of 10k nodes and edges all consolidating on a single destination node
+            const dag = new DAG();
+            for (let i = 0; i < COUNT; ++i) {
+                dag.addNode(objects[i]);
+                if (Math.random() < 0.05) {
+                    dag.markNodeDirty(objects[i]);
+                }
+            }
+            for (let i = 0; i < COUNT - 1; ++i) {
+                const candidate = randint(i + 1, COUNT);
+                dag.addEdge(objects[i], objects[candidate], DAG.EDGE_HARD);
+            }
+            measure(() => {
+                dag.visitDirtyTopological(() => false);
+            });
+        });
     });
 });

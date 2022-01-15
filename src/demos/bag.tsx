@@ -63,6 +63,7 @@ const App = () => {
 
     const onClickDelete = () => {
         delete bag[state.key];
+        keysCollection.reject((key) => key === state.key);
     };
 
     return (

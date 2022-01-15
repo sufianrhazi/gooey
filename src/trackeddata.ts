@@ -6,6 +6,7 @@ import {
     FlushKey,
     ObserveKey,
     NotifyKey,
+    GetSubscriptionNodeKey,
     TypeTag,
     DataTypeTag,
     ModelField,
@@ -16,6 +17,8 @@ import {
     untracked,
     addManualDep,
     removeManualDep,
+    addOrderingDep,
+    removeOrderingDep,
     addDepToCurrentCalculation,
     processChange,
 } from './calc';
@@ -80,6 +83,7 @@ export function trackedData<
 
     const subscriptionNode: Subscription = {
         [TypeTag]: 'subscription',
+        item: null, // assigned later
     };
     name(subscriptionNode, `${debugName || '?'}:sub`);
 
@@ -102,12 +106,17 @@ export function trackedData<
         });
     }
 
+    function getSubscriptionNode() {
+        return subscriptionNode;
+    }
+
     function observe(observer: (event: TEvent) => void) {
         if (observers.length === 0) {
             // Initialize the subscription node so events are ordered correctly
             fields.forEach((field) => {
-                addManualDep(field, subscriptionNode);
+                addOrderingDep(field, subscriptionNode);
             });
+            addManualDep(proxy, subscriptionNode);
         }
         observers.push(observer);
         return () => {
@@ -115,8 +124,9 @@ export function trackedData<
             if (observers.length === 0) {
                 // Deinitialize the subscription node so events are ordered correctly
                 fields.forEach((field) => {
-                    removeManualDep(field, subscriptionNode);
+                    removeOrderingDep(field, subscriptionNode);
                 });
+                removeManualDep(proxy, subscriptionNode);
             }
         };
     }
@@ -132,7 +142,6 @@ export function trackedData<
                 spec.processEvent(view, event, viewArray)
             );
         });
-        addManualDep(proxy, view);
         addManualDep(subscriptionNode, view);
         return view;
     }
@@ -145,7 +154,7 @@ export function trackedData<
     function removeSubscriptionField(key: string | symbol) {
         if (observers.length > 0) {
             const field = getField(key);
-            removeManualDep(field, subscriptionNode);
+            removeOrderingDep(field, subscriptionNode);
         }
     }
 
@@ -156,6 +165,7 @@ export function trackedData<
         [AddDeferredWorkKey]: addDeferredWork,
         [ObserveKey]: observe,
         [NotifyKey]: notify,
+        [GetSubscriptionNodeKey]: getSubscriptionNode,
         ...bindMethods({
             addDeferredWork,
             observe,
@@ -176,10 +186,10 @@ export function trackedData<
             };
             if (debugName) name(field, debugName);
             fields.set(key, field);
-            addManualDep(proxy, field);
-            if (observers.length > 0) {
-                addManualDep(field, subscriptionNode);
-            }
+        }
+        addOrderingDep(proxy, field);
+        if (observers.length > 0) {
+            addOrderingDep(field, subscriptionNode);
         }
         return field;
     }
@@ -238,12 +248,14 @@ export function trackedData<
                     const field = getField(key);
                     processChange(field); // Anything depending on this value will need to be recalculated
                     if (observers.length > 0) {
-                        removeManualDep(field, subscriptionNode);
+                        removeOrderingDep(field, subscriptionNode);
                     }
                 }
                 return changed;
             },
         });
+
+    subscriptionNode.item = proxy;
 
     if (debugName) name(proxy, debugName);
 

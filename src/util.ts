@@ -64,3 +64,7 @@ export function alwaysFalse(): boolean {
 export function strictEqual<T>(a: T, b: T): boolean {
     return a === b;
 }
+
+export function randint(low: number, high: number): number {
+    return Math.floor(Math.random() * (high - low)) + low;
+}

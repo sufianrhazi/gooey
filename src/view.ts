@@ -1,15 +1,23 @@
-import { effect, retain, release, untracked } from './calc';
-import { debugNameFor } from './debug';
+import {
+    effect,
+    retain,
+    release,
+    untracked,
+    addOrderingDep,
+    removeOrderingDep,
+} from './calc';
+import { name, debugNameFor } from './debug';
 import {
     Collection,
     View,
-    Calculation,
     Context,
+    NodeOrdering,
     isContext,
     isCalculation,
     isCollection,
     isRef,
     ObserveKey,
+    GetSubscriptionNodeKey,
     TypeTag,
 } from './types';
 import * as log from './log';
@@ -128,10 +136,12 @@ function jsxNodeToVNode({
     domParent,
     jsxNode,
     contextMap,
+    parentNodeOrdering,
 }: {
     domParent: VNode;
     jsxNode: JSXNode;
     contextMap: Map<Context<any>, any>;
+    parentNodeOrdering: NodeOrdering;
 }): ChildVNode {
     if (
         jsxNode === null ||
@@ -174,7 +184,7 @@ function jsxNodeToVNode({
     if (isRenderElement(jsxNode)) {
         const element = document.createElement(jsxNode.element);
 
-        const boundEffects: Calculation<any>[] = [];
+        const onReleaseActions: (() => void)[] = [];
         let refCallback: any = undefined;
 
         // Bind props
@@ -200,8 +210,11 @@ function jsxNodeToVNode({
                             computedValue
                         );
                     }, `viewattr:${key}`);
-                    retain(boundEffect);
-                    boundEffects.push(boundEffect);
+                    onReleaseActions.push(() => {
+                        removeOrderingDep(boundEffect, parentNodeOrdering);
+                    });
+                    addOrderingDep(boundEffect, parentNodeOrdering);
+
                     boundEffect();
                 } else {
                     setAttributeValue(jsxNode.element, element, key, value);
@@ -222,7 +235,7 @@ function jsxNodeToVNode({
             ],
             onUnmount: [
                 () => {
-                    boundEffects.forEach((boundEffect) => release(boundEffect));
+                    onReleaseActions.forEach((action) => action());
                     if (refCallback) {
                         refCallback(undefined);
                     }
@@ -234,6 +247,7 @@ function jsxNodeToVNode({
                 domParent: elementNode,
                 jsxNode: childJsxNode,
                 contextMap,
+                parentNodeOrdering,
             })
         );
 
@@ -258,6 +272,14 @@ function jsxNodeToVNode({
             onUnmount,
         });
 
+        const collectionNodeOrdering = makeNodeOrdering(
+            `viewcoll:${debugNameFor(jsxNode) ?? 'node'}:order`
+        );
+        addOrderingDep(collectionNodeOrdering, parentNodeOrdering);
+        onUnmount.push(() => {
+            removeOrderingDep(collectionNodeOrdering, parentNodeOrdering);
+        });
+
         untracked(() => {
             collectionNode.children.push(
                 ...trackedCollection.map((jsxChild) =>
@@ -265,6 +287,7 @@ function jsxNodeToVNode({
                         domParent: collectionNode.domParent,
                         jsxNode: jsxChild,
                         contextMap,
+                        parentNodeOrdering: collectionNodeOrdering,
                     })
                 )
             );
@@ -279,6 +302,7 @@ function jsxNodeToVNode({
                             domParent: collectionNode.domParent,
                             jsxNode: jsxChild,
                             contextMap,
+                            parentNodeOrdering: collectionNodeOrdering,
                         })
                     );
                     spliceVNode(collectionNode, index, count, childNodes);
@@ -318,11 +342,12 @@ function jsxNodeToVNode({
                 log.assertExhausted(event, 'unhandled collection event');
             }
         });
+        const subscriptionNode = trackedCollection[GetSubscriptionNodeKey]();
 
-        retain(trackedCollection);
+        addOrderingDep(subscriptionNode, collectionNodeOrdering);
         onUnmount.push(unobserve);
         onUnmount.push(() => {
-            release(trackedCollection);
+            removeOrderingDep(subscriptionNode, collectionNodeOrdering);
         });
 
         // Mount self
@@ -332,13 +357,21 @@ function jsxNodeToVNode({
     }
     if (isCalculation(jsxNode)) {
         const trackedCalculation = jsxNode;
-        const onUnmount: Function[] = [];
+        const onUnmount: (() => void)[] = [];
         const calculationNode = makeChildVNode({
             domParent: domParent,
             jsxNode: jsxNode,
             domNode: null,
             onMount: [],
             onUnmount,
+        });
+
+        const calculationNodeOrdering = makeNodeOrdering(
+            `viewcalc:${debugNameFor(jsxNode) ?? 'node'}:order`
+        );
+        addOrderingDep(calculationNodeOrdering, parentNodeOrdering);
+        onUnmount.push(() => {
+            removeOrderingDep(calculationNodeOrdering, parentNodeOrdering);
         });
 
         let firstRun = true;
@@ -348,6 +381,7 @@ function jsxNodeToVNode({
                 domParent: calculationNode.domParent,
                 jsxNode: jsxChild,
                 contextMap,
+                parentNodeOrdering: calculationNodeOrdering,
             });
             if (firstRun) {
                 firstRun = false;
@@ -362,8 +396,10 @@ function jsxNodeToVNode({
             }
         }, `viewcalc:${debugNameFor(jsxNode) ?? 'node'}`);
 
-        retain(resultEffect);
-        onUnmount.push(() => release(resultEffect));
+        onUnmount.push(() => {
+            removeOrderingDep(resultEffect, calculationNodeOrdering);
+        });
+        addOrderingDep(resultEffect, calculationNodeOrdering);
 
         resultEffect();
 
@@ -391,6 +427,7 @@ function jsxNodeToVNode({
                     domParent: domParent,
                     jsxNode: jsxChild,
                     contextMap: subMap,
+                    parentNodeOrdering,
                 })
             )
         );
@@ -434,9 +471,11 @@ function jsxNodeToVNode({
                     );
                     onComponentMount.push(() => {
                         retain(effectCalc);
+                        addOrderingDep(parentNodeOrdering, effectCalc);
                         effectCalc();
                     });
                     onUnmount.push(() => {
+                        removeOrderingDep(parentNodeOrdering, effectCalc);
                         release(effectCalc);
                     });
                 },
@@ -453,6 +492,7 @@ function jsxNodeToVNode({
             domParent: componentNode.domParent,
             jsxNode: jsxChild,
             contextMap,
+            parentNodeOrdering,
         });
         componentNode.children.push(childVNode);
 
@@ -481,6 +521,7 @@ function jsxNodeToVNode({
                     domParent: domParent,
                     jsxNode: jsxChild,
                     contextMap,
+                    parentNodeOrdering,
                 })
             )
         );
@@ -510,16 +551,27 @@ function jsxNodeToVNode({
     log.assertExhausted(jsxNode, 'unexpected render type');
 }
 
+function makeNodeOrdering(debugName?: string): NodeOrdering {
+    const nodeOrdering: NodeOrdering = {
+        [TypeTag]: 'nodeOrdering',
+    };
+    if (debugName) name(nodeOrdering, debugName);
+    return nodeOrdering;
+}
+
 /**
  * Mount the provided JSX to an element
  */
 export function mount(parentElement: Element, jsxNode: JSXNode) {
+    const nodeOrdering = makeNodeOrdering('mount');
+    retain(nodeOrdering);
     const rootNode = makeRootVNode({ domNode: parentElement });
     rootNode.children.push(
         jsxNodeToVNode({
             domParent: rootNode,
             jsxNode: jsxNode,
             contextMap: new Map(),
+            parentNodeOrdering: nodeOrdering,
         })
     );
 
@@ -534,6 +586,7 @@ export function mount(parentElement: Element, jsxNode: JSXNode) {
 
     return () => {
         spliceVNode(rootNode, 0, rootNode.children.length, []);
+        release(nodeOrdering);
     };
 }
 

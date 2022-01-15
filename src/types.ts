@@ -1,4 +1,10 @@
-export class InvariantError extends Error {}
+export class InvariantError extends Error {
+    detail?: any;
+    constructor(msg: string, detail?: any) {
+        super(msg);
+        this.detail = detail;
+    }
+}
 
 export const TypeTag = Symbol('reviseType');
 export const DataTypeTag = Symbol('dataTypeTag');
@@ -6,6 +12,7 @@ const CalculationTypeTag = Symbol('calculationType');
 export const RecalculationTag = Symbol('recalculate');
 
 export const ObserveKey = Symbol('observe');
+export const GetSubscriptionNodeKey = Symbol('getSubscriptionNode');
 export const MakeModelViewKey = Symbol('makeModelView');
 export const FlushKey = Symbol('flush');
 export const AddDeferredWorkKey = Symbol('addDeferredWork');
@@ -94,7 +101,10 @@ export type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementation & {
     [DataTypeTag]: TTypeTag;
     [FlushKey]: () => void;
     [AddDeferredWorkKey]: (task: () => void) => void;
-    [ObserveKey]: (listener: (observer: TEvent) => void) => () => void;
+    [ObserveKey]: (
+        listener: (observer: TEvent, subscriptionNode: Subscription) => void
+    ) => () => void;
+    [GetSubscriptionNodeKey]: () => Subscription;
     [NotifyKey]: (event: TEvent) => void;
 };
 
@@ -152,6 +162,11 @@ export type View<T> = TrackedData<
 
 export interface Subscription {
     [TypeTag]: 'subscription';
+    item: any;
+}
+
+export interface NodeOrdering {
+    [TypeTag]: 'nodeOrdering';
 }
 
 /**
@@ -252,10 +267,15 @@ export function isSubscription(thing: any): thing is Subscription {
     return !!(thing && thing[TypeTag] === 'subscription');
 }
 
+export function isNodeOrdering(thing: any): thing is NodeOrdering {
+    return !!(thing && thing[TypeTag] === 'nodeOrdering');
+}
+
 export type DAGNode =
     | Model<any>
     | Collection<any>
     | Calculation<any>
     | ModelField
     | View<any>
-    | Subscription;
+    | Subscription
+    | NodeOrdering;

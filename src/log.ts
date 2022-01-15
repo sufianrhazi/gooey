@@ -1,3 +1,5 @@
+import { InvariantError } from './types';
+
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 const levels: Record<LogLevel, number> = {
     error: 0,
@@ -57,7 +59,7 @@ export function invariant(check: () => any, ...items: any[]) {
     }
 }
 
-export function assert(check: any, ...items: any[]): asserts check {
+export function assert(check: any, msg: string): asserts check {
     if (!check) {
         error(
             'Assertion failure',
@@ -67,13 +69,13 @@ export function assert(check: any, ...items: any[]): asserts check {
                 ? 'null'
                 : check.toString(),
             'is not truthy',
-            ...items
+            msg
         );
-        throw new Error('Assertion failure');
+        throw new InvariantError(`Assertion failure: ${msg}`);
     }
 }
 
 export function assertExhausted(context: never, ...items: any[]): never {
     error('Assertion failure', context, 'is not exhausted', ...items);
-    throw new Error('Assertion failure');
+    throw new InvariantError('Assertion failure', { context, items });
 }

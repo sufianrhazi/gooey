@@ -54,22 +54,7 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
         },
         ({ addDeferredWork, makeView, notify, observe, subscriptionNode }) => {
             return {
-                [MakeModelViewKey]: function makeModelView<V>(
-                    spec: ViewSpec<T, V, ModelEvent>,
-                    viewDebugName?: string | undefined
-                ) {
-                    const viewArray: V[] = untracked(() =>
-                        spec.initialize(obj)
-                    );
-                    const view = collection(viewArray, viewDebugName);
-                    observe((event: ModelEvent) => {
-                        view[AddDeferredWorkKey](() =>
-                            spec.processEvent(view, event, viewArray)
-                        );
-                    });
-                    addManualDep(subscriptionNode, view);
-                    return view;
-                },
+                [MakeModelViewKey]: makeView,
             };
         },
         debugName

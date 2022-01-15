@@ -5,6 +5,7 @@ import {
     isEffect,
     isModel,
     isSubscription,
+    isNodeOrdering,
 } from './types';
 
 let nameMap: WeakMap<any, string> = new WeakMap();
@@ -30,6 +31,9 @@ export function debugNameFor(item: DAGNode): string {
     }
     if (isSubscription(item)) {
         return `sub:${nameMap.get(item) ?? '?'}`;
+    }
+    if (isNodeOrdering(item)) {
+        return `ord:${nameMap.get(item) ?? '?'}`;
     }
     return `field:${nameMap.get(item.model) ?? '?'}:${String(item.key)}`;
 }

@@ -303,7 +303,9 @@ Components are never re-rendered. There are two (and only two) lifecycle events 
 
 The `getContext` function allows the component to read context values. See the `createContext` section below.
 
-The `onEffect` function allows the creation of effects which are scoped to the lifetime of the component.
+The `onEffect` function allows the creation of effects which are scoped to the lifetime of the component. These effects
+are guaranteed to trigger **after** mounted calculations in JSX, so it is safe to read from the component's DOM subtree
+in the effect. Note: this is guaranteed for the mounted children of the component, **not** for parent subtrees.
 
 To demonstrate the use of `onEffect`, here's a "log" component which takes a collection of log messages, and scrolls the
 container so that the last log message is visible when additional log messages are added:
@@ -459,10 +461,10 @@ There is no `isValidElement` or `React.Children` equivalent.
 Contexts returned by `createContext` are opaque values. There is no `MyContext.Provider` or `MyContext.Consumer`; to
 read a context, a component must use its provided `getContext()` callback.
 
-The `ref` function is equivalent to `createRef()` / `useRef()` equivalent, except refs can only have default behavior
-when placed on native JSX elements. On component functions, the `ref` property is not specially treated and may be used
-like any other property. If you want something akin to `useImperativeHandle`, give your component a `ref` prop and
-assign the interface to `ref.current` in either the component body or within its `onMount` handler.
+The `ref` function is equivalent to `createRef()` / `useRef()` equivalent. Refs notably only have default behavior when
+placed on native JSX elements. On component functions, the `ref` property is not specially treated and may be used like
+any other property. If you want something akin to `useImperativeHandle`, give your component a `ref` prop and assign the
+interface to `ref.current` in either the component body or within its `onMount` handler.
 
 The `children` component prop is an array of JSX elements. There is no difference between a `Fragment` and an array: In
 fact, the definition of `Fragment` is: `({ children }) => children`.
