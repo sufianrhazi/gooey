@@ -73,7 +73,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
             observe,
             addDeferredWork,
             processFieldChange,
-            removeSubscriptionField,
+            processFieldDelete,
         }) => ({
             splice: function splice(
                 index: number,
@@ -109,9 +109,12 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                         ++i
                     ) {
                         const key = i.toString();
-                        processFieldChange(key);
                         if (i >= newLength) {
-                            removeSubscriptionField(key);
+                            // Field deletion
+                            processFieldDelete(key);
+                        } else {
+                            // Field change
+                            processFieldChange(key);
                         }
                     }
                     processFieldChange('length');

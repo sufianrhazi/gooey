@@ -190,7 +190,7 @@ export function spliceVNode(
     childIndex: number,
     removeCount: number,
     newNodes: VNode[],
-    { runOnMount = true, runOnUnmount = true } = {}
+    { dispose = true, runOnMount = true, runOnUnmount = true } = {}
 ) {
     let domParent: VNode;
     if (immediateParent.children[childIndex]) {
@@ -225,6 +225,14 @@ export function spliceVNode(
                 toRemove.push([node.parentNode, node]);
             }
         });
+        if (dispose) {
+            detachedVNode.domParent = null as any;
+            detachedVNode.mountFragment = null as any;
+            detachedVNode.children = null as any;
+            detachedVNode.domNode = null as any;
+            detachedVNode.onMount = null as any;
+            detachedVNode.onUnmount = null as any;
+        }
     });
     const groupedToRemove = groupBy(toRemove, (item) => item);
     groupedToRemove.forEach((childNodes, parentNode) => {

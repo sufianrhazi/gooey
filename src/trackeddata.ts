@@ -16,7 +16,6 @@ import { collection } from './collection';
 import {
     untracked,
     addManualDep,
-    removeManualDep,
     addOrderingDep,
     removeOrderingDep,
     addDepToCurrentCalculation,
@@ -71,11 +70,11 @@ export function trackedData<
         ) => Collection<V>;
         subscriptionNode: Subscription;
         processFieldChange: (field: string | symbol) => void;
-        removeSubscriptionField: (field: string | symbol) => void;
+        processFieldDelete: (field: string | symbol) => void;
     }) => TMethods,
     debugName?: string
 ): TrackedData<TData & TMethods, TDataTypeTag, TEvent> {
-    const fields: Map<string | number | symbol, ModelField> = new Map();
+    const fieldRecords: Map<string | number | symbol, ModelField> = new Map();
 
     let observers: ((event: TEvent) => void)[] = [];
 
@@ -112,21 +111,19 @@ export function trackedData<
 
     function observe(observer: (event: TEvent) => void) {
         if (observers.length === 0) {
-            // Initialize the subscription node so events are ordered correctly
-            fields.forEach((field) => {
+            addOrderingDep(proxy, subscriptionNode);
+            fieldRecords.forEach((field) => {
                 addOrderingDep(field, subscriptionNode);
             });
-            addManualDep(proxy, subscriptionNode);
         }
         observers.push(observer);
         return () => {
             observers = observers.filter((obs) => obs !== observer);
             if (observers.length === 0) {
-                // Deinitialize the subscription node so events are ordered correctly
-                fields.forEach((field) => {
+                removeOrderingDep(proxy, subscriptionNode);
+                fieldRecords.forEach((field) => {
                     removeOrderingDep(field, subscriptionNode);
                 });
-                removeManualDep(proxy, subscriptionNode);
             }
         };
     }
@@ -151,11 +148,9 @@ export function trackedData<
         processChange(field);
     }
 
-    function removeSubscriptionField(key: string | symbol) {
-        if (observers.length > 0) {
-            const field = getField(key);
-            removeOrderingDep(field, subscriptionNode);
-        }
+    function processFieldDelete(key: string | symbol) {
+        const field = getField(key);
+        processChange(field);
     }
 
     const pseudoPrototype = {
@@ -173,23 +168,22 @@ export function trackedData<
             makeView,
             subscriptionNode,
             processFieldChange,
-            removeSubscriptionField,
+            processFieldDelete,
         }),
     };
 
-    function getField(key: string | number | symbol) {
-        let field: ModelField | undefined = fields.get(key);
+    function getField(key: string | number | symbol): ModelField {
+        let field = fieldRecords.get(key);
         if (!field) {
             field = {
                 model: proxy as any,
                 key,
             };
             if (debugName) name(field, debugName);
-            fields.set(key, field);
-        }
-        addOrderingDep(proxy, field);
-        if (observers.length > 0) {
-            addOrderingDep(field, subscriptionNode);
+            fieldRecords.set(key, field);
+            if (observers.length > 0) {
+                addOrderingDep(field, subscriptionNode);
+            }
         }
         return field;
     }
@@ -247,9 +241,6 @@ export function trackedData<
                 if (changed) {
                     const field = getField(key);
                     processChange(field); // Anything depending on this value will need to be recalculated
-                    if (observers.length > 0) {
-                        removeOrderingDep(field, subscriptionNode);
-                    }
                 }
                 return changed;
             },

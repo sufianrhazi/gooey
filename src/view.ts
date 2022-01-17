@@ -273,7 +273,9 @@ function jsxNodeToVNode({
         });
 
         const collectionNodeOrdering = makeNodeOrdering(
-            `viewcoll:${debugNameFor(jsxNode) ?? 'node'}:order`
+            DEBUG
+                ? `viewcoll:${debugNameFor(jsxNode) ?? 'node'}:order`
+                : 'viewcoll:order'
         );
         addOrderingDep(collectionNodeOrdering, parentNodeOrdering);
         onUnmount.push(() => {
@@ -314,7 +316,7 @@ function jsxNodeToVNode({
                     fromIndex,
                     fromCount,
                     [],
-                    { runOnUnmount: false }
+                    { dispose: false, runOnUnmount: false }
                 );
                 spliceVNode(
                     collectionNode,
@@ -330,7 +332,7 @@ function jsxNodeToVNode({
                     0,
                     indexes.length,
                     [],
-                    { runOnUnmount: false }
+                    { dispose: false, runOnUnmount: false }
                 );
                 const sortedVNodes = indexes.map(
                     (newIndex) => removedVNodes[newIndex]
@@ -367,7 +369,9 @@ function jsxNodeToVNode({
         });
 
         const calculationNodeOrdering = makeNodeOrdering(
-            `viewcalc:${debugNameFor(jsxNode) ?? 'node'}:order`
+            DEBUG
+                ? `viewcalc:${debugNameFor(jsxNode) ?? 'node'}:order`
+                : 'viewcalc:order'
         );
         addOrderingDep(calculationNodeOrdering, parentNodeOrdering);
         onUnmount.push(() => {
