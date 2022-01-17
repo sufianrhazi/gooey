@@ -15,7 +15,7 @@ import {
 } from './test/types';
 import * as log from './log';
 import { request, requestStream } from './test/rpc';
-import { groupBy2 } from './util';
+import { groupBy2, sleep } from './util';
 import testManifest from '../test-manifest.json'; // Generated from s/test
 
 (window as any).graphviz = debug;
@@ -145,7 +145,7 @@ const { actions, selectors } = (() => {
                 iframe,
                 suites: model({}),
                 status: 'loading',
-                isOpen: false,
+                isOpen: true,
                 extraInfo: [],
             });
         },
@@ -156,18 +156,16 @@ const { actions, selectors } = (() => {
         ) {
             testFiles[src].suites = model(suites);
             testFiles[src].status = 'ready';
-            testFiles[src].isOpen = Object.values(suites).some(
-                (suite) =>
-                    suite.only ||
-                    Object.values(suite.tests).some((test) => test.only)
-            );
+            testFiles[src].isOpen = true;
         },
 
         resetAllTestState: () => {
             for (const testFile of Object.values(testFiles)) {
                 actions.clearTestFileResults(testFile.src);
+                testFile.isOpen = true;
                 for (const suite of Object.values(testFile.suites)) {
                     suite.localOnly = false;
+                    suite.isOpen = true;
                     for (const test of Object.values(suite.tests)) {
                         test.localOnly = false;
                     }
