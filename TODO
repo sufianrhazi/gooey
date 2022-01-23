@@ -1,22 +1,21 @@
-Model internals:
-[ ] We have model.keys, do we need model.values and model.entries?
-[ ] Ergonomics/efficiency around derived models? Or is calc(() => model({ val: derived.val })) good enough?
+Next up:
+[ ] Tracked Data: Fix notify ordering bug (see comment in notify()) 
+[ ] DAG/Core: Decouple GC from processing; only visit nodes that have a directed path to a retained node; dirtied but visitable nodes that do not have a directed path to a retained node could either live as-is, or they could be GCd (maybe less often?)
+[ ] View: Revisit how attr*, makeAttrValue, and makeIdlValue work; How to reduce the amount of data structures? How to ensure unexpected values are handled correctly?
 
-Collection internals:
-[x] Make .sort work + add new 'sort' event
-[ ] Make .flatMapView recalculate automatically if feasible (will also apply to .filterView and .mapView)
-[ ] Consider adding .sortedView()
+Unprioritized:
+[ ] Model: We have model.keys, do we need model.values and model.entries?
+[ ] Model: Ergonomics/efficiency around derived models? Or is calc(() => model({ val: derived.val })) good enough?
+[ ] Collection: Make .flatMapView recalculate automatically if feasible (will also apply to .filterView and .mapView)
+[ ] Collection: Consider adding .sortedView()
+[ ] View: Have an opinion on controlled vs uncontrolled components
+[ ] View: Any sort of error handling? Or maybe just document that uncaught exceptions while rendering will break everything?
+[ ] View: Portals; do they make sense? Do we need event hijacking for them to be useful?
+[ ] View: Maybe allow for reparenting of a DOM subtree? Use case: moving an item between two lists without unmounting/remounting the item. The API would feel weird, but this could totally be done if source parent and destination parent were known. Biggest challenge will be getting this to work with Contexts and calc() ordering
+[ ] View: Could this play well with web components?
+[ ] View: Consider the pros/cons of the style prop as a string / object
 
-DAG internals:
-[ ] Decouple GC from processing; only visit nodes that have a directed path to a retained node; dirtied but visitable nodes that do not have a directed path to a retained node could either live as-is, or they could be GCd (maybe less often?)
-
-View internals:
-[x] Add a Context.Provider equivalent
-[x] Guarantee ordering of onEffect() to be after all mounted calc()s within a component
-[ ] Revisit how attr*, makeAttrValue, and makeIdlValue work; How to reduce the amount of data structures? How to ensure unexpected values are handled correctly?
-[ ] Have an opinion on controlled vs uncontrolled components
-[ ] Any sort of error handling? Or maybe just document that uncaught exceptions while rendering will break everything?
-[ ] Portals; do they make sense? Do we need event hijacking for them to be useful?
-[ ] Maybe allow for reparenting of a DOM subtree? Use case: moving an item between two lists without unmounting/remounting the item. The API would feel weird, but this could totally be done if source parent and destination parent were known. Biggest challenge will be getting this to work with Contexts and calc() ordering
-[ ] Could this play well with web components?
-[ ] Consider the pros/cons of the style prop as a string / object
+Done:
+[x] Collection: Make .sort work + add new 'sort' event
+[x] View: Add a Context.Provider equivalent
+[x] View: Guarantee ordering of onEffect() to be after all mounted calc()s within a component
