@@ -102,7 +102,7 @@ export type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementation & {
     [FlushKey]: () => void;
     [AddDeferredWorkKey]: (task: () => void) => void;
     [ObserveKey]: (
-        listener: (observer: TEvent, subscriptionNode: Subscription) => void
+        listener: (events: TEvent[], subscriptionNode: Subscription) => void
     ) => () => void;
     [GetSubscriptionNodeKey]: () => Subscription;
     [NotifyKey]: (event: TEvent) => void;

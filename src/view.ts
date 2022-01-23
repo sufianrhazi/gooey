@@ -295,54 +295,56 @@ function jsxNodeToVNode({
             );
         });
 
-        const unobserve = trackedCollection[ObserveKey]((event) => {
-            if (event.type === 'splice') {
-                untracked(() => {
-                    const { count, index, items } = event;
-                    const childNodes = items.map((jsxChild) =>
-                        jsxNodeToVNode({
-                            domParent: collectionNode.domParent,
-                            jsxNode: jsxChild,
-                            contextMap,
-                            parentNodeOrdering: collectionNodeOrdering,
-                        })
+        const unobserve = trackedCollection[ObserveKey]((events) => {
+            events.forEach((event) => {
+                if (event.type === 'splice') {
+                    untracked(() => {
+                        const { count, index, items } = event;
+                        const childNodes = items.map((jsxChild) =>
+                            jsxNodeToVNode({
+                                domParent: collectionNode.domParent,
+                                jsxNode: jsxChild,
+                                contextMap,
+                                parentNodeOrdering: collectionNodeOrdering,
+                            })
+                        );
+                        spliceVNode(collectionNode, index, count, childNodes);
+                    });
+                } else if (event.type === 'move') {
+                    const { fromIndex, fromCount, toIndex } = event;
+                    const moved = spliceVNode(
+                        collectionNode,
+                        fromIndex,
+                        fromCount,
+                        [],
+                        { dispose: false, runOnUnmount: false }
                     );
-                    spliceVNode(collectionNode, index, count, childNodes);
-                });
-            } else if (event.type === 'move') {
-                const { fromIndex, fromCount, toIndex } = event;
-                const moved = spliceVNode(
-                    collectionNode,
-                    fromIndex,
-                    fromCount,
-                    [],
-                    { dispose: false, runOnUnmount: false }
-                );
-                spliceVNode(
-                    collectionNode,
-                    fromIndex < toIndex ? toIndex - fromCount : toIndex,
-                    0,
-                    moved,
-                    { runOnMount: false }
-                );
-            } else if (event.type === 'sort') {
-                const { indexes } = event;
-                const removedVNodes = spliceVNode(
-                    collectionNode,
-                    0,
-                    indexes.length,
-                    [],
-                    { dispose: false, runOnUnmount: false }
-                );
-                const sortedVNodes = indexes.map(
-                    (newIndex) => removedVNodes[newIndex]
-                );
-                spliceVNode(collectionNode, 0, 0, sortedVNodes, {
-                    runOnMount: false,
-                });
-            } else {
-                log.assertExhausted(event, 'unhandled collection event');
-            }
+                    spliceVNode(
+                        collectionNode,
+                        fromIndex < toIndex ? toIndex - fromCount : toIndex,
+                        0,
+                        moved,
+                        { runOnMount: false }
+                    );
+                } else if (event.type === 'sort') {
+                    const { indexes } = event;
+                    const removedVNodes = spliceVNode(
+                        collectionNode,
+                        0,
+                        indexes.length,
+                        [],
+                        { dispose: false, runOnUnmount: false }
+                    );
+                    const sortedVNodes = indexes.map(
+                        (newIndex) => removedVNodes[newIndex]
+                    );
+                    spliceVNode(collectionNode, 0, 0, sortedVNodes, {
+                        runOnMount: false,
+                    });
+                } else {
+                    log.assertExhausted(event, 'unhandled collection event');
+                }
+            });
         });
         const subscriptionNode = trackedCollection[GetSubscriptionNodeKey]();
 

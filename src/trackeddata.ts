@@ -63,7 +63,7 @@ export function trackedData<
     implSpec: DataImplementation<TEvent>,
     bindMethods: (bindSpec: {
         notify: (event: TEvent) => void;
-        observe: (observer: (event: TEvent) => void) => () => void;
+        observe: (observer: (events: TEvent[]) => void) => () => void;
         makeView: <V>(
             spec: ViewSpec<TData, V, TEvent>,
             viewDebugName?: string | undefined
@@ -77,7 +77,7 @@ export function trackedData<
     const fieldRecords: Map<string | number | symbol, ModelField> = new Map();
 
     let subscriptionEvents: TEvent[] = [];
-    let observers: ((event: TEvent) => void)[] = [];
+    let observers: ((events: TEvent[]) => void)[] = [];
 
     let deferredTasks: (() => void)[] = [];
 
@@ -93,9 +93,7 @@ export function trackedData<
         subscriptionEvents = [];
         if (toProcess.length) {
             observers.forEach((observer) => {
-                toProcess.forEach((event) => {
-                    observer(event);
-                });
+                observer(toProcess);
             });
         }
     }
@@ -114,8 +112,25 @@ export function trackedData<
     }
 
     function notify(event: TEvent) {
-        subscriptionEvents.push(event);
+        /*
+         * TODO: this is subtly wrong!
+         * Subscription events need to be sent to the observers at the time the observers are subscribed.
+         *
+         * Given the following sequence of events:
+         * 1. trackedData instantiated with no observers
+         * 2. notify() gets called with event 'E1'
+         * 3. observer A starts observing
+         * 4. notify() gets called with event 'E2'
+         * 5. observer B starts observing
+         * 6. notify() gets called with event 'E3'
+         * 7. flush() occurs
+         *
+         * Then the following will be seen:
+         * - observer A will get [E2, E3] (correct)
+         * - observer B will get [E2, E3] (incorrect!) it should only get [E3]
+         */
         if (observers.length > 0) {
+            subscriptionEvents.push(event);
             processChange(subscriptionNode);
         }
     }
@@ -124,7 +139,7 @@ export function trackedData<
         return subscriptionNode;
     }
 
-    function observe(observer: (event: TEvent) => void) {
+    function observe(observer: (events: TEvent[]) => void) {
         if (observers.length === 0) {
             addManualDep(proxy, subscriptionNode);
             fieldRecords.forEach((field) => {
@@ -151,9 +166,11 @@ export function trackedData<
     ) {
         const viewArray: V[] = untracked(() => spec.initialize(initialValue));
         const view = collection(viewArray, viewDebugName);
-        observe((event: TEvent) => {
+        observe((events: TEvent[]) => {
             view[AddDeferredWorkKey](() => {
-                spec.processEvent(view, event, viewArray);
+                events.forEach((event) => {
+                    spec.processEvent(view, event, viewArray);
+                });
             });
         });
         addManualDep(subscriptionNode, view);

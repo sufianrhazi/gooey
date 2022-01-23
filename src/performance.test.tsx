@@ -13,7 +13,6 @@ import Revise, {
     retain,
     setLogLevel,
     reset,
-    debug,
 } from './index';
 import { DAG } from './dag';
 import { randint } from './util';
@@ -150,13 +149,12 @@ suite('perf tests', () => {
         unmount();
     });
 
-    test.only('add 1 item to front of 1000 flat items in 10ms', () => {
-        setLogLevel('debug');
-        const COUNT = 5;
+    test('add 1 item to front of 1000 flat items in 10ms', () => {
+        const COUNT = 1000;
         const Item = ({ id }: { id: number }) => (
             <div>{calc(() => id, `calcitem-${id}`)}</div>
         );
-        const items = collection<Model<{ id: number }>>([], 'coll');
+        const items = collection<Model<{ id: number }>>([], 'collection');
         for (let i = 0; i < COUNT; ++i) {
             items.push(model({ id: i }, `model-${i}`));
         }
@@ -175,23 +173,17 @@ suite('perf tests', () => {
 
         const unmount = mount(testRoot, <Items />);
         flush();
-        //assert.medianRuntimeLessThan(10, (measure) => {
-        //measure(() => {
-        console.group('push');
-        items.unshift(model({ id: 1001 }, 'newmodel'));
-        console.groupEnd();
-        console.log(debug());
-        console.group('flush');
-        flush();
-        console.groupEnd();
-        //});
-        items.shift();
-        flush();
-        //});
+        assert.medianRuntimeLessThan(10, (measure) => {
+            measure(() => {
+                items.unshift(model({ id: 1001 }, 'newmodel'));
+                flush();
+            });
+            items.shift();
+            flush();
+        });
         unmount();
     });
 
-    // TODO: this is *bad* why is this so much worse? Because by virtue of invalidating 999 items it takes an extra 1ms?
     test('add 1 item to middle of 1000 flat items in 5ms', () => {
         const COUNT = 1000;
         const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;

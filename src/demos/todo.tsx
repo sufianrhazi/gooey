@@ -9,11 +9,8 @@ import Revise, {
     model,
     mount,
     ref,
-    setLogLevel,
 } from '../index';
 import { makeGraphvizDebuggerRef } from '../debug';
-
-setLogLevel('debug');
 
 const graphvizRef = makeGraphvizDebuggerRef();
 

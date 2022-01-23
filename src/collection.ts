@@ -70,7 +70,6 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
             notify,
             subscriptionNode,
             makeView,
-            observe,
             processFieldChange,
             processFieldDelete,
         }) => ({
