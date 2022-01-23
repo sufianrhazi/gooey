@@ -15,7 +15,7 @@ import {
 } from './test/types';
 import * as log from './log';
 import { request, requestStream } from './test/rpc';
-import { groupBy2, sleep } from './util';
+import { groupBy2 } from './util';
 import testManifest from '../test-manifest.json'; // Generated from s/test
 
 (window as any).graphviz = debug;
@@ -111,10 +111,42 @@ const { actions, selectors } = (() => {
         }
         return anyReady ? 'ready' : 'pass';
     });
+
+    const globalStateDisplay = calc(() => {
+        const state = globalState();
+        if (
+            (state === 'run' ||
+                state === 'fail' ||
+                state === 'pass' ||
+                state === 'error') &&
+            uiState.startTime &&
+            uiState.lastActionTime
+        ) {
+            let numTests = 0;
+            let numPass = 0;
+            testFilesView.forEach((testFile) => {
+                Object.values(testFile.suites).forEach((suite) => {
+                    Object.values(suite.tests).forEach((test) => {
+                        numTests += 1;
+                        if (test.status === 'pass') {
+                            numPass += 1;
+                        }
+                    });
+                });
+            });
+            return `${state} (${numPass}/${numTests} in ${millis(
+                uiState.lastActionTime - uiState.startTime
+            )})`;
+        }
+        return state;
+    });
+
     const uiState = model<{
         stopOnFailure: boolean;
         error: string | null;
         isActive: boolean;
+        lastActionTime?: number;
+        startTime?: number;
     }>({
         stopOnFailure: true,
         error: null,
@@ -128,10 +160,17 @@ const { actions, selectors } = (() => {
         getTestFileKeys: () => testFileKeys,
         getUiState: (): DeepReadonly<typeof uiState> => uiState,
         getGlobalState: () => globalState,
+        getGlobalStateDisplay: () => globalStateDisplay,
     };
     const actions = {
         setIsRunning: (isRunning: boolean) => {
             uiState.isActive = isRunning;
+            if (isRunning) {
+                uiState.startTime = performance.now();
+                uiState.lastActionTime = uiState.startTime;
+            } else {
+                uiState.lastActionTime = performance.now();
+            }
         },
         registerTestFile: ({
             src,
@@ -175,10 +214,12 @@ const { actions, selectors } = (() => {
 
         setTestFileRunning: (src: string) => {
             testFiles[src].status = 'run';
+            uiState.lastActionTime = performance.now();
         },
 
         setSuiteRunning: (src: string, suiteId: number) => {
             testFiles[src].suites[suiteId].status = 'run';
+            uiState.lastActionTime = performance.now();
         },
 
         clearTestFileResults: (src: string) => {
@@ -209,6 +250,7 @@ const { actions, selectors } = (() => {
             const suite = testFile.suites[suiteId];
             const test = suite.tests[testId];
             test.status = 'run';
+            uiState.lastActionTime = performance.now();
         },
 
         setTestFail: ({
@@ -229,6 +271,7 @@ const { actions, selectors } = (() => {
             suite.status = 'fail';
             test.status = 'fail';
             test.error = error;
+            uiState.lastActionTime = performance.now();
         },
 
         setTestPass: ({
@@ -252,6 +295,7 @@ const { actions, selectors } = (() => {
             test.duration = duration;
             test.selfDuration = selfDuration;
             test.extraInfo = extraInfo;
+            uiState.lastActionTime = performance.now();
         },
 
         setSuiteDone: ({
@@ -276,6 +320,7 @@ const { actions, selectors } = (() => {
                     suite.localOnly ||
                     Object.values(suite.tests).some((test) => test.localOnly);
             }
+            uiState.lastActionTime = performance.now();
         },
 
         setTestFileDone: ({
@@ -299,6 +344,7 @@ const { actions, selectors } = (() => {
                         )
                 );
             }
+            uiState.lastActionTime = performance.now();
         },
 
         setInternalError: ({
@@ -324,6 +370,7 @@ const { actions, selectors } = (() => {
             else if (suite) suite.error = error;
             else if (testFile) testFile.error = error;
             else uiState.error = error;
+            uiState.lastActionTime = performance.now();
         },
 
         toggleTestOnly: ({
@@ -867,7 +914,7 @@ const TestRunner: Component<{}> = (props, { onMount, onEffect }) => {
                         Stop on failure
                     </label>
                     <div class="test-ui-control test-ui-global-state">
-                        STATUS: {selectors.getGlobalState()}
+                        STATUS: {selectors.getGlobalStateDisplay()}
                     </div>
                 </div>
                 {selectors.getTestFiles().mapView((testFile) => (
