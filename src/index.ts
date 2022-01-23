@@ -15,6 +15,7 @@ export {
     retain,
     release,
     debug,
+    debugSubscribe,
 } from './calc';
 
 export type {

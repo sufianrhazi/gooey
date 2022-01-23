@@ -158,10 +158,7 @@ export class DAG<Type extends object> {
 
         const fromIds = this.getReverseDependenciesInner(nodeId);
         fromIds.forEach((fromId) => {
-            if (
-                (this.reverseGraph[nodeId][fromId] & DAG.EDGE_HARD) ===
-                DAG.EDGE_HARD
-            ) {
+            if (this.reverseGraph[nodeId][fromId] & DAG.EDGE_HARD) {
                 this.graph[fromId][nodeId] =
                     (this.graph[fromId][nodeId] || 0) & ~DAG.EDGE_HARD;
                 this.reverseGraph[nodeId][fromId] =
@@ -171,12 +168,15 @@ export class DAG<Type extends object> {
     }
 
     /**
-     * Get dependencies (either EDGE_SOFT or EDGE_HARD)
+     * Get dependencies (specify EDGE_SOFT, EDGE_HARD, or EDGE_ANY)
      */
-    private getDependenciesInner(nodeId: string): string[] {
+    private getDependenciesInner(
+        nodeId: string,
+        edgeType: 0b01 | 0b10 | 0b11 = DAG.EDGE_ANY
+    ): string[] {
         if (!this.graph[nodeId]) return [];
         return Object.keys(this.graph[nodeId]).filter(
-            (toId) => !!this.graph[nodeId][toId]
+            (toId) => (this.graph[nodeId][toId] || 0) & edgeType
         );
     }
 
@@ -193,9 +193,12 @@ export class DAG<Type extends object> {
     /**
      * Get list of things need to be updated, when fromNode has changed?
      */
-    getDependencies(fromNode: Type): Type[] {
+    getDependencies(
+        fromNode: Type,
+        edgeType: 0b01 | 0b10 | 0b11 = DAG.EDGE_ANY
+    ): Type[] {
         const nodeId = this.getId(fromNode);
-        return this.getDependenciesInner(nodeId).map(
+        return this.getDependenciesInner(nodeId, edgeType).map(
             (toId) => this.nodesSet[toId]
         );
     }
@@ -215,10 +218,6 @@ export class DAG<Type extends object> {
      *
      */
     visitDirtyTopological(callback: (node: Type) => boolean) {
-        // Clear the current set of dirty nodes, retaining the ones visited.
-        const dirtyNodes = this.dirtyNodes;
-        this.dirtyNodes = {};
-
         // Build topologically sorted list via DFS discoverable only from dirty nodes.
         // After visiting all nodes, the list is in reverse topological order
         const visited: Record<string, boolean> = {};
@@ -232,7 +231,7 @@ export class DAG<Type extends object> {
             });
             sortedIds.push(nodeId);
         };
-        Object.keys(dirtyNodes).forEach((nodeId) => {
+        Object.keys(this.dirtyNodes).forEach((nodeId) => {
             dfsRecurse(nodeId);
         });
 
@@ -242,17 +241,18 @@ export class DAG<Type extends object> {
         // If a node is dirty and the visitor returns false, the node is considered "dirty" and all adjacent destination nodes are marked as dirty.
         for (let i = sortedIds.length - 1; i >= 0; --i) {
             const nodeId = sortedIds[i];
-            if (dirtyNodes[nodeId]) {
+            if (this.dirtyNodes[nodeId]) {
                 const node = this.nodesSet[nodeId];
                 const isEqual = callback(node);
                 if (!isEqual) {
                     const toIds = this.getDependenciesInner(nodeId);
                     toIds.forEach((toId) => {
                         if (this.graph[nodeId][toId] & DAG.EDGE_HARD) {
-                            dirtyNodes[toId] = true;
+                            this.dirtyNodes[toId] = true;
                         }
                     });
                 }
+                delete this.dirtyNodes[nodeId];
             }
         }
     }
@@ -299,7 +299,7 @@ export class DAG<Type extends object> {
         getAttributes: (
             label: string,
             item: Type
-        ) => { label: string; subgraph: object | undefined }
+        ) => { label: string; subgraph: object | undefined; penwidth: string }
     ) {
         const lines = [
             'digraph dag {',
@@ -312,7 +312,7 @@ export class DAG<Type extends object> {
         );
         const nodeAttributes: Record<
             string,
-            { label: string; subgraph: object | undefined }
+            { label: string; subgraph: object | undefined; penwidth: string }
         > = {};
         nodeIds.forEach((nodeId) => {
             nodeAttributes[nodeId] = getAttributes(
@@ -336,6 +336,8 @@ export class DAG<Type extends object> {
                 const props: Record<string, string> = {
                     shape: this.retained[nodeId] ? 'box' : 'ellipse',
                     label: nodeAttributes[nodeId].label,
+                    penwidth: nodeAttributes[nodeId].penwidth,
+                    fillcolor: this.dirtyNodes[nodeId] ? '#FFDDDD' : '#DDDDDD',
                 };
                 lines.push(
                     `  item_${nodeId} [${Object.entries(props)

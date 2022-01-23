@@ -163,6 +163,7 @@ export type View<T> = TrackedData<
 export interface Subscription {
     [TypeTag]: 'subscription';
     item: any;
+    [FlushKey]: () => void;
 }
 
 export interface NodeOrdering {

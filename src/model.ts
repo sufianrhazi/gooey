@@ -1,15 +1,5 @@
-import {
-    AddDeferredWorkKey,
-    InvariantError,
-    MakeModelViewKey,
-    Model,
-    ModelEvent,
-    View,
-    ViewSpec,
-} from './types';
+import { InvariantError, MakeModelViewKey, Model, View } from './types';
 import { trackedData } from './trackeddata';
-import { collection } from './collection';
-import { untracked, addManualDep } from './calc';
 
 export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
     if (typeof obj !== 'object' || !obj) {
@@ -52,7 +42,7 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
                 return true;
             },
         },
-        ({ addDeferredWork, makeView, notify, observe, subscriptionNode }) => {
+        ({ makeView, notify, observe, subscriptionNode }) => {
             return {
                 [MakeModelViewKey]: makeView,
             };

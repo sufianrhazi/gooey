@@ -71,7 +71,6 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
             subscriptionNode,
             makeView,
             observe,
-            addDeferredWork,
             processFieldChange,
             processFieldDelete,
         }) => ({

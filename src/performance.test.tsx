@@ -13,6 +13,7 @@ import Revise, {
     retain,
     setLogLevel,
     reset,
+    debug,
 } from './index';
 import { DAG } from './dag';
 import { randint } from './util';
@@ -122,9 +123,9 @@ suite('perf tests', () => {
     });
 
     test('add 1 item to end of 1000 flat items in 2ms', () => {
-        const COUNT = 1000;
+        const COUNT = 5;
         const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
-        const items = collection<Model<{ id: number }>>([]);
+        const items = collection<Model<{ id: number }>>([], 'coll');
         for (let i = 0; i < COUNT; ++i) {
             items.push(model({ id: i }));
         }
@@ -135,10 +136,11 @@ suite('perf tests', () => {
         );
 
         const unmount = mount(testRoot, <Items />);
+        flush();
 
         assert.medianRuntimeLessThan(2, (measure) => {
             measure(() => {
-                items.push(model({ id: 1001 }));
+                items.push(model({ id: 1001 }, 'new'));
                 flush();
             });
             items.pop();
@@ -148,29 +150,44 @@ suite('perf tests', () => {
         unmount();
     });
 
-    // TODO: this is *bad* why is this so much worse? Because by virtue of invalidating 999 items it takes an extra 1ms?
-    test('add 1 item to front of 1000 flat items in 10ms', () => {
-        const COUNT = 1000;
-        const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
-        const items = collection<Model<{ id: number }>>([]);
+    test.only('add 1 item to front of 1000 flat items in 10ms', () => {
+        setLogLevel('debug');
+        const COUNT = 5;
+        const Item = ({ id }: { id: number }) => (
+            <div>{calc(() => id, `calcitem-${id}`)}</div>
+        );
+        const items = collection<Model<{ id: number }>>([], 'coll');
         for (let i = 0; i < COUNT; ++i) {
-            items.push(model({ id: i }));
+            items.push(model({ id: i }, `model-${i}`));
         }
         const Items = () => (
             <div>
-                {calc(() => items.mapView((item) => <Item id={item.id} />))}
+                {calc(
+                    () =>
+                        items.mapView(
+                            (item) => <Item id={item.id} />,
+                            'mapView'
+                        ),
+                    'calc-mapview'
+                )}
             </div>
         );
 
         const unmount = mount(testRoot, <Items />);
-        assert.medianRuntimeLessThan(10, (measure) => {
-            measure(() => {
-                items.unshift(model({ id: 1001 }));
-                flush();
-            });
-            items.shift();
-            flush();
-        });
+        flush();
+        //assert.medianRuntimeLessThan(10, (measure) => {
+        //measure(() => {
+        console.group('push');
+        items.unshift(model({ id: 1001 }, 'newmodel'));
+        console.groupEnd();
+        console.log(debug());
+        console.group('flush');
+        flush();
+        console.groupEnd();
+        //});
+        items.shift();
+        flush();
+        //});
         unmount();
     });
 

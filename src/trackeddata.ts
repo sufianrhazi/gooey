@@ -2,8 +2,8 @@ import {
     Collection,
     Subscription,
     ViewSpec,
-    AddDeferredWorkKey,
     FlushKey,
+    AddDeferredWorkKey,
     ObserveKey,
     NotifyKey,
     GetSubscriptionNodeKey,
@@ -16,6 +16,7 @@ import { collection } from './collection';
 import {
     untracked,
     addManualDep,
+    removeManualDep,
     addOrderingDep,
     removeOrderingDep,
     addDepToCurrentCalculation,
@@ -61,7 +62,6 @@ export function trackedData<
     typeTag: TDataTypeTag,
     implSpec: DataImplementation<TEvent>,
     bindMethods: (bindSpec: {
-        addDeferredWork: (task: () => void) => void;
         notify: (event: TEvent) => void;
         observe: (observer: (event: TEvent) => void) => () => void;
         makeView: <V>(
@@ -76,19 +76,28 @@ export function trackedData<
 ): TrackedData<TData & TMethods, TDataTypeTag, TEvent> {
     const fieldRecords: Map<string | number | symbol, ModelField> = new Map();
 
+    let subscriptionEvents: TEvent[] = [];
     let observers: ((event: TEvent) => void)[] = [];
 
     let deferredTasks: (() => void)[] = [];
 
     const subscriptionNode: Subscription = {
         [TypeTag]: 'subscription',
+        [FlushKey]: flushSubscription,
         item: null, // assigned later
     };
     name(subscriptionNode, `${debugName || '?'}:sub`);
 
-    function addDeferredWork(task: () => void) {
-        deferredTasks.push(task);
-        processChange(proxy);
+    function flushSubscription() {
+        const toProcess = subscriptionEvents;
+        subscriptionEvents = [];
+        if (toProcess.length) {
+            observers.forEach((observer) => {
+                toProcess.forEach((event) => {
+                    observer(event);
+                });
+            });
+        }
     }
 
     function flush() {
@@ -99,10 +108,16 @@ export function trackedData<
         });
     }
 
+    function addDeferredTask(task: () => void) {
+        deferredTasks.push(task);
+        processChange(proxy);
+    }
+
     function notify(event: TEvent) {
-        observers.forEach((observer) => {
-            observer(event);
-        });
+        subscriptionEvents.push(event);
+        if (observers.length > 0) {
+            processChange(subscriptionNode);
+        }
     }
 
     function getSubscriptionNode() {
@@ -111,8 +126,9 @@ export function trackedData<
 
     function observe(observer: (event: TEvent) => void) {
         if (observers.length === 0) {
-            addOrderingDep(proxy, subscriptionNode);
+            addManualDep(proxy, subscriptionNode);
             fieldRecords.forEach((field) => {
+                addOrderingDep(proxy, field);
                 addOrderingDep(field, subscriptionNode);
             });
         }
@@ -120,8 +136,9 @@ export function trackedData<
         return () => {
             observers = observers.filter((obs) => obs !== observer);
             if (observers.length === 0) {
-                removeOrderingDep(proxy, subscriptionNode);
+                removeManualDep(proxy, subscriptionNode);
                 fieldRecords.forEach((field) => {
+                    removeOrderingDep(proxy, field);
                     removeOrderingDep(field, subscriptionNode);
                 });
             }
@@ -135,9 +152,9 @@ export function trackedData<
         const viewArray: V[] = untracked(() => spec.initialize(initialValue));
         const view = collection(viewArray, viewDebugName);
         observe((event: TEvent) => {
-            view[AddDeferredWorkKey](() =>
-                spec.processEvent(view, event, viewArray)
-            );
+            view[AddDeferredWorkKey](() => {
+                spec.processEvent(view, event, viewArray);
+            });
         });
         addManualDep(subscriptionNode, view);
         return view;
@@ -157,12 +174,11 @@ export function trackedData<
         [TypeTag]: 'data',
         [DataTypeTag]: typeTag,
         [FlushKey]: flush,
-        [AddDeferredWorkKey]: addDeferredWork,
+        [AddDeferredWorkKey]: addDeferredTask,
         [ObserveKey]: observe,
         [NotifyKey]: notify,
         [GetSubscriptionNodeKey]: getSubscriptionNode,
         ...bindMethods({
-            addDeferredWork,
             observe,
             notify,
             makeView,
@@ -182,6 +198,7 @@ export function trackedData<
             if (debugName) name(field, debugName);
             fieldRecords.set(key, field);
             if (observers.length > 0) {
+                addOrderingDep(proxy, field);
                 addOrderingDep(field, subscriptionNode);
             }
         }

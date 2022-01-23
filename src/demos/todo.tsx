@@ -1,4 +1,3 @@
-import { graphviz } from '@hpcc-js/wasm';
 import Revise, {
     Collection,
     Component,
@@ -7,33 +6,16 @@ import Revise, {
     Ref,
     calc,
     collection,
-    debug,
-    flush,
     model,
     mount,
     ref,
-    subscribe,
+    setLogLevel,
 } from '../index';
+import { makeGraphvizDebuggerRef } from '../debug';
 
-const graphvizRef = ref<HTMLDivElement>();
+setLogLevel('debug');
 
-function debugGraph() {
-    graphviz.layout(debug(), 'svg', 'dot').then((svg) => {
-        if (graphvizRef.current) {
-            graphvizRef.current.innerHTML = svg;
-        }
-    });
-}
-
-subscribe(() => {
-    setTimeout(() => {
-        flush();
-        debugGraph();
-    }, 0);
-});
-setTimeout(() => {
-    debugGraph();
-}, 0);
+const graphvizRef = makeGraphvizDebuggerRef();
 
 ////////////////////////////////////////////////////////////////////////////////
 // Application State
@@ -55,7 +37,7 @@ function makeTodoListItem(task: string): Model<TodoItem> {
 const globalState: TodoList = model(
     {
         name: 'Groceries',
-        items: collection(
+        items: collection<Model<TodoItem>>(
             [
                 makeTodoListItem('apples'),
                 makeTodoListItem('bananas'),
@@ -128,12 +110,7 @@ const TodoControls: Component<{}> = (_props, { onMount }) => {
     const onClickAdd = () => {
         if (!inputRef.current) return;
         if (!inputRef.current.value) return;
-        globalState.items.push(
-            model({
-                done: false,
-                task: inputRef.current.value,
-            })
-        );
+        globalState.items.push(makeTodoListItem(inputRef.current.value));
         inputRef.current.value = '';
 
         if (inputRef.current) inputRef.current.focus();

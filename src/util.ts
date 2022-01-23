@@ -57,8 +57,8 @@ export function groupBy2<TItem, TOuterKey, TInnerKey, TVal>(
     return grouped;
 }
 
-export function alwaysFalse(): boolean {
-    return false;
+export function alwaysTrue(): true {
+    return true;
 }
 
 export function strictEqual<T>(a: T, b: T): boolean {

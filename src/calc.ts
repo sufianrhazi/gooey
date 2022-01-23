@@ -17,7 +17,7 @@ import {
 } from './types';
 import * as log from './log';
 import { DAG } from './dag';
-import { noop, alwaysFalse, strictEqual } from './util';
+import { noop, alwaysTrue, strictEqual } from './util';
 import { clearNames, debugNameFor, name } from './debug';
 
 let activeCalculations: (null | Calculation<any>)[] = [];
@@ -85,7 +85,11 @@ export function effect(
     func: () => void,
     debugName?: string
 ): Calculation<void> {
-    const calculation = trackCalculation(func, alwaysFalse, true);
+    const calculation = trackCalculation(
+        func,
+        alwaysTrue /* effects always return true for equality */,
+        true
+    );
     if (debugName) name(calculation, debugName);
     return calculation;
 }
@@ -234,18 +238,18 @@ export function removeOrderingDep(fromNode: DAGNode, toNode: DAGNode) {
 }
 
 export function processChange(item: DAGNode) {
-    const newNode = globalDependencyGraph.addNode(item);
-    const marked = globalDependencyGraph.markNodeDirty(item);
-    DEBUG &&
-        log.debug(
-            'processChange',
-            item,
-            newNode ? 'new' : 'existing',
-            marked ? 'fresh' : 'stale'
-        );
-    if (!needsFlush) {
-        needsFlush = true;
-        notify();
+    globalDependencyGraph.addNode(item);
+    const hardEdges = globalDependencyGraph.getDependencies(
+        item,
+        DAG.EDGE_HARD
+    );
+    if (hardEdges.length > 0) {
+        const marked = globalDependencyGraph.markNodeDirty(item);
+        DEBUG && log.debug('processChange', item, marked ? 'fresh' : 'stale');
+        if (!needsFlush) {
+            needsFlush = true;
+            notify();
+        }
     }
 }
 
@@ -289,6 +293,12 @@ function notify() {
 }
 
 /**
+ * Hoo boy this is probably a mistake. Stream the graph while we flush
+ */
+let debugSubscription: ((graphViz: string, detail: string) => void) | null =
+    null;
+
+/**
  * Recalculate all pending calculations.
  */
 export function flush() {
@@ -296,6 +306,8 @@ export function flush() {
         return;
     }
     needsFlush = false;
+
+    DEBUG && debugSubscription && debugSubscription(debug(), '0: flush start');
 
     // First, collect all the unreferenced nodes to avoid calculating stragglers
     const removed = globalDependencyGraph.garbageCollect();
@@ -310,23 +322,38 @@ export function flush() {
             }
         });
 
+    DEBUG && debugSubscription && debugSubscription(debug(), '1: post-gc');
+
     // Then flush dependencies in topological order
     globalDependencyGraph.visitDirtyTopological((item) => {
+        let result = false;
         if (isCalculation(item)) {
             DEBUG && log.debug('flushing calculation', debugNameFor(item));
             const recalculation = item[RecalculationTag];
-            return recalculation();
+            result = recalculation();
         } else if (isCollection(item)) {
             DEBUG && log.debug('flushing collection', debugNameFor(item));
             item[FlushKey]();
         } else if (isModel(item)) {
             DEBUG && log.debug('flushing model', debugNameFor(item));
             item[FlushKey]();
+        } else if (isSubscription(item)) {
+            DEBUG && log.debug('flushing subscription', debugNameFor(item));
+            item[FlushKey]();
         } else {
             DEBUG && log.debug('flushing other', debugNameFor(item));
         }
-        return false;
+
+        DEBUG &&
+            debugSubscription &&
+            debugSubscription(
+                debug(item),
+                `2: visited ${debugNameFor(item)}: isEqual=${result}`
+            );
+        return result;
     });
+
+    DEBUG && debugSubscription && debugSubscription(debug(), `3: after visit`);
 
     resolveFlushPromise();
 }
@@ -394,7 +421,7 @@ export function release(item: DAGNode) {
 /**
  * Return a graphviz formatted directed graph
  */
-export function debug(): string {
+export function debug(activeItem?: any): string {
     return globalDependencyGraph.graphviz((id, item) => {
         let subgraph: object | undefined = undefined;
         if (isModel(item)) {
@@ -412,6 +439,13 @@ export function debug(): string {
         return {
             label: `${id}\n${debugNameFor(item)}`,
             subgraph,
+            penwidth: activeItem === item ? '5.0' : '1.0',
         };
     });
+}
+
+export function debugSubscribe(
+    callback: ((graphviz: string, detail: string) => void) | null
+) {
+    debugSubscription = callback;
 }
