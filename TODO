@@ -1,5 +1,4 @@
 Next up:
-[ ] Tracked Data: Fix notify ordering bug (see comment in notify()) 
 [ ] DAG/Core: Decouple GC from processing; only visit nodes that have a directed path to a retained node; dirtied but visitable nodes that do not have a directed path to a retained node could either live as-is, or they could be GCd (maybe less often?)
 [ ] View: Revisit how attr*, makeAttrValue, and makeIdlValue work; How to reduce the amount of data structures? How to ensure unexpected values are handled correctly?
 
@@ -19,3 +18,4 @@ Done:
 [x] Collection: Make .sort work + add new 'sort' event
 [x] View: Add a Context.Provider equivalent
 [x] View: Guarantee ordering of onEffect() to be after all mounted calc()s within a component
+[x] Tracked Data: Fix notify ordering bug (see comment in notify()) 

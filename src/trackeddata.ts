@@ -74,10 +74,12 @@ export function trackedData<
     }) => TMethods,
     debugName?: string
 ): TrackedData<TData & TMethods, TDataTypeTag, TEvent> {
+    type Observer = (events: TEvent[]) => void;
+
     const fieldRecords: Map<string | number | symbol, ModelField> = new Map();
 
-    let subscriptionEvents: TEvent[] = [];
-    let observers: ((events: TEvent[]) => void)[] = [];
+    let subscriptionEvents: Map<Observer, TEvent[]> = new Map();
+    let observers: Observer[] = [];
 
     let deferredTasks: (() => void)[] = [];
 
@@ -90,12 +92,10 @@ export function trackedData<
 
     function flushSubscription() {
         const toProcess = subscriptionEvents;
-        subscriptionEvents = [];
-        if (toProcess.length) {
-            observers.forEach((observer) => {
-                observer(toProcess);
-            });
-        }
+        subscriptionEvents = new Map();
+        toProcess.forEach((events, observer) => {
+            observer(events);
+        });
     }
 
     function flush() {
@@ -112,25 +112,15 @@ export function trackedData<
     }
 
     function notify(event: TEvent) {
-        /*
-         * TODO: this is subtly wrong!
-         * Subscription events need to be sent to the observers at the time the observers are subscribed.
-         *
-         * Given the following sequence of events:
-         * 1. trackedData instantiated with no observers
-         * 2. notify() gets called with event 'E1'
-         * 3. observer A starts observing
-         * 4. notify() gets called with event 'E2'
-         * 5. observer B starts observing
-         * 6. notify() gets called with event 'E3'
-         * 7. flush() occurs
-         *
-         * Then the following will be seen:
-         * - observer A will get [E2, E3] (correct)
-         * - observer B will get [E2, E3] (incorrect!) it should only get [E3]
-         */
         if (observers.length > 0) {
-            subscriptionEvents.push(event);
+            observers.forEach((observer) => {
+                let observerEvents = subscriptionEvents.get(observer);
+                if (!observerEvents) {
+                    observerEvents = [];
+                    subscriptionEvents.set(observer, observerEvents);
+                }
+                observerEvents.push(event);
+            });
             processChange(subscriptionNode);
         }
     }

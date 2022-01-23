@@ -238,6 +238,34 @@ suite('collection', () => {
         simple.sort();
         assert.deepEqual([10, 11, 12, 7, 8, 9], simple);
     });
+
+    test('subscriptions are consistent with respect to timing of subscription', () => {
+        const sourceCollection = collection([1, 2, 3]);
+        sourceCollection.push(4);
+        const doubleView = sourceCollection.mapView((item) => item * 2);
+        sourceCollection.push(5);
+        const doublePlusOneView = sourceCollection.mapView(
+            (item) => item * 2 + 1
+        );
+        sourceCollection.push(6);
+        const doublePlusTwoView = doublePlusOneView.mapView((item) => item + 1);
+        sourceCollection.push(7);
+
+        retain(doubleView);
+        retain(doublePlusOneView);
+        retain(doublePlusTwoView);
+
+        assert.deepEqual([1, 2, 3, 4, 5, 6, 7], sourceCollection);
+        assert.deepEqual([2, 4, 6, 8], doubleView);
+        assert.deepEqual([3, 5, 7, 9, 11], doublePlusOneView);
+        assert.deepEqual([4, 6, 8, 10, 12], doublePlusTwoView); // Note: does not contain 14 because doublePlusOneView does not contain 13 (yet)
+
+        flush(); // flush all views
+
+        assert.deepEqual([2, 4, 6, 8, 10, 12, 14], doubleView);
+        assert.deepEqual([3, 5, 7, 9, 11, 13, 15], doublePlusOneView);
+        assert.deepEqual([4, 6, 8, 10, 12, 14, 16], doublePlusTwoView);
+    });
 });
 
 suite('mapView', () => {
