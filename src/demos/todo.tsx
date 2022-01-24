@@ -10,7 +10,7 @@ import Revise, {
     mount,
     ref,
 } from '../index';
-import { makeGraphvizDebuggerRef } from '../debug';
+import { makeGraphvizDebuggerRef } from './debug';
 
 const graphvizRef = makeGraphvizDebuggerRef();
 
