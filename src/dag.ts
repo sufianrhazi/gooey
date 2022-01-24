@@ -204,7 +204,7 @@ export class DAG<Type extends object> {
     }
 
     /**
-     * Visit dirty nodes topologically.
+     * Process the DAG, visiting dirty nodes topologically that have a data dependency on a retained node.
      *
      * When building topologically sorted list, refcount dirtiness (the number of incoming edges that are from dirty
      * nodes).
@@ -217,31 +217,44 @@ export class DAG<Type extends object> {
      * This way we can prevent recalculations that are triggered if the calculation is "equal".
      *
      */
-    visitDirtyTopological(callback: (node: Type) => boolean) {
+    process(callback: (node: Type) => boolean) {
         // Build topologically sorted list via DFS discoverable only from dirty nodes.
         // After visiting all nodes, the list is in reverse topological order
         const visited: Record<string, boolean> = {};
+        const reachesRetained: Record<string, boolean> = {};
         const sortedIds: string[] = [];
-        const dfsRecurse = (nodeId: string) => {
-            if (visited[nodeId]) return;
+        const strayIds: string[] = [];
+        const dfsRecurse = (nodeId: string): boolean => {
+            if (visited[nodeId]) return reachesRetained[nodeId];
             visited[nodeId] = true;
+            reachesRetained[nodeId] = this.retained[nodeId];
             const toIds = this.getDependenciesInner(nodeId);
+            let anyDependenciesRetained = false;
             toIds.forEach((toId) => {
-                dfsRecurse(toId);
+                if (dfsRecurse(toId)) {
+                    anyDependenciesRetained = true;
+                }
             });
+            if (anyDependenciesRetained) reachesRetained[nodeId] = true;
             sortedIds.push(nodeId);
+            if (!reachesRetained[nodeId]) {
+                strayIds.push(nodeId);
+                return false;
+            } else {
+                return true;
+            }
         };
         Object.keys(this.dirtyNodes).forEach((nodeId) => {
             dfsRecurse(nodeId);
         });
 
-        // Visit the dirty nodes in topological order.
+        // Visit the dirty nodes in topological order, skipping nodes that are not retained
         // If a node is not dirty, skip it.
         // If a node is dirty and the visitor returns true, the node is considered "not dirty" and processing continues
         // If a node is dirty and the visitor returns false, the node is considered "dirty" and all adjacent destination nodes are marked as dirty.
         for (let i = sortedIds.length - 1; i >= 0; --i) {
             const nodeId = sortedIds[i];
-            if (this.dirtyNodes[nodeId]) {
+            if (this.dirtyNodes[nodeId] && reachesRetained[nodeId]) {
                 const node = this.nodesSet[nodeId];
                 const isEqual = callback(node);
                 if (!isEqual) {
@@ -255,41 +268,12 @@ export class DAG<Type extends object> {
                 delete this.dirtyNodes[nodeId];
             }
         }
-    }
 
-    /**
-     * All nodes that do not lead to a retained (sink) node are considered garbage.
-     *
-     * Note: there may be a much more efficient way than doing this.
-     *
-     * It's possible that we could instead assert that a node is reachable from a retained node prior to calculation, which may be *much* faster in practice.
-     */
-    garbageCollect(): Type[] {
-        const marked: Partial<Record<string, true>> = {};
-
-        // Mark nodes reachable from retained sink nodes (in reverse: retained nodes are "sink" nodes)
-        const mark = (nodeId: string) => {
-            if (marked[nodeId]) return;
-            marked[nodeId] = true;
-            const fromIds = this.getReverseDependenciesInner(nodeId);
-            fromIds.forEach((fromId) => {
-                mark(fromId);
-            });
-        };
-        Object.keys(this.retained).forEach((nodeId) => {
-            mark(nodeId);
+        // Garbage collect all the detected stray nodes
+        // TODO: this doesn't need to happen each time...
+        strayIds.forEach((nodeId) => {
+            this.removeNodeInner(nodeId);
         });
-
-        // Sweep
-        const removed: Type[] = [];
-        Object.keys(this.nodesSet).forEach((nodeId) => {
-            if (this.nodesSet[nodeId] && !marked[nodeId]) {
-                removed.push(this.nodesSet[nodeId]);
-                this.removeNodeInner(nodeId);
-            }
-        });
-
-        return removed;
     }
 
     /**

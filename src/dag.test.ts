@@ -97,13 +97,15 @@ suite('DAG', () => {
             dag.addEdge(h, i, DAG.EDGE_HARD);
             dag.addEdge(f, h, DAG.EDGE_HARD);
             dag.addEdge(g, i, DAG.EDGE_HARD);
+
+            dag.retain(i); // the end node is retained
         });
 
-        suite('visitDirtyTopological', () => {
+        suite('process', () => {
             test('nothing visited if nothing dirty', () => {
                 const items: TNode[] = [];
 
-                dag.visitDirtyTopological((item) => {
+                dag.process((item) => {
                     items.push(item);
                     return true;
                 });
@@ -116,7 +118,7 @@ suite('DAG', () => {
 
                 const items: TNode[] = [];
 
-                dag.visitDirtyTopological((item) => {
+                dag.process((item) => {
                     items.push(item);
                     return false;
                 });
@@ -125,12 +127,48 @@ suite('DAG', () => {
                 assert.arrayEqualsUnsorted([a, b, c, d, e, f, g, h, i], items);
             });
 
+            test('nodes that do not lead to reatined nodes are not visited', () => {
+                dag.release(i); // no nodes are retained now
+                dag.retain(e);
+                dag.retain(f);
+
+                dag.markNodeDirty(a);
+                dag.markNodeDirty(i);
+
+                const items: TNode[] = [];
+
+                dag.process((item) => {
+                    items.push(item);
+                    return false;
+                });
+
+                // we visit only nodes up to e and f
+                assert.arrayEqualsUnsorted([a, b, c, d, e, f], items);
+            });
+
+            test('nodes reached that are not retained are removed', () => {
+                dag.release(i); // no nodes are retained now
+                dag.retain(e);
+                dag.retain(f);
+
+                dag.markNodeDirty(a);
+                dag.markNodeDirty(i);
+
+                dag.process((item) => {
+                    return false;
+                });
+
+                assert.is(false, dag.hasNode(g));
+                assert.is(false, dag.hasNode(h));
+                assert.is(false, dag.hasNode(i));
+            });
+
             test('nodes can stop traversal by returning true', () => {
                 dag.markNodeDirty(a);
 
                 const items: TNode[] = [];
 
-                dag.visitDirtyTopological((item) => {
+                dag.process((item) => {
                     items.push(item);
                     return true;
                 });
@@ -145,7 +183,7 @@ suite('DAG', () => {
 
                 const items: TNode[] = [];
 
-                dag.visitDirtyTopological((item) => {
+                dag.process((item) => {
                     items.push(item);
                     if (item === c) return true;
                     return false;
@@ -162,7 +200,7 @@ suite('DAG', () => {
 
                 const items: TNode[] = [];
 
-                dag.visitDirtyTopological((item) => {
+                dag.process((item) => {
                     items.push(item);
                     if (item === c) return true;
                     return false;
@@ -181,7 +219,7 @@ suite('DAG', () => {
 
                 const items: TNode[] = [];
 
-                dag.visitDirtyTopological((item) => {
+                dag.process((item) => {
                     items.push(item);
                     return false;
                 });
@@ -204,31 +242,6 @@ suite('DAG', () => {
                 // Starting from the root, given a -> b, ensure a is before b
                 visit(a);
             });
-        });
-
-        test('garbageCollect collects nodes that do not lead to an unretained node', () => {
-            dag.retain(e);
-            const freed = dag.garbageCollect();
-            assert.arrayEqualsUnsorted([f, g, h, i], freed);
-            assert.arrayEqualsUnsorted([], dag.garbageCollect());
-        });
-
-        test('garbageCollect collects nodes that do not lead to an unretained node', () => {
-            dag.retain(g);
-            const freed = dag.garbageCollect();
-            assert.arrayEqualsUnsorted([b, c, d, e, h, i], freed);
-        });
-
-        test('garbageCollect collects nodes that do not lead to an unretained node', () => {
-            dag.retain(i);
-            const freed = dag.garbageCollect();
-            assert.arrayEqualsUnsorted([], freed);
-            dag.release(i);
-            const freedAfterRelease = dag.garbageCollect();
-            assert.arrayEqualsUnsorted(
-                [a, b, c, d, e, f, g, h, i],
-                freedAfterRelease
-            );
         });
     });
 
@@ -278,13 +291,15 @@ suite('DAG', () => {
             dag.addEdge(h, i, DAG.EDGE_HARD);
             dag.addEdge(f, h, DAG.EDGE_HARD);
             dag.addEdge(g, i, DAG.EDGE_HARD);
+
+            dag.retain(i);
         });
 
-        suite('visitDirtyTopological', () => {
+        suite('process', () => {
             test('nothing visited if nothing dirty', () => {
                 const items: TNode[] = [];
 
-                dag.visitDirtyTopological((item) => {
+                dag.process((item) => {
                     items.push(item);
                     return true;
                 });
@@ -297,7 +312,7 @@ suite('DAG', () => {
 
                 const items: TNode[] = [];
 
-                dag.visitDirtyTopological((item) => {
+                dag.process((item) => {
                     items.push(item);
                     return false;
                 });
@@ -312,7 +327,7 @@ suite('DAG', () => {
 
                 const items: TNode[] = [];
 
-                dag.visitDirtyTopological((item) => {
+                dag.process((item) => {
                     items.push(item);
                     return false;
                 });
@@ -338,31 +353,6 @@ suite('DAG', () => {
                 // Starting from the root, given a -> b, ensure a is before b
                 visit(a);
             });
-        });
-
-        test('garbageCollect collects nodes that do not lead to an unretained node', () => {
-            dag.retain(e);
-            const freed = dag.garbageCollect();
-            assert.arrayEqualsUnsorted([f, g, h, i], freed);
-            assert.arrayEqualsUnsorted([], dag.garbageCollect());
-        });
-
-        test('garbageCollect collects nodes that do not lead to an unretained node', () => {
-            dag.retain(g);
-            const freed = dag.garbageCollect();
-            assert.arrayEqualsUnsorted([b, c, d, e, h, i], freed);
-        });
-
-        test('garbageCollect collects nodes that do not lead to an unretained node', () => {
-            dag.retain(i);
-            const freed = dag.garbageCollect();
-            assert.arrayEqualsUnsorted([], freed);
-            dag.release(i);
-            const freedAfterRelease = dag.garbageCollect();
-            assert.arrayEqualsUnsorted(
-                [a, b, c, d, e, f, g, h, i],
-                freedAfterRelease
-            );
         });
     });
 });

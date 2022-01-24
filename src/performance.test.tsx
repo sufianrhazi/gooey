@@ -549,30 +549,7 @@ suite('perf tests', () => {
         });
     });
 
-    test('garbage collect lk nodes in 4ms', () => {
-        const COUNT = 1_000;
-        const objects: { i: number }[] = [];
-        for (let i = 0; i < COUNT; ++i) {
-            objects.push({ i });
-        }
-
-        assert.medianRuntimeLessThan(4, (measure) => {
-            // Build a random graph of 10k nodes and edges all consolidating on a single destination node
-            const dag = new DAG();
-            for (let i = 0; i < COUNT; ++i) {
-                dag.addNode(objects[i]);
-            }
-            for (let i = 0; i < COUNT - 1; ++i) {
-                const candidate = randint(i + 1, COUNT);
-                dag.addEdge(objects[i], objects[candidate], DAG.EDGE_HARD);
-            }
-            measure(() => {
-                dag.garbageCollect();
-            });
-        });
-    });
-
-    test('toposort 10% dirty nodes in a 1k graph in 2ms', () => {
+    test('process 10% dirty nodes in a 1k graph in 2ms', () => {
         const COUNT = 1_000;
         const objects: { i: number }[] = [];
         for (let i = 0; i < COUNT; ++i) {
@@ -592,7 +569,7 @@ suite('perf tests', () => {
                 dag.addEdge(objects[i], objects[candidate], DAG.EDGE_HARD);
             }
             measure(() => {
-                dag.visitDirtyTopological(() => false);
+                dag.process(() => false);
             });
         });
     });

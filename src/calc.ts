@@ -309,23 +309,8 @@ export function flush() {
 
     DEBUG && debugSubscription && debugSubscription(debug(), '0: flush start');
 
-    // First, collect all the unreferenced nodes to avoid calculating stragglers
-    const removed = globalDependencyGraph.garbageCollect();
-    DEBUG &&
-        removed.forEach((item) => {
-            if (isCalculation(item)) {
-                log.debug('GC calculation', debugNameFor(item));
-            } else if (isCollection(item)) {
-                log.debug('GC collection', debugNameFor(item));
-            } else {
-                log.debug('GC model', debugNameFor(item));
-            }
-        });
-
-    DEBUG && debugSubscription && debugSubscription(debug(), '1: post-gc');
-
     // Then flush dependencies in topological order
-    globalDependencyGraph.visitDirtyTopological((item) => {
+    globalDependencyGraph.process((item) => {
         let result = false;
         if (isCalculation(item)) {
             DEBUG && log.debug('flushing calculation', debugNameFor(item));
@@ -348,12 +333,12 @@ export function flush() {
             debugSubscription &&
             debugSubscription(
                 debug(item),
-                `2: visited ${debugNameFor(item)}: isEqual=${result}`
+                `1: visited ${debugNameFor(item)}: isEqual=${result}`
             );
         return result;
     });
 
-    DEBUG && debugSubscription && debugSubscription(debug(), `3: after visit`);
+    DEBUG && debugSubscription && debugSubscription(debug(), `2: after visit`);
 
     resolveFlushPromise();
 }
