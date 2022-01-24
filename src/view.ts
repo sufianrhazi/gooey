@@ -111,16 +111,26 @@ function setAttributeValue(
     } else {
         const mapping = getElementTypeMapping(elementType, key);
         if (mapping) {
-            if (mapping.makeAttrValue) {
-                const attributeValue = mapping.makeAttrValue(value);
-                if (attributeValue === undefined) {
+            if (mapping.makeAttrValue !== null) {
+                const attributeValue = mapping.makeAttrValue
+                    ? mapping.makeAttrValue(value)
+                    : (value as any);
+                if (
+                    attributeValue === undefined ||
+                    attributeValue === null ||
+                    attributeValue === false
+                ) {
                     element.removeAttribute(key);
+                } else if (attributeValue === true) {
+                    element.setAttribute(key, '');
                 } else {
                     element.setAttribute(key, attributeValue);
                 }
             }
-            if (mapping.idlName && mapping.makeIdlValue) {
-                (element as any)[mapping.idlName] = mapping.makeIdlValue(value);
+            if (mapping.idlName !== null) {
+                (element as any)[mapping.idlName ?? key] = mapping.makeIdlValue
+                    ? mapping.makeIdlValue(value)
+                    : value;
             }
         } else if (value === false || value === undefined || value === null) {
             element.removeAttribute(key);
