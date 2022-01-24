@@ -54,7 +54,7 @@ const Button: Component<{
 );
 
 const Controls = ({ store }: { store: Model<Store> }) => {
-    let maxId = 0;
+    let maxId = 1;
     const makeRows = (count: number): Model<Item>[] => {
         const adjectives = [
             'pretty',
@@ -166,7 +166,7 @@ const Controls = ({ store }: { store: Model<Store> }) => {
 
     const swapRows = (e: MouseEvent) => {
         e.preventDefault();
-        if (store.items.length > 998) {
+        if (store.items.length > 999) {
             store.items.moveSlice(998, 1, 1);
             store.items.moveSlice(2, 1, 999);
         }
@@ -218,6 +218,12 @@ const Row = ({ store, item }: { store: Model<Store>; item: Model<Item> }) => {
         flush();
     }
 
+    function removeItem(e: MouseEvent) {
+        e.preventDefault();
+        store.items.reject((otherItem) => item === otherItem);
+        flush();
+    }
+
     return (
         <tr class={calc(() => (store.selected === item.id ? 'danger' : ''))}>
             <td class="col-md-1">{calc(() => item.id)}</td>
@@ -227,7 +233,7 @@ const Row = ({ store, item }: { store: Model<Store>; item: Model<Item> }) => {
                 </a>
             </td>
             <td class="col-md-1">
-                <a class="remove">
+                <a class="remove" on:click={time(removeItem)}>
                     <span
                         class="remove glyphicon glyphicon-remove"
                         aria-hidden="true"
