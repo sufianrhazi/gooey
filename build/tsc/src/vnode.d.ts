@@ -37,7 +37,8 @@ export declare function makeChildVNode({ jsxNode, domNode, domParent, onMount, o
 }): ChildVNode;
 export declare function callOnMount(node: VNode): void;
 export declare function mountVNode(vNode: VNode): void;
-export declare function spliceVNode(immediateParent: VNode, childIndex: number, removeCount: number, newNodes: VNode[], { runOnMount, runOnUnmount }?: {
+export declare function spliceVNode(immediateParent: VNode, childIndex: number, removeCount: number, newNodes: VNode[], { dispose, runOnMount, runOnUnmount }?: {
+    dispose?: boolean | undefined;
     runOnMount?: boolean | undefined;
     runOnUnmount?: boolean | undefined;
 }): VNode[];

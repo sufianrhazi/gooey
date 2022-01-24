@@ -22,6 +22,7 @@ var Revise = (() => {
     collection: () => collection,
     createContext: () => createContext,
     debug: () => debug2,
+    debugSubscribe: () => debugSubscribe,
     default: () => src_default,
     effect: () => effect,
     flush: () => flush,
@@ -37,69 +38,20 @@ var Revise = (() => {
     subscribe: () => subscribe
   });
 
-  // src/log.ts
-  var levels = {
-    error: 0,
-    warn: 1,
-    info: 2,
-    debug: 3
-  };
-  var currentLevel = levels.warn;
-  function getLogLevel() {
-    if (currentLevel >= levels.info)
-      return "info";
-    if (currentLevel >= levels.warn)
-      return "warn";
-    if (currentLevel >= levels.debug)
-      return "debug";
-    return "error";
-  }
-  function setLogLevel(logLevel) {
-    invariant(() => logLevel in levels, logLevel);
-    currentLevel = levels[logLevel];
-  }
-  function warn(...items) {
-    if (currentLevel >= levels.warn) {
-      console.warn(...items);
-    }
-  }
-  function error(...items) {
-    if (currentLevel >= levels.error) {
-      console.error(...items);
-    }
-  }
-  function exception(exception2, ...items) {
-    if (exception2 instanceof Error) {
-      error(exception2);
-      error(...items);
-    } else {
-      error(exception2, ...items);
-    }
-  }
-  function invariant(check, ...items) {
-    if (!check()) {
-      error("Invariant error", check.toString(), "is not truthy", ...items);
-    }
-  }
-  function assert(check, ...items) {
-    if (!check) {
-      error("Assertion failure", check === void 0 ? "undefined" : check === null ? "null" : check.toString(), "is not truthy", ...items);
-      throw new Error("Assertion failure");
-    }
-  }
-  function assertExhausted(context, ...items) {
-    error("Assertion failure", context, "is not exhausted", ...items);
-    throw new Error("Assertion failure");
-  }
-
   // src/types.ts
   var InvariantError = class extends Error {
+    constructor(msg, detail) {
+      super(msg);
+      __publicField(this, "detail");
+      this.detail = detail;
+    }
   };
   var TypeTag = Symbol("reviseType");
   var DataTypeTag = Symbol("dataTypeTag");
   var CalculationTypeTag = Symbol("calculationType");
   var RecalculationTag = Symbol("recalculate");
   var ObserveKey = Symbol("observe");
+  var GetSubscriptionNodeKey = Symbol("getSubscriptionNode");
   var MakeModelViewKey = Symbol("makeModelView");
   var FlushKey = Symbol("flush");
   var AddDeferredWorkKey = Symbol("addDeferredWork");
@@ -153,6 +105,64 @@ var Revise = (() => {
   function isSubscription(thing) {
     return !!(thing && thing[TypeTag] === "subscription");
   }
+  function isNodeOrdering(thing) {
+    return !!(thing && thing[TypeTag] === "nodeOrdering");
+  }
+
+  // src/log.ts
+  var levels = {
+    error: 0,
+    warn: 1,
+    info: 2,
+    debug: 3
+  };
+  var currentLevel = levels.warn;
+  function getLogLevel() {
+    if (currentLevel >= levels.info)
+      return "info";
+    if (currentLevel >= levels.warn)
+      return "warn";
+    if (currentLevel >= levels.debug)
+      return "debug";
+    return "error";
+  }
+  function setLogLevel(logLevel) {
+    invariant(() => logLevel in levels, logLevel);
+    currentLevel = levels[logLevel];
+  }
+  function warn(...items) {
+    if (currentLevel >= levels.warn) {
+      console.warn(...items);
+    }
+  }
+  function error(...items) {
+    if (currentLevel >= levels.error) {
+      console.error(...items);
+    }
+  }
+  function exception(exception2, ...items) {
+    if (exception2 instanceof Error) {
+      error(exception2);
+      error(...items);
+    } else {
+      error(exception2, ...items);
+    }
+  }
+  function invariant(check, ...items) {
+    if (!check()) {
+      error("Invariant error", check.toString(), "is not truthy", ...items);
+    }
+  }
+  function assert(check, msg) {
+    if (!check) {
+      error("Assertion failure", check === void 0 ? "undefined" : check === null ? "null" : check.toString(), "is not truthy", msg);
+      throw new InvariantError(`Assertion failure: ${msg}`);
+    }
+  }
+  function assertExhausted(context, ...items) {
+    error("Assertion failure", context, "is not exhausted", ...items);
+    throw new InvariantError("Assertion failure", { context, items });
+  }
 
   // src/util.ts
   var noop = () => {
@@ -170,15 +180,15 @@ var Revise = (() => {
     });
     return grouped;
   }
-  function alwaysFalse() {
-    return false;
+  function alwaysTrue() {
+    return true;
   }
   function strictEqual(a, b) {
     return a === b;
   }
 
   // src/dag.ts
-  var DAG = class {
+  var _DAG = class {
     constructor() {
       __publicField(this, "nextId");
       __publicField(this, "idMap");
@@ -223,40 +233,39 @@ var Revise = (() => {
       this.dirtyNodes[nodeId] = true;
       return true;
     }
-    addEdge(fromNode, toNode) {
+    addEdge(fromNode, toNode, kind) {
       const fromId = this.getId(fromNode);
       const toId = this.getId(toNode);
       assert(!!this.nodesSet[fromId], "cannot add edge from node that does not exist");
       assert(!!this.nodesSet[toId], "cannot add edge to node that does not exist");
-      this.graph[fromId][toId] = true;
-      this.reverseGraph[toId][fromId] = true;
-      return true;
+      this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) | kind;
+      this.reverseGraph[toId][fromId] = (this.reverseGraph[toId][fromId] || 0) | kind;
     }
-    removeEdge(fromNode, toNode) {
+    removeEdge(fromNode, toNode, kind) {
       const fromId = this.getId(fromNode);
       const toId = this.getId(toNode);
       if (!this.nodesSet[fromId])
         return false;
       if (!this.nodesSet[toId])
         return false;
-      if (!this.graph[fromId][toId])
+      if (!(this.graph[fromId][toId] & kind))
         return false;
-      delete this.graph[fromId][toId];
-      delete this.reverseGraph[toId][fromId];
+      this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) & ~kind;
+      this.reverseGraph[toId][fromId] = (this.reverseGraph[toId][fromId] || 0) & ~kind;
       return true;
     }
     removeNodeInner(nodeId) {
       assert(!this.retained[nodeId], "attempted to remove a retained node");
-      const toIds = Object.keys(this.graph[nodeId]);
-      const fromIds = Object.keys(this.reverseGraph[nodeId]);
+      const toIds = this.getDependenciesInner(nodeId);
+      const fromIds = this.getReverseDependenciesInner(nodeId);
       fromIds.forEach((fromId) => {
-        delete this.graph[fromId][nodeId];
+        this.graph[fromId][nodeId] = 0;
+        this.reverseGraph[nodeId][fromId] = 0;
       });
       toIds.forEach((toId) => {
-        delete this.reverseGraph[toId][nodeId];
+        this.reverseGraph[toId][nodeId] = 0;
+        this.graph[nodeId][toId] = 0;
       });
-      delete this.reverseGraph[nodeId];
-      delete this.graph[nodeId];
       delete this.nodesSet[nodeId];
       delete this.dirtyNodes[nodeId];
       delete this.retained[nodeId];
@@ -280,80 +289,84 @@ var Revise = (() => {
     }
     removeIncoming(node) {
       const nodeId = this.getId(node);
-      const fromIds = Object.keys(this.reverseGraph[nodeId]);
+      const fromIds = this.getReverseDependenciesInner(nodeId);
       fromIds.forEach((fromId) => {
-        delete this.graph[fromId][nodeId];
+        if (this.reverseGraph[nodeId][fromId] & _DAG.EDGE_HARD) {
+          this.graph[fromId][nodeId] = (this.graph[fromId][nodeId] || 0) & ~_DAG.EDGE_HARD;
+          this.reverseGraph[nodeId][fromId] = (this.reverseGraph[nodeId][fromId] || 0) & ~_DAG.EDGE_HARD;
+        }
       });
-      this.reverseGraph[nodeId] = {};
     }
-    getDependencies(fromNode) {
-      const nodeId = this.getId(fromNode);
+    getDependenciesInner(nodeId, edgeType = _DAG.EDGE_ANY) {
       if (!this.graph[nodeId])
         return [];
-      return Object.keys(this.graph[nodeId]).map((toId) => this.nodesSet[toId]);
+      return Object.keys(this.graph[nodeId]).filter((toId) => (this.graph[nodeId][toId] || 0) & edgeType);
     }
-    visitDirtyTopological(callback) {
-      const dirtyNodes = this.dirtyNodes;
-      this.dirtyNodes = {};
+    getReverseDependenciesInner(nodeId) {
+      if (!this.reverseGraph[nodeId])
+        return [];
+      return Object.keys(this.reverseGraph[nodeId]).filter((fromId) => !!this.reverseGraph[nodeId][fromId]);
+    }
+    getDependencies(fromNode, edgeType = _DAG.EDGE_ANY) {
+      const nodeId = this.getId(fromNode);
+      return this.getDependenciesInner(nodeId, edgeType).map((toId) => this.nodesSet[toId]);
+    }
+    process(callback) {
       const visited = {};
+      const reachesRetained = {};
       const sortedIds = [];
+      const strayIds = [];
       const dfsRecurse = (nodeId) => {
         if (visited[nodeId])
-          return;
+          return reachesRetained[nodeId];
         visited[nodeId] = true;
-        const toIds = Object.keys(this.graph[nodeId]);
+        reachesRetained[nodeId] = this.retained[nodeId];
+        const toIds = this.getDependenciesInner(nodeId);
+        let anyDependenciesRetained = false;
         toIds.forEach((toId) => {
-          dfsRecurse(toId);
+          if (dfsRecurse(toId)) {
+            anyDependenciesRetained = true;
+          }
         });
+        if (anyDependenciesRetained)
+          reachesRetained[nodeId] = true;
         sortedIds.push(nodeId);
+        if (!reachesRetained[nodeId]) {
+          strayIds.push(nodeId);
+          return false;
+        } else {
+          return true;
+        }
       };
-      Object.keys(dirtyNodes).forEach((nodeId) => {
+      Object.keys(this.dirtyNodes).forEach((nodeId) => {
         dfsRecurse(nodeId);
       });
       for (let i = sortedIds.length - 1; i >= 0; --i) {
         const nodeId = sortedIds[i];
-        if (dirtyNodes[nodeId]) {
+        if (this.dirtyNodes[nodeId] && reachesRetained[nodeId]) {
           const node = this.nodesSet[nodeId];
           const isEqual = callback(node);
           if (!isEqual) {
-            const toIds = Object.keys(this.graph[nodeId]);
+            const toIds = this.getDependenciesInner(nodeId);
             toIds.forEach((toId) => {
-              dirtyNodes[toId] = true;
+              if (this.graph[nodeId][toId] & _DAG.EDGE_HARD) {
+                this.dirtyNodes[toId] = true;
+              }
             });
           }
+          delete this.dirtyNodes[nodeId];
         }
       }
-    }
-    garbageCollect() {
-      const marked = {};
-      const mark = (nodeId) => {
-        if (marked[nodeId])
-          return;
-        marked[nodeId] = true;
-        const fromIds = Object.keys(this.reverseGraph[nodeId]);
-        fromIds.forEach((fromId) => {
-          mark(fromId);
-        });
-      };
-      Object.keys(this.retained).forEach((nodeId) => {
-        mark(nodeId);
+      strayIds.forEach((nodeId) => {
+        this.removeNodeInner(nodeId);
       });
-      const removed = [];
-      Object.keys(this.graph).forEach((nodeId) => {
-        if (!marked[nodeId]) {
-          removed.push(this.nodesSet[nodeId]);
-          this.removeNodeInner(nodeId);
-        }
-      });
-      return removed;
     }
     graphviz(getAttributes) {
       const lines = [
         "digraph dag {",
-        'graph [rankdir="LR"];',
         'node [style="filled", fillcolor="#DDDDDD"];'
       ];
-      const nodeIds = Object.keys(this.graph);
+      const nodeIds = Object.keys(this.nodesSet).filter((nodeId) => !!this.nodesSet[nodeId]);
       const nodeAttributes = {};
       nodeIds.forEach((nodeId) => {
         nodeAttributes[nodeId] = getAttributes(nodeId, this.nodesSet[nodeId]);
@@ -368,7 +381,9 @@ var Revise = (() => {
         nodeIds2.forEach((nodeId) => {
           const props = {
             shape: this.retained[nodeId] ? "box" : "ellipse",
-            label: nodeAttributes[nodeId].label
+            label: nodeAttributes[nodeId].label,
+            penwidth: nodeAttributes[nodeId].penwidth,
+            fillcolor: this.dirtyNodes[nodeId] ? "#FFDDDD" : "#DDDDDD"
           };
           lines.push(`  item_${nodeId} [${Object.entries(props).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(",")}];`);
         });
@@ -376,14 +391,24 @@ var Revise = (() => {
           lines.push("}");
       });
       nodeIds.forEach((fromId) => {
-        Object.keys(this.graph[fromId]).forEach((toId) => {
-          lines.push(`  item_${fromId} -> item_${toId};`);
+        this.getDependenciesInner(fromId).forEach((toId) => {
+          if (this.graph[fromId][toId] & _DAG.EDGE_HARD) {
+            lines.push(`  item_${fromId} -> item_${toId} [style="solid"];`);
+          }
+          if (this.graph[fromId][toId] & _DAG.EDGE_SOFT) {
+            lines.push(`  item_${fromId} -> item_${toId} [style="dashed"];`);
+          }
         });
       });
       lines.push("}");
       return lines.join("\n");
     }
   };
+  var DAG = _DAG;
+  __publicField(DAG, "EDGE_NONE", 0);
+  __publicField(DAG, "EDGE_SOFT", 1);
+  __publicField(DAG, "EDGE_HARD", 2);
+  __publicField(DAG, "EDGE_ANY", 3);
 
   // src/debug.ts
   var nameMap = new WeakMap();
@@ -405,6 +430,9 @@ var Revise = (() => {
     }
     if (isSubscription(item)) {
       return `sub:${nameMap.get(item) ?? "?"}`;
+    }
+    if (isNodeOrdering(item)) {
+      return `ord:${nameMap.get(item) ?? "?"}`;
     }
     return `field:${nameMap.get(item.model) ?? "?"}:${String(item.key)}`;
   }
@@ -438,7 +466,7 @@ var Revise = (() => {
     return calculation;
   }
   function effect(func, debugName) {
-    const calculation = trackCalculation(func, alwaysFalse, true);
+    const calculation = trackCalculation(func, alwaysTrue, true);
     if (debugName)
       name(calculation, debugName);
     return calculation;
@@ -495,30 +523,42 @@ var Revise = (() => {
       if (!globalDependencyGraph.hasNode(dependentCalculation)) {
         globalDependencyGraph.addNode(dependentCalculation);
       }
-      if (globalDependencyGraph.addEdge(item, dependentCalculation)) {
-        false;
-      }
+      globalDependencyGraph.addEdge(item, dependentCalculation, DAG.EDGE_HARD);
+      false;
     }
   }
   function addManualDep(fromNode, toNode) {
     globalDependencyGraph.addNode(fromNode);
     globalDependencyGraph.addNode(toNode);
-    if (globalDependencyGraph.addEdge(fromNode, toNode)) {
+    globalDependencyGraph.addEdge(fromNode, toNode, DAG.EDGE_HARD);
+    false;
+  }
+  function addOrderingDep(fromNode, toNode) {
+    globalDependencyGraph.addNode(fromNode);
+    globalDependencyGraph.addNode(toNode);
+    globalDependencyGraph.addEdge(fromNode, toNode, DAG.EDGE_SOFT);
+    false;
+  }
+  function removeManualDep(fromNode, toNode) {
+    if (globalDependencyGraph.removeEdge(fromNode, toNode, DAG.EDGE_HARD)) {
       false;
     }
   }
-  function removeManualDep(fromNode, toNode) {
-    if (globalDependencyGraph.removeEdge(fromNode, toNode)) {
+  function removeOrderingDep(fromNode, toNode) {
+    if (globalDependencyGraph.removeEdge(fromNode, toNode, DAG.EDGE_SOFT)) {
       false;
     }
   }
   function processChange(item) {
-    const newNode = globalDependencyGraph.addNode(item);
-    const marked = globalDependencyGraph.markNodeDirty(item);
-    false;
-    if (!needsFlush) {
-      needsFlush = true;
-      notify();
+    globalDependencyGraph.addNode(item);
+    const hardEdges = globalDependencyGraph.getDependencies(item, DAG.EDGE_HARD);
+    if (hardEdges.length > 0) {
+      const marked = globalDependencyGraph.markNodeDirty(item);
+      false;
+      if (!needsFlush) {
+        needsFlush = true;
+        notify();
+      }
     }
   }
   var needsFlush = false;
@@ -546,29 +586,35 @@ var Revise = (() => {
       exception(e, "uncaught exception in notify");
     }
   }
+  var debugSubscription = null;
   function flush() {
     if (!needsFlush) {
       return;
     }
     needsFlush = false;
-    const removed = globalDependencyGraph.garbageCollect();
     false;
-    globalDependencyGraph.visitDirtyTopological((item) => {
+    globalDependencyGraph.process((item) => {
+      let result = false;
       if (isCalculation(item)) {
         false;
         const recalculation = item[RecalculationTag];
-        return recalculation();
+        result = recalculation();
       } else if (isCollection(item)) {
         false;
         item[FlushKey]();
       } else if (isModel(item)) {
         false;
         item[FlushKey]();
+      } else if (isSubscription(item)) {
+        false;
+        item[FlushKey]();
       } else {
         false;
       }
-      return false;
+      false;
+      return result;
     });
+    false;
     resolveFlushPromise();
   }
   function retain(item) {
@@ -599,7 +645,7 @@ var Revise = (() => {
     }
     refcountMap.set(item, newRefcount);
   }
-  function debug2() {
+  function debug2(activeItem) {
     return globalDependencyGraph.graphviz((id, item) => {
       let subgraph = void 0;
       if (isModel(item)) {
@@ -611,12 +657,19 @@ var Revise = (() => {
       if (isModelField(item)) {
         subgraph = item.model;
       }
+      if (isSubscription(item)) {
+        subgraph = item.item;
+      }
       return {
         label: `${id}
 ${debugNameFor(item)}`,
-        subgraph
+        subgraph,
+        penwidth: activeItem === item ? "5.0" : "1.0"
       };
     });
+  }
+  function debugSubscribe(callback) {
+    debugSubscription = callback;
   }
 
   // src/jsx.ts
@@ -629,23 +682,10 @@ ${debugNameFor(item)}`,
   function isRenderProvider(jsxNode) {
     return !!(jsxNode && typeof jsxNode === "object" && !Array.isArray(jsxNode) && jsxNode[TypeTag] === "provider");
   }
-  function attrIdentity(val) {
-    return val;
-  }
   function attrBooleanToEmptyString(val) {
     if (!val)
       return void 0;
     return "";
-  }
-  function attrNumberToString(val) {
-    if (val === void 0)
-      return void 0;
-    return val.toString();
-  }
-  function attrStringOrNumberToString(val) {
-    if (val === void 0)
-      return void 0;
-    return val.toString();
   }
   function attrStringOrNumberToNumber(val) {
     if (val === void 0)
@@ -657,643 +697,295 @@ ${debugNameFor(item)}`,
       return void 0;
     return val === "no" ? false : true;
   }
-  function attrStringArrayToWsString(val) {
-    if (val === void 0)
-      return void 0;
-    if (val.length === 0)
-      return void 0;
-    return val.join(" ");
-  }
   var HTMLElementMap = {
     accesskey: {
-      makeAttrValue: attrIdentity,
-      idlName: "accessKey",
-      makeIdlValue: attrIdentity
+      idlName: "accessKey"
     },
     "aria-atomic": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaAtomic",
-      makeIdlValue: attrIdentity
+      idlName: "ariaAtomic"
     },
     "aria-autocomplete": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaAutoComplete",
-      makeIdlValue: attrIdentity
+      idlName: "ariaAutoComplete"
     },
     "aria-busy": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaBusy",
-      makeIdlValue: attrIdentity
+      idlName: "ariaBusy"
     },
     "aria-checked": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaChecked",
-      makeIdlValue: attrIdentity
+      idlName: "ariaChecked"
     },
     "aria-colcount": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaColCount",
-      makeIdlValue: attrIdentity
+      idlName: "ariaColCount"
     },
     "aria-colindex": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaColIndex",
-      makeIdlValue: attrIdentity
+      idlName: "ariaColIndex"
     },
     "aria-colindextext": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaColIndexText",
-      makeIdlValue: attrIdentity
+      idlName: "ariaColIndexText"
     },
     "aria-colspan": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaColSpan",
-      makeIdlValue: attrIdentity
+      idlName: "ariaColSpan"
     },
     "aria-current": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaCurrent",
-      makeIdlValue: attrIdentity
+      idlName: "ariaCurrent"
     },
     "aria-disabled": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaDisabled",
-      makeIdlValue: attrIdentity
+      idlName: "ariaDisabled"
     },
     "aria-expanded": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaExpanded",
-      makeIdlValue: attrIdentity
+      idlName: "ariaExpanded"
     },
     "aria-haspopup": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaHasPopup",
-      makeIdlValue: attrIdentity
+      idlName: "ariaHasPopup"
     },
     "aria-hidden": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaHidden",
-      makeIdlValue: attrIdentity
+      idlName: "ariaHidden"
     },
     "aria-invalid": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaInvalid",
-      makeIdlValue: attrIdentity
+      idlName: "ariaInvalid"
     },
     "aria-keyshortcuts": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaKeyShortcuts",
-      makeIdlValue: attrIdentity
+      idlName: "ariaKeyShortcuts"
     },
     "aria-label": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaLabel",
-      makeIdlValue: attrIdentity
+      idlName: "ariaLabel"
     },
     "aria-level": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaLevel",
-      makeIdlValue: attrIdentity
+      idlName: "ariaLevel"
     },
     "aria-live": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaLive",
-      makeIdlValue: attrIdentity
+      idlName: "ariaLive"
     },
     "aria-modal": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaModal",
-      makeIdlValue: attrIdentity
+      idlName: "ariaModal"
     },
     "aria-multiline": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaMultiLine",
-      makeIdlValue: attrIdentity
+      idlName: "ariaMultiLine"
     },
     "aria-multiselectable": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaMultiSelectable",
-      makeIdlValue: attrIdentity
+      idlName: "ariaMultiSelectable"
     },
     "aria-orientation": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaOrientation",
-      makeIdlValue: attrIdentity
+      idlName: "ariaOrientation"
     },
     "aria-placeholder": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaPlaceholder",
-      makeIdlValue: attrIdentity
+      idlName: "ariaPlaceholder"
     },
     "aria-posinset": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaPosInSet",
-      makeIdlValue: attrIdentity
+      idlName: "ariaPosInSet"
     },
     "aria-pressed": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaPressed",
-      makeIdlValue: attrIdentity
+      idlName: "ariaPressed"
     },
     "aria-readonly": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaReadOnly",
-      makeIdlValue: attrIdentity
+      idlName: "ariaReadOnly"
     },
     "aria-required": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaRequired",
-      makeIdlValue: attrIdentity
+      idlName: "ariaRequired"
     },
     "aria-roledescription": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaRoleDescription",
-      makeIdlValue: attrIdentity
+      idlName: "ariaRoleDescription"
     },
     "aria-rowcount": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaRowCount",
-      makeIdlValue: attrIdentity
+      idlName: "ariaRowCount"
     },
     "aria-rowindex": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaRowIndex",
-      makeIdlValue: attrIdentity
+      idlName: "ariaRowIndex"
     },
     "aria-rowindextext": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaRowIndexText",
-      makeIdlValue: attrIdentity
+      idlName: "ariaRowIndexText"
     },
     "aria-rowspan": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaRowSpan",
-      makeIdlValue: attrIdentity
+      idlName: "ariaRowSpan"
     },
     "aria-selected": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaSelected",
-      makeIdlValue: attrIdentity
+      idlName: "ariaSelected"
     },
     "aria-setsize": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaSetSize",
-      makeIdlValue: attrIdentity
+      idlName: "ariaSetSize"
     },
     "aria-sort": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaSort",
-      makeIdlValue: attrIdentity
+      idlName: "ariaSort"
     },
     "aria-valuemax": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaValueMax",
-      makeIdlValue: attrIdentity
+      idlName: "ariaValueMax"
     },
     "aria-valuemin": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaValueMin",
-      makeIdlValue: attrIdentity
+      idlName: "ariaValueMin"
     },
     "aria-valuenow": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaValueNow",
-      makeIdlValue: attrIdentity
+      idlName: "ariaValueNow"
     },
     "aria-valuetext": {
-      makeAttrValue: attrIdentity,
-      idlName: "ariaValueText",
-      makeIdlValue: attrIdentity
+      idlName: "ariaValueText"
     },
-    autocapitalize: {
-      makeAttrValue: attrIdentity,
-      idlName: "autocapitalize",
-      makeIdlValue: attrIdentity
-    },
-    autofocus: {
-      makeAttrValue: attrIdentity,
-      idlName: "autofocus",
-      makeIdlValue: attrIdentity
-    },
+    autocapitalize: {},
+    autofocus: {},
     class: {
-      makeAttrValue: attrIdentity,
-      idlName: "className",
-      makeIdlValue: attrIdentity
+      idlName: "className"
     },
     contenteditable: {
-      makeAttrValue: attrIdentity,
-      idlName: "contentEditable",
-      makeIdlValue: attrIdentity
+      idlName: "contentEditable"
     },
-    dir: {
-      makeAttrValue: attrIdentity,
-      idlName: "dir",
-      makeIdlValue: attrIdentity
-    },
-    draggable: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "draggable",
-      makeIdlValue: attrIdentity
-    },
+    dir: {},
+    draggable: {},
     enterkeyhint: {
-      makeAttrValue: attrIdentity,
-      idlName: "enterKeyHint",
-      makeIdlValue: attrIdentity
+      idlName: "enterKeyHint"
     },
-    hidden: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "hidden",
-      makeIdlValue: attrIdentity
-    },
-    id: {
-      makeAttrValue: attrIdentity,
-      idlName: "id",
-      makeIdlValue: attrIdentity
-    },
+    hidden: {},
+    id: {},
     inputmode: {
-      makeAttrValue: attrIdentity,
-      idlName: "inputMode",
-      makeIdlValue: attrIdentity
+      idlName: "inputMode"
     },
-    is: { makeAttrValue: attrIdentity },
-    itemid: { makeAttrValue: attrIdentity },
-    itemprop: { makeAttrValue: attrIdentity },
-    itemref: { makeAttrValue: attrIdentity },
-    itemscope: { makeAttrValue: attrBooleanToEmptyString },
-    itemtype: { makeAttrValue: attrIdentity },
-    lang: {
-      makeAttrValue: attrIdentity,
-      idlName: "lang",
-      makeIdlValue: attrIdentity
-    },
-    nonce: {
-      makeAttrValue: attrIdentity,
-      idlName: "nonce",
-      makeIdlValue: attrIdentity
-    },
-    role: {
-      makeAttrValue: attrIdentity,
-      idlName: "role",
-      makeIdlValue: attrIdentity
-    },
-    slot: {
-      makeAttrValue: attrIdentity,
-      idlName: "slot",
-      makeIdlValue: attrIdentity
-    },
-    spellcheck: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "spellcheck",
-      makeIdlValue: attrIdentity
-    },
-    style: {
-      makeAttrValue: attrIdentity,
-      idlName: "style",
-      makeIdlValue: attrIdentity
-    },
+    is: { idlName: null },
+    itemid: { idlName: null },
+    itemprop: { idlName: null },
+    itemref: { idlName: null },
+    itemscope: { idlName: null },
+    itemtype: { idlName: null },
+    lang: {},
+    nonce: {},
+    role: {},
+    slot: {},
+    spellcheck: {},
+    style: {},
     tabindex: {
-      makeAttrValue: attrStringOrNumberToString,
       idlName: "tabIndex",
       makeIdlValue: attrStringOrNumberToNumber
     },
-    title: {
-      makeAttrValue: attrIdentity,
-      idlName: "title",
-      makeIdlValue: attrIdentity
-    },
+    title: {},
     translate: {
-      makeAttrValue: attrIdentity,
-      idlName: "translate",
       makeIdlValue: attrYesNo
     }
   };
   var HTMLAnchorElementMap = {
     ...HTMLElementMap,
-    href: {
-      makeAttrValue: attrIdentity,
-      idlName: "href",
-      makeIdlValue: attrIdentity
-    },
-    target: {
-      makeAttrValue: attrIdentity,
-      idlName: "target",
-      makeIdlValue: attrIdentity
-    },
-    download: {
-      makeAttrValue: attrIdentity,
-      idlName: "download",
-      makeIdlValue: attrIdentity
-    },
-    ping: {
-      makeAttrValue: attrIdentity,
-      idlName: "ping",
-      makeIdlValue: attrIdentity
-    },
-    rel: {
-      makeAttrValue: attrIdentity,
-      idlName: "rel",
-      makeIdlValue: attrIdentity
-    },
-    hreflang: {
-      makeAttrValue: attrIdentity,
-      idlName: "hreflang",
-      makeIdlValue: attrIdentity
-    },
-    type: {
-      makeAttrValue: attrIdentity,
-      idlName: "type",
-      makeIdlValue: attrIdentity
-    },
+    href: {},
+    target: {},
+    download: {},
+    ping: {},
+    rel: {},
+    hreflang: {},
+    type: {},
     referrerpolicy: {
-      makeAttrValue: attrIdentity,
-      idlName: "referrerPolicy",
-      makeIdlValue: attrIdentity
+      idlName: "referrerPolicy"
     }
   };
   var HTMLAreaElementMap = {
     ...HTMLElementMap,
-    alt: {
-      makeAttrValue: attrIdentity,
-      idlName: "alt",
-      makeIdlValue: attrIdentity
-    },
-    coords: {
-      makeAttrValue: attrIdentity,
-      idlName: "coords",
-      makeIdlValue: attrIdentity
-    },
-    shape: {
-      makeAttrValue: attrIdentity,
-      idlName: "shape",
-      makeIdlValue: attrIdentity
-    },
-    href: {
-      makeAttrValue: attrIdentity,
-      idlName: "href",
-      makeIdlValue: attrIdentity
-    },
-    target: {
-      makeAttrValue: attrIdentity,
-      idlName: "target",
-      makeIdlValue: attrIdentity
-    },
-    download: {
-      makeAttrValue: attrIdentity,
-      idlName: "download",
-      makeIdlValue: attrIdentity
-    },
-    ping: {
-      makeAttrValue: attrIdentity,
-      idlName: "ping",
-      makeIdlValue: attrIdentity
-    },
-    rel: {
-      makeAttrValue: attrIdentity,
-      idlName: "rel",
-      makeIdlValue: attrIdentity
-    },
+    alt: {},
+    coords: {},
+    shape: {},
+    href: {},
+    target: {},
+    download: {},
+    ping: {},
+    rel: {},
     referrerpolicy: {
-      makeAttrValue: attrIdentity,
-      idlName: "referrerPolicy",
-      makeIdlValue: attrIdentity
+      idlName: "referrerPolicy"
     }
   };
   var HTMLAudioElementMap = {
     ...HTMLElementMap,
-    src: {
-      makeAttrValue: attrIdentity,
-      idlName: "src",
-      makeIdlValue: attrIdentity
-    },
+    src: {},
     crossorigin: {
-      makeAttrValue: attrIdentity,
-      idlName: "crossOrigin",
-      makeIdlValue: attrIdentity
+      idlName: "crossOrigin"
     },
-    preload: {
-      makeAttrValue: attrIdentity,
-      idlName: "preload",
-      makeIdlValue: attrIdentity
-    },
-    autoplay: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "autoplay",
-      makeIdlValue: attrIdentity
-    },
+    preload: {},
+    autoplay: {},
     loop: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "loop",
       makeIdlValue: attrBooleanToEmptyString
     },
-    muted: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "muted",
-      makeIdlValue: attrIdentity
-    },
-    controls: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "controls",
-      makeIdlValue: attrIdentity
-    }
+    muted: {},
+    controls: {}
   };
   var HTMLBRElementMap = {
     ...HTMLElementMap
   };
   var HTMLBaseElementMap = {
     ...HTMLElementMap,
-    href: {
-      makeAttrValue: attrIdentity,
-      idlName: "href",
-      makeIdlValue: attrIdentity
-    },
-    target: {
-      makeAttrValue: attrIdentity,
-      idlName: "target",
-      makeIdlValue: attrIdentity
-    }
+    href: {},
+    target: {}
   };
   var HTMLBodyElementMap = {
     ...HTMLElementMap
   };
   var HTMLButtonElementMap = {
     ...HTMLElementMap,
-    disabled: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "disabled",
-      makeIdlValue: attrIdentity
-    },
-    form: { makeAttrValue: attrIdentity },
+    disabled: {},
+    form: { idlName: null },
     formaction: {
-      makeAttrValue: attrIdentity,
-      idlName: "formAction",
-      makeIdlValue: attrIdentity
+      idlName: "formAction"
     },
     formenctype: {
-      makeAttrValue: attrIdentity,
-      idlName: "formEnctype",
-      makeIdlValue: attrIdentity
+      idlName: "formEnctype"
     },
     formmethod: {
-      makeAttrValue: attrIdentity,
-      idlName: "formMethod",
-      makeIdlValue: attrIdentity
+      idlName: "formMethod"
     },
     formnovalidate: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "formNoValidate",
-      makeIdlValue: attrIdentity
+      idlName: "formNoValidate"
     },
     formtarget: {
-      makeAttrValue: attrIdentity,
-      idlName: "formTarget",
-      makeIdlValue: attrIdentity
+      idlName: "formTarget"
     },
-    name: {
-      makeAttrValue: attrIdentity,
-      idlName: "name",
-      makeIdlValue: attrIdentity
-    },
-    type: {
-      makeAttrValue: attrIdentity,
-      idlName: "type",
-      makeIdlValue: attrIdentity
-    },
-    value: {
-      makeAttrValue: attrIdentity,
-      idlName: "value",
-      makeIdlValue: attrIdentity
-    }
+    name: {},
+    type: {},
+    value: {}
   };
   var HTMLCanvasElementMap = {
     ...HTMLElementMap,
-    width: {
-      makeAttrValue: attrNumberToString,
-      idlName: "width",
-      makeIdlValue: attrIdentity
-    },
-    height: {
-      makeAttrValue: attrNumberToString,
-      idlName: "height",
-      makeIdlValue: attrIdentity
-    }
+    width: {},
+    height: {}
   };
   var HTMLDListElementMap = {
     ...HTMLElementMap
   };
   var HTMLDataElementMap = {
     ...HTMLElementMap,
-    value: {
-      makeAttrValue: attrIdentity,
-      idlName: "value",
-      makeIdlValue: attrIdentity
-    }
+    value: {}
   };
   var HTMLDataListElementMap = {
     ...HTMLElementMap
   };
   var HTMLDetailsElementMap = {
     ...HTMLElementMap,
-    open: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "open",
-      makeIdlValue: attrIdentity
-    }
+    open: {}
   };
   var HTMLDialogElementMap = {
     ...HTMLElementMap,
-    open: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "open",
-      makeIdlValue: attrIdentity
-    }
+    open: {}
   };
   var HTMLDivElementMap = {
     ...HTMLElementMap
   };
   var HTMLEmbedElementMap = {
     ...HTMLElementMap,
-    src: {
-      makeAttrValue: attrIdentity,
-      idlName: "src",
-      makeIdlValue: attrIdentity
-    },
-    type: {
-      makeAttrValue: attrIdentity,
-      idlName: "type",
-      makeIdlValue: attrIdentity
-    },
-    width: {
-      makeAttrValue: attrNumberToString,
-      idlName: "width",
-      makeIdlValue: attrIdentity
-    },
-    height: {
-      makeAttrValue: attrNumberToString,
-      idlName: "height",
-      makeIdlValue: attrIdentity
-    }
+    src: {},
+    type: {},
+    width: {},
+    height: {}
   };
   var HTMLFieldSetElementMap = {
     ...HTMLElementMap,
-    disabled: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "disabled",
-      makeIdlValue: attrIdentity
-    },
-    form: { makeAttrValue: attrIdentity },
-    name: {
-      makeAttrValue: attrIdentity,
-      idlName: "name",
-      makeIdlValue: attrIdentity
-    }
+    disabled: {},
+    form: { idlName: null },
+    name: {}
   };
   var HTMLFormElementMap = {
     ...HTMLElementMap,
     "accept-charset": {
-      makeAttrValue: attrIdentity,
-      idlName: "acceptCharset",
-      makeIdlValue: attrIdentity
+      idlName: "acceptCharset"
     },
-    action: {
-      makeAttrValue: attrIdentity,
-      idlName: "action",
-      makeIdlValue: attrIdentity
-    },
-    autocomplete: {
-      makeAttrValue: attrIdentity,
-      idlName: "autocomplete",
-      makeIdlValue: attrIdentity
-    },
-    enctype: {
-      makeAttrValue: attrIdentity,
-      idlName: "enctype",
-      makeIdlValue: attrIdentity
-    },
-    method: {
-      makeAttrValue: attrIdentity,
-      idlName: "method",
-      makeIdlValue: attrIdentity
-    },
-    name: {
-      makeAttrValue: attrIdentity,
-      idlName: "name",
-      makeIdlValue: attrIdentity
-    },
+    action: {},
+    autocomplete: {},
+    enctype: {},
+    method: {},
+    name: {},
     novalidate: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "noValidate",
-      makeIdlValue: attrIdentity
+      idlName: "noValidate"
     },
-    target: {
-      makeAttrValue: attrIdentity,
-      idlName: "target",
-      makeIdlValue: attrIdentity
-    },
-    rel: {
-      makeAttrValue: attrIdentity,
-      idlName: "rel",
-      makeIdlValue: attrIdentity
-    }
+    target: {},
+    rel: {}
   };
   var HTMLHeadingElementMap = {
     ...HTMLElementMap
@@ -1309,296 +1001,107 @@ ${debugNameFor(item)}`,
   };
   var HTMLIFrameElementMap = {
     ...HTMLElementMap,
-    src: {
-      makeAttrValue: attrIdentity,
-      idlName: "src",
-      makeIdlValue: attrIdentity
-    },
-    srcdoc: {
-      makeAttrValue: attrIdentity,
-      idlName: "srcdoc",
-      makeIdlValue: attrIdentity
-    },
-    name: {
-      makeAttrValue: attrIdentity,
-      idlName: "name",
-      makeIdlValue: attrIdentity
-    },
-    sandbox: {
-      makeAttrValue: attrStringArrayToWsString,
-      idlName: "sandbox",
-      makeIdlValue: attrStringArrayToWsString
-    },
-    allow: {
-      makeAttrValue: attrIdentity,
-      idlName: "allow",
-      makeIdlValue: attrIdentity
-    },
+    src: {},
+    srcdoc: {},
+    name: {},
+    sandbox: {},
+    allow: {},
     allowfullscreen: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "allowFullscreen",
-      makeIdlValue: attrIdentity
+      idlName: "allowFullscreen"
     },
-    width: {
-      makeAttrValue: attrNumberToString,
-      idlName: "width",
-      makeIdlValue: attrIdentity
-    },
-    height: {
-      makeAttrValue: attrNumberToString,
-      idlName: "height",
-      makeIdlValue: attrIdentity
-    },
+    width: {},
+    height: {},
     referrerpolicy: {
-      makeAttrValue: attrIdentity,
-      idlName: "referrerPolicy",
-      makeIdlValue: attrIdentity
+      idlName: "referrerPolicy"
     },
-    loading: {
-      makeAttrValue: attrIdentity,
-      idlName: "loading",
-      makeIdlValue: attrIdentity
-    }
+    loading: {}
   };
   var HTMLImageElementMap = {
     ...HTMLElementMap,
-    alt: {
-      makeAttrValue: attrIdentity,
-      idlName: "alt",
-      makeIdlValue: attrIdentity
-    },
-    src: {
-      makeAttrValue: attrIdentity,
-      idlName: "src",
-      makeIdlValue: attrIdentity
-    },
-    srcset: {
-      makeAttrValue: attrIdentity,
-      idlName: "srcset",
-      makeIdlValue: attrIdentity
-    },
-    sizes: {
-      makeAttrValue: attrIdentity,
-      idlName: "sizes",
-      makeIdlValue: attrIdentity
-    },
+    alt: {},
+    src: {},
+    srcset: {},
+    sizes: {},
     crossorigin: {
-      makeAttrValue: attrIdentity,
-      idlName: "crossOrigin",
-      makeIdlValue: attrIdentity
+      idlName: "crossOrigin"
     },
     usemap: {
-      makeAttrValue: attrIdentity,
-      idlName: "useMap",
-      makeIdlValue: attrIdentity
+      idlName: "useMap"
     },
     ismap: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "isMap",
-      makeIdlValue: attrIdentity
+      idlName: "isMap"
     },
-    width: {
-      makeAttrValue: attrNumberToString,
-      idlName: "width",
-      makeIdlValue: attrIdentity
-    },
-    height: {
-      makeAttrValue: attrNumberToString,
-      idlName: "height",
-      makeIdlValue: attrIdentity
-    },
+    width: {},
+    height: {},
     referrerpolicy: {
-      makeAttrValue: attrIdentity,
-      idlName: "referrerPolicy",
-      makeIdlValue: attrIdentity
+      idlName: "referrerPolicy"
     },
-    decoding: {
-      makeAttrValue: attrIdentity,
-      idlName: "decoding",
-      makeIdlValue: attrIdentity
-    },
-    loading: {
-      makeAttrValue: attrIdentity,
-      idlName: "loading",
-      makeIdlValue: attrIdentity
-    }
+    decoding: {},
+    loading: {}
   };
   var HTMLInputElementMap = {
     ...HTMLElementMap,
-    accept: {
-      makeAttrValue: attrIdentity,
-      idlName: "accept",
-      makeIdlValue: attrIdentity
-    },
-    alt: {
-      makeAttrValue: attrIdentity,
-      idlName: "alt",
-      makeIdlValue: attrIdentity
-    },
-    autocomplete: {
-      makeAttrValue: attrIdentity,
-      idlName: "autocomplete",
-      makeIdlValue: attrIdentity
-    },
-    checked: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "checked",
-      makeIdlValue: attrIdentity
-    },
+    accept: {},
+    alt: {},
+    autocomplete: {},
+    checked: {},
     dirname: {
-      makeAttrValue: attrIdentity,
-      idlName: "dirName",
-      makeIdlValue: attrIdentity
+      idlName: "dirName"
     },
-    disabled: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "disabled",
-      makeIdlValue: attrIdentity
-    },
-    form: {
-      makeAttrValue: attrIdentity,
-      idlName: "form",
-      makeIdlValue: attrIdentity
-    },
+    disabled: {},
+    form: {},
     formaction: {
-      makeAttrValue: attrIdentity,
-      idlName: "formAction",
-      makeIdlValue: attrIdentity
+      idlName: "formAction"
     },
     formenctype: {
-      makeAttrValue: attrIdentity,
-      idlName: "formEnctype",
-      makeIdlValue: attrIdentity
+      idlName: "formEnctype"
     },
     formmethod: {
-      makeAttrValue: attrIdentity,
-      idlName: "formMethod",
-      makeIdlValue: attrIdentity
+      idlName: "formMethod"
     },
     formnovalidate: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "formNoValidate",
-      makeIdlValue: attrIdentity
+      idlName: "formNoValidate"
     },
     formtarget: {
-      makeAttrValue: attrIdentity,
-      idlName: "formTarget",
-      makeIdlValue: attrIdentity
+      idlName: "formTarget"
     },
-    height: {
-      makeAttrValue: attrNumberToString,
-      idlName: "height",
-      makeIdlValue: attrIdentity
-    },
+    height: {},
     indeterminate: {
-      idlName: "indeterminate",
-      makeIdlValue: attrIdentity
+      makeAttrValue: null
     },
-    list: {
-      makeAttrValue: attrIdentity,
-      idlName: "list",
-      makeIdlValue: attrIdentity
-    },
-    max: {
-      makeAttrValue: attrNumberToString,
-      idlName: "max",
-      makeIdlValue: attrIdentity
-    },
-    maxlength: {
-      makeAttrValue: attrNumberToString,
-      idlName: "maxLength",
-      makeIdlValue: attrIdentity
-    },
-    min: {
-      makeAttrValue: attrNumberToString,
-      idlName: "min",
-      makeIdlValue: attrIdentity
-    },
+    list: {},
+    max: {},
+    maxlength: {},
+    min: {},
     minlength: {
-      makeAttrValue: attrNumberToString,
-      idlName: "minLength",
-      makeIdlValue: attrIdentity
+      idlName: "minLength"
     },
-    multiple: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "multiple",
-      makeIdlValue: attrIdentity
-    },
-    name: {
-      makeAttrValue: attrIdentity,
-      idlName: "name",
-      makeIdlValue: attrIdentity
-    },
-    pattern: {
-      makeAttrValue: attrIdentity,
-      idlName: "pattern",
-      makeIdlValue: attrIdentity
-    },
-    placeholder: {
-      makeAttrValue: attrIdentity,
-      idlName: "placeholder",
-      makeIdlValue: attrIdentity
-    },
+    multiple: {},
+    name: {},
+    pattern: {},
+    placeholder: {},
     readonly: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "readOnly",
-      makeIdlValue: attrIdentity
+      idlName: "readOnly"
     },
-    required: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "required",
-      makeIdlValue: attrIdentity
-    },
-    size: {
-      makeAttrValue: attrNumberToString,
-      idlName: "size",
-      makeIdlValue: attrIdentity
-    },
-    src: {
-      makeAttrValue: attrIdentity,
-      idlName: "src",
-      makeIdlValue: attrIdentity
-    },
-    step: {
-      makeAttrValue: attrNumberToString,
-      idlName: "step",
-      makeIdlValue: attrIdentity
-    },
-    type: {
-      makeAttrValue: attrIdentity,
-      idlName: "type",
-      makeIdlValue: attrIdentity
-    },
-    value: {
-      makeAttrValue: attrIdentity,
-      idlName: "value",
-      makeIdlValue: attrIdentity
-    },
-    width: {
-      makeAttrValue: attrNumberToString,
-      idlName: "width",
-      makeIdlValue: attrIdentity
-    }
+    required: {},
+    size: {},
+    src: {},
+    step: {},
+    type: {},
+    value: {},
+    width: {}
   };
   var HTMLModElementMap = {
     ...HTMLElementMap,
-    cite: {
-      makeAttrValue: attrIdentity,
-      idlName: "cite",
-      makeIdlValue: attrIdentity
-    },
+    cite: {},
     datetime: {
-      makeAttrValue: attrIdentity,
-      idlName: "dateTime",
-      makeIdlValue: attrIdentity
+      idlName: "dateTime"
     }
   };
   var HTMLLabelElementMap = {
     ...HTMLElementMap,
     for: {
-      makeAttrValue: attrIdentity,
-      idlName: "htmlFor",
-      makeIdlValue: attrIdentity
+      idlName: "htmlFor"
     }
   };
   var HTMLLegendElementMap = {
@@ -1606,267 +1109,107 @@ ${debugNameFor(item)}`,
   };
   var HTMLLIElementMap = {
     ...HTMLElementMap,
-    value: {
-      makeAttrValue: attrIdentity,
-      idlName: "value",
-      makeIdlValue: attrIdentity
-    }
+    value: {}
   };
   var HTMLLinkElementMap = {
     ...HTMLElementMap,
-    href: {
-      makeAttrValue: attrIdentity,
-      idlName: "href",
-      makeIdlValue: attrIdentity
-    },
+    href: {},
     crossorigin: {
-      makeAttrValue: attrIdentity,
-      idlName: "crossOrigin",
-      makeIdlValue: attrIdentity
+      idlName: "crossOrigin"
     },
-    rel: {
-      makeAttrValue: attrIdentity,
-      idlName: "rel",
-      makeIdlValue: attrIdentity
-    },
-    media: {
-      makeAttrValue: attrIdentity,
-      idlName: "media",
-      makeIdlValue: attrIdentity
-    },
-    integrity: {
-      makeAttrValue: attrIdentity,
-      idlName: "integrity",
-      makeIdlValue: attrIdentity
-    },
-    hreflang: {
-      makeAttrValue: attrIdentity,
-      idlName: "hreflang",
-      makeIdlValue: attrIdentity
-    },
-    type: {
-      makeAttrValue: attrIdentity,
-      idlName: "type",
-      makeIdlValue: attrIdentity
-    },
+    rel: {},
+    media: {},
+    integrity: {},
+    hreflang: {},
+    type: {},
     referrerpolicy: {
-      makeAttrValue: attrIdentity,
-      idlName: "referrerPolicy",
-      makeIdlValue: attrIdentity
+      idlName: "referrerPolicy"
     },
-    sizes: {
-      makeAttrValue: attrIdentity,
-      idlName: "sizes",
-      makeIdlValue: attrIdentity
-    },
+    sizes: {},
     imagesrcset: {
-      makeAttrValue: attrIdentity,
-      idlName: "imageSrcset",
-      makeIdlValue: attrIdentity
+      idlName: "imageSrcset"
     },
     imagesizes: {
-      makeAttrValue: attrIdentity,
-      idlName: "imageSizes",
-      makeIdlValue: attrIdentity
+      idlName: "imageSizes"
     },
-    as: {
-      makeAttrValue: attrIdentity,
-      idlName: "as",
-      makeIdlValue: attrIdentity
-    },
+    as: {},
     color: {
-      makeAttrValue: attrIdentity
+      idlName: null
     },
-    disabled: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "disabled",
-      makeIdlValue: attrIdentity
-    }
+    disabled: {}
   };
   var HTMLMapElementMap = {
     ...HTMLElementMap,
-    name: {
-      makeAttrValue: attrIdentity,
-      idlName: "name",
-      makeIdlValue: attrIdentity
-    }
+    name: {}
   };
   var HTMLMenuElementMap = {
     ...HTMLElementMap
   };
   var HTMLMetaElementMap = {
     ...HTMLElementMap,
-    name: {
-      makeAttrValue: attrIdentity,
-      idlName: "name",
-      makeIdlValue: attrIdentity
-    },
+    name: {},
     "http-equiv": {
-      makeAttrValue: attrIdentity,
-      idlName: "httpEquiv",
-      makeIdlValue: attrIdentity
+      idlName: "httpEquiv"
     },
-    content: {
-      makeAttrValue: attrIdentity,
-      idlName: "content",
-      makeIdlValue: attrIdentity
-    },
+    content: {},
     charset: {
-      makeAttrValue: attrIdentity
+      idlName: null
     },
-    media: {
-      makeAttrValue: attrIdentity,
-      idlName: "media",
-      makeIdlValue: attrIdentity
-    }
+    media: {}
   };
   var HTMLMeterElementMap = {
     ...HTMLElementMap,
-    value: {
-      makeAttrValue: attrNumberToString,
-      idlName: "value",
-      makeIdlValue: attrIdentity
-    },
-    min: {
-      makeAttrValue: attrNumberToString,
-      idlName: "min",
-      makeIdlValue: attrIdentity
-    },
-    max: {
-      makeAttrValue: attrNumberToString,
-      idlName: "max",
-      makeIdlValue: attrIdentity
-    },
-    low: {
-      makeAttrValue: attrNumberToString,
-      idlName: "low",
-      makeIdlValue: attrIdentity
-    },
-    high: {
-      makeAttrValue: attrNumberToString,
-      idlName: "high",
-      makeIdlValue: attrIdentity
-    },
-    optimum: {
-      makeAttrValue: attrNumberToString,
-      idlName: "optimum",
-      makeIdlValue: attrIdentity
-    }
+    value: {},
+    min: {},
+    max: {},
+    low: {},
+    high: {},
+    optimum: {}
   };
   var HTMLObjectElementMap = {
     ...HTMLElementMap,
-    data: {
-      makeAttrValue: attrIdentity,
-      idlName: "data",
-      makeIdlValue: attrIdentity
-    },
-    type: {
-      makeAttrValue: attrIdentity,
-      idlName: "type",
-      makeIdlValue: attrIdentity
-    },
-    name: {
-      makeAttrValue: attrIdentity,
-      idlName: "name",
-      makeIdlValue: attrIdentity
-    },
+    data: {},
+    type: {},
+    name: {},
     form: {
-      makeAttrValue: attrIdentity
+      idlName: null
     },
-    width: {
-      makeAttrValue: attrIdentity,
-      idlName: "width",
-      makeIdlValue: attrIdentity
-    },
-    height: {
-      makeAttrValue: attrIdentity,
-      idlName: "height",
-      makeIdlValue: attrIdentity
-    }
+    width: {},
+    height: {}
   };
   var HTMLOListElementMap = {
     ...HTMLElementMap,
-    reversed: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "reversed",
-      makeIdlValue: attrIdentity
-    },
-    start: {
-      makeAttrValue: attrNumberToString,
-      idlName: "start",
-      makeIdlValue: attrIdentity
-    },
-    type: {
-      makeAttrValue: attrIdentity,
-      idlName: "type",
-      makeIdlValue: attrIdentity
-    }
+    reversed: {},
+    start: {},
+    type: {}
   };
   var HTMLOptGroupElementMap = {
     ...HTMLElementMap,
-    disabled: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "disabled",
-      makeIdlValue: attrIdentity
-    },
-    label: {
-      makeAttrValue: attrIdentity,
-      idlName: "label",
-      makeIdlValue: attrIdentity
-    }
+    disabled: {},
+    label: {}
   };
   var HTMLOptionElementMap = {
     ...HTMLElementMap,
-    disabled: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "disabled",
-      makeIdlValue: attrIdentity
-    },
-    label: {
-      makeAttrValue: attrIdentity,
-      idlName: "label",
-      makeIdlValue: attrIdentity
-    },
-    selected: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "selected",
-      makeIdlValue: attrIdentity
-    },
-    value: {
-      makeAttrValue: attrIdentity,
-      idlName: "value",
-      makeIdlValue: attrIdentity
-    }
+    disabled: {},
+    label: {},
+    selected: {},
+    value: {}
   };
   var HTMLOutputElementMap = {
     ...HTMLElementMap,
     for: {
-      makeAttrValue: attrIdentity,
-      idlName: "htmlFor",
-      makeIdlValue: attrIdentity
+      idlName: "htmlFor"
     },
-    form: { makeAttrValue: attrIdentity },
-    name: {
-      makeAttrValue: attrIdentity,
-      idlName: "name",
-      makeIdlValue: attrIdentity
-    }
+    form: { idlName: null },
+    name: {}
   };
   var HTMLParagraphElementMap = {
     ...HTMLElementMap
   };
   var HTMLParamElementMap = {
     ...HTMLElementMap,
-    name: {
-      makeAttrValue: attrIdentity,
-      idlName: "name",
-      makeIdlValue: attrIdentity
-    },
-    value: {
-      makeAttrValue: attrIdentity,
-      idlName: "value",
-      makeIdlValue: attrIdentity
-    }
+    name: {},
+    value: {}
   };
   var HTMLPictureElementMap = {
     ...HTMLElementMap
@@ -1876,159 +1219,61 @@ ${debugNameFor(item)}`,
   };
   var HTMLProgressElementMap = {
     ...HTMLElementMap,
-    value: {
-      makeAttrValue: attrNumberToString,
-      idlName: "value",
-      makeIdlValue: attrIdentity
-    },
-    max: {
-      makeAttrValue: attrNumberToString,
-      idlName: "max",
-      makeIdlValue: attrIdentity
-    }
+    value: {},
+    max: {}
   };
   var HTMLQuoteElementMap = {
     ...HTMLElementMap,
-    cite: {
-      makeAttrValue: attrIdentity,
-      idlName: "cite",
-      makeIdlValue: attrIdentity
-    }
+    cite: {}
   };
   var HTMLScriptElementMap = {
     ...HTMLElementMap,
-    src: {
-      makeAttrValue: attrIdentity,
-      idlName: "src",
-      makeIdlValue: attrIdentity
-    },
-    type: {
-      makeAttrValue: attrIdentity,
-      idlName: "type",
-      makeIdlValue: attrIdentity
-    },
+    src: {},
+    type: {},
     nomodule: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "noModule",
-      makeIdlValue: attrIdentity
+      idlName: "noModule"
     },
-    async: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "async",
-      makeIdlValue: attrIdentity
-    },
-    defer: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "defer",
-      makeIdlValue: attrIdentity
-    },
+    async: {},
+    defer: {},
     crossorigin: {
-      makeAttrValue: attrIdentity,
-      idlName: "crossOrigin",
-      makeIdlValue: attrIdentity
+      idlName: "crossOrigin"
     },
-    integrity: {
-      makeAttrValue: attrIdentity,
-      idlName: "integrity",
-      makeIdlValue: attrIdentity
-    },
+    integrity: {},
     referrerpolicy: {
-      makeAttrValue: attrIdentity,
-      idlName: "referrerPolicy",
-      makeIdlValue: attrIdentity
+      idlName: "referrerPolicy"
     }
   };
   var HTMLSelectElementMap = {
     ...HTMLElementMap,
-    autocomplete: {
-      makeAttrValue: attrIdentity,
-      idlName: "autocomplete",
-      makeIdlValue: attrIdentity
-    },
-    disabled: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "disabled",
-      makeIdlValue: attrIdentity
-    },
-    form: { makeAttrValue: attrIdentity },
-    multiple: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "multiple",
-      makeIdlValue: attrIdentity
-    },
-    name: {
-      makeAttrValue: attrIdentity,
-      idlName: "name",
-      makeIdlValue: attrIdentity
-    },
-    required: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "required",
-      makeIdlValue: attrIdentity
-    },
-    size: {
-      makeAttrValue: attrNumberToString,
-      idlName: "size",
-      makeIdlValue: attrIdentity
-    },
-    value: { idlName: "value", makeIdlValue: attrIdentity }
+    autocomplete: {},
+    disabled: {},
+    form: { idlName: null },
+    multiple: {},
+    name: {},
+    required: {},
+    size: {},
+    value: { makeAttrValue: null }
   };
   var HTMLSlotElementMap = {
     ...HTMLElementMap,
-    name: {
-      makeAttrValue: attrIdentity,
-      idlName: "name",
-      makeIdlValue: attrIdentity
-    }
+    name: {}
   };
   var HTMLSourceElementMap = {
     ...HTMLElementMap,
-    type: {
-      makeAttrValue: attrIdentity,
-      idlName: "type",
-      makeIdlValue: attrIdentity
-    },
-    src: {
-      makeAttrValue: attrIdentity,
-      idlName: "src",
-      makeIdlValue: attrIdentity
-    },
-    srcset: {
-      makeAttrValue: attrIdentity,
-      idlName: "srcset",
-      makeIdlValue: attrIdentity
-    },
-    sizes: {
-      makeAttrValue: attrIdentity,
-      idlName: "sizes",
-      makeIdlValue: attrIdentity
-    },
-    media: {
-      makeAttrValue: attrIdentity,
-      idlName: "media",
-      makeIdlValue: attrIdentity
-    },
-    width: {
-      makeAttrValue: attrNumberToString,
-      idlName: "width",
-      makeIdlValue: attrIdentity
-    },
-    height: {
-      makeAttrValue: attrNumberToString,
-      idlName: "height",
-      makeIdlValue: attrIdentity
-    }
+    type: {},
+    src: {},
+    srcset: {},
+    sizes: {},
+    media: {},
+    width: {},
+    height: {}
   };
   var HTMLSpanElementMap = {
     ...HTMLElementMap
   };
   var HTMLStyleElementMap = {
     ...HTMLElementMap,
-    media: {
-      makeAttrValue: attrIdentity,
-      idlName: "media",
-      makeIdlValue: attrIdentity
-    }
+    media: {}
   };
   var HTMLTableElementMap = {
     ...HTMLElementMap
@@ -2042,102 +1287,48 @@ ${debugNameFor(item)}`,
   var HTMLTableCellElementMap = {
     ...HTMLElementMap,
     colspan: {
-      makeAttrValue: attrNumberToString,
-      idlName: "colSpan",
-      makeIdlValue: attrIdentity
+      idlName: "colSpan"
     },
     rowspan: {
-      makeAttrValue: attrNumberToString,
-      idlName: "rowSpan",
-      makeIdlValue: attrIdentity
+      idlName: "rowSpan"
     },
-    headers: {
-      makeAttrValue: attrIdentity,
-      idlName: "headers",
-      makeIdlValue: attrIdentity
-    }
+    headers: {}
   };
   var HTMLTableColElementMap = {
     ...HTMLElementMap,
-    span: {
-      makeAttrValue: attrNumberToString,
-      idlName: "span",
-      makeIdlValue: attrIdentity
-    }
+    span: {}
   };
   var HTMLTemplateElementMap = {
     ...HTMLElementMap
   };
   var HTMLTextAreaElementMap = {
     ...HTMLElementMap,
-    autocomplete: {
-      makeAttrValue: attrIdentity,
-      idlName: "autocomplete",
-      makeIdlValue: attrIdentity
-    },
-    cols: {
-      makeAttrValue: attrNumberToString,
-      idlName: "cols",
-      makeIdlValue: attrIdentity
-    },
+    autocomplete: {},
+    cols: {},
     dirname: {
-      makeAttrValue: attrIdentity,
-      idlName: "dirName",
-      makeIdlValue: attrIdentity
+      idlName: "dirName"
     },
-    disabled: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "disabled",
-      makeIdlValue: attrIdentity
-    },
-    form: { makeAttrValue: attrIdentity },
+    disabled: {},
+    form: { idlName: null },
     maxlength: {
-      makeAttrValue: attrNumberToString,
-      idlName: "maxLength",
-      makeIdlValue: attrIdentity
+      idlName: "maxLength"
     },
     minlength: {
-      makeAttrValue: attrNumberToString,
-      idlName: "minLength",
-      makeIdlValue: attrIdentity
+      idlName: "minLength"
     },
-    name: {
-      makeAttrValue: attrIdentity,
-      idlName: "name",
-      makeIdlValue: attrIdentity
-    },
-    placeholder: {
-      makeAttrValue: attrIdentity,
-      idlName: "placeholder",
-      makeIdlValue: attrIdentity
-    },
+    name: {},
+    placeholder: {},
     readonly: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "readOnly",
-      makeIdlValue: attrIdentity
+      idlName: "readOnly"
     },
-    required: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "required",
-      makeIdlValue: attrIdentity
-    },
-    rows: {
-      makeAttrValue: attrNumberToString,
-      idlName: "rows",
-      makeIdlValue: attrIdentity
-    },
-    wrap: {
-      makeAttrValue: attrIdentity,
-      idlName: "wrap",
-      makeIdlValue: attrIdentity
-    }
+    required: {},
+    rows: {},
+    wrap: {}
   };
   var HTMLTimeElementMap = {
     ...HTMLElementMap,
     datetime: {
-      makeAttrValue: attrIdentity,
-      idlName: "dateTime",
-      makeIdlValue: attrIdentity
+      idlName: "dateTime"
     }
   };
   var HTMLTitleElementMap = {
@@ -2148,92 +1339,34 @@ ${debugNameFor(item)}`,
   };
   var HTMLTrackElementMap = {
     ...HTMLElementMap,
-    kind: {
-      makeAttrValue: attrIdentity,
-      idlName: "kind",
-      makeIdlValue: attrIdentity
-    },
-    src: {
-      makeAttrValue: attrIdentity,
-      idlName: "src",
-      makeIdlValue: attrIdentity
-    },
-    srclang: {
-      makeAttrValue: attrIdentity,
-      idlName: "srclang",
-      makeIdlValue: attrIdentity
-    },
-    label: {
-      makeAttrValue: attrIdentity,
-      idlName: "label",
-      makeIdlValue: attrIdentity
-    },
-    default: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "default",
-      makeIdlValue: attrIdentity
-    }
+    kind: {},
+    src: {},
+    srclang: {},
+    label: {},
+    default: {}
   };
   var HTMLUListElementMap = {
     ...HTMLElementMap
   };
   var HTMLVideoElementMap = {
     ...HTMLElementMap,
-    src: {
-      makeAttrValue: attrIdentity,
-      idlName: "src",
-      makeIdlValue: attrIdentity
-    },
+    src: {},
     crossorigin: {
-      makeAttrValue: attrIdentity,
-      idlName: "crossOrigin",
-      makeIdlValue: attrIdentity
+      idlName: "crossOrigin"
     },
-    preload: {
-      makeAttrValue: attrIdentity,
-      idlName: "preload",
-      makeIdlValue: attrIdentity
-    },
-    autoplay: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "autoplay",
-      makeIdlValue: attrIdentity
-    },
+    preload: {},
+    autoplay: {},
     loop: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "loop",
       makeIdlValue: attrBooleanToEmptyString
     },
-    muted: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "muted",
-      makeIdlValue: attrIdentity
-    },
-    controls: {
-      makeAttrValue: attrBooleanToEmptyString,
-      idlName: "controls",
-      makeIdlValue: attrIdentity
-    },
-    poster: {
-      makeAttrValue: attrIdentity,
-      idlName: "poster",
-      makeIdlValue: attrIdentity
-    },
+    muted: {},
+    controls: {},
+    poster: {},
     playsinline: {
-      makeAttrValue: attrIdentity,
-      idlName: "playsInline",
-      makeIdlValue: attrIdentity
+      idlName: "playsInline"
     },
-    width: {
-      makeAttrValue: attrNumberToString,
-      idlName: "width",
-      makeIdlValue: attrIdentity
-    },
-    height: {
-      makeAttrValue: attrNumberToString,
-      idlName: "height",
-      makeIdlValue: attrIdentity
-    }
+    width: {},
+    height: {}
   };
   var ElementTypeMapping = {
     a: HTMLAnchorElementMap,
@@ -2449,7 +1582,7 @@ ${debugNameFor(item)}`,
       vNode.domParent.mountFragment.appendChild(vNode.domNode);
     }
   }
-  function spliceVNode(immediateParent, childIndex, removeCount, newNodes, { runOnMount = true, runOnUnmount = true } = {}) {
+  function spliceVNode(immediateParent, childIndex, removeCount, newNodes, { dispose = true, runOnMount = true, runOnUnmount = true } = {}) {
     let domParent;
     if (immediateParent.children[childIndex]) {
       domParent = immediateParent.children[childIndex].domParent;
@@ -2470,6 +1603,14 @@ ${debugNameFor(item)}`,
           toRemove.push([node.parentNode, node]);
         }
       });
+      if (dispose) {
+        detachedVNode.domParent = null;
+        detachedVNode.mountFragment = null;
+        detachedVNode.children = null;
+        detachedVNode.domNode = null;
+        detachedVNode.onMount = null;
+        detachedVNode.onUnmount = null;
+      }
     });
     const groupedToRemove = groupBy(toRemove, (item) => item);
     groupedToRemove.forEach((childNodes, parentNode) => {
@@ -2547,16 +1688,18 @@ ${debugNameFor(item)}`,
     } else {
       const mapping = getElementTypeMapping(elementType, key);
       if (mapping) {
-        if (mapping.makeAttrValue) {
-          const attributeValue = mapping.makeAttrValue(value);
-          if (attributeValue === void 0) {
+        if (mapping.makeAttrValue !== null) {
+          const attributeValue = mapping.makeAttrValue ? mapping.makeAttrValue(value) : value;
+          if (attributeValue === void 0 || attributeValue === null || attributeValue === false) {
             element.removeAttribute(key);
+          } else if (attributeValue === true) {
+            element.setAttribute(key, "");
           } else {
             element.setAttribute(key, attributeValue);
           }
         }
-        if (mapping.idlName && mapping.makeIdlValue) {
-          element[mapping.idlName] = mapping.makeIdlValue(value);
+        if (mapping.idlName !== null) {
+          element[mapping.idlName ?? key] = mapping.makeIdlValue ? mapping.makeIdlValue(value) : value;
         }
       } else if (value === false || value === void 0 || value === null) {
         element.removeAttribute(key);
@@ -2570,7 +1713,8 @@ ${debugNameFor(item)}`,
   function jsxNodeToVNode({
     domParent,
     jsxNode,
-    contextMap
+    contextMap,
+    parentNodeOrdering
   }) {
     if (jsxNode === null || jsxNode === void 0 || jsxNode === false || jsxNode === true) {
       const emptyVNode = makeChildVNode({
@@ -2607,7 +1751,7 @@ ${debugNameFor(item)}`,
     }
     if (isRenderElement(jsxNode)) {
       const element = document.createElement(jsxNode.element);
-      const boundEffects = [];
+      const onReleaseActions = [];
       let refCallback = void 0;
       if (jsxNode.props) {
         Object.entries(jsxNode.props).forEach(([key, value]) => {
@@ -2626,8 +1770,10 @@ ${debugNameFor(item)}`,
               const computedValue = value();
               setAttributeValue(jsxNode.element, element, key, computedValue);
             }, `viewattr:${key}`);
-            retain(boundEffect);
-            boundEffects.push(boundEffect);
+            onReleaseActions.push(() => {
+              removeOrderingDep(boundEffect, parentNodeOrdering);
+            });
+            addOrderingDep(boundEffect, parentNodeOrdering);
             boundEffect();
           } else {
             setAttributeValue(jsxNode.element, element, key, value);
@@ -2647,7 +1793,7 @@ ${debugNameFor(item)}`,
         ],
         onUnmount: [
           () => {
-            boundEffects.forEach((boundEffect) => release(boundEffect));
+            onReleaseActions.forEach((action) => action());
             if (refCallback) {
               refCallback(void 0);
             }
@@ -2657,7 +1803,8 @@ ${debugNameFor(item)}`,
       elementNode.children = jsxNode.children.map((childJsxNode) => jsxNodeToVNode({
         domParent: elementNode,
         jsxNode: childJsxNode,
-        contextMap
+        contextMap,
+        parentNodeOrdering
       }));
       if (elementNode.mountFragment) {
         element.appendChild(elementNode.mountFragment);
@@ -2676,43 +1823,53 @@ ${debugNameFor(item)}`,
         onMount: [],
         onUnmount
       });
+      const collectionNodeOrdering = makeNodeOrdering(false ? `viewcoll:${debugNameFor(jsxNode) ?? "node"}:order` : "viewcoll:order");
+      addOrderingDep(collectionNodeOrdering, parentNodeOrdering);
+      onUnmount.push(() => {
+        removeOrderingDep(collectionNodeOrdering, parentNodeOrdering);
+      });
       untracked(() => {
         collectionNode.children.push(...trackedCollection.map((jsxChild) => jsxNodeToVNode({
           domParent: collectionNode.domParent,
           jsxNode: jsxChild,
-          contextMap
+          contextMap,
+          parentNodeOrdering: collectionNodeOrdering
         })));
       });
-      const unobserve = trackedCollection[ObserveKey]((event) => {
-        if (event.type === "splice") {
-          untracked(() => {
-            const { count, index, items } = event;
-            const childNodes = items.map((jsxChild) => jsxNodeToVNode({
-              domParent: collectionNode.domParent,
-              jsxNode: jsxChild,
-              contextMap
-            }));
-            spliceVNode(collectionNode, index, count, childNodes);
-          });
-        } else if (event.type === "move") {
-          const { fromIndex, fromCount, toIndex } = event;
-          const moved = spliceVNode(collectionNode, fromIndex, fromCount, [], { runOnUnmount: false });
-          spliceVNode(collectionNode, fromIndex < toIndex ? toIndex - fromCount : toIndex, 0, moved, { runOnMount: false });
-        } else if (event.type === "sort") {
-          const { indexes } = event;
-          const removedVNodes = spliceVNode(collectionNode, 0, indexes.length, [], { runOnUnmount: false });
-          const sortedVNodes = indexes.map((newIndex) => removedVNodes[newIndex]);
-          spliceVNode(collectionNode, 0, 0, sortedVNodes, {
-            runOnMount: false
-          });
-        } else {
-          assertExhausted(event, "unhandled collection event");
-        }
+      const unobserve = trackedCollection[ObserveKey]((events) => {
+        events.forEach((event) => {
+          if (event.type === "splice") {
+            untracked(() => {
+              const { count, index, items } = event;
+              const childNodes = items.map((jsxChild) => jsxNodeToVNode({
+                domParent: collectionNode.domParent,
+                jsxNode: jsxChild,
+                contextMap,
+                parentNodeOrdering: collectionNodeOrdering
+              }));
+              spliceVNode(collectionNode, index, count, childNodes);
+            });
+          } else if (event.type === "move") {
+            const { fromIndex, fromCount, toIndex } = event;
+            const moved = spliceVNode(collectionNode, fromIndex, fromCount, [], { dispose: false, runOnUnmount: false });
+            spliceVNode(collectionNode, fromIndex < toIndex ? toIndex - fromCount : toIndex, 0, moved, { runOnMount: false });
+          } else if (event.type === "sort") {
+            const { indexes } = event;
+            const removedVNodes = spliceVNode(collectionNode, 0, indexes.length, [], { dispose: false, runOnUnmount: false });
+            const sortedVNodes = indexes.map((newIndex) => removedVNodes[newIndex]);
+            spliceVNode(collectionNode, 0, 0, sortedVNodes, {
+              runOnMount: false
+            });
+          } else {
+            assertExhausted(event, "unhandled collection event");
+          }
+        });
       });
-      retain(trackedCollection);
+      const subscriptionNode = trackedCollection[GetSubscriptionNodeKey]();
+      addOrderingDep(subscriptionNode, collectionNodeOrdering);
       onUnmount.push(unobserve);
       onUnmount.push(() => {
-        release(trackedCollection);
+        removeOrderingDep(subscriptionNode, collectionNodeOrdering);
       });
       mountVNode(collectionNode);
       return collectionNode;
@@ -2727,13 +1884,19 @@ ${debugNameFor(item)}`,
         onMount: [],
         onUnmount
       });
+      const calculationNodeOrdering = makeNodeOrdering(false ? `viewcalc:${debugNameFor(jsxNode) ?? "node"}:order` : "viewcalc:order");
+      addOrderingDep(calculationNodeOrdering, parentNodeOrdering);
+      onUnmount.push(() => {
+        removeOrderingDep(calculationNodeOrdering, parentNodeOrdering);
+      });
       let firstRun = true;
       const resultEffect = effect(() => {
         const jsxChild = trackedCalculation();
         const childVNode = jsxNodeToVNode({
           domParent: calculationNode.domParent,
           jsxNode: jsxChild,
-          contextMap
+          contextMap,
+          parentNodeOrdering: calculationNodeOrdering
         });
         if (firstRun) {
           firstRun = false;
@@ -2742,8 +1905,10 @@ ${debugNameFor(item)}`,
           spliceVNode(calculationNode, 0, calculationNode.children.length, [childVNode]);
         }
       }, `viewcalc:${debugNameFor(jsxNode) ?? "node"}`);
-      retain(resultEffect);
-      onUnmount.push(() => release(resultEffect));
+      onUnmount.push(() => {
+        removeOrderingDep(resultEffect, calculationNodeOrdering);
+      });
+      addOrderingDep(resultEffect, calculationNodeOrdering);
       resultEffect();
       mountVNode(calculationNode);
       return calculationNode;
@@ -2762,7 +1927,8 @@ ${debugNameFor(item)}`,
       providerNode.children.push(...renderProvider.children.map((jsxChild) => jsxNodeToVNode({
         domParent,
         jsxNode: jsxChild,
-        contextMap: subMap
+        contextMap: subMap,
+        parentNodeOrdering
       })));
       mountVNode(providerNode);
       return providerNode;
@@ -2792,9 +1958,11 @@ ${debugNameFor(item)}`,
           const effectCalc = effect(effectCallback, `componenteffect:${jsxNode.component.name}:${debugName ?? onComponentMount.length}`);
           onComponentMount.push(() => {
             retain(effectCalc);
+            addOrderingDep(parentNodeOrdering, effectCalc);
             effectCalc();
           });
           onUnmount.push(() => {
+            removeOrderingDep(parentNodeOrdering, effectCalc);
             release(effectCalc);
           });
         },
@@ -2808,7 +1976,8 @@ ${debugNameFor(item)}`,
       const childVNode = jsxNodeToVNode({
         domParent: componentNode.domParent,
         jsxNode: jsxChild,
-        contextMap
+        contextMap,
+        parentNodeOrdering
       });
       componentNode.children.push(childVNode);
       onComponentMount.forEach((mountCallback) => componentNode.onMount.push(mountCallback));
@@ -2827,7 +1996,8 @@ ${debugNameFor(item)}`,
       arrayNode.children.push(...items.map((jsxChild) => jsxNodeToVNode({
         domParent,
         jsxNode: jsxChild,
-        contextMap
+        contextMap,
+        parentNodeOrdering
       })));
       mountVNode(arrayNode);
       return arrayNode;
@@ -2846,12 +2016,23 @@ ${debugNameFor(item)}`,
     }
     assertExhausted(jsxNode, "unexpected render type");
   }
+  function makeNodeOrdering(debugName) {
+    const nodeOrdering = {
+      [TypeTag]: "nodeOrdering"
+    };
+    if (debugName)
+      name(nodeOrdering, debugName);
+    return nodeOrdering;
+  }
   function mount(parentElement, jsxNode) {
+    const nodeOrdering = makeNodeOrdering("mount");
+    retain(nodeOrdering);
     const rootNode = makeRootVNode({ domNode: parentElement });
     rootNode.children.push(jsxNodeToVNode({
       domParent: rootNode,
       jsxNode,
-      contextMap: new Map()
+      contextMap: new Map(),
+      parentNodeOrdering: nodeOrdering
     }));
     if (rootNode.mountFragment) {
       parentElement.appendChild(rootNode.mountFragment);
@@ -2860,6 +2041,7 @@ ${debugNameFor(item)}`,
     callOnMount(rootNode);
     return () => {
       spliceVNode(rootNode, 0, rootNode.children.length, []);
+      release(nodeOrdering);
     };
   }
   var Fragment = ({ children }) => children;
@@ -2912,10 +2094,8 @@ ${debugNameFor(item)}`,
       notify: notify2,
       subscriptionNode,
       makeView,
-      observe,
-      addDeferredWork,
       processFieldChange,
-      removeSubscriptionField
+      processFieldDelete
     }) => ({
       splice: function splice(index, count, ...items) {
         if (count < 1 && items.length === 0)
@@ -2937,9 +2117,10 @@ ${debugNameFor(item)}`,
         } else {
           for (let i = index; i < Math.max(newLength, origLength); ++i) {
             const key = i.toString();
-            processFieldChange(key);
             if (i >= newLength) {
-              removeSubscriptionField(key);
+              processFieldDelete(key);
+            } else {
+              processFieldChange(key);
             }
           }
           processFieldChange("length");
@@ -3118,16 +2299,22 @@ ${debugNameFor(item)}`,
 
   // src/trackeddata.ts
   function trackedData(initialValue, typeTag, implSpec, bindMethods, debugName) {
-    const fields = new Map();
+    const fieldRecords = new Map();
+    let subscriptionEvents = new Map();
     let observers = [];
     let deferredTasks = [];
     const subscriptionNode = {
-      [TypeTag]: "subscription"
+      [TypeTag]: "subscription",
+      [FlushKey]: flushSubscription,
+      item: null
     };
     name(subscriptionNode, `${debugName || "?"}:sub`);
-    function addDeferredWork(task) {
-      deferredTasks.push(task);
-      processChange(proxy);
+    function flushSubscription() {
+      const toProcess = subscriptionEvents;
+      subscriptionEvents = new Map();
+      toProcess.forEach((events, observer) => {
+        observer(events);
+      });
     }
     function flush2() {
       const toProcess = deferredTasks;
@@ -3136,23 +2323,42 @@ ${debugNameFor(item)}`,
         task();
       });
     }
+    function addDeferredTask(task) {
+      deferredTasks.push(task);
+      processChange(proxy);
+    }
     function notify2(event) {
-      observers.forEach((observer) => {
-        observer(event);
-      });
+      if (observers.length > 0) {
+        observers.forEach((observer) => {
+          let observerEvents = subscriptionEvents.get(observer);
+          if (!observerEvents) {
+            observerEvents = [];
+            subscriptionEvents.set(observer, observerEvents);
+          }
+          observerEvents.push(event);
+        });
+        processChange(subscriptionNode);
+      }
+    }
+    function getSubscriptionNode() {
+      return subscriptionNode;
     }
     function observe(observer) {
       if (observers.length === 0) {
-        fields.forEach((field) => {
-          addManualDep(field, subscriptionNode);
+        addManualDep(proxy, subscriptionNode);
+        fieldRecords.forEach((field) => {
+          addOrderingDep(proxy, field);
+          addOrderingDep(field, subscriptionNode);
         });
       }
       observers.push(observer);
       return () => {
         observers = observers.filter((obs) => obs !== observer);
         if (observers.length === 0) {
-          fields.forEach((field) => {
-            removeManualDep(field, subscriptionNode);
+          removeManualDep(proxy, subscriptionNode);
+          fieldRecords.forEach((field) => {
+            removeOrderingDep(proxy, field);
+            removeOrderingDep(field, subscriptionNode);
           });
         }
       };
@@ -3160,10 +2366,13 @@ ${debugNameFor(item)}`,
     function makeView(spec, viewDebugName) {
       const viewArray = untracked(() => spec.initialize(initialValue));
       const view = collection(viewArray, viewDebugName);
-      observe((event) => {
-        view[AddDeferredWorkKey](() => spec.processEvent(view, event, viewArray));
+      observe((events) => {
+        view[AddDeferredWorkKey](() => {
+          events.forEach((event) => {
+            spec.processEvent(view, event, viewArray);
+          });
+        });
       });
-      addManualDep(proxy, view);
       addManualDep(subscriptionNode, view);
       return view;
     }
@@ -3171,31 +2380,29 @@ ${debugNameFor(item)}`,
       const field = getField(key);
       processChange(field);
     }
-    function removeSubscriptionField(key) {
-      if (observers.length > 0) {
-        const field = getField(key);
-        removeManualDep(field, subscriptionNode);
-      }
+    function processFieldDelete(key) {
+      const field = getField(key);
+      processChange(field);
     }
     const pseudoPrototype = {
       [TypeTag]: "data",
       [DataTypeTag]: typeTag,
       [FlushKey]: flush2,
-      [AddDeferredWorkKey]: addDeferredWork,
+      [AddDeferredWorkKey]: addDeferredTask,
       [ObserveKey]: observe,
       [NotifyKey]: notify2,
+      [GetSubscriptionNodeKey]: getSubscriptionNode,
       ...bindMethods({
-        addDeferredWork,
         observe,
         notify: notify2,
         makeView,
         subscriptionNode,
         processFieldChange,
-        removeSubscriptionField
+        processFieldDelete
       })
     };
     function getField(key) {
-      let field = fields.get(key);
+      let field = fieldRecords.get(key);
       if (!field) {
         field = {
           model: proxy,
@@ -3203,10 +2410,10 @@ ${debugNameFor(item)}`,
         };
         if (debugName)
           name(field, debugName);
-        fields.set(key, field);
-        addManualDep(proxy, field);
+        fieldRecords.set(key, field);
         if (observers.length > 0) {
-          addManualDep(field, subscriptionNode);
+          addOrderingDep(proxy, field);
+          addOrderingDep(field, subscriptionNode);
         }
       }
       return field;
@@ -3249,13 +2456,11 @@ ${debugNameFor(item)}`,
         if (changed) {
           const field = getField(key);
           processChange(field);
-          if (observers.length > 0) {
-            removeManualDep(field, subscriptionNode);
-          }
         }
         return changed;
       }
     });
+    subscriptionNode.item = proxy;
     if (debugName)
       name(proxy, debugName);
     return proxy;
@@ -3295,17 +2500,9 @@ ${debugNameFor(item)}`,
         }
         return true;
       }
-    }, ({ addDeferredWork, makeView, notify: notify2, observe, subscriptionNode }) => {
+    }, ({ makeView, notify: notify2, observe, subscriptionNode }) => {
       return {
-        [MakeModelViewKey]: function makeModelView(spec, viewDebugName) {
-          const viewArray = untracked(() => spec.initialize(obj));
-          const view = collection(viewArray, viewDebugName);
-          observe((event) => {
-            view[AddDeferredWorkKey](() => spec.processEvent(view, event, viewArray));
-          });
-          addManualDep(subscriptionNode, view);
-          return view;
-        }
+        [MakeModelViewKey]: makeView
       };
     }, debugName);
   }
@@ -3344,7 +2541,7 @@ ${debugNameFor(item)}`,
 
   // src/index.ts
   var src_default = createElement;
-  var VERSION = "0.3.0";
+  var VERSION = "0.5.0";
   return src_exports;
 })();
 //# sourceMappingURL=index.js.map

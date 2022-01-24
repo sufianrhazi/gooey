@@ -21,6 +21,7 @@ export declare const assert: {
     lessThanOrEqual: (a: string | number, b: string | number, msg?: string | undefined) => void;
     greaterThan: (a: string | number, b: string | number, msg?: string | undefined) => void;
     greaterThanOrEqual: (a: string | number, b: string | number, msg?: string | undefined) => void;
+    arrayIs: <T>(expected: T[], received: T[], msg?: string | undefined) => void;
     arrayIncludes: (haystack: readonly any[], needle: any, msg?: string | undefined) => void;
     notArrayIncludes: (haystack: readonly any[], needle: any, msg?: string | undefined) => void;
     arrayEqualsUnsorted: (a: readonly any[], b: readonly any[], msg?: string | undefined) => void;
@@ -28,10 +29,10 @@ export declare const assert: {
     notDeepEqual: (a: any, b: any, msg?: string | undefined) => void;
     assertionCount: (num: number, msg?: string | undefined) => void;
     throwsMatching: (match: string | RegExp, fn: () => void, msg?: string | undefined) => void;
-    medianRuntimeLessThan: (ms: number, fn: (measure: <T>(measurement: () => T) => T) => void, numRuns?: number, msg?: string | undefined) => void;
-    fuzz: <T_1>({ generateItem, checkItem, count, }: {
-        generateItem: (priorItems: readonly T_1[]) => T_1;
-        checkItem: (item: T_1) => void;
+    medianRuntimeLessThan: (ms: number, fn: (measure: <T_1>(measurement: () => T_1) => T_1) => void, numRuns?: number, msg?: string | undefined) => void;
+    fuzz: <T_2>({ generateItem, checkItem, count, }: {
+        generateItem: (priorItems: readonly T_2[]) => T_2;
+        checkItem: (item: T_2) => void;
         count?: number | undefined;
     }) => void;
 };

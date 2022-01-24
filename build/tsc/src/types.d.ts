@@ -1,10 +1,13 @@
 export declare class InvariantError extends Error {
+    detail?: any;
+    constructor(msg: string, detail?: any);
 }
 export declare const TypeTag: unique symbol;
 export declare const DataTypeTag: unique symbol;
 declare const CalculationTypeTag: unique symbol;
 export declare const RecalculationTag: unique symbol;
 export declare const ObserveKey: unique symbol;
+export declare const GetSubscriptionNodeKey: unique symbol;
 export declare const MakeModelViewKey: unique symbol;
 export declare const FlushKey: unique symbol;
 export declare const AddDeferredWorkKey: unique symbol;
@@ -68,7 +71,8 @@ export declare type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementa
     [DataTypeTag]: TTypeTag;
     [FlushKey]: () => void;
     [AddDeferredWorkKey]: (task: () => void) => void;
-    [ObserveKey]: (listener: (observer: TEvent) => void) => () => void;
+    [ObserveKey]: (listener: (events: TEvent[], subscriptionNode: Subscription) => void) => () => void;
+    [GetSubscriptionNodeKey]: () => Subscription;
     [NotifyKey]: (event: TEvent) => void;
 };
 /**
@@ -99,6 +103,11 @@ export declare type View<T> = TrackedData<ReadonlyArray<T>, 'collection', Collec
 };
 export interface Subscription {
     [TypeTag]: 'subscription';
+    item: any;
+    [FlushKey]: () => void;
+}
+export interface NodeOrdering {
+    [TypeTag]: 'nodeOrdering';
 }
 /**
  * A key-value pair that is active for a subtree
@@ -138,6 +147,7 @@ export declare function isCollection(thing: any): thing is Collection<any> | Vie
 export declare function isCalculation(thing: any): thing is Calculation<any>;
 export declare function isEffect(thing: Calculation<unknown>): boolean;
 export declare function isSubscription(thing: any): thing is Subscription;
-export declare type DAGNode = Model<any> | Collection<any> | Calculation<any> | ModelField | View<any> | Subscription;
+export declare function isNodeOrdering(thing: any): thing is NodeOrdering;
+export declare type DAGNode = Model<any> | Collection<any> | Calculation<any> | ModelField | View<any> | Subscription | NodeOrdering;
 export {};
 //# sourceMappingURL=types.d.ts.map

@@ -28,7 +28,9 @@ export declare function effect(func: () => void, debugName?: string): Calculatio
 export declare function untracked<TRet>(func: () => TRet): TRet;
 export declare function addDepToCurrentCalculation(item: DAGNode): void;
 export declare function addManualDep(fromNode: DAGNode, toNode: DAGNode): void;
+export declare function addOrderingDep(fromNode: DAGNode, toNode: DAGNode): void;
 export declare function removeManualDep(fromNode: DAGNode, toNode: DAGNode): void;
+export declare function removeOrderingDep(fromNode: DAGNode, toNode: DAGNode): void;
 export declare function processChange(item: DAGNode): void;
 declare type Listener = () => void;
 export declare function nextFlush(): Promise<void>;
@@ -59,6 +61,7 @@ export declare function release(item: DAGNode): void;
 /**
  * Return a graphviz formatted directed graph
  */
-export declare function debug(): string;
+export declare function debug(activeItem?: any): string;
+export declare function debugSubscribe(callback: ((graphviz: string, detail: string) => void) | null): void;
 export {};
 //# sourceMappingURL=calc.d.ts.map

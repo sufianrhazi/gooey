@@ -61,11 +61,11 @@ interface MissingFromTypescriptHTMLSourceElementProperties {
     height?: number | undefined;
 }
 declare type PropertyMapField<TJSXField, TElement, TIDLName extends keyof TElement> = {
-    makeAttrValue?: (jsxAttr: Exclude<TJSXField, undefined>) => string | undefined;
+    makeAttrValue?: ((jsxAttr: Exclude<TJSXField, undefined>) => string | undefined) | null;
 } | {
-    makeAttrValue?: (jsxAttr: Exclude<TJSXField, undefined>) => string | undefined;
-    idlName: TIDLName;
-    makeIdlValue: (jsxAttr: Exclude<TJSXField, undefined>) => TElement[TIDLName];
+    makeAttrValue?: ((jsxAttr: Exclude<TJSXField, undefined>) => string | undefined) | null;
+    idlName?: TIDLName | null;
+    makeIdlValue?: (jsxAttr: Exclude<TJSXField, undefined>) => TElement[TIDLName];
 };
 declare type PropertyMap<TJSXElementInterface, TElement> = {
     [TJSXKey in keyof Required<TJSXElementInterface>]: PropertyMapField<TJSXElementInterface[TJSXKey], TElement, keyof TElement>;
@@ -283,7 +283,7 @@ interface JSXIFrameElementInterface extends JSXElementInterface {
     /** Name of nested browsing context */
     name?: string | undefined;
     /** Security rules for nested content */
-    sandbox?: SandboxValue[] | undefined;
+    sandbox?: SandboxValue | undefined;
     /** Permissions policy to be applied to the iframe's contents */
     allow?: string | undefined;
     /** Whether to allow the iframe's contents to use requestFullscreen() */

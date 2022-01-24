@@ -1,6 +1,6 @@
 {
   "name": "@srhazi/revise",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "description": "A minimal effort UI library",
   "main": "build/esm/index.js",
   "type": "module",
