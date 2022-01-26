@@ -21,6 +21,7 @@ import {
     removeOrderingDep,
     addDepToCurrentCalculation,
     processChange,
+    registerNode,
 } from './calc';
 import { name } from './debug';
 import * as log from './log';
@@ -131,6 +132,8 @@ export function trackedData<
 
     function observe(observer: (events: TEvent[]) => void) {
         if (observers.length === 0) {
+            registerNode(proxy);
+            registerNode(subscriptionNode);
             addManualDep(proxy, subscriptionNode);
             fieldRecords.forEach((field) => {
                 addOrderingDep(proxy, field);
@@ -204,6 +207,7 @@ export function trackedData<
             };
             if (debugName) name(field, debugName);
             fieldRecords.set(key, field);
+            registerNode(field);
             if (observers.length > 0) {
                 addOrderingDep(proxy, field);
                 addOrderingDep(field, subscriptionNode);

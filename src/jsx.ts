@@ -1,4 +1,4 @@
-import { TypeTag, Ref, Calculation, Collection, Context } from './types';
+import { Ref, Calculation, Collection, View, Context } from './types';
 
 // General component props
 type PropsWithChildren<P> = P & { children?: JSXNode[] };
@@ -18,74 +18,45 @@ export type Component<P extends {}> = (
     listeners: ComponentListeners
 ) => JSXNode;
 
-type JsxRawNode = string | number | boolean | null | undefined | Function;
+type JsxRawNode =
+    | string
+    | number
+    | boolean
+    | null
+    | undefined
+    | Function
+    | RenderElement<any, any>;
 
 /**
  * The type returnable by JSX (raw nodes)
  */
-type JSXNodeSingle =
+export type JSXNodeSingle =
     | JsxRawNode
     | Calculation<JsxRawNode>
-    | Calculation<JsxRawNode[]>
-    | RenderElement<any>
-    | RenderComponent<any>
-    | RenderProvider<any>;
+    | Calculation<JsxRawNode[]>;
 export type JSXNode =
     | JSXNodeSingle
     | JSXNodeSingle[]
-    | Collection<JSXNodeSingle>;
+    | Collection<JSXNodeSingle> // Note: this should be Collection<JSXNode>
+    | View<JSXNodeSingle>; // Note: this should be View<JSXNode>
 
-export type RenderElement<ElementName extends keyof JSX.IntrinsicElements> = {
-    [TypeTag]: 'element';
-    element: ElementName;
-    props?: JSX.IntrinsicElements[ElementName];
-    children: JSXNode[];
+/**
+ * The type returned by createElement
+ */
+export type RenderElement<TContext, TProps extends {}> = {
+    __node:
+        | [Constructor: string, props?: any, ...children: JSXNode[]]
+        | [
+              Constructor: Context<TContext>,
+              props: { value: TContext },
+              ...children: JSXNode[]
+          ]
+        | [
+              Constructor: Component<TProps>,
+              props: TProps,
+              ...children: JSXNode[]
+          ];
 };
-export function isRenderElement(
-    jsxNode: JSXNode
-): jsxNode is RenderElement<any> {
-    return !!(
-        jsxNode &&
-        typeof jsxNode === 'object' &&
-        !Array.isArray(jsxNode) &&
-        jsxNode[TypeTag] === 'element'
-    );
-}
-
-export type RenderComponent<Props extends {}> = {
-    [TypeTag]: 'component';
-    component: Component<Props>;
-    props?: Props;
-    children: JSXNode[];
-};
-export function isRenderComponent(
-    jsxNode: JSXNode
-): jsxNode is RenderComponent<any> {
-    return !!(
-        jsxNode &&
-        typeof jsxNode === 'object' &&
-        !Array.isArray(jsxNode) &&
-        jsxNode[TypeTag] === 'component'
-    );
-}
-
-export type RenderProvider<TValue> = {
-    [TypeTag]: 'provider';
-    context: Context<TValue>;
-    value: TValue;
-    children: JSXNode[];
-};
-
-export function isRenderProvider(
-    jsxNode: JSXNode
-): jsxNode is RenderProvider<any> {
-    return !!(
-        jsxNode &&
-        typeof jsxNode === 'object' &&
-        !Array.isArray(jsxNode) &&
-        jsxNode[TypeTag] === 'provider'
-    );
-}
 
 /*
  * Interfaces adopted from HTML Living Standard Last Updated 30 November 2021: https://html.spec.whatwg.org/

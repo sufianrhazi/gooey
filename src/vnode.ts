@@ -1,4 +1,3 @@
-import { JSXNode } from './jsx';
 import { groupBy } from './util';
 import * as log from './log';
 
@@ -9,63 +8,13 @@ import * as log from './log';
  * of the virtual tree structure to understand which index to update within the
  * DOM tree.
  */
-export type ChildVNode = {
-    domNode: Node | null;
-    children: VNode[];
-    domParent: VNode;
-    mountFragment: DocumentFragment | null;
-    jsxNode: JSXNode | null;
-    onMount: Function[];
-    onUnmount: Function[];
+export type VNode = {
+    domNode?: Node;
+    children?: VNode[];
+    domParent?: VNode;
+    onMount?: Function[];
+    onUnmount?: Function[];
 };
-export type RootVNode = {
-    domNode: Node | null;
-    children: VNode[];
-    domParent: VNode;
-    mountFragment: DocumentFragment | null;
-    jsxNode: JSXNode | null;
-    onMount: Function[];
-    onUnmount: Function[];
-};
-export type VNode = ChildVNode | RootVNode;
-
-export function makeRootVNode({ domNode }: { domNode: Node }): RootVNode {
-    const rootVNode: RootVNode = {
-        domNode,
-        children: [],
-        domParent: null,
-        mountFragment: document.createDocumentFragment(),
-        jsxNode: null,
-        onMount: [],
-        onUnmount: [],
-    } as unknown as RootVNode; // We lie here since domParent needs to be self-referential
-    rootVNode.domParent = rootVNode;
-    return rootVNode;
-}
-
-export function makeChildVNode({
-    jsxNode,
-    domNode,
-    domParent,
-    onMount,
-    onUnmount,
-}: {
-    domParent: VNode;
-    jsxNode: JSXNode | null;
-    domNode: Node | null;
-    onMount: Function[];
-    onUnmount: Function[];
-}): ChildVNode {
-    return {
-        domNode,
-        children: [],
-        domParent,
-        mountFragment: domNode ? document.createDocumentFragment() : null,
-        jsxNode,
-        onMount,
-        onUnmount,
-    };
-}
 
 /**
  * Get shallow DOM nodes from the virtual tree.
@@ -103,7 +52,7 @@ function getShallowNodes(vNode: VNode): Node[] {
         if (node.domNode) {
             nodes.push(node.domNode);
         } else {
-            node.children.forEach((child) => visit(child));
+            node.children?.forEach((child) => visit(child));
         }
     }
     visit(vNode);
@@ -126,11 +75,13 @@ function getDomParentChildIndex(
         }
     }
     function visitChildren(node: VNode): boolean {
-        const visitIndex =
-            node === immediateParent ? childIndex : node.children.length;
-        for (let i = 0; i < visitIndex; ++i) {
-            if (visit(node.children[i])) {
-                return true;
+        if (node.children) {
+            const visitIndex =
+                node === immediateParent ? childIndex : node.children.length;
+            for (let i = 0; i < visitIndex; ++i) {
+                if (visit(node.children[i])) {
+                    return true;
+                }
             }
         }
         return node === immediateParent;
@@ -141,7 +92,7 @@ function getDomParentChildIndex(
 
 export function callOnMount(node: VNode) {
     // Note: we are doing a post-order traversal, so all children onMount are called before parents are called
-    node.children.forEach((child) => callOnMount(child));
+    node.children?.forEach((child) => callOnMount(child));
 
     // Call any onMount listeners
     if (node.onMount) {
@@ -161,7 +112,7 @@ export function callOnMount(node: VNode) {
 
 function callOnUnmount(node: VNode) {
     // Note: we are doing a post-order traversal, so all children are released/unmounted before parents are released/unmounted
-    node.children.forEach((child) => callOnUnmount(child));
+    node.children?.forEach((child) => callOnUnmount(child));
 
     // Call any onUnmount listeners
     if (node.onUnmount) {
@@ -179,21 +130,19 @@ function callOnUnmount(node: VNode) {
     }
 }
 
-export function mountVNode(vNode: VNode) {
-    if (vNode.domNode && vNode.domParent.mountFragment) {
-        vNode.domParent.mountFragment.appendChild(vNode.domNode);
-    }
-}
-
 export function spliceVNode(
     immediateParent: VNode,
     childIndex: number,
     removeCount: number,
     newNodes: VNode[],
-    { dispose = true, runOnMount = true, runOnUnmount = true } = {}
+    { runOnMount = true, runOnUnmount = true } = {}
 ) {
-    let domParent: VNode;
-    if (immediateParent.children[childIndex]) {
+    log.assert(
+        immediateParent.children,
+        'attempted to splice a parent node with no children'
+    );
+    let domParent: VNode | undefined;
+    if (childIndex < immediateParent.children.length) {
         domParent = immediateParent.children[childIndex].domParent;
     } else {
         childIndex = immediateParent.children.length;
@@ -215,6 +164,9 @@ export function spliceVNode(
     // Remove nodes, optimizing for array replacement, where all nodes are completely removed via .replaceChildren()
     const toRemove: [ParentNode, Node][] = [];
     detachedVNodes.forEach((detachedVNode) => {
+        if (!detachedVNode) {
+            return;
+        }
         if (runOnUnmount) {
             callOnUnmount(detachedVNode);
         }
@@ -225,14 +177,6 @@ export function spliceVNode(
                 toRemove.push([node.parentNode, node]);
             }
         });
-        if (dispose) {
-            detachedVNode.domParent = null as any;
-            detachedVNode.mountFragment = null as any;
-            detachedVNode.children = null as any;
-            detachedVNode.domNode = null as any;
-            detachedVNode.onMount = null as any;
-            detachedVNode.onUnmount = null as any;
-        }
     });
     const groupedToRemove = groupBy(toRemove, (item) => item);
     groupedToRemove.forEach((childNodes, parentNode) => {
@@ -262,17 +206,21 @@ export function spliceVNode(
 
         for (let i = 0; i < newNodes.length; ++i) {
             const newNode = newNodes[i];
-            newNode.domParent = domParent;
-            const nodesToAdd = getShallowNodes(newNode);
-            nodesToAdd.forEach((addNode) => {
-                fragment.appendChild(addNode);
-            });
+            if (newNode) {
+                newNode.domParent = domParent;
+                const nodesToAdd = getShallowNodes(newNode);
+                nodesToAdd.forEach((addNode) => {
+                    fragment.appendChild(addNode);
+                });
+            }
         }
 
         domParentNode.insertBefore(fragment, referenceNode || null);
         if (runOnMount) {
             newNodes.forEach((newNode) => {
-                callOnMount(newNode);
+                if (newNode) {
+                    callOnMount(newNode);
+                }
             });
         }
     }

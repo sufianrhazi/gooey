@@ -200,9 +200,11 @@ export function addManualDep(fromNode: DAGNode, toNode: DAGNode) {
         );
 }
 
+export function registerNode(node: DAGNode) {
+    globalDependencyGraph.addNode(node);
+}
+
 export function addOrderingDep(fromNode: DAGNode, toNode: DAGNode) {
-    globalDependencyGraph.addNode(fromNode);
-    globalDependencyGraph.addNode(toNode);
     globalDependencyGraph.addEdge(fromNode, toNode, DAG.EDGE_SOFT);
     DEBUG &&
         log.debug(

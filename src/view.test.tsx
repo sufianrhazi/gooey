@@ -255,7 +255,7 @@ suite('mount components', () => {
         assert.is(testRoot.querySelector('#p'), queried);
     });
 
-    test('components are provided an onMount callback which is called immediately before unmount', () => {
+    test('components are provided an onUnmount callback which is called immediately before unmount', () => {
         const state = model({
             showingChild: false,
         });
