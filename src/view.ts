@@ -107,16 +107,6 @@ function setAttributeValue(
     }
 }
 
-function shallowAppend(documentFragment: DocumentFragment, children: VNode[]) {
-    children.forEach((child) => {
-        if (child.domNode) {
-            documentFragment.appendChild(child.domNode);
-        } else if (child.children) {
-            shallowAppend(documentFragment, child.children);
-        }
-    });
-}
-
 /**
  * Sadly needed for TypeScript only, since I want to narrow a
  * Collection<JSXNodeSingle> | View<JSXNodeSingle> | Other and you can't narrow
@@ -132,7 +122,8 @@ function jsxNodeToVNode(
     jsxNode: JSXNode,
     domParent: VNode,
     parentOrdering: NodeOrdering,
-    contextMap: Map<Context<any>, any>
+    contextMap: Map<Context<any>, any>,
+    documentFragment: DocumentFragment
 ): VNode {
     if (
         jsxNode === null ||
@@ -143,14 +134,18 @@ function jsxNodeToVNode(
         return { domParent };
     }
     if (typeof jsxNode === 'string') {
+        const domNode = document.createTextNode(jsxNode);
+        documentFragment.appendChild(domNode);
         return {
-            domNode: document.createTextNode(jsxNode),
+            domNode,
             domParent,
         };
     }
     if (typeof jsxNode === 'number') {
+        const domNode = document.createTextNode(jsxNode.toString());
+        documentFragment.appendChild(domNode);
         return {
-            domNode: document.createTextNode(jsxNode.toString()),
+            domNode,
             domParent,
         };
     }
@@ -159,7 +154,8 @@ function jsxNodeToVNode(
             jsxNode,
             domParent,
             parentOrdering,
-            contextMap
+            contextMap,
+            documentFragment
         );
     }
     if (isCollectionView(jsxNode)) {
@@ -167,14 +163,21 @@ function jsxNodeToVNode(
             jsxNode,
             domParent,
             parentOrdering,
-            contextMap
+            contextMap,
+            documentFragment
         );
     }
     if (Array.isArray(jsxNode)) {
         return {
             domParent,
             children: (jsxNode as JSXNodeSingle[]).map((child) =>
-                jsxNodeToVNode(child, domParent, parentOrdering, contextMap)
+                jsxNodeToVNode(
+                    child,
+                    domParent,
+                    parentOrdering,
+                    contextMap,
+                    documentFragment
+                )
             ),
         };
     }
@@ -184,14 +187,21 @@ function jsxNodeToVNode(
         );
         return { domParent };
     }
-    return renderElementToVNode(jsxNode, domParent, parentOrdering, contextMap);
+    return renderElementToVNode(
+        jsxNode,
+        domParent,
+        parentOrdering,
+        contextMap,
+        documentFragment
+    );
 }
 
 function renderElementToVNode(
     renderElement: RenderElement<any, any>,
     domParent: VNode,
     nodeOrdering: NodeOrdering,
-    contextMap: Map<Context<any>, any>
+    contextMap: Map<Context<any>, any>,
+    documentFragment: DocumentFragment
 ) {
     const [Constructor, props, ...children] = renderElement.__node;
     if (typeof Constructor === 'string') {
@@ -207,7 +217,8 @@ function renderElementToVNode(
             children,
             domParent,
             nodeOrdering,
-            contextMap
+            contextMap,
+            documentFragment
         );
     }
     if (isContext(Constructor)) {
@@ -223,7 +234,8 @@ function renderElementToVNode(
             children,
             domParent,
             nodeOrdering,
-            contextMap
+            contextMap,
+            documentFragment
         );
     }
     DEBUG &&
@@ -238,7 +250,8 @@ function renderElementToVNode(
         children,
         domParent,
         nodeOrdering,
-        contextMap
+        contextMap,
+        documentFragment
     );
 }
 
@@ -248,7 +261,8 @@ function makeElementVNode(
     children: JSXNode[] | undefined,
     domParent: VNode,
     nodeOrdering: NodeOrdering,
-    contextMap: Map<Context<any>, any>
+    contextMap: Map<Context<any>, any>,
+    documentFragment: DocumentFragment
 ) {
     DEBUG &&
         log.debug('view makeElementVNode', { elementType, props, children });
@@ -308,14 +322,20 @@ function makeElementVNode(
     };
 
     if (children && children.length > 0) {
+        const childDocumentFragment = document.createDocumentFragment();
         const childVNodes = children.map((child) =>
-            jsxNodeToVNode(child, elementNode, nodeOrdering, contextMap)
+            jsxNodeToVNode(
+                child,
+                elementNode,
+                nodeOrdering,
+                contextMap,
+                childDocumentFragment
+            )
         );
         elementNode.children = childVNodes;
-        const documentFragment = document.createDocumentFragment();
-        shallowAppend(documentFragment, childVNodes);
-        element.appendChild(documentFragment);
+        element.appendChild(childDocumentFragment);
     }
+    documentFragment.appendChild(element);
 
     return elementNode;
 }
@@ -326,7 +346,8 @@ function makeContextVNode<TContext>(
     children: JSXNode[] | undefined,
     domParent: VNode,
     nodeOrdering: NodeOrdering,
-    contextMap: Map<Context<any>, any>
+    contextMap: Map<Context<any>, any>,
+    documentFragment: DocumentFragment
 ): VNode {
     const subContextMap = new Map(contextMap);
     subContextMap.set(context, value);
@@ -337,7 +358,13 @@ function makeContextVNode<TContext>(
 
     if (children) {
         providerNode.children = children.map((jsxChild) =>
-            jsxNodeToVNode(jsxChild, domParent, nodeOrdering, subContextMap)
+            jsxNodeToVNode(
+                jsxChild,
+                domParent,
+                nodeOrdering,
+                subContextMap,
+                documentFragment
+            )
         );
     }
 
@@ -350,7 +377,8 @@ function makeComponentVNode<TProps>(
     children: JSXNode[] | undefined,
     domParent: VNode,
     nodeOrdering: NodeOrdering,
-    contextMap: Map<Context<any>, any>
+    contextMap: Map<Context<any>, any>,
+    documentFragment: DocumentFragment
 ): VNode {
     DEBUG &&
         log.debug('view makeComponentVNode', { Component, props, children });
@@ -397,7 +425,8 @@ function makeComponentVNode<TProps>(
         jsxNode,
         domParent,
         nodeOrdering,
-        contextMap
+        contextMap,
+        documentFragment
     );
 
     const componentNode = {
@@ -414,7 +443,8 @@ function makeCalculationVNode(
     calculation: Calculation<JSXNode>,
     domParent: VNode,
     parentNodeOrdering: NodeOrdering,
-    contextMap: Map<Context<any>, any>
+    contextMap: Map<Context<any>, any>,
+    documentFragment: DocumentFragment
 ): VNode {
     const onUnmount: (() => void)[] = [];
     const calculationNodeChildren: VNode[] = [];
@@ -438,7 +468,8 @@ function makeCalculationVNode(
             renderElement,
             domParent,
             calculationNodeOrdering,
-            contextMap
+            contextMap,
+            documentFragment
         );
         if (firstRun) {
             // TODO: can we just call spliceVNode here?
@@ -468,7 +499,8 @@ function makeCollectionVNode(
     collection: Collection<JSXNodeSingle> | View<JSXNodeSingle>,
     domParent: VNode,
     parentNodeOrdering: NodeOrdering,
-    contextMap: Map<Context<any>, any>
+    contextMap: Map<Context<any>, any>,
+    documentFragment: DocumentFragment
 ): VNode {
     const onUnmount: (() => void)[] = [];
 
@@ -497,7 +529,8 @@ function makeCollectionVNode(
                     jsxChild,
                     domParent,
                     collectionNodeOrdering,
-                    contextMap
+                    contextMap,
+                    documentFragment
                 )
             )
         );
@@ -513,7 +546,8 @@ function makeCollectionVNode(
                             jsxChild,
                             domParent,
                             collectionNodeOrdering,
-                            contextMap
+                            contextMap,
+                            documentFragment
                         )
                     );
                     spliceVNode(collectionNode, index, count, childNodes);
@@ -582,16 +616,16 @@ export function mount(parentElement: Element, jsxNode: JSXNode) {
     const nodeOrdering = makeNodeOrdering('mount');
     retain(nodeOrdering);
     const anchorNode: VNode = { domNode: parentElement };
+    const documentFragment = document.createDocumentFragment();
     const rootNode = jsxNodeToVNode(
         jsxNode,
         anchorNode,
         nodeOrdering,
-        contextMap
+        contextMap,
+        documentFragment
     );
     anchorNode.children = [rootNode];
 
-    const documentFragment = document.createDocumentFragment();
-    shallowAppend(documentFragment, anchorNode.children);
     parentElement.appendChild(documentFragment);
 
     // Call onMount callbacks
