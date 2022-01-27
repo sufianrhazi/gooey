@@ -1,4 +1,3 @@
-import { groupBy } from './util';
 import * as log from './log';
 
 /**
@@ -110,12 +109,28 @@ export function callOnMount(node: VNode) {
     }
 }
 
-function callOnUnmount(node: VNode) {
+/**
+ * Collect shallow DOM nodes and conditionally call onUnmount if specified
+ */
+function performUnmount(
+    node: VNode,
+    shallowDomNodes: Node[] | undefined,
+    runOnUnmount: boolean
+) {
+    if (shallowDomNodes && node.domNode) {
+        shallowDomNodes.push(node.domNode);
+    }
     // Note: we are doing a post-order traversal, so all children are released/unmounted before parents are released/unmounted
-    node.children?.forEach((child) => callOnUnmount(child));
+    node.children?.forEach((child) => {
+        performUnmount(
+            child,
+            node.domNode ? undefined : shallowDomNodes,
+            runOnUnmount
+        );
+    });
 
     // Call any onUnmount listeners
-    if (node.onUnmount) {
+    if (runOnUnmount && node.onUnmount) {
         node.onUnmount.forEach((onUnmount) => {
             try {
                 onUnmount();
@@ -141,19 +156,18 @@ export function spliceVNode(
         immediateParent.children,
         'attempted to splice a parent node with no children'
     );
-    let domParent: VNode | undefined;
-    if (childIndex < immediateParent.children.length) {
-        domParent = immediateParent.children[childIndex].domParent;
-    } else {
+    const domParent = immediateParent.domNode
+        ? immediateParent
+        : immediateParent.domParent;
+    if (childIndex > immediateParent.children.length) {
         childIndex = immediateParent.children.length;
-        domParent = immediateParent.domNode
-            ? immediateParent
-            : immediateParent.domParent;
     }
     log.assert(
-        domParent,
+        domParent && domParent.domNode,
         'tried to replace a root tree slot with missing domParent'
     );
+
+    const domParentNode = domParent.domNode;
 
     const detachedVNodes = immediateParent.children.splice(
         childIndex,
@@ -162,35 +176,17 @@ export function spliceVNode(
     );
 
     // Remove nodes, optimizing for array replacement, where all nodes are completely removed via .replaceChildren()
-    const toRemove: [ParentNode, Node][] = [];
+    const toRemove: Node[] = [];
     detachedVNodes.forEach((detachedVNode) => {
-        if (!detachedVNode) {
-            return;
-        }
-        if (runOnUnmount) {
-            callOnUnmount(detachedVNode);
-        }
-
-        const nodesToRemove = getShallowNodes(detachedVNode);
-        nodesToRemove.forEach((node) => {
-            if (node.parentNode) {
-                toRemove.push([node.parentNode, node]);
-            }
-        });
-    });
-    const groupedToRemove = groupBy(toRemove, (item) => item);
-    groupedToRemove.forEach((childNodes, parentNode) => {
-        if (parentNode.childNodes.length === childNodes.length) {
-            parentNode.replaceChildren();
-        } else {
-            childNodes.forEach((child) => parentNode.removeChild(child));
-        }
+        performUnmount(detachedVNode, toRemove, runOnUnmount);
     });
 
-    if (!domParent.domNode) {
-        throw new Error('Invariant: domParent missing domNode');
+    if (domParentNode.childNodes.length === toRemove.length) {
+        // By virtue of having children, this Node must be an Element
+        (domParentNode as Element).replaceChildren();
+    } else {
+        toRemove.forEach((child) => domParentNode.removeChild(child));
     }
-    const domParentNode = domParent.domNode;
 
     // Insert nodes via fragment with a single DOM operation
     if (newNodes.length > 0) {
@@ -206,13 +202,11 @@ export function spliceVNode(
 
         for (let i = 0; i < newNodes.length; ++i) {
             const newNode = newNodes[i];
-            if (newNode) {
-                newNode.domParent = domParent;
-                const nodesToAdd = getShallowNodes(newNode);
-                nodesToAdd.forEach((addNode) => {
-                    fragment.appendChild(addNode);
-                });
-            }
+            newNode.domParent = domParent;
+            const nodesToAdd = getShallowNodes(newNode);
+            nodesToAdd.forEach((addNode) => {
+                fragment.appendChild(addNode);
+            });
         }
 
         domParentNode.insertBefore(fragment, referenceNode || null);
