@@ -68,3 +68,12 @@ export function strictEqual<T>(a: T, b: T): boolean {
 export function randint(low: number, high: number): number {
     return Math.floor(Math.random() * (high - low)) + low;
 }
+
+export function median(numbers: number[]): number {
+    const sorted = numbers.slice().sort((a, b) => a - b);
+    return (
+        (sorted[Math.floor((numbers.length - 1) / 2)] +
+            sorted[Math.ceil((numbers.length - 1) / 2)]) /
+        2
+    );
+}

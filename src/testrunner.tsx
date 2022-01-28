@@ -1,3 +1,4 @@
+import { Chart, registerables } from 'chart.js';
 import type { Component, Collection, View, Model } from './index';
 import Revise, {
     Fragment,
@@ -12,12 +13,14 @@ import {
     isRunUpdate,
     isRunResponse,
     makeRunTestRequest,
+    ExtraInfo,
 } from './test/types';
 import * as log from './log';
 import { request, requestStream } from './test/rpc';
 import { groupBy2 } from './util';
 import testManifest from '../test-manifest.json'; // Generated from s/test
 
+Chart.register(...registerables);
 (window as any).graphviz = debug;
 
 function classes(...args: (string | boolean | null | undefined)[]) {
@@ -50,7 +53,7 @@ type TestFileRecord = Model<{
     status: 'error' | 'loading' | 'ready' | 'fail' | 'pass' | 'run';
     error?: string;
     isOpen: boolean;
-    extraInfo: string[];
+    extraInfo: ExtraInfo[];
 }>;
 
 type SuiteRecord = Model<{
@@ -78,7 +81,7 @@ type TestRecord = Model<{
     selfDuration?: number;
     duration?: number;
     isOpen: boolean;
-    extraInfo: string[];
+    extraInfo: ExtraInfo[];
 }>;
 
 /**
@@ -258,11 +261,13 @@ const { actions, selectors } = (() => {
             suiteId,
             testId,
             error,
+            extraInfo,
         }: {
             src: string;
             suiteId: number;
             testId: number;
             error: string;
+            extraInfo: ExtraInfo[];
         }) => {
             const testFile = testFiles[src];
             const suite = testFile.suites[suiteId];
@@ -271,6 +276,7 @@ const { actions, selectors } = (() => {
             suite.status = 'fail';
             test.status = 'fail';
             test.error = error;
+            test.extraInfo = extraInfo;
             uiState.lastActionTime = performance.now();
         },
 
@@ -287,7 +293,7 @@ const { actions, selectors } = (() => {
             testId: number;
             duration: number;
             selfDuration: number;
-            extraInfo: string[];
+            extraInfo: ExtraInfo[];
         }) => {
             const suite = testFiles[src].suites[suiteId];
             const test = suite.tests[testId];
@@ -586,6 +592,7 @@ async function runTests() {
                                                 suiteId: suite.id,
                                                 testId: test.id,
                                                 error: msg.error,
+                                                extraInfo: msg.extraInfo,
                                             });
                                             failedSuites.add(suite);
                                             failedTests.add(test);
@@ -654,6 +661,123 @@ async function runTests() {
 /**
  * Views
  */
+
+const Histogram: Component<{
+    label: string;
+    data: number[];
+    format: (val: number) => string;
+}> = ({ label, data, format }) => {
+    const maxVal = Math.max(...data);
+    const minVal = Math.min(...data);
+    const numBuckets = Math.round(data.length / 2);
+    const bucketWidth = (maxVal - minVal) / (numBuckets - 1);
+    const buckets: number[] = [];
+    for (let i = 0; i < numBuckets; ++i) {
+        buckets.push(0);
+    }
+    data.forEach((item) => {
+        const bucket = Math.floor((item - minVal) / bucketWidth);
+        buckets[bucket] += 1;
+    });
+
+    let chart: Chart | undefined;
+    const refCallback = (div: HTMLCanvasElement | undefined) => {
+        if (!div) {
+            chart?.destroy();
+            return;
+        }
+        chart = new Chart(div, {
+            type: 'bar',
+            data: {
+                labels: buckets.map((bucket, index) =>
+                    format(minVal + bucketWidth * index)
+                ),
+                datasets: [
+                    {
+                        label,
+                        data: buckets,
+                    },
+                ],
+            },
+            options: {
+                animation: {
+                    duration: 0,
+                },
+            },
+        });
+    };
+
+    return (
+        <div>
+            <canvas
+                style="background-color: rgba(255,255,255,0.8)"
+                ref={refCallback}
+            />
+        </div>
+    );
+    // TODO: find out what breaks if items are mixed elements and strings
+};
+
+const ExtraInfo: Component<{ info: ExtraInfo }> = ({ info }) => {
+    if (info.type === 'string') {
+        return <pre>{info.value}</pre>;
+    }
+    const state = model({ expanded: false });
+    if (info.type === 'perf') {
+        return (
+            <pre>
+                {calc(() =>
+                    state.expanded ? (
+                        <Histogram
+                            label="wallclock"
+                            data={info.value}
+                            format={(time) => `${time}ms`}
+                        />
+                    ) : (
+                        <a
+                            href="#"
+                            on:click={(e) => {
+                                e.preventDefault();
+                                state.expanded = true;
+                            }}
+                        >
+                            Show time histogram
+                        </a>
+                    )
+                )}
+            </pre>
+        );
+    }
+    if (info.type === 'used') {
+        return (
+            <pre>
+                {calc(() =>
+                    state.expanded ? (
+                        <Histogram
+                            label="used"
+                            data={info.value}
+                            format={(memory) =>
+                                `${(memory / 1024).toFixed(2)}kb`
+                            }
+                        />
+                    ) : (
+                        <a
+                            href="#"
+                            on:click={(e) => {
+                                e.preventDefault();
+                                state.expanded = true;
+                            }}
+                        >
+                            Show memory histogram
+                        </a>
+                    )
+                )}
+            </pre>
+        );
+    }
+    return <pre>Other stuff: {JSON.stringify(info)}</pre>;
+};
+
 const TestView: Component<{ test: DeepReadonly<TestRecord> }> = ({ test }) => {
     const onClick = (e: MouseEvent) => {
         e.preventDefault();
@@ -702,13 +826,19 @@ const TestView: Component<{ test: DeepReadonly<TestRecord> }> = ({ test }) => {
             </a>
             {calc(
                 () =>
-                    test.status === 'fail' &&
-                    test.error && <pre>{test.error}</pre>
+                    test.status === 'fail' && (
+                        <>
+                            {test.error && <pre>{test.error}</pre>}
+                            {test.extraInfo.map((info) => (
+                                <ExtraInfo info={info} />
+                            ))}
+                        </>
+                    )
             )}
             {calc(
                 () =>
                     test.status === 'pass' &&
-                    test.extraInfo.map((info) => <pre>{info}</pre>)
+                    test.extraInfo.map((info) => <ExtraInfo info={info} />)
             )}
         </div>
     );

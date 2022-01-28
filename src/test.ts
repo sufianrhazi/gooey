@@ -6,6 +6,7 @@ import {
     isRequest,
     isInitRequest,
     isRunTestRequest,
+    ExtraInfo,
     makeResponse,
     makePartialResponse,
     RunTestRequest,
@@ -13,6 +14,7 @@ import {
     RunResponse,
 } from './test/types';
 import { nextFlush } from './index';
+import { sleep, median } from './util';
 
 const makeUniqueId = (() => {
     let uniqueId = 0;
@@ -45,7 +47,7 @@ interface Test {
     parent: Suite;
     assertions: number;
     only: boolean;
-    extraInfo: string[];
+    extraInfo: ExtraInfo[];
 }
 
 function repr(obj: any) {
@@ -155,12 +157,13 @@ type Report =
           result: 'pass';
           selfDuration: number;
           duration: number;
-          extraInfo: string[];
+          extraInfo: ExtraInfo[];
       }
     | {
           type: 'test';
           test: Test;
           result: 'fail';
+          extraInfo: ExtraInfo[];
           e: any;
       };
 
@@ -247,7 +250,7 @@ function countAssertion() {
     }
     runningTest.assertions += 1;
 }
-function addTestExtraInfo(info: string) {
+function addTestExtraInfo(info: ExtraInfo) {
     if (!runningTest) {
         throw new Error(
             'Internal test integrity issue: addTestExtraInfo performed outside of test?'
@@ -478,64 +481,62 @@ export const assert = {
             );
         }
     },
-    medianRuntimeLessThan: (
+    medianRuntimeLessThan: async (
         ms: number,
         fn: (measure: <T>(measurement: () => T) => T) => void,
-        numRuns = 19,
+        numRuns = 29,
         msg?: string
     ) => {
         const runs: number[] = [];
+        const used: number[] = [];
         let isWarm = false;
         const startTime = performance.now();
         while (runs.length < numRuns) {
-            if (!isWarm && performance.now() - startTime > 1000) {
+            if (!isWarm && performance.now() - startTime > 500) {
                 isWarm = true;
             }
-            if (typeof gc === 'function') gc();
-            const fnStart = performance.now();
+            await sleep(0);
             let didMeasure = false;
             fn((measurement) => {
-                if (typeof gc === 'function') gc();
+                if (typeof gc === 'function') {
+                    gc();
+                    gc(); // Yes, calling gc() twice seems to trigger more aggressive garbage collection, at least in Chrome 97
+                }
+                const usedInner = (performance as any).memory.usedJSHeapSize;
                 const start = performance.now();
                 const result = measurement();
                 didMeasure = true;
                 if (isWarm) {
                     runs.push(performance.now() - start);
+                    used.push(
+                        (performance as any).memory.usedJSHeapSize - usedInner
+                    );
                 }
                 return result;
             });
-            const fnDuration = performance.now() - fnStart;
-            if (isWarm && !didMeasure) {
-                runs.push(fnDuration);
+            if (!didMeasure) {
+                assert.fail(
+                    'medianRuntimeLessThan callback did not call measurement function'
+                );
             }
         }
-        const sortedRuns = runs
-            .map(
-                (run, index) =>
-                    [`run ${index.toString().padStart(2, ' ')}`, run] as const
-            )
-            .sort((a, b) => a[1] - b[1]);
-        const median =
-            (sortedRuns[Math.floor((numRuns - 1) / 2)][1] +
-                sortedRuns[Math.ceil((numRuns - 1) / 2)][1]) /
-            2;
-        addTestExtraInfo(
-            `median run took ${median}ms\nRuntimes: ${JSON.stringify(
-                sortedRuns.map(([msg, ms]) => `${msg}: ${ms}ms`),
-                undefined,
-                4
-            )}`
-        );
+        const medianTime = median(runs);
+        addTestExtraInfo({
+            type: 'string',
+            value: `median run took ${medianTime}ms`,
+        });
+        addTestExtraInfo({ type: 'perf', value: runs });
+        addTestExtraInfo({
+            type: 'string',
+            value: `median memory usage ${(median(used) / 1024).toFixed(1)}kb`,
+        });
+        addTestExtraInfo({ type: 'used', value: used });
         countAssertion();
-        if (!(median < ms)) {
+        if (!(medianTime < ms)) {
             throw new AssertionError(
                 'medianRuntimeLessThan',
                 () =>
-                    `median run took ${median}ms, which is more than the threshhold of ${ms}ms.\nRuntimes: ${JSON.stringify(
-                        sortedRuns.map(([msg, ms]) => `${msg}: ${ms}ms`),
-                        undefined,
-                        4
-                    )}`,
+                    `median run took ${medianTime}ms, which is more than the threshhold of ${ms}ms.`,
                 msg
             );
         }
@@ -632,6 +633,7 @@ function respond(info: Report, id: number, source: MessageEventSource) {
                     testId: info.test.id,
                     result: 'fail',
                     error: formatError(info.e),
+                    extraInfo: info.extraInfo,
                 });
                 break;
             case 'pass':
@@ -754,6 +756,7 @@ async function handleRunTest(
                 test,
                 result: 'fail',
                 e,
+                extraInfo: test.extraInfo,
             },
             id,
             source

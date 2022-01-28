@@ -160,6 +160,33 @@ export function isRunResponse(msg: any): msg is RunResponse {
     );
 }
 
+export type ExtraInfo =
+    | {
+          type: 'string';
+          value: string;
+      }
+    | {
+          type: 'perf';
+          value: number[];
+      }
+    | {
+          type: 'used';
+          value: number[];
+      };
+
+function isExtraInfo(obj: any): obj is ExtraInfo {
+    return (
+        obj &&
+        ((obj.type === 'string' && typeof obj.value === 'string') ||
+            (obj.type === 'perf' &&
+                Array.isArray(obj.value) &&
+                obj.value.every((item: any) => typeof item === 'number')) ||
+            (obj.type === 'used' &&
+                Array.isArray(obj.value) &&
+                obj.value.every((item: any) => typeof item === 'number')))
+    );
+}
+
 export type RunUpdate =
     | { type: 'internal'; error: string }
     | {
@@ -168,6 +195,7 @@ export type RunUpdate =
           testId: number;
           result: 'fail';
           error: string;
+          extraInfo: ExtraInfo[];
       }
     | {
           type: 'test';
@@ -176,7 +204,7 @@ export type RunUpdate =
           result: 'pass';
           duration: number;
           selfDuration: number;
-          extraInfo: string[];
+          extraInfo: ExtraInfo[];
       }
     | {
           type: 'test';
@@ -198,7 +226,7 @@ export function isRunUpdate(msg: any): msg is RunUpdate {
         typeof msg.duration === 'number' &&
         typeof msg.selfDuration === 'number' &&
         Array.isArray(msg.extraInfo) &&
-        msg.extraInfo.every((info: any) => typeof info === 'string')
+        msg.extraInfo.every((info: any) => isExtraInfo(info))
     ) {
         return true;
     }
@@ -217,7 +245,9 @@ export function isRunUpdate(msg: any): msg is RunUpdate {
         typeof msg.testId === 'number' &&
         typeof msg.suiteId === 'number' &&
         msg.result === 'fail' &&
-        typeof msg.error === 'string'
+        typeof msg.error === 'string' &&
+        Array.isArray(msg.extraInfo) &&
+        msg.extraInfo.every((info: any) => isExtraInfo(info))
     ) {
         return true;
     }
