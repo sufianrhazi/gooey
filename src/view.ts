@@ -54,26 +54,20 @@ export function createElement<TContext, TProps extends {}>(
     return { __node: args };
 }
 
-const boundEvents = new WeakMap<Element, Record<string, (ev: Event) => void>>();
-
 function setAttributeValue(
     elementType: string,
     element: Element,
     key: string,
-    value: unknown
+    value: unknown,
+    boundEvents: Record<string, (ev: Event) => void>
 ) {
     if (key.startsWith('on:') && typeof value === 'function') {
         const eventName = key.slice(3);
-        let attributes = boundEvents.get(element);
-        if (!attributes) {
-            attributes = {};
-            boundEvents.set(element, attributes);
-        }
-        if (attributes[key]) {
-            element.removeEventListener(eventName, attributes[key]);
+        if (boundEvents[key]) {
+            element.removeEventListener(eventName, boundEvents[key]);
         }
         element.addEventListener(eventName, value as any);
-        attributes[key] = value as any;
+        boundEvents[key] = value as any;
     } else {
         const mapping = getElementTypeMapping(elementType, key);
         if (mapping) {
@@ -268,6 +262,7 @@ function makeElementVNode(
     DEBUG &&
         log.debug('view makeElementVNode', { elementType, props, children });
     const element = document.createElement(elementType);
+    const elementBoundEvents: Record<string, (ev: Event) => void> = {};
 
     const onReleaseActions: (() => void)[] = [];
     let refCallback: any = undefined;
@@ -288,7 +283,13 @@ function makeElementVNode(
             if (isCalculation(value)) {
                 const boundEffect = effect(() => {
                     const computedValue = value();
-                    setAttributeValue(elementType, element, key, computedValue);
+                    setAttributeValue(
+                        elementType,
+                        element,
+                        key,
+                        computedValue,
+                        elementBoundEvents
+                    );
                 }, `viewattr:${key}`);
                 onReleaseActions.push(() => {
                     removeOrderingDep(boundEffect, nodeOrdering);
@@ -297,7 +298,13 @@ function makeElementVNode(
 
                 boundEffect();
             } else {
-                setAttributeValue(elementType, element, key, value);
+                setAttributeValue(
+                    elementType,
+                    element,
+                    key,
+                    value,
+                    elementBoundEvents
+                );
             }
         });
     }

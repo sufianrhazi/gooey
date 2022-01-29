@@ -1,8 +1,6 @@
 import {
     InvariantError,
     Calculation,
-    Collection,
-    View,
     DAGNode,
     FlushKey,
     isCalculation,
@@ -24,10 +22,7 @@ let activeCalculations: (null | Calculation<any>)[] = [];
 
 let globalDependencyGraph = new DAG<DAGNode>();
 
-let refcountMap: WeakMap<
-    Calculation<any> | Collection<any> | View<any>,
-    number
-> = new WeakMap();
+let refcountMap: Record<string, number> = {};
 
 /**
  * Reset all data to a clean slate.
@@ -36,7 +31,7 @@ export function reset() {
     activeCalculations = [];
 
     globalDependencyGraph = new DAG();
-    refcountMap = new WeakMap();
+    refcountMap = {};
     clearNames();
 }
 
@@ -349,7 +344,7 @@ export function flush() {
  * Retain a calculation (increase the refcount)
  */
 export function retain(item: DAGNode) {
-    const refcount = refcountMap.get(item) ?? 0;
+    const refcount = refcountMap[item.$__id] ?? 0;
     const newRefcount = refcount + 1;
     if (refcount === 0) {
         DEBUG &&
@@ -370,7 +365,7 @@ export function retain(item: DAGNode) {
                 )} incremented; refcount ${refcount} -> ${newRefcount}`
             );
     }
-    refcountMap.set(item, newRefcount);
+    refcountMap[item.$__id] = newRefcount;
 }
 
 /**
@@ -378,7 +373,7 @@ export function retain(item: DAGNode) {
  * collected.
  */
 export function release(item: DAGNode) {
-    const refcount = refcountMap.get(item) ?? 0;
+    const refcount = refcountMap[item.$__id] ?? 0;
     const newRefcount = Math.min(refcount - 1, 0);
     if (refcount < 1) {
         log.error(
@@ -402,7 +397,7 @@ export function release(item: DAGNode) {
                 )} decremented; refcount ${refcount} -> ${newRefcount}`
             );
     }
-    refcountMap.set(item, newRefcount);
+    refcountMap[item.$__id] = newRefcount;
 }
 
 /**
