@@ -208,8 +208,37 @@ export class DAG<Type extends object> {
      *
      * This way we can prevent recalculations that are triggered if the calculation is "equal".
      *
+     * Because the DAG may change while processing nodes; nodes that were skipped because they do not reach retained
+     * nodes may now be retained after processing. In this case, we continue to process stray nodes until we cannot
+     * process any more -- after which we can remove them.
      */
     process(callback: (node: Type) => boolean) {
+        const dirtyNodeIds = Object.keys(this.dirtyNodes);
+        let prevProcessCount = 0; // immediately reassigned
+        let processCount = dirtyNodeIds.length;
+        let strayIds: string[] = [];
+        // TODO: is an infinite loop possible here? Add an escape hatch
+        do {
+            prevProcessCount = processCount;
+            strayIds = this.processInner(callback, dirtyNodeIds);
+            processCount = strayIds.reduce(
+                (count, strayId) =>
+                    this.dirtyNodes[strayId] ? count + 1 : count,
+                0
+            );
+        } while (prevProcessCount !== processCount);
+
+        // Garbage collect all the detached stray nodes
+        // TODO: this doesn't need to happen each time...
+        strayIds.forEach((strayId) => {
+            this.removeNodeInner(strayId);
+        });
+    }
+
+    private processInner(
+        callback: (node: Type) => boolean,
+        nodeIdsToProcess: string[]
+    ) {
         // Build topologically sorted list via DFS discoverable only from dirty nodes.
         // After visiting all nodes, the list is in reverse topological order
         const visited: Record<string, boolean> = {};
@@ -236,7 +265,7 @@ export class DAG<Type extends object> {
                 return true;
             }
         };
-        Object.keys(this.dirtyNodes).forEach((nodeId) => {
+        nodeIdsToProcess.forEach((nodeId) => {
             dfsRecurse(nodeId);
         });
 
@@ -261,11 +290,7 @@ export class DAG<Type extends object> {
             }
         }
 
-        // Garbage collect all the detected stray nodes
-        // TODO: this doesn't need to happen each time...
-        strayIds.forEach((nodeId) => {
-            this.removeNodeInner(nodeId);
-        });
+        return strayIds;
     }
 
     /**

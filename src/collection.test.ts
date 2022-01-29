@@ -266,6 +266,33 @@ suite('collection', () => {
         assert.deepEqual([3, 5, 7, 9, 11, 13, 15], doublePlusOneView);
         assert.deepEqual([4, 6, 8, 10, 12, 14, 16], doublePlusTwoView);
     });
+
+    test('Ensure that calculations that grow dependencies as a result of being processed are processed', () => {
+        const m = model({ isActive: false });
+        const coll = collection<string>([]);
+        const view = coll.mapView((item) => item.length);
+        const calculation = calc(
+            () => m.isActive && view.some((item) => item === 3)
+        );
+        retain(view);
+        retain(calculation);
+        calculation();
+
+        m.isActive = true;
+        coll.push('foo');
+
+        flush();
+
+        assert.is(true, m.isActive);
+        assert.is('foo', coll[0]);
+        assert.is(1, coll.length);
+        assert.deepEqual([3], view);
+        assert.is(3, view[0]);
+        assert.is(1, view.length);
+        assert.is(true, calculation());
+
+        release(calculation);
+    });
 });
 
 suite('mapView', () => {

@@ -138,7 +138,6 @@ export function trackedData<
             registerNode(subscriptionNode);
             addManualDep(proxy, subscriptionNode);
             fieldRecords.forEach((field) => {
-                addOrderingDep(proxy, field);
                 addOrderingDep(field, subscriptionNode);
             });
         }
@@ -148,7 +147,6 @@ export function trackedData<
             if (observers.length === 0) {
                 removeManualDep(proxy, subscriptionNode);
                 fieldRecords.forEach((field) => {
-                    removeOrderingDep(proxy, field);
                     removeOrderingDep(field, subscriptionNode);
                 });
             }
@@ -212,8 +210,8 @@ export function trackedData<
             if (debugName) name(field, debugName);
             fieldRecords.set(key, field);
             registerNode(field);
+            addOrderingDep(proxy, field);
             if (observers.length > 0) {
-                addOrderingDep(proxy, field);
                 addOrderingDep(field, subscriptionNode);
             }
         }
@@ -281,6 +279,7 @@ export function trackedData<
     subscriptionNode.item = proxy;
 
     if (debugName) name(proxy, debugName);
+    registerNode(proxy);
 
     return proxy;
 }
