@@ -17,7 +17,7 @@ import {
 } from './test/types';
 import * as log from './log';
 import { request, requestStream } from './test/rpc';
-import { groupBy2 } from './util';
+import { groupBy2, median } from './util';
 import testManifest from '../test-manifest.json'; // Generated from s/test
 
 Chart.register(...registerables);
@@ -53,7 +53,6 @@ type TestFileRecord = Model<{
     status: 'error' | 'loading' | 'ready' | 'fail' | 'pass' | 'run';
     error?: string;
     isOpen: boolean;
-    extraInfo: ExtraInfo[];
 }>;
 
 type SuiteRecord = Model<{
@@ -162,8 +161,40 @@ const { actions, selectors } = (() => {
         getTestFiles: () => testFilesView,
         getTestFileKeys: () => testFileKeys,
         getUiState: (): DeepReadonly<typeof uiState> => uiState,
-        getGlobalState: () => globalState,
-        getGlobalStateDisplay: () => globalStateDisplay,
+        getGlobalState: globalState,
+        getGlobalStateDisplay: globalStateDisplay,
+        getPerfResults: calc(() => {
+            const perfResults: Record<
+                string,
+                { medianTime: number; medianMemory: number }
+            > = {};
+            let hasPerfResults = false;
+            testFileKeys.forEach((testFileKey) => {
+                const testFile = testFiles[testFileKey];
+                Object.keys(testFile.suites).forEach((suiteId) => {
+                    const suite = testFile.suites[suiteId];
+                    Object.keys(suite.tests).forEach((testId) => {
+                        const test = suite.tests[testId];
+                        let perf: number[] | undefined;
+                        let used: number[] | undefined;
+                        test.extraInfo.forEach((extraInfo) => {
+                            if (extraInfo.type === 'perf')
+                                perf = extraInfo.value;
+                            if (extraInfo.type === 'used')
+                                used = extraInfo.value;
+                        });
+                        if (perf && used) {
+                            hasPerfResults = true;
+                            perfResults[test.name] = {
+                                medianTime: median(perf),
+                                medianMemory: median(used),
+                            };
+                        }
+                    });
+                });
+            });
+            return hasPerfResults ? perfResults : null;
+        }),
     };
     const actions = {
         setIsRunning: (isRunning: boolean) => {
@@ -961,6 +992,9 @@ const TestFileView: Component<{ testFile: DeepReadonly<TestFileRecord> }> = ({
 };
 
 const TestRunner: Component<{}> = (props, { onMount, onEffect }) => {
+    const state = model({
+        copied: false,
+    });
     // Kick off tests once everything is initialized
     onEffect(() => {
         const testFiles = selectors.getTestFiles();
@@ -980,8 +1014,19 @@ const TestRunner: Component<{}> = (props, { onMount, onEffect }) => {
         runTests();
     };
 
+    const copyPerfResults = () => {
+        const perfResults = selectors.getPerfResults();
+        if (perfResults) {
+            navigator.clipboard.writeText(JSON.stringify(perfResults));
+            state.copied = true;
+            setTimeout(() => {
+                state.copied = false;
+            }, 3000);
+        }
+    };
+
     const anyTestsRunning = calc(() => {
-        const globalState = selectors.getGlobalState()();
+        const globalState = selectors.getGlobalState();
         return globalState === 'run' || globalState === 'loading';
     });
 
@@ -1006,10 +1051,8 @@ const TestRunner: Component<{}> = (props, { onMount, onEffect }) => {
             class={calc(() =>
                 classes(
                     'testrunner',
-                    selectors.getGlobalState()() === 'fail' &&
-                        'testrunner--fail',
-                    selectors.getGlobalState()() === 'pass' &&
-                        'testrunner--pass'
+                    selectors.getGlobalState() === 'fail' && 'testrunner--fail',
+                    selectors.getGlobalState() === 'pass' && 'testrunner--pass'
                 )
             )}
         >
@@ -1020,7 +1063,7 @@ const TestRunner: Component<{}> = (props, { onMount, onEffect }) => {
                         disabled={anyTestsRunning}
                         on:click={onClickRunAll}
                     >
-                        Run all tests
+                        Run all
                     </button>
                     <button
                         class="test-ui-control"
@@ -1029,8 +1072,24 @@ const TestRunner: Component<{}> = (props, { onMount, onEffect }) => {
                         )}
                         on:click={onClickRerun}
                     >
-                        Rerun selected tests
+                        Rerun selected
                     </button>
+                    {calc(() =>
+                        selectors.getPerfResults() !== null ? (
+                            <button
+                                class="test-ui-control"
+                                disabled={calc(
+                                    () => anyTestsRunning() || state.copied
+                                )}
+                                on:click={copyPerfResults}
+                            >
+                                {calc(() =>
+                                    state.copied ? 'Copied' : 'Copy perf data'
+                                )}
+                            </button>
+                        ) : null
+                    )}
+
                     <input
                         id="stop-on-toggle"
                         class="test-ui-control"
@@ -1044,7 +1103,7 @@ const TestRunner: Component<{}> = (props, { onMount, onEffect }) => {
                         Stop on failure
                     </label>
                     <div class="test-ui-control test-ui-global-state">
-                        STATUS: {selectors.getGlobalStateDisplay()}
+                        STATUS: {selectors.getGlobalStateDisplay}
                     </div>
                 </div>
                 {selectors.getTestFiles().mapView((testFile) => (
