@@ -11,4 +11,4 @@ echo_info "Installing dependencies..."
 yarn
 
 echo_info "Typechecking..."
-node_modules/.bin/tsc --noEmit "$@" -p .
+node_modules/.bin/tsc "$@" -p .

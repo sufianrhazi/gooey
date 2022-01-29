@@ -1,6 +1,11 @@
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 export const noop = () => {};
 
+export const uniqueid = (() => {
+    let id = 0;
+    return () => (id++).toString();
+})();
+
 export const sleep = (ms: number) =>
     new Promise<void>((resolve) => setTimeout(() => resolve(), ms));
 

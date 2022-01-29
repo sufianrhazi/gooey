@@ -23,6 +23,7 @@ import {
     processChange,
     registerNode,
 } from './calc';
+import { uniqueid } from './util';
 import { name } from './debug';
 import * as log from './log';
 
@@ -85,6 +86,7 @@ export function trackedData<
     let deferredTasks: (() => void)[] = [];
 
     const subscriptionNode: Subscription = {
+        $__id: uniqueid(),
         [TypeTag]: 'subscription',
         [FlushKey]: flushSubscription,
         item: null, // assigned later
@@ -181,6 +183,7 @@ export function trackedData<
     }
 
     const pseudoPrototype = {
+        $__id: uniqueid(),
         [TypeTag]: 'data',
         [DataTypeTag]: typeTag,
         [FlushKey]: flush,
@@ -204,6 +207,7 @@ export function trackedData<
             field = {
                 model: proxy as any,
                 key,
+                $__id: uniqueid(),
             };
             if (debugName) name(field, debugName);
             fieldRecords.set(key, field);

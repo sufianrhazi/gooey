@@ -22,7 +22,6 @@ export class DAG<Type extends object> {
     private static EDGE_ANY = 0b11 as const;
 
     private nextId: number;
-    private idMap: WeakMap<Type, string>;
     private nodesSet: Record<string, Type>;
     private retained: Record<string, true>;
     private dirtyNodes: Record<string, true>;
@@ -32,7 +31,6 @@ export class DAG<Type extends object> {
 
     constructor() {
         this.nextId = 1;
-        this.idMap = new WeakMap();
         this.nodesSet = {};
         this.retained = {};
         this.graph = {};
@@ -41,13 +39,7 @@ export class DAG<Type extends object> {
     }
 
     private getId(node: Type): string {
-        let id = this.idMap.get(node);
-        if (id === undefined) {
-            id = this.nextId.toString();
-            this.nextId += 1;
-            this.idMap.set(node, id);
-        }
-        return id;
+        return (node as any).$__id;
     }
 
     addNode(node: Type): boolean {

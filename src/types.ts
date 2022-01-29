@@ -1,3 +1,4 @@
+import { uniqueid } from './util';
 export class InvariantError extends Error {
     detail?: any;
     constructor(msg: string, detail?: any) {
@@ -97,6 +98,7 @@ export type CollectionEvent<T> =
       };
 
 export type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementation & {
+    // Note: contains $__id: string
     [TypeTag]: 'data';
     [DataTypeTag]: TTypeTag;
     [FlushKey]: () => void;
@@ -161,12 +163,14 @@ export type View<T> = TrackedData<
 };
 
 export interface Subscription {
+    $__id: string;
     [TypeTag]: 'subscription';
     item: any;
     [FlushKey]: () => void;
 }
 
 export interface NodeOrdering {
+    $__id: string;
     [TypeTag]: 'nodeOrdering';
 }
 
@@ -197,12 +201,14 @@ export function isContext(val: any): val is Context<any> {
  * A calculation cell that recalculates when dependencies change
  */
 export type Calculation<Result> = (() => Result) & {
+    $__id: string;
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
     [RecalculationTag]: () => boolean;
 };
 
 export interface ModelField {
+    $__id: string;
     model: {
         [DataTypeTag]: any;
     };
@@ -214,6 +220,7 @@ export function makeCalculation<Ret>(
     recalcFn: () => boolean
 ): Calculation<Ret> {
     return Object.assign(fn, {
+        $__id: uniqueid(),
         [TypeTag]: 'calculation' as const,
         [CalculationTypeTag]: 'calculation' as const,
         [RecalculationTag]: recalcFn,
@@ -225,6 +232,7 @@ export function makeEffect(
     recalcFn: () => boolean
 ): Calculation<void> {
     return Object.assign(fn, {
+        $__id: uniqueid(),
         [TypeTag]: 'calculation' as const,
         [CalculationTypeTag]: 'effect' as const,
         [RecalculationTag]: recalcFn,

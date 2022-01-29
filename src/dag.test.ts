@@ -2,15 +2,15 @@ import { DAG } from './dag';
 import { suite, test, beforeEach, assert } from './test';
 
 suite('DAG', () => {
-    const a = { name: 'a' };
-    const b = { name: 'b' };
-    const c = { name: 'c' };
-    const d = { name: 'd' };
-    const e = { name: 'e' };
-    const f = { name: 'f' };
-    const g = { name: 'g' };
-    const h = { name: 'h' };
-    const i = { name: 'i' };
+    const a = { name: 'a', $__id: 0 };
+    const b = { name: 'b', $__id: 1 };
+    const c = { name: 'c', $__id: 2 };
+    const d = { name: 'd', $__id: 3 };
+    const e = { name: 'e', $__id: 4 };
+    const f = { name: 'f', $__id: 5 };
+    const g = { name: 'g', $__id: 6 };
+    const h = { name: 'h', $__id: 7 };
+    const i = { name: 'i', $__id: 8 };
 
     interface TNode {
         name: string;

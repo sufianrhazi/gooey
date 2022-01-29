@@ -23,6 +23,7 @@ import {
     TypeTag,
 } from './types';
 import * as log from './log';
+import { uniqueid } from './util';
 import {
     Component,
     JSXNode,
@@ -602,6 +603,7 @@ function makeCollectionVNode(
 
 function makeNodeOrdering(debugName?: string): NodeOrdering {
     const nodeOrdering: NodeOrdering = {
+        $__id: uniqueid(),
         [TypeTag]: 'nodeOrdering',
     };
     if (debugName) name(nodeOrdering, debugName);
