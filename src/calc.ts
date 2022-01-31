@@ -315,13 +315,13 @@ export function flush() {
             result = recalculation();
         } else if (isCollection(item)) {
             DEBUG && log.debug('flushing collection', debugNameFor(item));
-            item[FlushKey]();
+            return item[FlushKey]();
         } else if (isModel(item)) {
             DEBUG && log.debug('flushing model', debugNameFor(item));
-            item[FlushKey]();
+            return item[FlushKey]();
         } else if (isSubscription(item)) {
             DEBUG && log.debug('flushing subscription', debugNameFor(item));
-            item[FlushKey]();
+            return item[FlushKey]();
         } else {
             DEBUG && log.debug('flushing other', debugNameFor(item));
         }
@@ -334,6 +334,10 @@ export function flush() {
             );
         return result;
     });
+    // If by virtue of processing the DAG, writes were performed, we could need to flush again.
+    // It's also possible that by virtue of processing the DAG, writes were performed and processed while the DAG was being processed, in which case we don't need to flush again.
+    // TODO: make it so that we "pause" notifications while processing the DAG, so we don't have notify() callback called when needsFlush gets assigned to false here.
+    needsFlush = globalDependencyGraph.hasDirtyNodes();
 
     DEBUG && debugSubscription && debugSubscription(debug(), `2: after visit`);
 

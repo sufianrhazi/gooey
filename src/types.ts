@@ -101,7 +101,7 @@ export type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementation & {
     // Note: contains $__id: string
     [TypeTag]: 'data';
     [DataTypeTag]: TTypeTag;
-    [FlushKey]: () => void;
+    [FlushKey]: () => boolean;
     [AddDeferredWorkKey]: (task: () => void) => void;
     [ObserveKey]: (
         listener: (events: TEvent[], subscriptionNode: Subscription) => void
@@ -166,7 +166,7 @@ export interface Subscription {
     $__id: string;
     [TypeTag]: 'subscription';
     item: any;
-    [FlushKey]: () => void;
+    [FlushKey]: () => boolean;
 }
 
 export interface NodeOrdering {

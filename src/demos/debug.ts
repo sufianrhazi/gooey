@@ -13,6 +13,8 @@ export function makeGraphvizDebuggerRef() {
     const debugData: { graphviz: string; detail: string }[] = [];
     let updateGraphviz: (() => void) | null = null;
 
+    let currentFrame = 0;
+
     const graphvizRef = (graphvizEl: HTMLDivElement | undefined) => {
         if (!graphvizEl) return;
 
@@ -20,8 +22,6 @@ export function makeGraphvizDebuggerRef() {
             graphviz: debug(),
             detail: 'on attach',
         });
-
-        let currentFrame = 0;
 
         const currentFrameLabel = document.createElement('div');
         const descLabel = document.createElement('div');
@@ -76,6 +76,9 @@ export function makeGraphvizDebuggerRef() {
     };
 
     debugSubscribe((graphviz, detail) => {
+        if (currentFrame >= debugData.length - 1) {
+            currentFrame = debugData.length;
+        }
         debugData.push({ graphviz, detail });
         updateGraphviz?.();
     });
@@ -83,6 +86,9 @@ export function makeGraphvizDebuggerRef() {
     subscribe(() => {
         setTimeout(() => {
             flush();
+            if (currentFrame >= debugData.length - 1) {
+                currentFrame = debugData.length;
+            }
             debugData.push({
                 graphviz: debug(),
                 detail: 'flush',

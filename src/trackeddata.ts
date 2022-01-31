@@ -94,19 +94,25 @@ export function trackedData<
     name(subscriptionNode, `${debugName || '?'}:sub`);
 
     function flushSubscription() {
+        let processed = false;
         const toProcess = subscriptionEvents;
         subscriptionEvents = new Map();
         toProcess.forEach((events, observer) => {
+            processed = true;
             observer(events);
         });
+        return !processed;
     }
 
     function flush() {
         const toProcess = deferredTasks;
+        let processed = false;
         deferredTasks = [];
         toProcess.forEach((task) => {
+            processed = true;
             task();
         });
+        return !processed;
     }
 
     function addDeferredTask(task: () => void) {

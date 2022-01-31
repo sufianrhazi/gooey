@@ -62,6 +62,10 @@ export class DAG<Type extends object> {
         return true;
     }
 
+    hasDirtyNodes(): boolean {
+        return Object.keys(this.dirtyNodes).length > 0;
+    }
+
     /**
      * Indicate that toNode needs to be updated if fromNode has changed
      */
@@ -213,38 +217,17 @@ export class DAG<Type extends object> {
      * process any more -- after which we can remove them.
      */
     process(callback: (node: Type) => boolean) {
-        const dirtyNodeIds = Object.keys(this.dirtyNodes);
-        let prevProcessCount = 0; // immediately reassigned
-        let processCount = dirtyNodeIds.length;
-        let strayIds: string[] = [];
-        // TODO: is an infinite loop possible here? Add an escape hatch
-        do {
-            prevProcessCount = processCount;
-            strayIds = this.processInner(callback, dirtyNodeIds);
-            processCount = strayIds.reduce(
-                (count, strayId) =>
-                    this.dirtyNodes[strayId] ? count + 1 : count,
-                0
-            );
-        } while (prevProcessCount !== processCount);
+        const nodeIds = new Set(Object.keys(this.dirtyNodes));
 
-        // Garbage collect all the detached stray nodes
-        // TODO: this doesn't need to happen each time...
-        strayIds.forEach((strayId) => {
-            this.removeNodeInner(strayId);
-        });
+        this.processRecursive(callback, nodeIds);
+        this.garbageCollect(nodeIds);
     }
 
-    private processInner(
-        callback: (node: Type) => boolean,
-        nodeIdsToProcess: string[]
-    ) {
-        // Build topologically sorted list via DFS discoverable only from dirty nodes.
-        // After visiting all nodes, the list is in reverse topological order
+    private garbageCollect(nodeIds: Set<string>) {
+        // Visit nodeIds via DFS to identify stray ids that do not reach retained nodes
         const visited: Record<string, boolean> = {};
         const reachesRetained: Record<string, boolean> = {};
-        const sortedIds: string[] = [];
-        const strayIds: string[] = [];
+        const garbageIds: string[] = [];
         const dfsRecurse = (nodeId: string): boolean => {
             if (visited[nodeId]) return reachesRetained[nodeId];
             visited[nodeId] = true;
@@ -257,40 +240,115 @@ export class DAG<Type extends object> {
                 }
             });
             if (anyDependenciesRetained) reachesRetained[nodeId] = true;
-            sortedIds.push(nodeId);
             if (!reachesRetained[nodeId]) {
-                strayIds.push(nodeId);
+                garbageIds.push(nodeId);
                 return false;
             } else {
                 return true;
             }
         };
-        nodeIdsToProcess.forEach((nodeId) => {
+        nodeIds.forEach((nodeId) => {
             dfsRecurse(nodeId);
         });
 
+        // GC all the garbage nodes
+        garbageIds.forEach((nodeId) => {
+            this.removeNodeInner(nodeId);
+        });
+    }
+
+    processRecursive(
+        callback: (node: Type) => boolean,
+        nodeIds: Set<string>
+    ): {
+        visited: Record<string, boolean>;
+        reachesRetained: Record<string, boolean>;
+    } {
+        const { sortedIds, visited, reachesRetained } =
+            this.toposortConnected(nodeIds);
+        if (sortedIds.length === 0) {
+            return { visited, reachesRetained };
+        }
+
+        const toVisit = new Set(sortedIds);
+        const toProcessIds = new Set(nodeIds);
+
         // Visit the dirty nodes in topological order, skipping nodes that are not retained
-        // If a node is not dirty, skip it.
         // If a node is dirty and the visitor returns true, the node is considered "not dirty" and processing continues
         // If a node is dirty and the visitor returns false, the node is considered "dirty" and all adjacent destination nodes are marked as dirty.
         for (let i = sortedIds.length - 1; i >= 0; --i) {
             const nodeId = sortedIds[i];
-            if (this.dirtyNodes[nodeId] && reachesRetained[nodeId]) {
+            if (this.dirtyNodes[nodeId] === true) {
                 const node = this.nodesSet[nodeId];
                 const isEqual = callback(node);
                 if (!isEqual) {
                     const toIds = this.getDependenciesInner(nodeId);
                     toIds.forEach((toId) => {
-                        if (this.graph[nodeId][toId] & DAG.EDGE_HARD) {
+                        if (
+                            this.graph[nodeId][toId] & DAG.EDGE_HARD ||
+                            this.dirtyNodes[toId]
+                        ) {
+                            // XXX this is a hack. By checking if this.dirtyNodes[toId] is true, this works around a
+                            // very edge-case problem where trackedData root nodes have soft edges on all their fields,
+                            // but can dirty their fields. If a notification on a view causes a field to be dirtied, we
+                            // should continue processing.
+                            // This isn't _that_ bad, but if this is changed so that we ensure processing flushes until
+                            // no new dirty nodes are found, then this can be removed
                             this.dirtyNodes[toId] = true;
+                            if (!toVisit.has(toId)) {
+                                // TODO: THIS IS PROBABLY VERY BROKEN!!!
+                                // DAG has changed and a dirtied node isn't in the prior topographic sort!
+                                // So... add it to the set of things we'll visit after going through this topographic sort!
+                                toProcessIds.add(toId);
+                            }
                         }
                     });
                 }
                 delete this.dirtyNodes[nodeId];
+                toProcessIds.delete(nodeId);
             }
         }
 
-        return strayIds;
+        // Not all of the nodes we wanted to process may have been processed (if they did not reach a retained node)
+        // However the act of processing other nodes may have caused these nodes to now reach a retained node
+        // So we retry with this (smaller) set
+        if (toProcessIds.size > 0) {
+            return this.processRecursive(callback, toProcessIds);
+        }
+        return { visited, reachesRetained };
+    }
+
+    /**
+     * Sort the provided nodeIds topologically, excluding those that do not reach a retained node.
+     */
+    private toposortConnected(nodeIds: Set<string>) {
+        // Build topologically sorted list via DFS discoverable only from dirty nodes.
+        // After visiting all nodes, the list is in reverse topological order
+        const visited: Record<string, boolean> = {};
+        const reachesRetained: Record<string, boolean> = {};
+        const sortedIds: string[] = [];
+        const dfsRecurse = (nodeId: string): boolean => {
+            if (visited[nodeId]) return reachesRetained[nodeId];
+            visited[nodeId] = true;
+            reachesRetained[nodeId] = this.retained[nodeId];
+            const toIds = this.getDependenciesInner(nodeId);
+            let anyDependenciesRetained = false;
+            toIds.forEach((toId) => {
+                if (dfsRecurse(toId)) {
+                    anyDependenciesRetained = true;
+                }
+            });
+            if (anyDependenciesRetained) reachesRetained[nodeId] = true;
+            if (reachesRetained[nodeId]) {
+                sortedIds.push(nodeId);
+                return true;
+            }
+            return false;
+        };
+        nodeIds.forEach((nodeId) => {
+            dfsRecurse(nodeId);
+        });
+        return { sortedIds, visited, reachesRetained };
     }
 
     /**

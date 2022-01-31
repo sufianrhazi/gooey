@@ -271,16 +271,15 @@ suite('collection', () => {
         const m = model({ isActive: false });
         const coll = collection<string>([]);
         const view = coll.mapView((item) => item.length);
-        const calculation = calc(
-            () => m.isActive && view.some((item) => item === 3)
-        );
+        const calculation = calc(() => {
+            return m.isActive && view.some((item) => item === 3);
+        });
         retain(view);
         retain(calculation);
         calculation();
 
         m.isActive = true;
         coll.push('foo');
-
         flush();
 
         assert.is(true, m.isActive);
