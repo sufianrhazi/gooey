@@ -337,7 +337,11 @@ export function flush() {
     // If by virtue of processing the DAG, writes were performed, we could need to flush again.
     // It's also possible that by virtue of processing the DAG, writes were performed and processed while the DAG was being processed, in which case we don't need to flush again.
     // TODO: make it so that we "pause" notifications while processing the DAG, so we don't have notify() callback called when needsFlush gets assigned to false here.
-    needsFlush = globalDependencyGraph.hasDirtyNodes();
+    const hasDirtyNodes = globalDependencyGraph.hasDirtyNodes();
+    if (hasDirtyNodes) {
+        needsFlush = true;
+        flush();
+    }
 
     DEBUG && debugSubscription && debugSubscription(debug(), `2: after visit`);
 
