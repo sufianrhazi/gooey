@@ -1,5 +1,53 @@
 import { DAG } from './dag';
-import { suite, test, beforeEach, assert } from './test';
+import { suite, test, beforeEach, assert } from '@srhazi/test-jig';
+
+suite('Graph', () => {
+    const a = { name: 'a', $__id: 0 };
+    const b = { name: 'b', $__id: 1 };
+    const c = { name: 'c', $__id: 2 };
+    const d = { name: 'd', $__id: 3 };
+    const e = { name: 'e', $__id: 4 };
+    const f = { name: 'f', $__id: 5 };
+    const g = { name: 'g', $__id: 6 };
+    const h = { name: 'h', $__id: 7 };
+    const i = { name: 'i', $__id: 8 };
+
+    interface TNode {
+        name: string;
+    }
+
+    test('cycles can be identified', () => {
+        const graph = new DAG<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+        graph.addNode(d);
+        graph.addNode(e);
+
+        graph.addEdge(a, b, DAG.EDGE_HARD);
+        graph.addEdge(b, c, DAG.EDGE_HARD);
+        graph.addEdge(c, d, DAG.EDGE_HARD);
+        graph.addEdge(d, b, DAG.EDGE_HARD);
+        graph.addEdge(c, e, DAG.EDGE_HARD);
+        graph.retain(e);
+        graph.markNodeDirty(a);
+
+        const items: TNode[][] = [];
+
+        graph.process((group) => {
+            items.push(group);
+            return false;
+        });
+
+        assert.arrayEqualsUnsorted([a], items[0]);
+        assert.arrayEqualsUnsorted([b, c, d], items[1]);
+        assert.arrayEqualsUnsorted([e], items[2]);
+        // Topgraphic sort:
+        // - [a]
+        // - [b,c,d]
+        // - [e]
+    });
+});
 
 suite('DAG', () => {
     const a = { name: 'a', $__id: 0 };
@@ -106,7 +154,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item);
+                    items.push(item[0]);
                     return true;
                 });
 
@@ -119,7 +167,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item);
+                    items.push(item[0]);
                     return false;
                 });
 
@@ -138,7 +186,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item);
+                    items.push(item[0]);
                     return false;
                 });
 
@@ -169,7 +217,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item);
+                    items.push(item[0]);
                     return true;
                 });
 
@@ -184,8 +232,8 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item);
-                    if (item === c) return true;
+                    items.push(item[0]);
+                    if (item[0] === c) return true;
                     return false;
                 });
 
@@ -201,8 +249,8 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item);
-                    if (item === c) return true;
+                    items.push(item[0]);
+                    if (item[0] === c) return true;
                     return false;
                 });
 
@@ -220,7 +268,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item);
+                    items.push(item[0]);
                     return false;
                 });
 
@@ -300,7 +348,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item);
+                    items.push(item[0]);
                     return true;
                 });
 
@@ -313,7 +361,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item);
+                    items.push(item[0]);
                     return false;
                 });
 
@@ -328,7 +376,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item);
+                    items.push(item[0]);
                     return false;
                 });
 

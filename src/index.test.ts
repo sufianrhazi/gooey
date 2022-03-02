@@ -1,4 +1,4 @@
-import { suite, test, beforeEach, assert } from './test';
+import { suite, test, beforeEach, assert } from '@srhazi/test-jig';
 import * as revise from './index';
 
 suite('behavior', () => {

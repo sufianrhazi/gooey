@@ -243,10 +243,7 @@ export function processChange(item: DAGNode) {
     if (hardEdges.length > 0) {
         const marked = globalDependencyGraph.markNodeDirty(item);
         DEBUG && log.debug('processChange', item, marked ? 'fresh' : 'stale');
-        if (!needsFlush) {
-            needsFlush = true;
-            notify();
-        }
+        scheduleFlush();
     }
 }
 
@@ -275,6 +272,13 @@ export function subscribe(listener: Listener): void {
     subscribeListener = listener;
     if (needsFlush) {
         subscribeListener();
+    }
+}
+
+function scheduleFlush() {
+    if (!needsFlush) {
+        needsFlush = true;
+        notify();
     }
 }
 
@@ -307,41 +311,39 @@ export function flush() {
     DEBUG && debugSubscription && debugSubscription(debug(), '0: flush start');
 
     // Then flush dependencies in topological order
-    globalDependencyGraph.process((item) => {
-        let result = false;
-        if (isCalculation(item)) {
-            DEBUG && log.debug('flushing calculation', debugNameFor(item));
-            const recalculation = item[RecalculationTag];
-            result = recalculation();
-        } else if (isCollection(item)) {
-            DEBUG && log.debug('flushing collection', debugNameFor(item));
-            return item[FlushKey]();
-        } else if (isModel(item)) {
-            DEBUG && log.debug('flushing model', debugNameFor(item));
-            return item[FlushKey]();
-        } else if (isSubscription(item)) {
-            DEBUG && log.debug('flushing subscription', debugNameFor(item));
-            return item[FlushKey]();
-        } else {
-            DEBUG && log.debug('flushing other', debugNameFor(item));
-        }
+    globalDependencyGraph.process((connectedItems) => {
+        if (connectedItems.length === 1) {
+            const item = connectedItems[0];
+            let result = false;
+            if (isCalculation(item)) {
+                DEBUG && log.debug('flushing calculation', debugNameFor(item));
+                const recalculation = item[RecalculationTag];
+                result = recalculation();
+            } else if (isCollection(item)) {
+                DEBUG && log.debug('flushing collection', debugNameFor(item));
+                return item[FlushKey]();
+            } else if (isModel(item)) {
+                DEBUG && log.debug('flushing model', debugNameFor(item));
+                return item[FlushKey]();
+            } else if (isSubscription(item)) {
+                DEBUG && log.debug('flushing subscription', debugNameFor(item));
+                return item[FlushKey]();
+            } else {
+                DEBUG && log.debug('flushing other', debugNameFor(item));
+            }
 
-        DEBUG &&
-            debugSubscription &&
-            debugSubscription(
-                debug(item),
-                `1: visited ${debugNameFor(item)}: isEqual=${result}`
-            );
-        return result;
+            DEBUG &&
+                debugSubscription &&
+                debugSubscription(
+                    debug(item),
+                    `1: visited ${debugNameFor(item)}: isEqual=${result}`
+                );
+            return result;
+        } else {
+            // TODO: how to handle cycles!!!
+            return false;
+        }
     });
-    // If by virtue of processing the DAG, writes were performed, we could need to flush again.
-    // It's also possible that by virtue of processing the DAG, writes were performed and processed while the DAG was being processed, in which case we don't need to flush again.
-    // TODO: make it so that we "pause" notifications while processing the DAG, so we don't have notify() callback called when needsFlush gets assigned to false here.
-    const hasDirtyNodes = globalDependencyGraph.hasDirtyNodes();
-    if (hasDirtyNodes) {
-        needsFlush = true;
-        flush();
-    }
 
     DEBUG && debugSubscription && debugSubscription(debug(), `2: after visit`);
 
@@ -432,6 +434,18 @@ export function debug(activeItem?: any): string {
             penwidth: activeItem === item ? '5.0' : '1.0',
         };
     });
+}
+
+export function debugState() {
+    return {
+        globalDependencyGraph,
+        activeCalculations,
+        refcountMap,
+        needsFlush,
+        flushPromise,
+        resolveFlushPromise,
+        subscribeListener,
+    };
 }
 
 export function debugSubscribe(

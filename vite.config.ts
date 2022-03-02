@@ -10,7 +10,6 @@ const demoFiles = fs
         return entryObj;
     }, {} as Record<string, string>);
 
-//throw new Error(JSON.stringify(demoFiles));
 export default defineConfig({
     esbuild: {
         jsxFactory: 'Revise',
@@ -20,13 +19,11 @@ export default defineConfig({
         rollupOptions: {
             input: {
                 ...demoFiles,
-                testsandbox: 'src/testsandbox.html',
-                testrunner: 'src/testrunner.html',
             },
         },
     },
     define: {
-        DEBUG: false,
+        DEBUG: true,
         LIB_VERSION: '"development"',
     },
 });

@@ -1,4 +1,4 @@
-import { suite, test, assert } from './test';
+import { suite, test, assert } from '@srhazi/test-jig';
 import { model } from './model';
 import { collection } from './collection';
 import { calc, flush, retain, release } from './calc';

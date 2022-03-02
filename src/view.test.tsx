@@ -9,12 +9,12 @@ import Revise, {
     reset,
     createContext,
 } from './index';
-import { suite, test, beforeEach, assert } from './test';
+import { suite, test, beforeEach, assert } from '@srhazi/test-jig';
 
-const testRoot = document.getElementById('test-root');
-if (!testRoot) throw new Error('oops');
+let testRoot: any;
 
 beforeEach(() => {
+    testRoot = document.getElementById('test-root');
     reset();
 });
 

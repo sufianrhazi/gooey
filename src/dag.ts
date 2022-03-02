@@ -200,155 +200,144 @@ export class DAG<Type extends object> {
     }
 
     /**
-     * Process the DAG, visiting dirty nodes topologically that have a data dependency on a retained node.
+     * Process the graph, visiting strongly connected nodes topologically that have a data dependency on a retained
+     * node.
      *
-     * When building topologically sorted list, refcount dirtiness (the number of incoming edges that are from dirty
-     * nodes).
+     * This uses Tarjan's strongly connected component algorithm to both segment strongly connected nodes and
+     * topologically sort them.
      *
-     * If a recalculation produces the same value, decrement the refcount on all destination edges.
-     *
-     * If a node while visiting topologically is at 0, no need to recalculate; decrement all of its destination nodes
-     * and proceed.
-     *
-     * This way we can prevent recalculations that are triggered if the calculation is "equal".
-     *
-     * Because the DAG may change while processing nodes; nodes that were skipped because they do not reach retained
-     * nodes may now be retained after processing. In this case, we continue to process stray nodes until we cannot
-     * process any more -- after which we can remove them.
+     * The graph may change while processing nodes: this will likely be a constant source of problems.
      */
-    process(callback: (node: Type) => boolean) {
-        const nodeIds = new Set(Object.keys(this.dirtyNodes));
+    process(callback: (componentNodes: Type[]) => boolean) {
+        type Vertex = {
+            nodeId: string;
+            index?: number;
+            lowlink?: number;
+            onStack?: boolean;
+            reachesRetained?: boolean;
+        };
+        let index = 0;
+        const nodeVertex: Record<string, Vertex> = {};
+        const stack: Vertex[] = [];
+        const reverseTopoSort: Vertex[][] = [];
 
-        this.processRecursive(callback, nodeIds);
-        this.garbageCollect(nodeIds);
-    }
+        const strongconnect = (vertex: Vertex) => {
+            vertex.index = index;
+            vertex.lowlink = index;
+            index = index + 1;
+            stack.push(vertex);
+            vertex.onStack = true;
 
-    private garbageCollect(nodeIds: Set<string>) {
-        // Visit nodeIds via DFS to identify stray ids that do not reach retained nodes
-        const visited: Record<string, boolean> = {};
-        const reachesRetained: Record<string, boolean> = {};
-        const garbageIds: string[] = [];
-        const dfsRecurse = (nodeId: string): boolean => {
-            if (visited[nodeId]) return reachesRetained[nodeId];
-            visited[nodeId] = true;
-            reachesRetained[nodeId] = this.retained[nodeId];
-            const toIds = this.getDependenciesInner(nodeId);
-            let anyDependenciesRetained = false;
-            toIds.forEach((toId) => {
-                if (dfsRecurse(toId)) {
-                    anyDependenciesRetained = true;
+            // Consider successors of v
+            this.getDependenciesInner(vertex.nodeId).forEach((toId) => {
+                if (!nodeVertex[toId]) {
+                    nodeVertex[toId] = {
+                        nodeId: toId,
+                        reachesRetained: !!this.retained[toId],
+                    };
+                }
+                const toVertex = nodeVertex[toId];
+                if (toVertex.index === undefined) {
+                    // Successor toVertex has not yet been visited; recurse on it
+                    strongconnect(toVertex);
+                    vertex.lowlink = Math.min(
+                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                        vertex.lowlink!,
+                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                        toVertex.lowlink!
+                    );
+                } else if (toVertex.onStack) {
+                    // Successor toVertex is in stack S and hence in the current SCC
+                    // If toVertex is not on stack, then (vertex, toVertex) is an edge pointing to an SCC already found and must be ignored
+                    // Note: The next line may look odd - but is correct.
+                    // It says toVertex.index not toVertex.lowlink; that is deliberate and from the original paper
+                    vertex.lowlink = Math.min(
+                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                        vertex.lowlink!,
+                        toVertex.index
+                    );
+                }
+                if (toVertex.reachesRetained) {
+                    vertex.reachesRetained = true;
                 }
             });
-            if (anyDependenciesRetained) reachesRetained[nodeId] = true;
-            if (!reachesRetained[nodeId]) {
-                garbageIds.push(nodeId);
-                return false;
-            } else {
-                return true;
+
+            // If vertex is a root node, pop the stack and generate an SCC
+            if (vertex.lowlink === vertex.index) {
+                // start a new strongly connected component
+                const component: Vertex[] = [];
+                for (;;) {
+                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                    const toVertex = stack.pop()!;
+                    toVertex.onStack = false;
+                    // add toVertex to current strongly connected component
+                    component.push(toVertex);
+                    if (toVertex === vertex) {
+                        break;
+                    }
+                }
+                // output the current strongly connected component
+                reverseTopoSort.push(component);
             }
         };
-        nodeIds.forEach((nodeId) => {
-            dfsRecurse(nodeId);
+
+        Object.keys(this.dirtyNodes).forEach((nodeId) => {
+            if (!nodeVertex[nodeId]) {
+                nodeVertex[nodeId] = {
+                    nodeId,
+                    reachesRetained: !!this.retained[nodeId],
+                };
+                strongconnect(nodeVertex[nodeId]);
+            }
         });
 
-        // GC all the garbage nodes
-        garbageIds.forEach((nodeId) => {
-            this.removeNodeInner(nodeId);
-        });
-    }
-
-    processRecursive(
-        callback: (node: Type) => boolean,
-        nodeIds: Set<string>
-    ): {
-        visited: Record<string, boolean>;
-        reachesRetained: Record<string, boolean>;
-    } {
-        const { sortedIds, visited, reachesRetained } =
-            this.toposortConnected(nodeIds);
-        if (sortedIds.length === 0) {
-            return { visited, reachesRetained };
-        }
-
-        const toVisit = new Set(sortedIds);
-        const toProcessIds = new Set(nodeIds);
-
-        // Visit the dirty nodes in topological order, skipping nodes that are not retained
-        // If a node is dirty and the visitor returns true, the node is considered "not dirty" and processing continues
-        // If a node is dirty and the visitor returns false, the node is considered "dirty" and all adjacent destination nodes are marked as dirty.
-        for (let i = sortedIds.length - 1; i >= 0; --i) {
-            const nodeId = sortedIds[i];
-            if (this.dirtyNodes[nodeId] === true) {
-                const node = this.nodesSet[nodeId];
-                const isEqual = callback(node);
+        const toRemove: string[] = [];
+        for (let i = reverseTopoSort.length - 1; i >= 0; --i) {
+            const nodeIdSet: Record<string, boolean> = {};
+            const nodeIds: string[] = [];
+            let anyDirty = false;
+            reverseTopoSort[i].forEach((vertex) => {
+                nodeIdSet[vertex.nodeId] = true;
+                nodeIds.push(vertex.nodeId);
+                if (vertex.reachesRetained) {
+                    // Note: if any vertex in a group reaches retained, they **all** do
+                    // TODO: confirm that reachesRetained is correct for all types of graphs
+                    anyDirty = anyDirty || this.dirtyNodes[vertex.nodeId];
+                } else {
+                    toRemove.push(vertex.nodeId);
+                }
+            });
+            if (anyDirty) {
+                let isEqual = false;
+                try {
+                    isEqual = callback(
+                        nodeIds.map((nodeId) => this.nodesSet[nodeId])
+                    );
+                    nodeIds.forEach((nodeId) => {
+                        delete this.dirtyNodes[nodeId];
+                    });
+                } catch (e) {
+                    log.error('Caught error during flush', e);
+                }
                 if (!isEqual) {
-                    const toIds = this.getDependenciesInner(nodeId);
-                    toIds.forEach((toId) => {
-                        if (
-                            this.graph[nodeId][toId] & DAG.EDGE_HARD ||
-                            this.dirtyNodes[toId]
-                        ) {
-                            // XXX this is a hack. By checking if this.dirtyNodes[toId] is true, this works around a
-                            // very edge-case problem where trackedData root nodes have soft edges on all their fields,
-                            // but can dirty their fields. If a notification on a view causes a field to be dirtied, we
-                            // should continue processing.
-                            // This isn't _that_ bad, but if this is changed so that we ensure processing flushes until
-                            // no new dirty nodes are found, then this can be removed
-                            this.dirtyNodes[toId] = true;
-                            if (!toVisit.has(toId)) {
-                                // TODO: THIS IS PROBABLY VERY BROKEN!!!
-                                // DAG has changed and a dirtied node isn't in the prior topographic sort!
-                                // So... add it to the set of things we'll visit after going through this topographic sort!
-                                toProcessIds.add(toId);
+                    nodeIds.forEach((nodeId) => {
+                        this.getDependenciesInner(
+                            nodeId,
+                            DAG.EDGE_HARD
+                        ).forEach((toId) => {
+                            if (!nodeIdSet[toId]) {
+                                // Prevent circular dependencies!
+                                this.dirtyNodes[toId] = true;
                             }
-                        }
+                        });
                     });
                 }
-                delete this.dirtyNodes[nodeId];
-                toProcessIds.delete(nodeId);
             }
         }
 
-        // Not all of the nodes we wanted to process may have been processed (if they did not reach a retained node)
-        // However the act of processing other nodes may have caused these nodes to now reach a retained node
-        // So we retry with this (smaller) set
-        if (toProcessIds.size > 0) {
-            return this.processRecursive(callback, toProcessIds);
-        }
-        return { visited, reachesRetained };
-    }
-
-    /**
-     * Sort the provided nodeIds topologically, excluding those that do not reach a retained node.
-     */
-    private toposortConnected(nodeIds: Set<string>) {
-        // Build topologically sorted list via DFS discoverable only from dirty nodes.
-        // After visiting all nodes, the list is in reverse topological order
-        const visited: Record<string, boolean> = {};
-        const reachesRetained: Record<string, boolean> = {};
-        const sortedIds: string[] = [];
-        const dfsRecurse = (nodeId: string): boolean => {
-            if (visited[nodeId]) return reachesRetained[nodeId];
-            visited[nodeId] = true;
-            reachesRetained[nodeId] = this.retained[nodeId];
-            const toIds = this.getDependenciesInner(nodeId);
-            let anyDependenciesRetained = false;
-            toIds.forEach((toId) => {
-                if (dfsRecurse(toId)) {
-                    anyDependenciesRetained = true;
-                }
-            });
-            if (anyDependenciesRetained) reachesRetained[nodeId] = true;
-            if (reachesRetained[nodeId]) {
-                sortedIds.push(nodeId);
-                return true;
-            }
-            return false;
-        };
-        nodeIds.forEach((nodeId) => {
-            dfsRecurse(nodeId);
+        toRemove.forEach((nodeId) => {
+            this.removeNodeInner(nodeId);
         });
-        return { sortedIds, visited, reachesRetained };
     }
 
     /**

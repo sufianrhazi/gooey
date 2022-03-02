@@ -16,7 +16,7 @@ import Revise, {
 } from './index';
 import { DAG } from './dag';
 import { randint } from './util';
-import { suite, test, beforeEach, afterEach, assert } from './test';
+import { suite, test, beforeEach, afterEach, assert } from '@srhazi/test-jig';
 
 const testRoot = document.getElementById('test-root');
 if (!testRoot) throw new Error('oops');

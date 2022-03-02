@@ -15,6 +15,7 @@ export {
     retain,
     release,
     debug,
+    debugState,
     debugSubscribe,
 } from './calc';
 
@@ -30,4 +31,5 @@ export { ref, createContext, InvariantError } from './types';
 
 export default createElement;
 
-export const VERSION = LIB_VERSION;
+export const VERSION =
+    typeof LIB_VERSION === 'string' ? LIB_VERSION : 'development';

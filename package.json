@@ -1,7 +1,7 @@
 {
   "name": "@srhazi/revise",
   "version": "0.5.0",
-  "description": "A minimal effort UI library",
+  "description": "A library for building UI",
   "main": "build/esm/index.js",
   "type": "module",
   "types": "build/tsc/src/index.d.ts",
@@ -17,11 +17,12 @@
   },
   "devDependencies": {
     "@hpcc-js/wasm": "^1.12.7",
+    "@srhazi/test-jig": "git+https://git.abstract.properties/test-jig.git#f21d4faaae94819f5e9daab6a52e0116b3b10088",
     "@types/lodash": "^4.14.174",
     "@typescript-eslint/eslint-plugin": "^5.2.0",
     "@typescript-eslint/parser": "^5.2.0",
     "chart.js": "^3.7.0",
-    "esbuild": "^0.13.2",
+    "esbuild": "^0.14.23",
     "eslint": "^8.1.0",
     "eslint-plugin-react": "^7.26.1",
     "lodash": "^4.17.21",

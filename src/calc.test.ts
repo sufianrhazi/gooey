@@ -1,7 +1,8 @@
-import { suite, test, assert } from './test';
+import { suite, test, assert } from '@srhazi/test-jig';
 import { model } from './model';
 import { collection } from './collection';
 import { flush, calc, effect, retain, release } from './calc';
+import { Calculation } from './types';
 
 suite('calc', () => {
     test('memoizes when called multiple times', () => {
@@ -318,5 +319,39 @@ suite('effect', () => {
         const after = d();
         assert.is(after, before);
         release(d);
+    });
+
+    test('cycles can be caught', () => {
+        const calculations: Record<string, Calculation<string>> = {};
+        const data = model({
+            isCycle: false,
+        });
+        calculations.a = calc(() => {
+            if (data.isCycle) {
+                return calculations.c() + 'x';
+            } else {
+                return 'a';
+            }
+        });
+        calculations.b = calc(() => {
+            return calculations.a() + 'b';
+        });
+        calculations.c = calc(() => {
+            return calculations.b() + 'c';
+        });
+        retain(calculations.a);
+        retain(calculations.b);
+        retain(calculations.c);
+
+        assert.is('a', calculations.a());
+        assert.is('ab', calculations.b());
+        assert.is('abc', calculations.c());
+
+        data.isCycle = true;
+        flush();
+
+        assert.throwsMatching(/cycle/, () => calculations.a());
+        assert.throwsMatching(/cycle/, () => calculations.b());
+        assert.throwsMatching(/cycle/, () => calculations.c());
     });
 });

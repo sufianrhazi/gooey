@@ -26,15 +26,27 @@ export function makeGraphvizDebuggerRef() {
         const currentFrameLabel = document.createElement('div');
         const descLabel = document.createElement('div');
 
+        const startFrameButton = document.createElement('button');
+        startFrameButton.textContent = '\u23ee';
+        const endFrameButton = document.createElement('button');
+        endFrameButton.textContent = '\u23ed';
         const prevFrameButton = document.createElement('button');
         prevFrameButton.textContent = '\u23ea';
         const nextFrameButton = document.createElement('button');
         nextFrameButton.textContent = '\u23e9';
+        const clearFrameButton = document.createElement('button');
+        clearFrameButton.textContent = '\u23cf';
         const buttons = document.createElement('div');
         const info = document.createElement('div');
         info.append(currentFrameLabel, descLabel);
         const graphContainer = document.createElement('div');
-        buttons.append(prevFrameButton, nextFrameButton);
+        buttons.append(
+            startFrameButton,
+            prevFrameButton,
+            nextFrameButton,
+            endFrameButton,
+            clearFrameButton
+        );
         graphvizEl.append(buttons, info, graphContainer);
 
         function updateLabel() {
@@ -68,6 +80,22 @@ export function makeGraphvizDebuggerRef() {
         });
         nextFrameButton.addEventListener('click', () => {
             currentFrame = Math.min(debugData.length - 1, currentFrame + 1);
+            update();
+        });
+        startFrameButton.addEventListener('click', () => {
+            currentFrame = 0;
+            update();
+        });
+        endFrameButton.addEventListener('click', () => {
+            currentFrame = debugData.length - 1;
+            update();
+        });
+        clearFrameButton.addEventListener('click', () => {
+            debugData.splice(0, debugData.length, {
+                graphviz: debug(),
+                detail: 'reset',
+            });
+            currentFrame = 0;
             update();
         });
         update();
