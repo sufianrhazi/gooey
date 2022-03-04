@@ -17,7 +17,7 @@
   },
   "devDependencies": {
     "@hpcc-js/wasm": "^1.12.7",
-    "@srhazi/test-jig": "git+https://git.abstract.properties/test-jig.git#f21d4faaae94819f5e9daab6a52e0116b3b10088",
+    "@srhazi/test-jig": "git+https://git.abstract.properties/test-jig.git#7dd27f0445d14820cf2be13317e52a6ffccaa350",
     "@types/lodash": "^4.14.174",
     "@typescript-eslint/eslint-plugin": "^5.2.0",
     "@typescript-eslint/parser": "^5.2.0",

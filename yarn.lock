@@ -110,7 +110,7 @@ __metadata:
   resolution: "@srhazi/revise@workspace:."
   dependencies:
     "@hpcc-js/wasm": ^1.12.7
-    "@srhazi/test-jig": "git+https://git.abstract.properties/test-jig.git#f21d4faaae94819f5e9daab6a52e0116b3b10088"
+    "@srhazi/test-jig": "git+https://git.abstract.properties/test-jig.git#7dd27f0445d14820cf2be13317e52a6ffccaa350"
     "@types/lodash": ^4.14.174
     "@typescript-eslint/eslint-plugin": ^5.2.0
     "@typescript-eslint/parser": ^5.2.0
@@ -127,14 +127,14 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@srhazi/test-jig@git+https://git.abstract.properties/test-jig.git#f21d4faaae94819f5e9daab6a52e0116b3b10088":
+"@srhazi/test-jig@git+https://git.abstract.properties/test-jig.git#7dd27f0445d14820cf2be13317e52a6ffccaa350":
   version: 0.0.1
-  resolution: "@srhazi/test-jig@https://git.abstract.properties/test-jig.git#commit=f21d4faaae94819f5e9daab6a52e0116b3b10088"
+  resolution: "@srhazi/test-jig@https://git.abstract.properties/test-jig.git#commit=7dd27f0445d14820cf2be13317e52a6ffccaa350"
   dependencies:
     "@srhazi/revise": 0.5.0
     lodash: ^4.17.21
     yargs: ^17.3.1
-  checksum: 764f4e4fb650ce3094c6f86cfd73775c05950bd9b196d3a0e08e7c4dbc9a7e18df0ce4bd458ed335db1227a59c1dae7d15d0870792cb3c0d952bfcd08747a2ee
+  checksum: 6a33b461a26c67b23297d88507fcda2263d1056886a124141aceff449e8cd076b46e3c28c3d7153209fc5a1ac8610250b919875b52138deb4a1710399112b1ec
   languageName: node
   linkType: hard
 
