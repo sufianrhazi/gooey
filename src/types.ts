@@ -1,4 +1,3 @@
-import { uniqueid } from './util';
 export class InvariantError extends Error {
     detail?: any;
     constructor(msg: string, detail?: any) {
@@ -9,8 +8,9 @@ export class InvariantError extends Error {
 
 export const TypeTag = Symbol('reviseType');
 export const DataTypeTag = Symbol('dataTypeTag');
-const CalculationTypeTag = Symbol('calculationType');
-export const RecalculationTag = Symbol('recalculate');
+export const CalculationTypeTag = Symbol('calculationType');
+export const CalculationRecalculateTag = Symbol('calculationRecalculateTag');
+export const CalculationMarkCycleTag = Symbol('calculationMarkCycle');
 
 export const ObserveKey = Symbol('observe');
 export const GetSubscriptionNodeKey = Symbol('getSubscriptionNode');
@@ -200,12 +200,16 @@ export function isContext(val: any): val is Context<any> {
 /**
  * A calculation cell that recalculates when dependencies change
  */
-export type Calculation<Result> = (() => Result) & {
+export interface Calculation<Result> {
+    (): Result;
     $__id: string;
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
-    [RecalculationTag]: (isCycle: boolean) => boolean;
-};
+    flush: () => Result | undefined;
+    onCycle: (handler: () => Result) => this;
+    [CalculationMarkCycleTag]: () => void;
+    [CalculationRecalculateTag]: () => boolean;
+}
 
 export interface ModelField {
     $__id: string;
@@ -213,30 +217,6 @@ export interface ModelField {
         [DataTypeTag]: any;
     };
     key: string | number | symbol;
-}
-
-export function makeCalculation<Ret>(
-    fn: () => Ret,
-    recalcFn: (isCycle: boolean) => boolean
-): Calculation<Ret> {
-    return Object.assign(fn, {
-        $__id: uniqueid(),
-        [TypeTag]: 'calculation' as const,
-        [CalculationTypeTag]: 'calculation' as const,
-        [RecalculationTag]: recalcFn,
-    });
-}
-
-export function makeEffect(
-    fn: () => void,
-    recalcFn: (isCycle: boolean) => boolean
-): Calculation<void> {
-    return Object.assign(fn, {
-        $__id: uniqueid(),
-        [TypeTag]: 'calculation' as const,
-        [CalculationTypeTag]: 'effect' as const,
-        [RecalculationTag]: recalcFn,
-    });
 }
 
 export function isModel(thing: any): thing is Model<unknown> {

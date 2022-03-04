@@ -307,6 +307,7 @@ suite('effect', () => {
     });
 
     test('calculations can provide custom equality check, which causes prior value to be returned', () => {
+        setLogLevel('debug');
         const dependency = model({
             val: { left: 'l', right: 'r' },
         });
@@ -336,8 +337,28 @@ suite('effect', () => {
         assert.is(after, before);
         release(d);
     });
+});
 
-    test('cycle-unaware calculations that are part of cycles throw errors when called', () => {
+suite('cycles', () => {
+    test('calculations that are cycles throw an error', () => {
+        const calculations: Record<string, Calculation<string>> = {};
+        calculations.a = calc(() => {
+            return calculations.c() + 'a';
+        }, 'a');
+        calculations.b = calc(() => {
+            return calculations.a() + 'b';
+        }, 'b');
+        calculations.c = calc(() => {
+            return calculations.b() + 'c';
+        }, 'c');
+        retain(calculations.a);
+        retain(calculations.b);
+        retain(calculations.c);
+
+        assert.throwsMatching(/cycle reached/i, () => calculations.a());
+    });
+
+    test('calculations that become cycles throw errors when called', () => {
         const calculations: Record<string, Calculation<string>> = {};
         const data = model({
             isCycle: false,
@@ -366,9 +387,9 @@ suite('effect', () => {
         data.isCycle = true;
         flush();
 
-        assert.throwsMatching(/cycle/, () => calculations.a());
-        assert.throwsMatching(/cycle/, () => calculations.b());
-        assert.throwsMatching(/cycle/, () => calculations.c());
+        assert.throwsMatching(/cycle reached/i, () => calculations.a());
+        assert.throwsMatching(/cycle reached/i, () => calculations.b());
+        assert.throwsMatching(/cycle reached/i, () => calculations.c());
     });
 
     test('dirtying cycle-unaware calculations that are part of cycles does not throw an error if flushed', () => {
@@ -412,61 +433,75 @@ suite('effect', () => {
         assert.deepEqual([], calls);
     });
 
-    test('items dependent on cycle values do not throw an error when cycle dirtied and flushed', () => {
-        // This is probably a broken test.
-        // We should probably not process any nodes that are dependent on cycles _by definition_
-        // To "catch" a cycle, a calculation can "catch" on a cycle and return a fixed value
-        // calc(fn).onCycle((retry) => {
-        //   // Somehow call retry() when the cycle is probably fixed
-        //   return depnedentValue;
-        // });
-        // To "fix" a cycle, a calculation can be retried... somehow
+    test('cycles can be caught', () => {
         setLogLevel('debug');
         const calculations: Record<string, Calculation<string>> = {};
-        const data = model({
-            isCycle: false,
-            value: 'x',
-        });
-        let calls: string[] = [];
+        const calls: string[] = [];
         calculations.a = calc(() => {
             calls.push('a');
-            if (data.isCycle) {
-                return calculations.c() + data.value;
-            } else {
-                return 'a';
-            }
-        }, 'a');
+            return calculations.c() + 'a';
+        }, 'a').onCycle(() => {
+            calls.push('cycle:a');
+            return 'A';
+        });
         calculations.b = calc(() => {
             calls.push('b');
             return calculations.a() + 'b';
-        }, 'b');
+        }, 'b').onCycle(() => {
+            calls.push('cycle:b');
+            return 'B';
+        });
         calculations.c = calc(() => {
             calls.push('c');
             return calculations.b() + 'c';
-        }, 'c');
+        }, 'c').onCycle(() => {
+            calls.push('cycle:c');
+            return 'C';
+        });
         calculations.d = calc(() => {
             calls.push('d:before');
             const result = calculations.c() + 'd';
             calls.push('d:after');
             return result;
-        }, 'd');
+        }, 'd').onCycle(() => {
+            calls.push('cycle:d');
+            return 'D';
+        });
         retain(calculations.a);
         retain(calculations.b);
         retain(calculations.c);
         retain(calculations.d);
 
-        assert.is('a', calculations.a());
-        assert.is('ab', calculations.b());
-        assert.is('abc', calculations.c());
-        assert.is('abcd', calculations.d());
+        assert.is('D', calculations.d());
+        assert.deepEqual(
+            [
+                'd:before',
+                'c',
+                'b',
+                'a',
+                'cycle:c',
+                'cycle:a',
+                'cycle:b',
+                'cycle:d',
+            ],
+            calls
+        );
 
-        data.isCycle = true;
-        flush();
-
-        calls = [];
-        data.value = 'y';
-        flush();
-
-        assert.deepEqual(['d:before'], calls);
+        assert.is('C', calculations.c());
+        assert.is('B', calculations.b());
+        assert.is('A', calculations.a());
+        assert.deepEqual(
+            [
+                'd:before',
+                'c',
+                'b',
+                'a',
+                'cycle:c',
+                'cycle:a',
+                'cycle:b',
+                'cycle:d',
+            ],
+            calls
+        );
     });
 });

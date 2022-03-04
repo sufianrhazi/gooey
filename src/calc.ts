@@ -1,21 +1,22 @@
 import {
-    InvariantError,
     Calculation,
+    CalculationRecalculateTag,
+    CalculationMarkCycleTag,
+    CalculationTypeTag,
     DAGNode,
+    EqualityFunc,
     FlushKey,
+    InvariantError,
+    TypeTag,
     isCalculation,
     isCollection,
     isModel,
     isModelField,
     isSubscription,
-    makeCalculation,
-    makeEffect,
-    EqualityFunc,
-    RecalculationTag,
 } from './types';
 import * as log from './log';
 import { DAG } from './dag';
-import { noop, alwaysTrue, strictEqual } from './util';
+import { alwaysTrue, noop, strictEqual, uniqueid } from './util';
 import { clearNames, debugNameFor, name } from './debug';
 
 let activeCalculations: (null | Calculation<any>)[] = [];
@@ -60,7 +61,7 @@ export function calc<Ret>(
     if (typeof isEqual === 'string') debugName = isEqual;
     if (typeof isEqual !== 'function') isEqual = strictEqual;
     if (typeof debugName !== 'string') debugName = undefined;
-    const calculation = trackCalculation(func, isEqual, false);
+    const calculation = makeCalculation(func, isEqual, false);
     if (debugName) name(calculation, debugName);
     return calculation;
 }
@@ -80,7 +81,7 @@ export function effect(
     func: () => void,
     debugName?: string
 ): Calculation<void> {
-    const calculation = trackCalculation(
+    const calculation = makeCalculation(
         func,
         alwaysTrue /* effects always return true for equality */,
         true
@@ -96,76 +97,225 @@ export function untracked<TRet>(func: () => TRet): TRet {
     return result;
 }
 
-function trackCalculation<Ret>(
-    func: () => Ret,
+enum CalculationState {
+    STATE_FLUSHED,
+    STATE_TRACKING,
+    STATE_CACHED,
+    STATE_CYCLE,
+}
+
+class CycleAbortError extends Error {}
+
+function makeCalculation<Ret>(
+    calculationFunc: () => Ret,
     isEqual: (a: Ret, b: Ret) => boolean,
     isEffect: boolean
 ): Calculation<Ret> {
-    if (typeof func !== 'function') {
+    if (typeof calculationFunc !== 'function') {
         throw new InvariantError('calculation must be provided a function');
     }
+    // States:
+    // - flushed (initial) -- no cached value, not cycled
+    // - tracking (transitory) -- currently being called (tracking dependencies)
+    // - cached -- finished call, return value cached
+    // - cycle -- error state; cycle is detected
+    //
+    // digraph state {
+    //     node [style="filled",fillcolor="#eeeeee",fontname="Helvetica"];
+    //     edge [fontname="Helvetica"];
+    //     fontname="Helvetica";
+    //
+    //     flushed [peripheries="2"];
+    //     tracking [style="filled",fillcolor="#444444",fontcolor="white"];
+    //     cached;
+    //     exception [shape="polygon",sides="8",fillcolor="#ffdddd"];
+    //     cycle [style="filled",fillcolor="#ffdddd"];
+    //
+    //     flushed -> flushed [label="  flush"];
+    //     flushed -> tracking [label="  call",tailport="w"];
+    //     tracking -> cached [tailport="s",headport="w",label="call:return"];
+    //     cached -> flushed [label="  flush"];
+    //     tracking -> cycle [tailport="sw",headport="w",label="recurse"];
+    //     cycle -> flushed [label="  flush"];
+    //     cached -> cycle [label="cycle dep"];
+    //     cycle -> exception [label="call"];
+    //     tracking -> exception [label="flush",tailport="w"];
+    // }
+    //
+    //
+    // Events:
+    // - calculation gets called:
+    //   - flushed -> tracking -> cached
+    //   - tracking -> cycle
+    //   - cached -> cached
+    //   - cycle -> throw Exception (cycle)
+    // - calculation gets flushed:
+    //   - flushed -> flushed
+    //   - tracking -> throw Exception (invariant: cannot flush mid-call)
+    //   - cached -> flushed
+    //   - cycle -> flushed
 
+    let cycleResult: { result: Ret } | undefined = undefined;
     let result: { result: Ret } | undefined = undefined;
-    let hasCycle = false;
+    let state: CalculationState = CalculationState.STATE_FLUSHED;
+    let cycleHandler: (() => Ret) | undefined = undefined;
 
-    // Note: typescript gets confused, this *should* be
-    // - Calculation<Ret> when isEffect is false and
-    // - Calculation<Ret> when isEffect is true, infering Ret to void
-    // But infers to Calculation<void> because makeEffect is present
-    const trackedCalculation: Calculation<Ret> = (
-        isEffect
-            ? makeEffect(runCalculation, recalculate)
-            : makeCalculation(runCalculation, recalculate)
-    ) as Calculation<Ret>;
+    const calculation: Calculation<Ret> = Object.assign(calculationBody, {
+        $__id: uniqueid(),
+        [TypeTag]: 'calculation' as const,
+        [CalculationTypeTag]: isEffect
+            ? ('effect' as const)
+            : ('calculation' as const),
+        [CalculationMarkCycleTag]: calculationMarkCycle,
+        [CalculationRecalculateTag]: calculationRecalculate,
+        flush: calculationFlush,
+        onCycle: calculationOnCycle,
+    });
 
-    function runCalculation() {
+    globalDependencyGraph.addNode(calculation);
+
+    function calculationBody() {
         if (!isEffect) {
             // effects return void, so they **cannot** have an effect on the current calculation
-            addDepToCurrentCalculation(trackedCalculation);
+            addDepToCurrentCalculation(calculation);
         }
 
-        if (hasCycle) {
-            throw new Error('Calculation is part of a cycle');
+        switch (state) {
+            case CalculationState.STATE_FLUSHED:
+                globalDependencyGraph.removeIncoming(calculation);
+                state = CalculationState.STATE_TRACKING;
+                activeCalculations.push(calculation);
+                try {
+                    result = { result: calculationFunc() };
+                } catch (e) {
+                    log.assert(
+                        activeCalculations.pop() === calculation,
+                        'calculation stack inconsistency'
+                    );
+                    if (e instanceof CycleAbortError) {
+                        state = CalculationState.STATE_CYCLE;
+                        if (cycleHandler && !cycleResult) {
+                            cycleResult = { result: cycleHandler() };
+                        }
+                        if (cycleResult && activeCalculations.length === 0) {
+                            return cycleResult.result;
+                        }
+                        throw e;
+                    } else {
+                        state = CalculationState.STATE_FLUSHED;
+                    }
+                    throw e;
+                }
+                state = CalculationState.STATE_CACHED;
+                log.assert(
+                    activeCalculations.pop() === calculation,
+                    'calculation stack inconsistency'
+                );
+                break;
+            case CalculationState.STATE_TRACKING:
+                state = CalculationState.STATE_CYCLE;
+                if (cycleHandler && !cycleResult) {
+                    cycleResult = { result: cycleHandler() };
+                }
+                throw new CycleAbortError(
+                    'Cycle reached: calculation processing reached itself'
+                );
+                break;
+            case CalculationState.STATE_CACHED:
+                log.assert(result, 'cached calculation missing result');
+                return result.result;
+            case CalculationState.STATE_CYCLE:
+                if (cycleResult) {
+                    return cycleResult.result;
+                }
+                throw new CycleAbortError(
+                    'Cycle reached: calculation is part of a cycle'
+                );
+                break;
+            default:
+                log.assertExhausted(state, 'Unexpected calculation state');
         }
 
-        if (result) {
-            return result.result;
-        }
-
-        globalDependencyGraph.removeIncoming(trackedCalculation);
-
-        activeCalculations.push(trackedCalculation);
-        result = { result: func() };
-
-        const sanityCheck = activeCalculations.pop();
-        if (sanityCheck !== trackedCalculation) {
-            throw new InvariantError('Active calculation stack inconsistency!');
-        }
         return result.result;
     }
-    globalDependencyGraph.addNode(trackedCalculation);
 
-    function recalculate(isCycle: boolean) {
-        hasCycle = isCycle;
-        if (hasCycle) {
-            return false;
+    function calculationFlush() {
+        const priorResult = result?.result;
+        switch (state) {
+            case CalculationState.STATE_FLUSHED:
+                break;
+            case CalculationState.STATE_TRACKING:
+                throw new InvariantError(
+                    'Cannot flush calculation while it is being calculated'
+                );
+                break;
+            case CalculationState.STATE_CACHED:
+                cycleResult = undefined;
+                result = undefined;
+                state = CalculationState.STATE_FLUSHED;
+                break;
+            case CalculationState.STATE_CYCLE:
+                cycleResult = undefined;
+                result = undefined;
+                state = CalculationState.STATE_FLUSHED;
+                // TODO: maybe: tell the DAG to flush cycles?
+                break;
+            default:
+                log.assertExhausted(state, 'Unexpected calculation state');
         }
-        if (!result) {
-            trackedCalculation();
-            return false;
-        }
-        const prevResult = result.result;
-        result = undefined;
-        const newResult = trackedCalculation();
-        const eq = isEqual(prevResult, newResult);
-        if (eq) {
-            // Ensure future invocations reuse original calculated value
-            result = { result: prevResult };
-        }
-        return eq;
+        return priorResult;
     }
 
-    return trackedCalculation;
+    function calculationMarkCycle() {
+        switch (state) {
+            case CalculationState.STATE_TRACKING:
+                throw new InvariantError(
+                    'Cannot mark calculation as being a cycle while it is being calculated'
+                );
+                break;
+            case CalculationState.STATE_FLUSHED:
+            case CalculationState.STATE_CACHED:
+            case CalculationState.STATE_CYCLE:
+                result = undefined;
+                state = CalculationState.STATE_CYCLE;
+                break;
+            default:
+                log.assertExhausted(state, 'Unexpected calculation state');
+        }
+    }
+
+    function calculationRecalculate() {
+        switch (state) {
+            case CalculationState.STATE_TRACKING:
+                throw new InvariantError(
+                    'Cannot recalculate calculation while it is being calculated'
+                );
+                break;
+            case CalculationState.STATE_FLUSHED:
+                calculationBody();
+                return false;
+            case CalculationState.STATE_CACHED:
+            case CalculationState.STATE_CYCLE: {
+                const priorResult = result;
+                calculationFlush();
+                result = { result: calculationBody() };
+                if (priorResult && isEqual(priorResult.result, result.result)) {
+                    result = priorResult;
+                    return true;
+                }
+                return false;
+            }
+            default:
+                log.assertExhausted(state, 'Unexpected calculation state');
+        }
+    }
+
+    function calculationOnCycle(handler: () => Ret) {
+        cycleHandler = handler;
+        return calculation;
+    }
+
+    return calculation;
 }
 
 export function addDepToCurrentCalculation(item: DAGNode) {
@@ -323,20 +473,39 @@ export function flush() {
     globalDependencyGraph.process((connectedItems) => {
         if (connectedItems.length === 1) {
             const item = connectedItems[0];
-            let result = false;
+            let isEqual = false;
             if (isCalculation(item)) {
-                DEBUG && log.debug('flushing calculation', debugNameFor(item));
-                const recalculation = item[RecalculationTag];
-                result = recalculation(false);
+                isEqual = item[CalculationRecalculateTag]();
+                DEBUG &&
+                    log.debug(
+                        'flushing calculation',
+                        debugNameFor(item),
+                        `isEqual=${isEqual}`
+                    );
             } else if (isCollection(item)) {
-                DEBUG && log.debug('flushing collection', debugNameFor(item));
-                return item[FlushKey]();
+                isEqual = item[FlushKey]();
+                DEBUG &&
+                    log.debug(
+                        'flushing collection',
+                        debugNameFor(item),
+                        `isEqual=${isEqual}`
+                    );
             } else if (isModel(item)) {
-                DEBUG && log.debug('flushing model', debugNameFor(item));
-                return item[FlushKey]();
+                isEqual = item[FlushKey]();
+                DEBUG &&
+                    log.debug(
+                        'flushing model',
+                        debugNameFor(item),
+                        `isEqual=${isEqual}`
+                    );
             } else if (isSubscription(item)) {
-                DEBUG && log.debug('flushing subscription', debugNameFor(item));
-                return item[FlushKey]();
+                isEqual = item[FlushKey]();
+                DEBUG &&
+                    log.debug(
+                        'flushing subscription',
+                        debugNameFor(item),
+                        `isEqual=${isEqual}`
+                    );
             } else {
                 DEBUG && log.debug('flushing other', debugNameFor(item));
             }
@@ -345,9 +514,9 @@ export function flush() {
                 debugSubscription &&
                 debugSubscription(
                     debug(item),
-                    `1: visited ${debugNameFor(item)}: isEqual=${result}`
+                    `1: visited ${debugNameFor(item)}: isEqual=${isEqual}`
                 );
-            return result;
+            return isEqual;
         } else {
             // Of all of the types that can be in a cycle, only calculations
             // matter as they have dynamic dependencies. Everything else should
@@ -359,8 +528,8 @@ export function flush() {
                             'flushing calculation in a cycle',
                             debugNameFor(item)
                         );
-                    const recalculation = item[RecalculationTag];
-                    return recalculation(true);
+                    item[CalculationMarkCycleTag]();
+                    return true; // If a calculation is in a cycle, it shouldn't propagate its dirtyness; TODO: confirm this is true
                 } else if (isCollection(item)) {
                     DEBUG &&
                         log.debug(
