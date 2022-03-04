@@ -13,13 +13,18 @@ import Revise, {
     retain,
     setLogLevel,
     reset,
+    subscribe,
 } from './index';
 import { DAG } from './dag';
 import { randint } from './util';
 import { suite, test, beforeEach, afterEach, assert } from '@srhazi/test-jig';
 
-const testRoot = document.getElementById('test-root');
-if (!testRoot) throw new Error('oops');
+let testRoot: null | HTMLElement = null;
+
+beforeEach(() => {
+    testRoot = document.getElementById('test-root');
+    subscribe();
+});
 
 suite('perf tests', () => {
     let logLevel: LogLevel | null = null;

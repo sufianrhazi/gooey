@@ -204,7 +204,7 @@ export type Calculation<Result> = (() => Result) & {
     $__id: string;
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
-    [RecalculationTag]: () => boolean;
+    [RecalculationTag]: (isCycle: boolean) => boolean;
 };
 
 export interface ModelField {
@@ -217,7 +217,7 @@ export interface ModelField {
 
 export function makeCalculation<Ret>(
     fn: () => Ret,
-    recalcFn: () => boolean
+    recalcFn: (isCycle: boolean) => boolean
 ): Calculation<Ret> {
     return Object.assign(fn, {
         $__id: uniqueid(),
@@ -229,7 +229,7 @@ export function makeCalculation<Ret>(
 
 export function makeEffect(
     fn: () => void,
-    recalcFn: () => boolean
+    recalcFn: (isCycle: boolean) => boolean
 ): Calculation<void> {
     return Object.assign(fn, {
         $__id: uniqueid(),

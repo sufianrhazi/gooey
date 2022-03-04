@@ -1,6 +1,10 @@
 import { suite, test, beforeEach, assert } from '@srhazi/test-jig';
 import * as revise from './index';
 
+beforeEach(() => {
+    revise.subscribe();
+});
+
 suite('behavior', () => {
     beforeEach(() => {
         revise.reset();

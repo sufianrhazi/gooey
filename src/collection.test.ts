@@ -1,7 +1,11 @@
-import { suite, test, assert } from '@srhazi/test-jig';
+import { suite, test, assert, beforeEach } from '@srhazi/test-jig';
 import { model } from './model';
 import { collection } from './collection';
-import { calc, flush, retain, release } from './calc';
+import { calc, flush, retain, release, subscribe } from './calc';
+
+beforeEach(() => {
+    subscribe();
+});
 
 suite('collection', () => {
     test('reads feel like reads', () => {

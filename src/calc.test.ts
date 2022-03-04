@@ -1,8 +1,24 @@
-import { suite, test, assert } from '@srhazi/test-jig';
+import { suite, test, assert, beforeEach } from '@srhazi/test-jig';
 import { model } from './model';
 import { collection } from './collection';
-import { flush, calc, effect, retain, release } from './calc';
+import {
+    flush,
+    calc,
+    effect,
+    retain,
+    release,
+    reset,
+    debug,
+    debugSubscribe,
+    subscribe,
+} from './calc';
+import { setLogLevel } from './log';
 import { Calculation } from './types';
+
+beforeEach(() => {
+    subscribe();
+    reset();
+});
 
 suite('calc', () => {
     test('memoizes when called multiple times', () => {
@@ -321,7 +337,7 @@ suite('effect', () => {
         release(d);
     });
 
-    test('cycles can be caught', () => {
+    test('cycle-unaware calculations that are part of cycles throw errors when called', () => {
         const calculations: Record<string, Calculation<string>> = {};
         const data = model({
             isCycle: false,
@@ -332,13 +348,13 @@ suite('effect', () => {
             } else {
                 return 'a';
             }
-        });
+        }, 'a');
         calculations.b = calc(() => {
             return calculations.a() + 'b';
-        });
+        }, 'b');
         calculations.c = calc(() => {
             return calculations.b() + 'c';
-        });
+        }, 'c');
         retain(calculations.a);
         retain(calculations.b);
         retain(calculations.c);
@@ -353,5 +369,104 @@ suite('effect', () => {
         assert.throwsMatching(/cycle/, () => calculations.a());
         assert.throwsMatching(/cycle/, () => calculations.b());
         assert.throwsMatching(/cycle/, () => calculations.c());
+    });
+
+    test('dirtying cycle-unaware calculations that are part of cycles does not throw an error if flushed', () => {
+        const calculations: Record<string, Calculation<string>> = {};
+        const data = model({
+            isCycle: false,
+            value: 'x',
+        });
+        let calls: string[] = [];
+        calculations.a = calc(() => {
+            calls.push('a');
+            if (data.isCycle) {
+                return calculations.c() + data.value;
+            } else {
+                return 'a';
+            }
+        }, 'a');
+        calculations.b = calc(() => {
+            calls.push('b');
+            return calculations.a() + 'b';
+        }, 'b');
+        calculations.c = calc(() => {
+            calls.push('c');
+            return calculations.b() + 'c';
+        }, 'c');
+        retain(calculations.a);
+        retain(calculations.b);
+        retain(calculations.c);
+
+        assert.is('a', calculations.a());
+        assert.is('ab', calculations.b());
+        assert.is('abc', calculations.c());
+
+        data.isCycle = true;
+        flush();
+
+        calls = [];
+        data.value = 'y';
+        flush();
+
+        assert.deepEqual([], calls);
+    });
+
+    test('items dependent on cycle values do not throw an error when cycle dirtied and flushed', () => {
+        // This is probably a broken test.
+        // We should probably not process any nodes that are dependent on cycles _by definition_
+        // To "catch" a cycle, a calculation can "catch" on a cycle and return a fixed value
+        // calc(fn).onCycle((retry) => {
+        //   // Somehow call retry() when the cycle is probably fixed
+        //   return depnedentValue;
+        // });
+        // To "fix" a cycle, a calculation can be retried... somehow
+        setLogLevel('debug');
+        const calculations: Record<string, Calculation<string>> = {};
+        const data = model({
+            isCycle: false,
+            value: 'x',
+        });
+        let calls: string[] = [];
+        calculations.a = calc(() => {
+            calls.push('a');
+            if (data.isCycle) {
+                return calculations.c() + data.value;
+            } else {
+                return 'a';
+            }
+        }, 'a');
+        calculations.b = calc(() => {
+            calls.push('b');
+            return calculations.a() + 'b';
+        }, 'b');
+        calculations.c = calc(() => {
+            calls.push('c');
+            return calculations.b() + 'c';
+        }, 'c');
+        calculations.d = calc(() => {
+            calls.push('d:before');
+            const result = calculations.c() + 'd';
+            calls.push('d:after');
+            return result;
+        }, 'd');
+        retain(calculations.a);
+        retain(calculations.b);
+        retain(calculations.c);
+        retain(calculations.d);
+
+        assert.is('a', calculations.a());
+        assert.is('ab', calculations.b());
+        assert.is('abc', calculations.c());
+        assert.is('abcd', calculations.d());
+
+        data.isCycle = true;
+        flush();
+
+        calls = [];
+        data.value = 'y';
+        flush();
+
+        assert.deepEqual(['d:before'], calls);
     });
 });

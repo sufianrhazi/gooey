@@ -106,6 +106,7 @@ function trackCalculation<Ret>(
     }
 
     let result: { result: Ret } | undefined = undefined;
+    let hasCycle = false;
 
     // Note: typescript gets confused, this *should* be
     // - Calculation<Ret> when isEffect is false and
@@ -121,6 +122,10 @@ function trackCalculation<Ret>(
         if (!isEffect) {
             // effects return void, so they **cannot** have an effect on the current calculation
             addDepToCurrentCalculation(trackedCalculation);
+        }
+
+        if (hasCycle) {
+            throw new Error('Calculation is part of a cycle');
         }
 
         if (result) {
@@ -140,7 +145,11 @@ function trackCalculation<Ret>(
     }
     globalDependencyGraph.addNode(trackedCalculation);
 
-    function recalculate() {
+    function recalculate(isCycle: boolean) {
+        hasCycle = isCycle;
+        if (hasCycle) {
+            return false;
+        }
         if (!result) {
             trackedCalculation();
             return false;
@@ -268,7 +277,7 @@ export function nextFlush() {
  *
  * Example: subscribe(() => requestAnimationFrame(() => flush()));
  */
-export function subscribe(listener: Listener): void {
+export function subscribe(listener: Listener = noop): void {
     subscribeListener = listener;
     if (needsFlush) {
         subscribeListener();
@@ -318,7 +327,7 @@ export function flush() {
             if (isCalculation(item)) {
                 DEBUG && log.debug('flushing calculation', debugNameFor(item));
                 const recalculation = item[RecalculationTag];
-                result = recalculation();
+                result = recalculation(false);
             } else if (isCollection(item)) {
                 DEBUG && log.debug('flushing collection', debugNameFor(item));
                 return item[FlushKey]();
@@ -340,10 +349,56 @@ export function flush() {
                 );
             return result;
         } else {
-            // TODO: how to handle cycles!!!
-            return false;
+            // Of all of the types that can be in a cycle, only calculations
+            // matter as they have dynamic dependencies. Everything else should
+            // not be able to alter its set of dependencies on execution.
+            const isEqualList = connectedItems.map((item) => {
+                if (isCalculation(item)) {
+                    DEBUG &&
+                        log.debug(
+                            'flushing calculation in a cycle',
+                            debugNameFor(item)
+                        );
+                    const recalculation = item[RecalculationTag];
+                    return recalculation(true);
+                } else if (isCollection(item)) {
+                    DEBUG &&
+                        log.debug(
+                            'flushing collection in a cycle',
+                            debugNameFor(item)
+                        );
+                    return item[FlushKey]();
+                } else if (isModel(item)) {
+                    DEBUG &&
+                        log.debug(
+                            'flushing model in a cycle',
+                            debugNameFor(item)
+                        );
+                    return item[FlushKey]();
+                } else if (isSubscription(item)) {
+                    DEBUG &&
+                        log.debug(
+                            'flushing subscription in a cycle',
+                            debugNameFor(item)
+                        );
+                    return item[FlushKey]();
+                } else {
+                    DEBUG &&
+                        log.debug(
+                            'flushing other in a cycle',
+                            debugNameFor(item)
+                        );
+                    return true;
+                }
+            });
+            return isEqualList.every((isEqual) => isEqual);
         }
     });
+
+    if (globalDependencyGraph.hasDirtyNodes()) {
+        DEBUG && log.debug('DAG contained dirty nodes post-flush');
+        scheduleFlush();
+    }
 
     DEBUG && debugSubscription && debugSubscription(debug(), `2: after visit`);
 

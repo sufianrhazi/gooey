@@ -8,6 +8,7 @@ import Revise, {
     mount,
     reset,
     createContext,
+    subscribe,
 } from './index';
 import { suite, test, beforeEach, assert } from '@srhazi/test-jig';
 
@@ -15,6 +16,7 @@ let testRoot: any;
 
 beforeEach(() => {
     testRoot = document.getElementById('test-root');
+    subscribe();
     reset();
 });
 

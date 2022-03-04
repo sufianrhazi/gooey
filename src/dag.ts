@@ -199,16 +199,7 @@ export class DAG<Type extends object> {
         );
     }
 
-    /**
-     * Process the graph, visiting strongly connected nodes topologically that have a data dependency on a retained
-     * node.
-     *
-     * This uses Tarjan's strongly connected component algorithm to both segment strongly connected nodes and
-     * topologically sort them.
-     *
-     * The graph may change while processing nodes: this will likely be a constant source of problems.
-     */
-    process(callback: (componentNodes: Type[]) => boolean) {
+    private _toposortDirty() {
         type Vertex = {
             nodeId: string;
             index?: number;
@@ -291,14 +282,41 @@ export class DAG<Type extends object> {
             }
         });
 
+        return reverseTopoSort.reverse();
+    }
+
+    /**
+     * Process the graph, visiting strongly connected nodes topologically that have a data dependency on a retained
+     * node.
+     *
+     * This uses Tarjan's strongly connected component algorithm to both segment strongly connected nodes and
+     * topologically sort them.
+     */
+    process(callback: (componentNodes: Type[]) => boolean) {
+        return this._processInner(callback, {});
+    }
+
+    private _processInner(
+        callback: (componentNodes: Type[]) => boolean,
+        toSkip: Record<string, boolean> = {}
+    ) {
+        const toposort = this._toposortDirty();
+
         const toRemove: string[] = [];
-        for (let i = reverseTopoSort.length - 1; i >= 0; --i) {
-            const nodeIdSet: Record<string, boolean> = {};
+        const knownCycles: Record<string, boolean> = {};
+        const errorNodes: Record<string, boolean> = {};
+        for (let i = 0; i < toposort.length; ++i) {
             const nodeIds: string[] = [];
             let anyDirty = false;
-            reverseTopoSort[i].forEach((vertex) => {
-                nodeIdSet[vertex.nodeId] = true;
-                nodeIds.push(vertex.nodeId);
+            toposort[i].forEach((vertex) => {
+                if (toposort[i].length > 1) {
+                    knownCycles[vertex.nodeId] = true;
+                }
+                if (!toSkip[vertex.nodeId]) {
+                    nodeIds.push(vertex.nodeId);
+                } else {
+                    console.log('SKIPPING', vertex);
+                }
                 if (vertex.reachesRetained) {
                     // Note: if any vertex in a group reaches retained, they **all** do
                     // TODO: confirm that reachesRetained is correct for all types of graphs
@@ -317,6 +335,9 @@ export class DAG<Type extends object> {
                         delete this.dirtyNodes[nodeId];
                     });
                 } catch (e) {
+                    nodeIds.forEach((nodeId) => {
+                        errorNodes[nodeId] = true;
+                    });
                     log.error('Caught error during flush', e);
                 }
                 if (!isEqual) {
@@ -325,10 +346,8 @@ export class DAG<Type extends object> {
                             nodeId,
                             DAG.EDGE_HARD
                         ).forEach((toId) => {
-                            if (!nodeIdSet[toId]) {
-                                // Prevent circular dependencies!
-                                this.dirtyNodes[toId] = true;
-                            }
+                            // Prevent circular dependencies!
+                            this.dirtyNodes[toId] = true;
                         });
                     });
                 }
@@ -337,7 +356,21 @@ export class DAG<Type extends object> {
 
         toRemove.forEach((nodeId) => {
             this.removeNodeInner(nodeId);
+            knownCycles[nodeId] = false;
         });
+
+        // The DAG may have changed by virtue of processing it, which may have caused additional nodes to have been dirtied.
+        // If there are any dirty nodes that are not part of a known cycle in the last run, re-process the DAG.
+        if (
+            Object.keys(this.dirtyNodes).some(
+                (nodeId) => !knownCycles[nodeId] && !toSkip[nodeId]
+            )
+        ) {
+            return this._processInner(callback, {
+                ...knownCycles,
+                ...errorNodes,
+            });
+        }
     }
 
     /**
