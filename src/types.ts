@@ -207,7 +207,7 @@ export interface Calculation<Result> {
     [CalculationTypeTag]: 'calculation' | 'effect';
     flush: () => Result | undefined;
     onCycle: (handler: () => Result) => this;
-    [CalculationMarkCycleTag]: () => void;
+    [CalculationMarkCycleTag]: (isCycle: boolean) => boolean;
     [CalculationRecalculateTag]: () => boolean;
 }
 

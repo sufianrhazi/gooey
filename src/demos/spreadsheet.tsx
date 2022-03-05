@@ -18,6 +18,7 @@ type Table = Model<{
             string,
             Calculation<
                 | { type: 'error'; error: Error }
+                | { type: 'cycle' }
                 | { type: 'result'; result: any }
             >
         >
@@ -125,6 +126,7 @@ const makeTable = ({ rows, cols }: { rows: number; cols: number }): Table => {
             string,
             Calculation<
                 | { type: 'error'; error: Error }
+                | { type: 'cycle' }
                 | { type: 'result'; result: any }
             >
         >
@@ -152,6 +154,9 @@ const makeTable = ({ rows, cols }: { rows: number; cols: number }): Table => {
                             if (item.type === 'error') {
                                 throw new Error('Has dependency on error');
                             }
+                            if (item.type === 'cycle') {
+                                throw new Error('Has dependency on cycle');
+                            }
                             items.push(item.result);
                         }
                         return items;
@@ -174,6 +179,9 @@ const makeTable = ({ rows, cols }: { rows: number; cols: number }): Table => {
                             if (item.type === 'error') {
                                 throw new Error('Has dependency on error');
                             }
+                            if (item.type === 'cycle') {
+                                throw new Error('Has dependency on cycle');
+                            }
                             items.push(item.result);
                         }
                         return items;
@@ -195,6 +203,9 @@ const makeTable = ({ rows, cols }: { rows: number; cols: number }): Table => {
                             if (item.type === 'error') {
                                 throw new Error('Has dependency on error');
                             }
+                            if (item.type === 'cycle') {
+                                throw new Error('Has dependency on cycle');
+                            }
                             colItems.push(item.result);
                         }
                         items.push(colItems);
@@ -214,6 +225,9 @@ const makeTable = ({ rows, cols }: { rows: number; cols: number }): Table => {
                     if (item.type === 'error') {
                         throw new Error('Has dependency on error');
                     }
+                    if (item.type === 'cycle') {
+                        throw new Error('Has dependency on cycle');
+                    }
                     return item.result;
                 }
                 throw new Error('Reference error');
@@ -224,7 +238,11 @@ const makeTable = ({ rows, cols }: { rows: number; cols: number }): Table => {
         for (let row = 0; row < rows; ++row) {
             const key = positionToKey({ col, row });
             code[key] = null;
-            data[key] = calc(() => {
+            data[key] = calc<
+                | { type: 'error'; error: Error }
+                | { type: 'cycle' }
+                | { type: 'result'; result: any }
+            >(() => {
                 if (code[key] === null) return { type: 'result', result: null };
                 const value = new Function(
                     'cell',
@@ -246,7 +264,9 @@ const makeTable = ({ rows, cols }: { rows: number; cols: number }): Table => {
                         error: new Error('Unknown error: ' + e),
                     };
                 }
-            });
+            }).onCycle(() => ({
+                type: 'cycle',
+            }));
         }
     }
     return model({
@@ -320,6 +340,11 @@ const Cell: Component<{
                 const result = data[positionToKey({ col, row })]();
                 if (result.type === 'error') {
                     return <div title={result.error.toString()}>Err!</div>;
+                }
+                if (result.type === 'cycle') {
+                    return (
+                        <div title="Calculation contains a cycle">Cycle!</div>
+                    );
                 }
                 return repr(result.result);
             })}

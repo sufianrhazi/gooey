@@ -12,10 +12,10 @@ import Revise, {
 } from './index';
 import { suite, test, beforeEach, assert } from '@srhazi/test-jig';
 
-let testRoot: any;
+let testRoot: HTMLElement = document.getElementById('test-root')!;
 
 beforeEach(() => {
-    testRoot = document.getElementById('test-root');
+    testRoot = document.getElementById('test-root')!;
     subscribe();
     reset();
 });

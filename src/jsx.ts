@@ -2164,7 +2164,9 @@ type WithCalculationsAndRef<
         | string
         | undefined;
 } & {
-    [Key in keyof TJSXType]: Calculation<TJSXType[Key]> | TJSXType[Key];
+    [Key in keyof TJSXType]:
+        | (Calculation<any> & (() => TJSXType[Key]))
+        | TJSXType[Key];
 };
 
 export interface KnownElements {

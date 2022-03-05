@@ -254,33 +254,80 @@ function makeCalculation<Ret>(
                 result = undefined;
                 state = CalculationState.STATE_FLUSHED;
                 break;
-            case CalculationState.STATE_CYCLE:
+            case CalculationState.STATE_CYCLE: {
+                DEBUG &&
+                    log.debug(
+                        'Manually flushing node in cycle',
+                        debugNameFor(calculation)
+                    );
                 cycleResult = undefined;
                 result = undefined;
                 state = CalculationState.STATE_FLUSHED;
-                // TODO: maybe: tell the DAG to flush cycles?
+                const otherNodes =
+                    globalDependencyGraph.breakCycle(calculation);
+                otherNodes.forEach((otherNode) => {
+                    if (isCalculation(otherNode)) {
+                        DEBUG &&
+                            log.debug(
+                                'Marking other cycle nodes as non-cycle',
+                                debugNameFor(otherNode)
+                            );
+                        otherNode[CalculationMarkCycleTag](false);
+                    }
+                });
+                processChange(calculation);
                 break;
+            }
             default:
                 log.assertExhausted(state, 'Unexpected calculation state');
         }
         return priorResult;
     }
 
-    function calculationMarkCycle() {
-        switch (state) {
-            case CalculationState.STATE_TRACKING:
-                throw new InvariantError(
-                    'Cannot mark calculation as being a cycle while it is being calculated'
-                );
-                break;
-            case CalculationState.STATE_FLUSHED:
-            case CalculationState.STATE_CACHED:
-            case CalculationState.STATE_CYCLE:
-                result = undefined;
-                state = CalculationState.STATE_CYCLE;
-                break;
-            default:
-                log.assertExhausted(state, 'Unexpected calculation state');
+    function calculationMarkCycle(isCycle: boolean) {
+        if (isCycle) {
+            switch (state) {
+                case CalculationState.STATE_TRACKING:
+                    throw new InvariantError(
+                        'Cannot mark calculation as being a cycle while it is being calculated'
+                    );
+                    break;
+                case CalculationState.STATE_FLUSHED:
+                case CalculationState.STATE_CACHED:
+                    result = undefined;
+                    if (cycleHandler) {
+                        cycleResult = { result: cycleHandler() };
+                    }
+                    state = CalculationState.STATE_CYCLE;
+                    return true;
+                case CalculationState.STATE_CYCLE:
+                    result = undefined;
+                    if (cycleHandler) {
+                        cycleResult = { result: cycleHandler() };
+                    }
+                    state = CalculationState.STATE_CYCLE;
+                    return false;
+                default:
+                    log.assertExhausted(state, 'Unexpected calculation state');
+            }
+        } else {
+            switch (state) {
+                case CalculationState.STATE_TRACKING:
+                    throw new InvariantError(
+                        'Cannot mark calculation as being a cycle while it is being calculated'
+                    );
+                    break;
+                case CalculationState.STATE_FLUSHED:
+                case CalculationState.STATE_CACHED:
+                    return false;
+                case CalculationState.STATE_CYCLE:
+                    result = undefined;
+                    cycleResult = undefined;
+                    state = CalculationState.STATE_FLUSHED;
+                    return true;
+                default:
+                    log.assertExhausted(state, 'Unexpected calculation state');
+            }
         }
     }
 
@@ -401,7 +448,12 @@ export function processChange(item: DAGNode) {
     );
     if (hardEdges.length > 0) {
         const marked = globalDependencyGraph.markNodeDirty(item);
-        DEBUG && log.debug('processChange', item, marked ? 'fresh' : 'stale');
+        DEBUG &&
+            log.debug(
+                'processChange',
+                debugNameFor(item),
+                marked ? 'fresh' : 'stale'
+            );
         scheduleFlush();
     }
 }
@@ -528,8 +580,8 @@ export function flush() {
                             'flushing calculation in a cycle',
                             debugNameFor(item)
                         );
-                    item[CalculationMarkCycleTag]();
-                    return true; // If a calculation is in a cycle, it shouldn't propagate its dirtyness; TODO: confirm this is true
+                    item[CalculationMarkCycleTag](true);
+                    return false; // cycles always should propagate changes
                 } else if (isCollection(item)) {
                     DEBUG &&
                         log.debug(

@@ -19,10 +19,10 @@ import { DAG } from './dag';
 import { randint } from './util';
 import { suite, test, beforeEach, afterEach, assert } from '@srhazi/test-jig';
 
-let testRoot: null | HTMLElement = null;
+let testRoot: HTMLElement = document.getElementById('test-root')!;
 
 beforeEach(() => {
-    testRoot = document.getElementById('test-root');
+    testRoot = document.getElementById('test-root')!;
     subscribe();
 });
 

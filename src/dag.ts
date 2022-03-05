@@ -62,6 +62,45 @@ export class DAG<Type extends object> {
         return true;
     }
 
+    /**
+     * Given a node in a cycle, break the cycle. Return the _other_ nodes in the cycle.
+     *
+     * The cycle is broken by
+     * - Removing the incoming dependencies from the target node
+     * - Marking the target node as dirty
+     * - Marking the non-target node as
+     */
+    breakCycle(node: Type) {
+        const nodeId = this.getId(node);
+        log.assert(
+            this.dirtyNodes[nodeId],
+            'breakCycle attempted on non-dirty node'
+        );
+        const components = this._toposort([nodeId]);
+        log.assert(
+            components[0].length > 1,
+            'breakCycle called on a non-cycle'
+        );
+        log.assert(
+            components[0].some((vertex) => vertex.nodeId === nodeId),
+            'breakCycle did not find nodeId in its first cycle'
+        );
+        log.assert(
+            components[0].every((vertex) => this.dirtyNodes[vertex.nodeId]),
+            'breakCycle does not have a full set of dirty nodes in a cycle'
+        );
+        const otherNodeIds: string[] = [];
+        components[0].forEach((vertex) => {
+            delete this.dirtyNodes[vertex.nodeId];
+            if (vertex.nodeId !== nodeId) {
+                otherNodeIds.push(vertex.nodeId);
+            }
+        });
+        this.removeIncoming(node);
+        this.dirtyNodes[nodeId] = true;
+        return otherNodeIds.map((otherNodeId) => this.nodesSet[otherNodeId]);
+    }
+
     hasDirtyNodes(): boolean {
         return Object.keys(this.dirtyNodes).length > 0;
     }
@@ -199,7 +238,7 @@ export class DAG<Type extends object> {
         );
     }
 
-    private _toposortDirty() {
+    private _toposort(fromNodeIds: string[]) {
         type Vertex = {
             nodeId: string;
             index?: number;
@@ -272,7 +311,7 @@ export class DAG<Type extends object> {
             }
         };
 
-        Object.keys(this.dirtyNodes).forEach((nodeId) => {
+        fromNodeIds.forEach((nodeId) => {
             if (!nodeVertex[nodeId]) {
                 nodeVertex[nodeId] = {
                     nodeId,
@@ -293,14 +332,14 @@ export class DAG<Type extends object> {
      * topologically sort them.
      */
     process(callback: (componentNodes: Type[]) => boolean) {
-        return this._processInner(callback, {});
+        this._processInner(callback, {});
     }
 
     private _processInner(
         callback: (componentNodes: Type[]) => boolean,
         toSkip: Record<string, boolean> = {}
     ) {
-        const toposort = this._toposortDirty();
+        const toposort = this._toposort(Object.keys(this.dirtyNodes));
 
         const toRemove: string[] = [];
         const knownCycles: Record<string, boolean> = {};
@@ -366,7 +405,7 @@ export class DAG<Type extends object> {
                 (nodeId) => !knownCycles[nodeId] && !toSkip[nodeId]
             )
         ) {
-            return this._processInner(callback, {
+            this._processInner(callback, {
                 ...knownCycles,
                 ...errorNodes,
             });

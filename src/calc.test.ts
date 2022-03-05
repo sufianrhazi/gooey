@@ -433,8 +433,7 @@ suite('cycles', () => {
         assert.deepEqual([], calls);
     });
 
-    test('cycles can be caught', () => {
-        setLogLevel('debug');
+    test('cycles can be caught when triggered via standard calling', () => {
         const calculations: Record<string, Calculation<string>> = {};
         const calls: string[] = [];
         calculations.a = calc(() => {
@@ -503,5 +502,67 @@ suite('cycles', () => {
             ],
             calls
         );
+    });
+
+    test('cycles can be caught when triggered via standard calling', () => {
+        setLogLevel('debug');
+        const calculations: Record<string, Calculation<string>> = {};
+        const data = model({
+            hasCycle: false,
+        });
+        calculations.a = calc(() => {
+            if (data.hasCycle) {
+                return 'a' + calculations.c() + 'a';
+            } else {
+                return 'x';
+            }
+        }, 'a').onCycle(() => {
+            return 'A';
+        });
+        calculations.b = calc(() => {
+            return 'b' + calculations.a() + 'b';
+        }, 'b').onCycle(() => {
+            return 'B';
+        });
+        calculations.c = calc(() => {
+            return 'c' + calculations.b() + 'c';
+        }, 'c').onCycle(() => {
+            return 'C';
+        });
+        calculations.d = calc(() => {
+            const result = 'd' + calculations.c() + 'd';
+            console.log('d', result);
+            return result;
+        }, 'd').onCycle(() => {
+            return 'D';
+        });
+        retain(calculations.a);
+        retain(calculations.b);
+        retain(calculations.c);
+        retain(calculations.d);
+
+        assert.is('dcbxbcd', calculations.d());
+
+        data.hasCycle = true;
+        flush();
+
+        assert.is('dCd', calculations.d());
+
+        assert.is('A', calculations.a());
+        assert.is('B', calculations.b());
+        assert.is('C', calculations.c());
+
+        data.hasCycle = false;
+        flush();
+
+        assert.is('A', calculations.a());
+        assert.is('B', calculations.b());
+        assert.is('C', calculations.c());
+        assert.is('dCd', calculations.d());
+
+        calculations.a.flush();
+        flush();
+
+        assert.is('dcbxbcd', calculations.d());
     });
 });
