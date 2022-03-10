@@ -1,18 +1,7 @@
 import { suite, test, assert, beforeEach } from '@srhazi/test-jig';
 import { model } from './model';
 import { collection } from './collection';
-import {
-    flush,
-    calc,
-    effect,
-    retain,
-    release,
-    reset,
-    debug,
-    debugSubscribe,
-    subscribe,
-} from './calc';
-import { setLogLevel } from './log';
+import { flush, calc, effect, retain, release, reset, subscribe } from './calc';
 import { Calculation } from './types';
 
 beforeEach(() => {
@@ -128,8 +117,8 @@ suite('calc', () => {
         assert.lessThan(calls.indexOf('root'), calls.indexOf('left'));
         assert.lessThan(calls.indexOf('left'), calls.indexOf('bottom'));
 
-        assert.is(3, calls.indexOf('bottom'));
-        assert.deepEqual(['root', 'right', 'left', 'bottom'], calls);
+        assert.is('root', calls[0]);
+        assert.is('bottom', calls[3]);
         assert.is(5, result);
         assert.is(7, result2);
         release(bottom);
@@ -150,10 +139,11 @@ suite('calc', () => {
                 calls.push('call b');
                 return dependency.b;
             }
-        });
+        }, 'calculation');
         retain(calculation);
         calculation();
         flush();
+        assert.deepEqual(['call a'], calls);
 
         // No dependency on b yet, no effect
         dependency.b = 3;
@@ -307,7 +297,6 @@ suite('effect', () => {
     });
 
     test('calculations can provide custom equality check, which causes prior value to be returned', () => {
-        setLogLevel('debug');
         const dependency = model({
             val: { left: 'l', right: 'r' },
         });
@@ -505,7 +494,6 @@ suite('cycles', () => {
     });
 
     test('cycles can be caught when triggered via standard calling', () => {
-        setLogLevel('debug');
         const calculations: Record<string, Calculation<string>> = {};
         const data = model({
             hasCycle: false,
@@ -531,7 +519,6 @@ suite('cycles', () => {
         });
         calculations.d = calc(() => {
             const result = 'd' + calculations.c() + 'd';
-            console.log('d', result);
             return result;
         }, 'd').onCycle(() => {
             return 'D';

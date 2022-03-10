@@ -21,31 +21,49 @@ suite('behavior', () => {
             items: TodoItem[];
         }
 
-        const model0 = revise.model<TodoItem>({
-            task: 'apples',
-            done: false,
-        });
-        const model1 = revise.model<TodoItem>({
-            task: 'bananas',
-            done: false,
-        });
-        const model2 = revise.model<TodoItem>({
-            task: 'milk',
-            done: false,
-        });
-        const model3 = revise.model<TodoItem>({
-            task: 'cookies',
-            done: false,
-        });
-        const model4 = revise.model<TodoItem>({
-            task: 'and',
-            done: true,
-        });
+        const model0 = revise.model<TodoItem>(
+            {
+                task: 'apples',
+                done: false,
+            },
+            'model0'
+        );
+        const model1 = revise.model<TodoItem>(
+            {
+                task: 'bananas',
+                done: false,
+            },
+            'model1'
+        );
+        const model2 = revise.model<TodoItem>(
+            {
+                task: 'milk',
+                done: false,
+            },
+            'model2'
+        );
+        const model3 = revise.model<TodoItem>(
+            {
+                task: 'cookies',
+                done: false,
+            },
+            'model3'
+        );
+        const model4 = revise.model<TodoItem>(
+            {
+                task: 'and',
+                done: true,
+            },
+            'model4'
+        );
 
-        const todoList = revise.model<TodoList>({
-            name: 'Shopping',
-            items: revise.collection<TodoItem>([model0, model1]),
-        });
+        const todoList = revise.model<TodoList>(
+            {
+                name: 'Shopping',
+                items: revise.collection<TodoItem>([model0, model1]),
+            },
+            'todoList'
+        );
 
         const itemNames = new Map<TodoItem, string>();
         itemNames.set(model0, 'model0');
@@ -60,7 +78,7 @@ suite('behavior', () => {
             return revise.calc(() => {
                 renders.push(`item:${itemNames.get(item)}`);
                 return `[${item.done ? 'x' : ' '}] ${item.task}`;
-            });
+            }, 'itemRenderer:' + item.task);
         };
 
         const itemRenderers = new WeakMap();
@@ -81,7 +99,7 @@ suite('behavior', () => {
                     lines.push(getItemRenderer(item)());
                 });
                 return lines.join('\n');
-            });
+            }, 'list');
         };
 
         const app = makeTodoListRenderer(todoList);
@@ -132,83 +150,58 @@ suite('behavior', () => {
 
         model0.done = true;
 
+        assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
+        renders.splice(0, renders.length); // clear renders
+
         // flush causes update
         revise.flush();
-        assert.deepEqual(renders, [
-            'list',
-            'item:model0',
-            'item:model1',
-            // <<flush here>>
-            'item:model0',
-            'list',
-        ]);
+        assert.deepEqual(renders, ['item:model0', 'list']);
 
         // manual recomupute does nothing
+        renders.splice(0, renders.length); // clear renders
         assert.is(app(), 'Shopping:\n[x] apples\n[ ] bananas');
-        assert.deepEqual(renders, [
-            'list',
-            'item:model0',
-            'item:model1',
-            'item:model0',
-            'list',
-        ]);
+        assert.deepEqual(renders, []);
     });
 
     test('duplicate flush does nothing', () => {
         const { model0, app, renders } = setUp();
         app(); // Force initial render
+        assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
 
         model0.done = true;
 
         // flush causes update
+        renders.splice(0, renders.length);
         revise.flush();
-        assert.deepEqual(renders, [
-            'list',
-            'item:model0',
-            'item:model1',
-            // <<flush 1 here>>
-            'item:model0',
-            'list',
-        ]);
+        assert.deepEqual(renders, ['item:model0', 'list']);
 
         // flush again does nothing
+        renders.splice(0, renders.length);
         revise.flush();
-        assert.deepEqual(renders, [
-            'list',
-            'item:model0',
-            'item:model1',
-            // <<flush 1 here>>
-            'item:model0',
-            'list',
-            // <<flush 2 here>>
-        ]);
+        assert.deepEqual(renders, []);
     });
 
     test('change multiple dependencies', () => {
         const { model0, model1, app, renders } = setUp();
         app(); // initial render
+        assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
 
+        renders.splice(0, renders.length);
         // change another dependency
         model0.done = true;
         model1.task = 'cherries';
         revise.flush();
-        assert.deepEqual(renders.slice(0, 3), [
-            'list',
-            'item:model0',
-            'item:model1',
-        ]);
 
-        const postFlushRenders = renders.slice(3);
-        assert.arrayIncludes(postFlushRenders, 'item:model0');
-        assert.arrayIncludes(postFlushRenders, 'item:model1');
-        assert.arrayIncludes(postFlushRenders, 'list');
+        assert.arrayIncludes(renders, 'item:model0');
+        assert.arrayIncludes(renders, 'item:model1');
+        assert.arrayIncludes(renders, 'list');
         assert.lessThan(
-            postFlushRenders.indexOf('item:model0'),
-            postFlushRenders.indexOf('list')
+            renders.indexOf('item:model0'),
+            renders.indexOf('list')
         );
         assert.lessThan(
-            postFlushRenders.indexOf('item:model1'),
-            postFlushRenders.indexOf('list')
+            renders.indexOf('item:model1'),
+            renders.indexOf('list')
         );
 
         assert.is(app(), 'Shopping:\n[x] apples\n[ ] cherries');
@@ -217,34 +210,29 @@ suite('behavior', () => {
     test('high level dependencies does not cause child dependencies to rerender', () => {
         const { todoList, app, renders } = setUp();
         app(); // initial render
+        assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
 
+        renders.splice(0, renders.length);
         todoList.name = 'Grocery';
         revise.flush();
-        assert.deepEqual(renders, [
-            'list',
-            'item:model0',
-            'item:model1',
-            // <<flush here>>
-            'list',
-        ]);
+        assert.deepEqual(renders, ['list']);
         assert.is(app(), 'Grocery:\n[ ] apples\n[ ] bananas');
     });
 
     test('adding new items updates collection and renders new items', () => {
         const { model2, model3, todoList, app, renders } = setUp();
         app(); // initial render
+        assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
 
+        renders.splice(0, renders.length);
         todoList.items.push(model2);
         todoList.items.unshift(model3);
         revise.flush();
         assert.deepEqual(renders, [
             'list',
-            'item:model0',
-            'item:model1',
-            // <<flush here>>
-            'list',
             'item:model3',
             'item:model2',
+            'list',
         ]);
         assert.is(
             app(),

@@ -20,7 +20,7 @@ import {
     addOrderingDep,
     removeOrderingDep,
     addDepToCurrentCalculation,
-    processChange,
+    markDirty,
     registerNode,
 } from './calc';
 import { uniqueid } from './util';
@@ -117,7 +117,7 @@ export function trackedData<
 
     function addDeferredTask(task: () => void) {
         deferredTasks.push(task);
-        processChange(proxy);
+        markDirty(proxy);
     }
 
     function notify(event: TEvent) {
@@ -130,7 +130,7 @@ export function trackedData<
                 }
                 observerEvents.push(event);
             });
-            processChange(subscriptionNode);
+            markDirty(subscriptionNode);
         }
     }
 
@@ -178,12 +178,12 @@ export function trackedData<
 
     function processFieldChange(key: string | symbol) {
         const field = getField(key);
-        processChange(field);
+        markDirty(field);
     }
 
     function processFieldDelete(key: string | symbol) {
         const field = getField(key);
-        processChange(field);
+        markDirty(field);
     }
 
     const pseudoPrototype = {
@@ -258,7 +258,7 @@ export function trackedData<
                 );
                 if (changed) {
                     const field = getField(key);
-                    processChange(field);
+                    markDirty(field);
                 }
                 return changed;
             },
@@ -276,7 +276,7 @@ export function trackedData<
                 );
                 if (changed) {
                     const field = getField(key);
-                    processChange(field); // Anything depending on this value will need to be recalculated
+                    markDirty(field); // Anything depending on this value will need to be recalculated
                 }
                 return changed;
             },

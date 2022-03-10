@@ -7,10 +7,6 @@ suite('Graph', () => {
     const c = { name: 'c', $__id: 2 };
     const d = { name: 'd', $__id: 3 };
     const e = { name: 'e', $__id: 4 };
-    const f = { name: 'f', $__id: 5 };
-    const g = { name: 'g', $__id: 6 };
-    const h = { name: 'h', $__id: 7 };
-    const i = { name: 'i', $__id: 8 };
 
     interface TNode {
         name: string;
@@ -91,6 +87,8 @@ suite('DAG', () => {
         dag.addEdge(b, c, DAG.EDGE_HARD);
         dag.addEdge(b, d, DAG.EDGE_HARD);
         dag.addEdge(c, d, DAG.EDGE_HARD);
+
+        dag._test_processPending();
 
         assert.arrayIs([b], dag.getDependencies(a));
         assert.arrayIs([c, d], dag.getDependencies(b));
@@ -194,6 +192,8 @@ suite('DAG', () => {
                 assert.arrayEqualsUnsorted([a, b, c, d, e, f], items);
             });
 
+            /*
+             * TODO: garbage collection in the DAG... maybe
             test('nodes reached that are not retained are removed', () => {
                 dag.release(i); // no nodes are retained now
                 dag.retain(e);
@@ -210,6 +210,7 @@ suite('DAG', () => {
                 assert.is(false, dag.hasNode(h));
                 assert.is(false, dag.hasNode(i));
             });
+            */
 
             test('nodes can stop traversal by returning true', () => {
                 dag.markNodeDirty(a);

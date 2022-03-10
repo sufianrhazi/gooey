@@ -53,8 +53,8 @@ suite('model', () => {
     });
 
     test('model.keys produces view of keys', () => {
-        const simple = model<Record<string, any>>({});
-        const keys = model.keys(simple);
+        const simple = model<Record<string, any>>({}, 'model');
+        const keys = model.keys(simple, 'keys');
         retain(keys);
         assert.arrayEqualsUnsorted([], keys);
         simple.foo = 'a';

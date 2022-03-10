@@ -19,7 +19,8 @@ import { DAG } from './dag';
 import { alwaysTrue, noop, strictEqual, uniqueid } from './util';
 import { clearNames, debugNameFor, name } from './debug';
 
-let activeCalculations: (null | Calculation<any>)[] = [];
+let activeCalculations: { calc: null | Calculation<any>; deps: DAGNode[] }[] =
+    [];
 
 let globalDependencyGraph = new DAG<DAGNode>();
 
@@ -91,10 +92,12 @@ export function effect(
 }
 
 export function untracked<TRet>(func: () => TRet): TRet {
-    activeCalculations.push(null);
-    const result = func();
-    activeCalculations.pop();
-    return result;
+    activeCalculations.push({ calc: null, deps: [] });
+    try {
+        return func();
+    } finally {
+        activeCalculations.pop();
+    }
 }
 
 enum CalculationState {
@@ -181,16 +184,20 @@ function makeCalculation<Ret>(
         }
 
         switch (state) {
-            case CalculationState.STATE_FLUSHED:
-                globalDependencyGraph.removeIncoming(calculation);
+            case CalculationState.STATE_FLUSHED: {
                 state = CalculationState.STATE_TRACKING;
-                activeCalculations.push(calculation);
+                activeCalculations.push({ calc: calculation, deps: [] });
                 try {
                     result = { result: calculationFunc() };
                 } catch (e) {
+                    const calcRecord = activeCalculations.pop();
                     log.assert(
-                        activeCalculations.pop() === calculation,
+                        calcRecord?.calc === calculation,
                         'calculation stack inconsistency'
+                    );
+                    globalDependencyGraph.replaceIncoming(
+                        calculation,
+                        calcRecord.deps
                     );
                     if (e instanceof CycleAbortError) {
                         state = CalculationState.STATE_CYCLE;
@@ -207,11 +214,17 @@ function makeCalculation<Ret>(
                     throw e;
                 }
                 state = CalculationState.STATE_CACHED;
+                const calcRecord = activeCalculations.pop();
                 log.assert(
-                    activeCalculations.pop() === calculation,
+                    calcRecord?.calc === calculation,
                     'calculation stack inconsistency'
                 );
+                globalDependencyGraph.replaceIncoming(
+                    calculation,
+                    calcRecord.deps
+                );
                 break;
+            }
             case CalculationState.STATE_TRACKING:
                 state = CalculationState.STATE_CYCLE;
                 if (cycleHandler && !cycleResult) {
@@ -275,7 +288,12 @@ function makeCalculation<Ret>(
                         otherNode[CalculationMarkCycleTag](false);
                     }
                 });
-                processChange(calculation);
+                console.log('Do we get here?');
+                globalDependencyGraph
+                    .getDependencies(calculation)
+                    .forEach((dependency) => {
+                        markDirty(calculation);
+                    });
                 break;
             }
             default:
@@ -366,26 +384,18 @@ function makeCalculation<Ret>(
 }
 
 export function addDepToCurrentCalculation(item: DAGNode) {
+    if (activeCalculations.length === 0) return;
     const dependentCalculation =
         activeCalculations[activeCalculations.length - 1];
-    if (dependentCalculation) {
-        globalDependencyGraph.addNode(item);
-        if (!globalDependencyGraph.hasNode(dependentCalculation)) {
-            globalDependencyGraph.addNode(dependentCalculation);
-        }
-        globalDependencyGraph.addEdge(
-            item,
-            dependentCalculation,
-            DAG.EDGE_HARD
+    dependentCalculation.deps.push(item);
+    // TODO: Do we log here? Or elsewhere?
+    DEBUG &&
+        log.debug(
+            'New global dependency',
+            debugNameFor(item),
+            '->',
+            debugNameFor(dependentCalculation)
         );
-        DEBUG &&
-            log.debug(
-                'New global dependency',
-                debugNameFor(item),
-                '->',
-                debugNameFor(dependentCalculation)
-            );
-    }
 }
 
 export function addManualDep(fromNode: DAGNode, toNode: DAGNode) {
@@ -417,45 +427,32 @@ export function addOrderingDep(fromNode: DAGNode, toNode: DAGNode) {
 }
 
 export function removeManualDep(fromNode: DAGNode, toNode: DAGNode) {
-    if (globalDependencyGraph.removeEdge(fromNode, toNode, DAG.EDGE_HARD)) {
-        DEBUG &&
-            log.debug(
-                'Removed manual dependency',
-                debugNameFor(fromNode),
-                '->',
-                debugNameFor(toNode)
-            );
-    }
+    globalDependencyGraph.removeEdge(fromNode, toNode, DAG.EDGE_HARD);
+    DEBUG &&
+        log.debug(
+            'Removed manual dependency',
+            debugNameFor(fromNode),
+            '->',
+            debugNameFor(toNode)
+        );
 }
 
 export function removeOrderingDep(fromNode: DAGNode, toNode: DAGNode) {
-    if (globalDependencyGraph.removeEdge(fromNode, toNode, DAG.EDGE_SOFT)) {
-        DEBUG &&
-            log.debug(
-                'Removed manual ordering dependency',
-                debugNameFor(fromNode),
-                '->',
-                debugNameFor(toNode)
-            );
-    }
+    globalDependencyGraph.removeEdge(fromNode, toNode, DAG.EDGE_SOFT);
+    DEBUG &&
+        log.debug(
+            'Removed manual ordering dependency',
+            debugNameFor(fromNode),
+            '->',
+            debugNameFor(toNode)
+        );
 }
 
-export function processChange(item: DAGNode) {
+export function markDirty(item: DAGNode) {
+    DEBUG && log.debug('Dirtying', debugNameFor(item));
     globalDependencyGraph.addNode(item);
-    const hardEdges = globalDependencyGraph.getDependencies(
-        item,
-        DAG.EDGE_HARD
-    );
-    if (hardEdges.length > 0) {
-        const marked = globalDependencyGraph.markNodeDirty(item);
-        DEBUG &&
-            log.debug(
-                'processChange',
-                debugNameFor(item),
-                marked ? 'fresh' : 'stale'
-            );
-        scheduleFlush();
-    }
+    globalDependencyGraph.markNodeDirty(item);
+    scheduleFlush();
 }
 
 type Listener = () => void;

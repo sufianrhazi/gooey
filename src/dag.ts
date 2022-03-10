@@ -1,6 +1,18 @@
 import * as log from './log';
 import { groupBy } from './util';
 
+type GraphOperations =
+    | {
+          fromId: string;
+          toId: string;
+          kind: number;
+          type: 'add' | 'remove';
+      }
+    | {
+          nodeId: string;
+          type: 'dirty';
+      };
+
 /**
  * A directed acyclic graph
  *
@@ -26,6 +38,8 @@ export class DAG<Type extends object> {
     private retained: Record<string, true>;
     private dirtyNodes: Record<string, true>;
 
+    private pendingOperations: GraphOperations[];
+
     private graph: Record<string, Record<string, number>>;
     private reverseGraph: Record<string, Record<string, number>>;
 
@@ -36,6 +50,7 @@ export class DAG<Type extends object> {
         this.graph = {};
         this.reverseGraph = {};
         this.dirtyNodes = {};
+        this.pendingOperations = [];
     }
 
     private getId(node: Type): string {
@@ -55,11 +70,11 @@ export class DAG<Type extends object> {
         return !!this.nodesSet[this.getId(node)];
     }
 
-    markNodeDirty(node: Type): boolean {
-        const nodeId = this.getId(node);
-        if (this.dirtyNodes[nodeId]) return false;
-        this.dirtyNodes[nodeId] = true;
-        return true;
+    markNodeDirty(node: Type): void {
+        this.pendingOperations.push({
+            type: 'dirty',
+            nodeId: this.getId(node),
+        });
     }
 
     /**
@@ -119,28 +134,54 @@ export class DAG<Type extends object> {
             !!this.nodesSet[toId],
             'cannot add edge to node that does not exist'
         );
-        this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) | kind;
-        this.reverseGraph[toId][fromId] =
-            (this.reverseGraph[toId][fromId] || 0) | kind;
+        this.pendingOperations.push({ fromId, toId, kind, type: 'add' });
+    }
+
+    _test_processPending() {
+        this.processPendingOperations();
+    }
+
+    private processPendingOperations() {
+        this.pendingOperations.forEach((op) => {
+            switch (op.type) {
+                case 'add':
+                    this.graph[op.fromId][op.toId] =
+                        (this.graph[op.fromId][op.toId] || 0) | op.kind;
+                    this.reverseGraph[op.toId][op.fromId] =
+                        (this.reverseGraph[op.toId][op.fromId] || 0) | op.kind;
+                    break;
+                case 'remove':
+                    this.graph[op.fromId][op.toId] =
+                        (this.graph[op.fromId][op.toId] || 0) & ~op.kind;
+                    this.reverseGraph[op.toId][op.fromId] =
+                        (this.reverseGraph[op.toId][op.fromId] || 0) & ~op.kind;
+                    break;
+                case 'dirty': {
+                    this.dirtyNodes[op.nodeId] = true;
+                    break;
+                }
+                default:
+                    log.assertExhausted(op);
+            }
+        });
+        this.pendingOperations = [];
     }
 
     /**
      * Returns true if edge is removed
      */
-    removeEdge(
-        fromNode: Type,
-        toNode: Type,
-        kind: 0b01 | 0b10 | 0b11
-    ): boolean {
+    removeEdge(fromNode: Type, toNode: Type, kind: 0b01 | 0b10 | 0b11) {
         const fromId = this.getId(fromNode);
         const toId = this.getId(toNode);
-        if (!this.nodesSet[fromId]) return false;
-        if (!this.nodesSet[toId]) return false;
-        if (!(this.graph[fromId][toId] & kind)) return false;
-        this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) & ~kind;
-        this.reverseGraph[toId][fromId] =
-            (this.reverseGraph[toId][fromId] || 0) & ~kind;
-        return true;
+        log.assert(
+            !!this.nodesSet[fromId],
+            'cannot remove edge from node that does not exist'
+        );
+        log.assert(
+            !!this.nodesSet[toId],
+            'cannot remove edge to node that does not exist'
+        );
+        this.pendingOperations.push({ fromId, toId, kind, type: 'remove' });
     }
 
     private removeNodeInner(nodeId: string) {
@@ -166,16 +207,6 @@ export class DAG<Type extends object> {
         delete this.retained[nodeId];
     }
 
-    /**
-     * Remove a node and all its edges from the graph, returns true if node not present
-     */
-    removeNode(node: Type): boolean {
-        const nodeId = this.getId(node);
-        if (!this.nodesSet[nodeId]) return true;
-        this.removeNodeInner(nodeId);
-        return false;
-    }
-
     retain(node: Type) {
         const nodeId = this.getId(node);
         log.assert(!this.retained[nodeId], 'double-retain');
@@ -186,6 +217,40 @@ export class DAG<Type extends object> {
         const nodeId = this.getId(node);
         log.assert(this.retained[nodeId], 'double-release');
         delete this.retained[nodeId];
+    }
+
+    replaceIncoming(node: Type, newIncomingNodes: Type[]) {
+        const toId = this.getId(node);
+
+        const beforeFromIds = this.getReverseDependenciesInner(
+            toId,
+            DAG.EDGE_HARD
+        );
+        const beforeFromSet = new Set(beforeFromIds);
+        const newFromIds = newIncomingNodes.map((fromNode) =>
+            this.getId(fromNode)
+        );
+        const newFromSet = new Set(newFromIds);
+        beforeFromIds.forEach((fromId) => {
+            if (!newFromSet.has(fromId)) {
+                this.pendingOperations.push({
+                    fromId,
+                    toId,
+                    kind: DAG.EDGE_HARD,
+                    type: 'remove',
+                });
+            }
+        });
+        newFromIds.forEach((fromId) => {
+            if (!beforeFromSet.has(fromId)) {
+                this.pendingOperations.push({
+                    fromId,
+                    toId,
+                    kind: DAG.EDGE_HARD,
+                    type: 'add',
+                });
+            }
+        });
     }
 
     removeIncoming(node: Type) {
@@ -218,10 +283,13 @@ export class DAG<Type extends object> {
     /**
      * Get reverse dependencies (either EDGE_SOFT or EDGE_HARD)
      */
-    private getReverseDependenciesInner(nodeId: string): string[] {
+    private getReverseDependenciesInner(
+        nodeId: string,
+        edgeType: 0b01 | 0b10 | 0b11 = DAG.EDGE_ANY
+    ): string[] {
         if (!this.reverseGraph[nodeId]) return [];
         return Object.keys(this.reverseGraph[nodeId]).filter(
-            (fromId) => !!this.reverseGraph[nodeId][fromId]
+            (fromId) => (this.reverseGraph[nodeId][fromId] || 0) & edgeType
         );
     }
 
@@ -236,6 +304,103 @@ export class DAG<Type extends object> {
         return this.getDependenciesInner(nodeId, edgeType).map(
             (toId) => this.nodesSet[toId]
         );
+    }
+
+    /**
+     * This uses Tarjan's strongly connected components algorithm to build the
+     * topological sort of the subgraph that contains all retained nodes.
+     *
+     * Note: Because we are starting at retained nodes, which should be "end"
+     * bestination nodes, we build a topological sort of the _reverse graph_.
+     * Due to the nature of Tarjan's algorithm, the sort we build is
+     * constructed in reverse order. It is also the case that the reverse of a
+     * topological sort of the reverse graph is a valid topological sort of the
+     * forward graph.
+     *
+     * This means that we do not need to reverse the topological sort produced
+     * by Tarjan's algorithm if we follow the reverse edges.
+     */
+    private _toposortRetained() {
+        type Vertex = {
+            nodeId: string;
+            index?: number;
+            lowlink?: number;
+            onStack?: boolean;
+        };
+        let index = 0;
+        const nodeVertex: Record<string, Vertex> = {};
+        const stack: Vertex[] = [];
+        const reverseTopoSort: Vertex[][] = [];
+
+        const strongconnect = (vertex: Vertex) => {
+            vertex.index = index;
+            vertex.lowlink = index;
+            index = index + 1;
+            stack.push(vertex);
+            vertex.onStack = true;
+
+            // Consider successors of v
+            this.getReverseDependenciesInner(vertex.nodeId).forEach((toId) => {
+                if (!nodeVertex[toId]) {
+                    nodeVertex[toId] = {
+                        nodeId: toId,
+                    };
+                }
+                const toVertex = nodeVertex[toId];
+                if (toVertex.index === undefined) {
+                    // Successor toVertex has not yet been visited; recurse on it
+                    strongconnect(toVertex);
+                    vertex.lowlink = Math.min(
+                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                        vertex.lowlink!,
+                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                        toVertex.lowlink!
+                    );
+                } else if (toVertex.onStack) {
+                    // Successor toVertex is in stack S and hence in the current SCC
+                    // If toVertex is not on stack, then (vertex, toVertex) is an edge pointing to an SCC already found and must be ignored
+                    // Note: The next line may look odd - but is correct.
+                    // It says toVertex.index not toVertex.lowlink; that is deliberate and from the original paper
+                    vertex.lowlink = Math.min(
+                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                        vertex.lowlink!,
+                        toVertex.index
+                    );
+                }
+            });
+
+            // If vertex is a root node, pop the stack and generate an SCC
+            if (vertex.lowlink === vertex.index) {
+                // start a new strongly connected component
+                const component: Vertex[] = [];
+                for (;;) {
+                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                    const toVertex = stack.pop()!;
+                    toVertex.onStack = false;
+                    // add toVertex to current strongly connected component
+                    component.push(toVertex);
+                    if (toVertex === vertex) {
+                        break;
+                    }
+                }
+                // output the current strongly connected component
+                reverseTopoSort.push(component);
+            }
+        };
+
+        Object.keys(this.retained).forEach((nodeId) => {
+            if (this.retained[nodeId] && !nodeVertex[nodeId]) {
+                nodeVertex[nodeId] = {
+                    nodeId,
+                };
+                strongconnect(nodeVertex[nodeId]);
+            }
+        });
+
+        // Note: Because we traversed the reverse graph, the reverse
+        // topological sort is a valid forward topological sort of the forward
+        // graph.
+        return reverseTopoSort;
     }
 
     private _toposort(fromNodeIds: string[]) {
@@ -332,37 +497,26 @@ export class DAG<Type extends object> {
      * topologically sort them.
      */
     process(callback: (componentNodes: Type[]) => boolean) {
-        this._processInner(callback, {});
+        this._processInner(callback);
     }
 
-    private _processInner(
-        callback: (componentNodes: Type[]) => boolean,
-        toSkip: Record<string, boolean> = {}
-    ) {
-        const toposort = this._toposort(Object.keys(this.dirtyNodes));
+    private _processInner(callback: (componentNodes: Type[]) => boolean) {
+        this.processPendingOperations();
+        const toposort = this._toposortRetained();
 
-        const toRemove: string[] = [];
         const knownCycles: Record<string, boolean> = {};
         const errorNodes: Record<string, boolean> = {};
+        const visited: Record<string, boolean> = {};
         for (let i = 0; i < toposort.length; ++i) {
             const nodeIds: string[] = [];
             let anyDirty = false;
             toposort[i].forEach((vertex) => {
+                visited[i] = true;
                 if (toposort[i].length > 1) {
                     knownCycles[vertex.nodeId] = true;
                 }
-                if (!toSkip[vertex.nodeId]) {
-                    nodeIds.push(vertex.nodeId);
-                } else {
-                    console.log('SKIPPING', vertex);
-                }
-                if (vertex.reachesRetained) {
-                    // Note: if any vertex in a group reaches retained, they **all** do
-                    // TODO: confirm that reachesRetained is correct for all types of graphs
-                    anyDirty = anyDirty || this.dirtyNodes[vertex.nodeId];
-                } else {
-                    toRemove.push(vertex.nodeId);
-                }
+                nodeIds.push(vertex.nodeId);
+                anyDirty = anyDirty || this.dirtyNodes[vertex.nodeId];
             });
             if (anyDirty) {
                 let isEqual = false;
@@ -390,26 +544,18 @@ export class DAG<Type extends object> {
                         });
                     });
                 }
+                if (this.pendingOperations.length > 0) {
+                    log.warn('DAG mutated while processing, restarting...');
+                    this._processInner(callback);
+                    return;
+                }
             }
         }
 
-        toRemove.forEach((nodeId) => {
-            this.removeNodeInner(nodeId);
-            knownCycles[nodeId] = false;
-        });
-
-        // The DAG may have changed by virtue of processing it, which may have caused additional nodes to have been dirtied.
-        // If there are any dirty nodes that are not part of a known cycle in the last run, re-process the DAG.
-        if (
-            Object.keys(this.dirtyNodes).some(
-                (nodeId) => !knownCycles[nodeId] && !toSkip[nodeId]
-            )
-        ) {
-            this._processInner(callback, {
-                ...knownCycles,
-                ...errorNodes,
-            });
-        }
+        // TODO: this is wrong, we should notify the caller that all nodes
+        // reachable from the remaining dirty nodes should be transitioned to
+        // flushed state
+        this.dirtyNodes = {};
     }
 
     /**
@@ -444,6 +590,38 @@ export class DAG<Type extends object> {
             return [nodeAttributes[nodeId].subgraph, nodeId];
         });
 
+        // Pending!!!
+        const newGraph: Record<string, Record<string, number>> = {};
+        const newReverseGraph: Record<string, Record<string, number>> = {};
+        const newDirtyNodes = { ...this.dirtyNodes };
+        nodeIds.forEach((nodeId) => {
+            newGraph[nodeId] = { ...this.graph[nodeId] };
+            newReverseGraph[nodeId] = { ...this.reverseGraph[nodeId] };
+        });
+
+        this.pendingOperations.forEach((op) => {
+            switch (op.type) {
+                case 'add':
+                    newGraph[op.fromId][op.toId] =
+                        (newGraph[op.fromId][op.toId] || 0) | op.kind;
+                    newReverseGraph[op.toId][op.fromId] =
+                        (newReverseGraph[op.toId][op.fromId] || 0) | op.kind;
+                    break;
+                case 'remove':
+                    newGraph[op.fromId][op.toId] =
+                        (newGraph[op.fromId][op.toId] || 0) & ~op.kind;
+                    newReverseGraph[op.toId][op.fromId] =
+                        (newReverseGraph[op.toId][op.fromId] || 0) & ~op.kind;
+                    break;
+                case 'dirty': {
+                    newDirtyNodes[op.nodeId] = true;
+                    break;
+                }
+                default:
+                    log.assertExhausted(op);
+            }
+        });
+
         let clusterId = 0;
         groupedNodes.forEach((nodeIds, group) => {
             if (group)
@@ -457,7 +635,11 @@ export class DAG<Type extends object> {
                     shape: this.retained[nodeId] ? 'box' : 'ellipse',
                     label: nodeAttributes[nodeId].label,
                     penwidth: nodeAttributes[nodeId].penwidth,
-                    fillcolor: this.dirtyNodes[nodeId] ? '#FFDDDD' : '#DDDDDD',
+                    fillcolor: this.dirtyNodes[nodeId]
+                        ? '#FFDDDD'
+                        : newDirtyNodes[nodeId]
+                        ? '#FFFFDD'
+                        : '#DDDDDD',
                 };
                 lines.push(
                     `  item_${nodeId} [${Object.entries(props)
@@ -471,15 +653,59 @@ export class DAG<Type extends object> {
         });
 
         nodeIds.forEach((fromId) => {
-            this.getDependenciesInner(fromId).forEach((toId) => {
-                if (this.graph[fromId][toId] & DAG.EDGE_HARD) {
+            const allDestinations = Array.from(
+                new Set([
+                    ...Object.keys(this.graph[fromId]),
+                    ...Object.keys(newGraph[fromId]),
+                ])
+            );
+            allDestinations.forEach((toId) => {
+                if (
+                    this.graph[fromId][toId] & DAG.EDGE_HARD &&
+                    newGraph[fromId][toId] & DAG.EDGE_HARD
+                ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="solid"];`
                     );
                 }
-                if (this.graph[fromId][toId] & DAG.EDGE_SOFT) {
+                if (
+                    !(this.graph[fromId][toId] & DAG.EDGE_HARD) &&
+                    newGraph[fromId][toId] & DAG.EDGE_HARD
+                ) {
+                    lines.push(
+                        `  item_${fromId} -> item_${toId} [style="solid",color="#0000FF"];`
+                    );
+                }
+                if (
+                    this.graph[fromId][toId] & DAG.EDGE_HARD &&
+                    !(newGraph[fromId][toId] & DAG.EDGE_HARD)
+                ) {
+                    lines.push(
+                        `  item_${fromId} -> item_${toId} [style="solid",color="#FF0000"];`
+                    );
+                }
+                if (
+                    this.graph[fromId][toId] & DAG.EDGE_SOFT &&
+                    newGraph[fromId][toId] & DAG.EDGE_SOFT
+                ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="dashed"];`
+                    );
+                }
+                if (
+                    !(this.graph[fromId][toId] & DAG.EDGE_SOFT) &&
+                    newGraph[fromId][toId] & DAG.EDGE_SOFT
+                ) {
+                    lines.push(
+                        `  item_${fromId} -> item_${toId} [style="dashed",color="#0000FF"];`
+                    );
+                }
+                if (
+                    this.graph[fromId][toId] & DAG.EDGE_SOFT &&
+                    !(newGraph[fromId][toId] & DAG.EDGE_SOFT)
+                ) {
+                    lines.push(
+                        `  item_${fromId} -> item_${toId} [style="dashed",color="#FF0000"];`
                     );
                 }
             });
