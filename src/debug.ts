@@ -18,24 +18,25 @@ export function debugNameFor(item: DAGNode): string {
     if (!DEBUG) {
         return '';
     }
+    const id = (item as any).$__id;
     if (isCollection(item)) {
-        return `collection:${nameMap.get(item) ?? '?'}`;
+        return `${id}:collection:${nameMap.get(item) ?? '?'}`;
     }
     if (isCalculation(item)) {
-        return `${isEffect(item) ? 'effect' : 'calc'}:${
+        return `${id}:${isEffect(item) ? 'effect' : 'calc'}:${
             nameMap.get(item) ?? '?'
         }`;
     }
     if (isModel(item)) {
-        return `model:${nameMap.get(item) ?? '?'}`;
+        return `${id}:model:${nameMap.get(item) ?? '?'}`;
     }
     if (isSubscription(item)) {
-        return `sub:${nameMap.get(item) ?? '?'}`;
+        return `${id}:sub:${nameMap.get(item) ?? '?'}`;
     }
     if (isNodeOrdering(item)) {
-        return `ord:${nameMap.get(item) ?? '?'}`;
+        return `${id}:ord:${nameMap.get(item) ?? '?'}`;
     }
-    return `field:${nameMap.get(item.model) ?? '?'}:${String(item.key)}`;
+    return `${id}:field:${nameMap.get(item.model) ?? '?'}:${String(item.key)}`;
 }
 
 export function name<T>(item: T, name: string): T {

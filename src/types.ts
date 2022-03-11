@@ -9,8 +9,9 @@ export class InvariantError extends Error {
 export const TypeTag = Symbol('reviseType');
 export const DataTypeTag = Symbol('dataTypeTag');
 export const CalculationTypeTag = Symbol('calculationType');
-export const CalculationRecalculateTag = Symbol('calculationRecalculateTag');
-export const CalculationMarkCycleTag = Symbol('calculationMarkCycle');
+export const CalculationRecalculateTag = Symbol('calculationRecalculate');
+export const CalculationInvalidateTag = Symbol('calculationInvalidate');
+export const CalculationSetErrorTag = Symbol('calculationSetError');
 
 export const ObserveKey = Symbol('observe');
 export const GetSubscriptionNodeKey = Symbol('getSubscriptionNode');
@@ -18,6 +19,13 @@ export const MakeModelViewKey = Symbol('makeModelView');
 export const FlushKey = Symbol('flush');
 export const AddDeferredWorkKey = Symbol('addDeferredWork');
 export const NotifyKey = Symbol('notify');
+
+export type ProcessAction =
+    | 'recalculate'
+    | 'invalidate'
+    | 'cycle'
+    | 'error-dependency'
+    | 'cycle-dependency';
 
 /**
  * A ref object that can be passed to native elements.
@@ -206,9 +214,10 @@ export interface Calculation<Result> {
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
     flush: () => Result | undefined;
-    onCycle: (handler: () => Result) => this;
-    [CalculationMarkCycleTag]: (isCycle: boolean) => boolean;
+    onError: (handler: (errorType: 'cycle' | 'error') => Result) => this;
+    [CalculationSetErrorTag]: (error: 'cycle' | 'error') => boolean;
     [CalculationRecalculateTag]: () => boolean;
+    [CalculationInvalidateTag]: () => void;
 }
 
 export interface ModelField {

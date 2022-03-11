@@ -1,4 +1,5 @@
 import * as log from './log';
+import type { ProcessAction } from './types';
 import { groupBy } from './util';
 
 type GraphOperations =
@@ -87,33 +88,34 @@ export class DAG<Type extends object> {
      */
     breakCycle(node: Type) {
         const nodeId = this.getId(node);
-        log.assert(
-            this.dirtyNodes[nodeId],
-            'breakCycle attempted on non-dirty node'
-        );
-        const components = this._toposort([nodeId]);
-        log.assert(
-            components[0].length > 1,
-            'breakCycle called on a non-cycle'
-        );
-        log.assert(
-            components[0].some((vertex) => vertex.nodeId === nodeId),
-            'breakCycle did not find nodeId in its first cycle'
-        );
-        log.assert(
-            components[0].every((vertex) => this.dirtyNodes[vertex.nodeId]),
-            'breakCycle does not have a full set of dirty nodes in a cycle'
-        );
-        const otherNodeIds: string[] = [];
-        components[0].forEach((vertex) => {
-            delete this.dirtyNodes[vertex.nodeId];
-            if (vertex.nodeId !== nodeId) {
-                otherNodeIds.push(vertex.nodeId);
+
+        const cycleNodeIds: Record<string, 1 | 2 | undefined> = {};
+        const otherNodes: Type[] = [];
+        let foundCycle = false;
+        const visit = (visitId: string) => {
+            if (cycleNodeIds[visitId] === 2) foundCycle = true;
+            if (cycleNodeIds[visitId]) return;
+            if (visitId !== nodeId) otherNodes.push(this.nodesSet[visitId]);
+            cycleNodeIds[visitId] = 2;
+            this.getDependenciesInner(visitId, DAG.EDGE_ANY).forEach((toId) => {
+                visit(toId);
+            });
+            cycleNodeIds[visitId] = 1;
+        };
+
+        visit(nodeId);
+
+        log.assert(foundCycle, 'breakCycle did not find a cycle');
+
+        this.getReverseDependenciesInner(nodeId, DAG.EDGE_HARD).forEach(
+            (fromId) => {
+                if (cycleNodeIds[fromId]) {
+                    this.removeEdge(this.nodesSet[fromId], node, DAG.EDGE_HARD);
+                }
             }
-        });
-        this.removeIncoming(node);
-        this.dirtyNodes[nodeId] = true;
-        return otherNodeIds.map((otherNodeId) => this.nodesSet[otherNodeId]);
+        );
+
+        return otherNodes;
     }
 
     hasDirtyNodes(): boolean {
@@ -156,10 +158,9 @@ export class DAG<Type extends object> {
                     this.reverseGraph[op.toId][op.fromId] =
                         (this.reverseGraph[op.toId][op.fromId] || 0) & ~op.kind;
                     break;
-                case 'dirty': {
+                case 'dirty':
                     this.dirtyNodes[op.nodeId] = true;
                     break;
-                }
                 default:
                     log.assertExhausted(op);
             }
@@ -496,60 +497,69 @@ export class DAG<Type extends object> {
      * This uses Tarjan's strongly connected component algorithm to both segment strongly connected nodes and
      * topologically sort them.
      */
-    process(callback: (componentNodes: Type[]) => boolean) {
-        this._processInner(callback);
-    }
-
-    private _processInner(callback: (componentNodes: Type[]) => boolean) {
+    process(callback: (node: Type, action: ProcessAction) => boolean): void {
         this.processPendingOperations();
         const toposort = this._toposortRetained();
 
-        const knownCycles: Record<string, boolean> = {};
-        const errorNodes: Record<string, boolean> = {};
+        const cycleDependencyNodes: Record<string, boolean> = {};
+        const errorDependencyNodes: Record<string, boolean> = {};
         const visited: Record<string, boolean> = {};
         for (let i = 0; i < toposort.length; ++i) {
             const nodeIds: string[] = [];
-            let anyDirty = false;
             toposort[i].forEach((vertex) => {
+                const nodeId = vertex.nodeId;
                 visited[i] = true;
-                if (toposort[i].length > 1) {
-                    knownCycles[vertex.nodeId] = true;
+                nodeIds.push(nodeId);
+                let action: ProcessAction | null = this.dirtyNodes[nodeId]
+                    ? 'recalculate'
+                    : null;
+                const isCycle = toposort[i].length > 1;
+                if (errorDependencyNodes[nodeId]) {
+                    action = 'error-dependency';
+                } else if (isCycle) {
+                    action = 'cycle';
+                } else if (cycleDependencyNodes[nodeId]) {
+                    action = 'cycle-dependency';
                 }
-                nodeIds.push(vertex.nodeId);
-                anyDirty = anyDirty || this.dirtyNodes[vertex.nodeId];
-            });
-            if (anyDirty) {
-                let isEqual = false;
-                try {
-                    isEqual = callback(
-                        nodeIds.map((nodeId) => this.nodesSet[nodeId])
-                    );
-                    nodeIds.forEach((nodeId) => {
+
+                if (action) {
+                    let isEqual = true;
+                    let isError = false;
+                    try {
+                        isEqual = callback(this.nodesSet[nodeId], action);
                         delete this.dirtyNodes[nodeId];
-                    });
-                } catch (e) {
-                    nodeIds.forEach((nodeId) => {
-                        errorNodes[nodeId] = true;
-                    });
-                    log.error('Caught error during flush', e);
-                }
-                if (!isEqual) {
-                    nodeIds.forEach((nodeId) => {
+                    } catch (e) {
+                        isError = true;
+                        log.error('Caught error during flush', e);
+                    }
+                    if (isError) {
                         this.getDependenciesInner(
                             nodeId,
                             DAG.EDGE_HARD
                         ).forEach((toId) => {
-                            // Prevent circular dependencies!
+                            errorDependencyNodes[toId] = true;
+                        });
+                    } else if (isCycle || cycleDependencyNodes[nodeId]) {
+                        this.getDependenciesInner(
+                            nodeId,
+                            DAG.EDGE_HARD
+                        ).forEach((toId) => {
+                            cycleDependencyNodes[toId] = true;
+                        });
+                    } else if (!isEqual) {
+                        this.getDependenciesInner(
+                            nodeId,
+                            DAG.EDGE_HARD
+                        ).forEach((toId) => {
                             this.dirtyNodes[toId] = true;
                         });
-                    });
+                    }
                 }
                 if (this.pendingOperations.length > 0) {
                     log.warn('DAG mutated while processing, restarting...');
-                    this._processInner(callback);
-                    return;
+                    return this.process(callback);
                 }
-            }
+            });
         }
 
         // TODO: this is wrong, we should notify the caller that all nodes
@@ -613,10 +623,9 @@ export class DAG<Type extends object> {
                     newReverseGraph[op.toId][op.fromId] =
                         (newReverseGraph[op.toId][op.fromId] || 0) & ~op.kind;
                     break;
-                case 'dirty': {
+                case 'dirty':
                     newDirtyNodes[op.nodeId] = true;
                     break;
-                }
                 default:
                     log.assertExhausted(op);
             }

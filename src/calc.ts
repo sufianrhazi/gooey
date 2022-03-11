@@ -1,7 +1,8 @@
 import {
     Calculation,
     CalculationRecalculateTag,
-    CalculationMarkCycleTag,
+    CalculationInvalidateTag,
+    CalculationSetErrorTag,
     CalculationTypeTag,
     DAGNode,
     EqualityFunc,
@@ -105,6 +106,7 @@ enum CalculationState {
     STATE_TRACKING,
     STATE_CACHED,
     STATE_CYCLE,
+    STATE_ERROR,
 }
 
 class CycleAbortError extends Error {}
@@ -117,51 +119,12 @@ function makeCalculation<Ret>(
     if (typeof calculationFunc !== 'function') {
         throw new InvariantError('calculation must be provided a function');
     }
-    // States:
-    // - flushed (initial) -- no cached value, not cycled
-    // - tracking (transitory) -- currently being called (tracking dependencies)
-    // - cached -- finished call, return value cached
-    // - cycle -- error state; cycle is detected
-    //
-    // digraph state {
-    //     node [style="filled",fillcolor="#eeeeee",fontname="Helvetica"];
-    //     edge [fontname="Helvetica"];
-    //     fontname="Helvetica";
-    //
-    //     flushed [peripheries="2"];
-    //     tracking [style="filled",fillcolor="#444444",fontcolor="white"];
-    //     cached;
-    //     exception [shape="polygon",sides="8",fillcolor="#ffdddd"];
-    //     cycle [style="filled",fillcolor="#ffdddd"];
-    //
-    //     flushed -> flushed [label="  flush"];
-    //     flushed -> tracking [label="  call",tailport="w"];
-    //     tracking -> cached [tailport="s",headport="w",label="call:return"];
-    //     cached -> flushed [label="  flush"];
-    //     tracking -> cycle [tailport="sw",headport="w",label="recurse"];
-    //     cycle -> flushed [label="  flush"];
-    //     cached -> cycle [label="cycle dep"];
-    //     cycle -> exception [label="call"];
-    //     tracking -> exception [label="flush",tailport="w"];
-    // }
-    //
-    //
-    // Events:
-    // - calculation gets called:
-    //   - flushed -> tracking -> cached
-    //   - tracking -> cycle
-    //   - cached -> cached
-    //   - cycle -> throw Exception (cycle)
-    // - calculation gets flushed:
-    //   - flushed -> flushed
-    //   - tracking -> throw Exception (invariant: cannot flush mid-call)
-    //   - cached -> flushed
-    //   - cycle -> flushed
 
-    let cycleResult: { result: Ret } | undefined = undefined;
+    let errorResult: { result: Ret } | undefined = undefined;
     let result: { result: Ret } | undefined = undefined;
     let state: CalculationState = CalculationState.STATE_FLUSHED;
-    let cycleHandler: (() => Ret) | undefined = undefined;
+    let errorHandler: ((errorType: 'cycle' | 'error') => Ret) | undefined =
+        undefined;
 
     const calculation: Calculation<Ret> = Object.assign(calculationBody, {
         $__id: uniqueid(),
@@ -169,10 +132,11 @@ function makeCalculation<Ret>(
         [CalculationTypeTag]: isEffect
             ? ('effect' as const)
             : ('calculation' as const),
-        [CalculationMarkCycleTag]: calculationMarkCycle,
+        [CalculationSetErrorTag]: calculationSetError,
         [CalculationRecalculateTag]: calculationRecalculate,
+        [CalculationInvalidateTag]: calculationInvalidate,
         flush: calculationFlush,
-        onCycle: calculationOnCycle,
+        onError: calculationOnError,
     });
 
     globalDependencyGraph.addNode(calculation);
@@ -199,17 +163,19 @@ function makeCalculation<Ret>(
                         calculation,
                         calcRecord.deps
                     );
-                    if (e instanceof CycleAbortError) {
-                        state = CalculationState.STATE_CYCLE;
-                        if (cycleHandler && !cycleResult) {
-                            cycleResult = { result: cycleHandler() };
-                        }
-                        if (cycleResult && activeCalculations.length === 0) {
-                            return cycleResult.result;
-                        }
-                        throw e;
-                    } else {
-                        state = CalculationState.STATE_FLUSHED;
+                    const isCycle = e instanceof CycleAbortError;
+                    state = isCycle
+                        ? CalculationState.STATE_CYCLE
+                        : CalculationState.STATE_ERROR;
+                    if (errorHandler) {
+                        errorResult = {
+                            result: errorHandler(isCycle ? 'cycle' : 'error'),
+                        };
+                    }
+                    // Only return a value if we're the _outermost_ tracked call.
+                    // Otherwise, we need to propagate the error to catch the remaining ones.
+                    if (errorResult && activeCalculations.length === 0) {
+                        return errorResult.result;
                     }
                     throw e;
                 }
@@ -226,10 +192,7 @@ function makeCalculation<Ret>(
                 break;
             }
             case CalculationState.STATE_TRACKING:
-                state = CalculationState.STATE_CYCLE;
-                if (cycleHandler && !cycleResult) {
-                    cycleResult = { result: cycleHandler() };
-                }
+                state = CalculationState.STATE_ERROR;
                 throw new CycleAbortError(
                     'Cycle reached: calculation processing reached itself'
                 );
@@ -238,12 +201,18 @@ function makeCalculation<Ret>(
                 log.assert(result, 'cached calculation missing result');
                 return result.result;
             case CalculationState.STATE_CYCLE:
-                if (cycleResult) {
-                    return cycleResult.result;
+                if (errorResult) {
+                    return errorResult.result;
                 }
-                throw new CycleAbortError(
-                    'Cycle reached: calculation is part of a cycle'
+                throw new Error(
+                    'Cycle reached: calculation contains or depends on cycle'
                 );
+                break;
+            case CalculationState.STATE_ERROR:
+                if (errorResult) {
+                    return errorResult.result;
+                }
+                throw new Error('Calculation in error state');
                 break;
             default:
                 log.assertExhausted(state, 'Unexpected calculation state');
@@ -263,37 +232,32 @@ function makeCalculation<Ret>(
                 );
                 break;
             case CalculationState.STATE_CACHED:
-                cycleResult = undefined;
+                errorResult = undefined;
                 result = undefined;
                 state = CalculationState.STATE_FLUSHED;
                 break;
-            case CalculationState.STATE_CYCLE: {
+            case CalculationState.STATE_CYCLE:
+            case CalculationState.STATE_ERROR: {
                 DEBUG &&
                     log.debug(
-                        'Manually flushing node in cycle',
+                        `Manually flushing node in ${
+                            state === CalculationState.STATE_CYCLE
+                                ? 'cycle'
+                                : 'error'
+                        } state`,
                         debugNameFor(calculation)
                     );
-                cycleResult = undefined;
+                errorResult = undefined;
                 result = undefined;
                 state = CalculationState.STATE_FLUSHED;
+                markDirty(calculation);
                 const otherNodes =
                     globalDependencyGraph.breakCycle(calculation);
                 otherNodes.forEach((otherNode) => {
                     if (isCalculation(otherNode)) {
-                        DEBUG &&
-                            log.debug(
-                                'Marking other cycle nodes as non-cycle',
-                                debugNameFor(otherNode)
-                            );
-                        otherNode[CalculationMarkCycleTag](false);
+                        otherNode[CalculationInvalidateTag]();
                     }
                 });
-                console.log('Do we get here?');
-                globalDependencyGraph
-                    .getDependencies(calculation)
-                    .forEach((dependency) => {
-                        markDirty(calculation);
-                    });
                 break;
             }
             default:
@@ -302,50 +266,72 @@ function makeCalculation<Ret>(
         return priorResult;
     }
 
-    function calculationMarkCycle(isCycle: boolean) {
-        if (isCycle) {
-            switch (state) {
-                case CalculationState.STATE_TRACKING:
-                    throw new InvariantError(
-                        'Cannot mark calculation as being a cycle while it is being calculated'
-                    );
-                    break;
-                case CalculationState.STATE_FLUSHED:
-                case CalculationState.STATE_CACHED:
-                    result = undefined;
-                    if (cycleHandler) {
-                        cycleResult = { result: cycleHandler() };
-                    }
-                    state = CalculationState.STATE_CYCLE;
-                    return true;
-                case CalculationState.STATE_CYCLE:
-                    result = undefined;
-                    if (cycleHandler) {
-                        cycleResult = { result: cycleHandler() };
-                    }
-                    state = CalculationState.STATE_CYCLE;
-                    return false;
-                default:
-                    log.assertExhausted(state, 'Unexpected calculation state');
+    function calculationInvalidate() {
+        switch (state) {
+            case CalculationState.STATE_TRACKING:
+                throw new InvariantError(
+                    'Cannot invalidate a calculation while being tracked'
+                );
+            case CalculationState.STATE_FLUSHED:
+                return;
+            case CalculationState.STATE_CACHED:
+            case CalculationState.STATE_CYCLE:
+            case CalculationState.STATE_ERROR: {
+                DEBUG &&
+                    log.debug('Invalidating node', debugNameFor(calculation));
+                errorResult = undefined;
+                result = undefined;
+                state = CalculationState.STATE_FLUSHED;
+                markDirty(calculation);
+                break;
             }
-        } else {
-            switch (state) {
-                case CalculationState.STATE_TRACKING:
-                    throw new InvariantError(
-                        'Cannot mark calculation as being a cycle while it is being calculated'
-                    );
-                    break;
-                case CalculationState.STATE_FLUSHED:
-                case CalculationState.STATE_CACHED:
-                    return false;
-                case CalculationState.STATE_CYCLE:
-                    result = undefined;
-                    cycleResult = undefined;
-                    state = CalculationState.STATE_FLUSHED;
-                    return true;
-                default:
-                    log.assertExhausted(state, 'Unexpected calculation state');
+            default:
+                log.assertExhausted(state, 'Unexpected calculation state');
+        }
+    }
+
+    function calculationSetError(errorType: 'error' | 'cycle') {
+        switch (state) {
+            case CalculationState.STATE_TRACKING:
+                throw new InvariantError(
+                    'Cannot mark calculation as being a cycle while it is being calculated'
+                );
+                break;
+            case CalculationState.STATE_FLUSHED:
+            case CalculationState.STATE_CACHED:
+                result = undefined;
+                if (errorHandler) {
+                    errorResult = { result: errorHandler(errorType) };
+                }
+                state =
+                    errorType === 'cycle'
+                        ? CalculationState.STATE_CYCLE
+                        : CalculationState.STATE_ERROR;
+                return false;
+            case CalculationState.STATE_CYCLE:
+            case CalculationState.STATE_ERROR: {
+                result = undefined;
+                let isErrorResultEqual = false;
+                if (errorHandler) {
+                    const newResult = errorHandler(errorType);
+                    if (errorResult) {
+                        isErrorResultEqual = isEqual(
+                            errorResult.result,
+                            newResult
+                        );
+                    }
+                    if (!isErrorResultEqual) {
+                        errorResult = { result: newResult };
+                    }
+                }
+                state =
+                    errorType === 'cycle'
+                        ? CalculationState.STATE_CYCLE
+                        : CalculationState.STATE_ERROR;
+                return isErrorResultEqual;
             }
+            default:
+                log.assertExhausted(state, 'Unexpected calculation state');
         }
     }
 
@@ -359,8 +345,7 @@ function makeCalculation<Ret>(
             case CalculationState.STATE_FLUSHED:
                 calculationBody();
                 return false;
-            case CalculationState.STATE_CACHED:
-            case CalculationState.STATE_CYCLE: {
+            case CalculationState.STATE_CACHED: {
                 const priorResult = result;
                 calculationFlush();
                 result = { result: calculationBody() };
@@ -370,13 +355,23 @@ function makeCalculation<Ret>(
                 }
                 return false;
             }
+            case CalculationState.STATE_CYCLE:
+                throw new InvariantError(
+                    'Cannot recalculate calculation in cycle state without flushing'
+                );
+            case CalculationState.STATE_ERROR:
+                throw new InvariantError(
+                    'Cannot recalculate calculation in error state without flushing'
+                );
             default:
                 log.assertExhausted(state, 'Unexpected calculation state');
         }
     }
 
-    function calculationOnCycle(handler: () => Ret) {
-        cycleHandler = handler;
+    function calculationOnError(
+        handler: (errorType: 'cycle' | 'error') => Ret
+    ) {
+        errorHandler = handler;
         return calculation;
     }
 
@@ -519,98 +514,54 @@ export function flush() {
     DEBUG && debugSubscription && debugSubscription(debug(), '0: flush start');
 
     // Then flush dependencies in topological order
-    globalDependencyGraph.process((connectedItems) => {
-        if (connectedItems.length === 1) {
-            const item = connectedItems[0];
-            let isEqual = false;
-            if (isCalculation(item)) {
-                isEqual = item[CalculationRecalculateTag]();
-                DEBUG &&
-                    log.debug(
-                        'flushing calculation',
-                        debugNameFor(item),
-                        `isEqual=${isEqual}`
-                    );
-            } else if (isCollection(item)) {
-                isEqual = item[FlushKey]();
-                DEBUG &&
-                    log.debug(
-                        'flushing collection',
-                        debugNameFor(item),
-                        `isEqual=${isEqual}`
-                    );
-            } else if (isModel(item)) {
-                isEqual = item[FlushKey]();
-                DEBUG &&
-                    log.debug(
-                        'flushing model',
-                        debugNameFor(item),
-                        `isEqual=${isEqual}`
-                    );
-            } else if (isSubscription(item)) {
-                isEqual = item[FlushKey]();
-                DEBUG &&
-                    log.debug(
-                        'flushing subscription',
-                        debugNameFor(item),
-                        `isEqual=${isEqual}`
-                    );
-            } else {
-                DEBUG && log.debug('flushing other', debugNameFor(item));
-            }
+    globalDependencyGraph.process((item, action) => {
+        let isEqual = false;
 
-            DEBUG &&
-                debugSubscription &&
+        switch (action) {
+            case 'cycle':
+            case 'cycle-dependency':
+                if (isCalculation(item)) {
+                    isEqual = item[CalculationSetErrorTag]('cycle');
+                } else {
+                    log.assert(false, 'Unexpected dependency on cycle');
+                }
+                break;
+            case 'error-dependency':
+                if (isCalculation(item)) {
+                    isEqual = item[CalculationSetErrorTag]('error');
+                } else {
+                    log.assert(false, 'Unexpected dependency on error');
+                }
+                break;
+            case 'invalidate':
+                break;
+            case 'recalculate':
+                if (isCalculation(item)) {
+                    isEqual = item[CalculationRecalculateTag]();
+                } else if (
+                    isCollection(item) ||
+                    isModel(item) ||
+                    isSubscription(item)
+                ) {
+                    isEqual = item[FlushKey]();
+                }
+                break;
+            default:
+                log.assertExhausted(action);
+        }
+        if (DEBUG) {
+            log.debug(
+                `process:${action}`,
+                debugNameFor(item),
+                `isEqual=${isEqual}`
+            );
+            debugSubscription &&
                 debugSubscription(
                     debug(item),
-                    `1: visited ${debugNameFor(item)}: isEqual=${isEqual}`
+                    `process:${action}:isEqual=${isEqual}`
                 );
-            return isEqual;
-        } else {
-            // Of all of the types that can be in a cycle, only calculations
-            // matter as they have dynamic dependencies. Everything else should
-            // not be able to alter its set of dependencies on execution.
-            const isEqualList = connectedItems.map((item) => {
-                if (isCalculation(item)) {
-                    DEBUG &&
-                        log.debug(
-                            'flushing calculation in a cycle',
-                            debugNameFor(item)
-                        );
-                    item[CalculationMarkCycleTag](true);
-                    return false; // cycles always should propagate changes
-                } else if (isCollection(item)) {
-                    DEBUG &&
-                        log.debug(
-                            'flushing collection in a cycle',
-                            debugNameFor(item)
-                        );
-                    return item[FlushKey]();
-                } else if (isModel(item)) {
-                    DEBUG &&
-                        log.debug(
-                            'flushing model in a cycle',
-                            debugNameFor(item)
-                        );
-                    return item[FlushKey]();
-                } else if (isSubscription(item)) {
-                    DEBUG &&
-                        log.debug(
-                            'flushing subscription in a cycle',
-                            debugNameFor(item)
-                        );
-                    return item[FlushKey]();
-                } else {
-                    DEBUG &&
-                        log.debug(
-                            'flushing other in a cycle',
-                            debugNameFor(item)
-                        );
-                    return true;
-                }
-            });
-            return isEqualList.every((isEqual) => isEqual);
         }
+        return isEqual;
     });
 
     if (globalDependencyGraph.hasDirtyNodes()) {

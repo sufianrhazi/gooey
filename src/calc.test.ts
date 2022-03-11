@@ -3,6 +3,7 @@ import { model } from './model';
 import { collection } from './collection';
 import { flush, calc, effect, retain, release, reset, subscribe } from './calc';
 import { Calculation } from './types';
+import { setLogLevel } from './log';
 
 beforeEach(() => {
     subscribe();
@@ -423,26 +424,27 @@ suite('cycles', () => {
     });
 
     test('cycles can be caught when triggered via standard calling', () => {
+        setLogLevel('debug');
         const calculations: Record<string, Calculation<string>> = {};
         const calls: string[] = [];
         calculations.a = calc(() => {
             calls.push('a');
             return calculations.c() + 'a';
-        }, 'a').onCycle(() => {
+        }, 'a').onError(() => {
             calls.push('cycle:a');
             return 'A';
         });
         calculations.b = calc(() => {
             calls.push('b');
             return calculations.a() + 'b';
-        }, 'b').onCycle(() => {
+        }, 'b').onError(() => {
             calls.push('cycle:b');
             return 'B';
         });
         calculations.c = calc(() => {
             calls.push('c');
             return calculations.b() + 'c';
-        }, 'c').onCycle(() => {
+        }, 'c').onError(() => {
             calls.push('cycle:c');
             return 'C';
         });
@@ -451,7 +453,7 @@ suite('cycles', () => {
             const result = calculations.c() + 'd';
             calls.push('d:after');
             return result;
-        }, 'd').onCycle(() => {
+        }, 'd').onError(() => {
             calls.push('cycle:d');
             return 'D';
         });
@@ -467,9 +469,9 @@ suite('cycles', () => {
                 'c',
                 'b',
                 'a',
-                'cycle:c',
                 'cycle:a',
                 'cycle:b',
+                'cycle:c',
                 'cycle:d',
             ],
             calls
@@ -484,9 +486,9 @@ suite('cycles', () => {
                 'c',
                 'b',
                 'a',
-                'cycle:c',
                 'cycle:a',
                 'cycle:b',
+                'cycle:c',
                 'cycle:d',
             ],
             calls
@@ -504,23 +506,23 @@ suite('cycles', () => {
             } else {
                 return 'x';
             }
-        }, 'a').onCycle(() => {
+        }, 'a').onError(() => {
             return 'A';
         });
         calculations.b = calc(() => {
             return 'b' + calculations.a() + 'b';
-        }, 'b').onCycle(() => {
+        }, 'b').onError(() => {
             return 'B';
         });
         calculations.c = calc(() => {
             return 'c' + calculations.b() + 'c';
-        }, 'c').onCycle(() => {
+        }, 'c').onError(() => {
             return 'C';
         });
         calculations.d = calc(() => {
             const result = 'd' + calculations.c() + 'd';
             return result;
-        }, 'd').onCycle(() => {
+        }, 'd').onError(() => {
             return 'D';
         });
         retain(calculations.a);
@@ -533,8 +535,7 @@ suite('cycles', () => {
         data.hasCycle = true;
         flush();
 
-        assert.is('dCd', calculations.d());
-
+        assert.is('D', calculations.d());
         assert.is('A', calculations.a());
         assert.is('B', calculations.b());
         assert.is('C', calculations.c());
@@ -545,7 +546,7 @@ suite('cycles', () => {
         assert.is('A', calculations.a());
         assert.is('B', calculations.b());
         assert.is('C', calculations.c());
-        assert.is('dCd', calculations.d());
+        assert.is('D', calculations.d());
 
         calculations.a.flush();
         flush();
