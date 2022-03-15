@@ -33,7 +33,7 @@ suite('Graph', () => {
 
         graph.process((node, action) => {
             items.push({ node, action });
-            return false;
+            return true;
         });
 
         assert.deepEqual({ node: a, action: 'recalculate' }, items[0]);
@@ -64,7 +64,7 @@ suite('Graph', () => {
         graph.process((node, action) => {
             items.push(node);
             if (node === b) throw new Error('ruh roh');
-            return false;
+            return true;
         });
 
         assert.deepEqual([a, b, c], items);
@@ -179,7 +179,7 @@ suite('DAG', () => {
 
                 dag.process((item) => {
                     items.push(item);
-                    return true;
+                    return false;
                 });
 
                 assert.arrayIs([], items);
@@ -192,7 +192,7 @@ suite('DAG', () => {
 
                 dag.process((item) => {
                     items.push(item);
-                    return false;
+                    return true;
                 });
 
                 // we visit all nodes
@@ -211,7 +211,7 @@ suite('DAG', () => {
 
                 dag.process((node, action) => {
                     items.push({ node, action });
-                    return false;
+                    return true;
                 });
 
                 // unretained nodes that become dirtied are flushed
@@ -260,7 +260,7 @@ suite('DAG', () => {
 
                 dag.process((item) => {
                     items.push(item);
-                    return true;
+                    return false;
                 });
 
                 // we only visit a nodes
@@ -275,8 +275,8 @@ suite('DAG', () => {
 
                 dag.process((item) => {
                     items.push(item);
-                    if (item === c) return true;
-                    return false;
+                    if (item === c) return false;
+                    return true;
                 });
 
                 // The order of d and c may change
@@ -292,8 +292,8 @@ suite('DAG', () => {
 
                 dag.process((item) => {
                     items.push(item);
-                    if (item === c) return true;
-                    return false;
+                    if (item === c) return false;
+                    return true;
                 });
 
                 // The first item visited is the dirty root
@@ -311,7 +311,7 @@ suite('DAG', () => {
 
                 dag.process((item) => {
                     items.push(item);
-                    return false;
+                    return true;
                 });
 
                 function assertBefore(fromNode: TNode, toNode: TNode) {
@@ -391,7 +391,7 @@ suite('DAG', () => {
 
                 dag.process((item) => {
                     items.push(item);
-                    return true;
+                    return false;
                 });
 
                 assert.arrayIs([], items);
@@ -404,7 +404,7 @@ suite('DAG', () => {
 
                 dag.process((item) => {
                     items.push(item);
-                    return false;
+                    return true;
                 });
 
                 // we visit all nodes reachable for those with soft edges
@@ -419,7 +419,7 @@ suite('DAG', () => {
 
                 dag.process((item) => {
                     items.push(item);
-                    return false;
+                    return true;
                 });
 
                 function assertBefore(fromNode: TNode, toNode: TNode) {

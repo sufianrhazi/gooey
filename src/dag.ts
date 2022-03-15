@@ -528,10 +528,13 @@ export class DAG<Type extends object> {
                 }
 
                 if (action) {
-                    let isEqual = true;
+                    let shouldPropagate = true;
                     let isError = false;
                     try {
-                        isEqual = callback(this.nodesSet[nodeId], action);
+                        shouldPropagate = callback(
+                            this.nodesSet[nodeId],
+                            action
+                        );
                     } catch (e) {
                         isError = true;
                         log.error('Caught error during flush', e);
@@ -544,7 +547,7 @@ export class DAG<Type extends object> {
                         ).forEach((toId) => {
                             cycleDependencyNodes[toId] = true;
                         });
-                    } else if (!isEqual || isError) {
+                    } else if (shouldPropagate || isError) {
                         this.getDependenciesInner(
                             nodeId,
                             DAG.EDGE_HARD
@@ -563,14 +566,11 @@ export class DAG<Type extends object> {
         const isInvalidated: Record<string, boolean> = {};
         const invalidate = (nodeId: string) => {
             if (isInvalidated[nodeId]) return;
-            // TODO: rename isEqual to shouldPropagate
-            const isEqual = callback(this.nodesSet[nodeId], 'invalidate');
+            callback(this.nodesSet[nodeId], 'invalidate');
             isInvalidated[nodeId] = true;
-            if (!isEqual) {
-                this.getDependenciesInner(nodeId).forEach((toId) => {
-                    invalidate(toId);
-                });
-            }
+            this.getDependenciesInner(nodeId).forEach((toId) => {
+                invalidate(toId);
+            });
         };
 
         Object.keys(this.dirtyNodes).forEach((nodeId) => {

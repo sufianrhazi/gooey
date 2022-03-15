@@ -101,7 +101,7 @@ export function trackedData<
             processed = true;
             observer(events);
         });
-        return !processed;
+        return processed;
     }
 
     function flush() {
@@ -112,7 +112,7 @@ export function trackedData<
             processed = true;
             task();
         });
-        return !processed;
+        return processed;
     }
 
     function addDeferredTask(task: () => void) {

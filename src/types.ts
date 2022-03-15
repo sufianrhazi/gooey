@@ -11,7 +11,7 @@ export const DataTypeTag = Symbol('dataTypeTag');
 export const CalculationTypeTag = Symbol('calculationType');
 export const CalculationRecalculateTag = Symbol('calculationRecalculate');
 export const CalculationInvalidateTag = Symbol('calculationInvalidate');
-export const CalculationSetErrorTag = Symbol('calculationSetError');
+export const CalculationSetCycleTag = Symbol('calculationSetCycle');
 
 export const ObserveKey = Symbol('observe');
 export const GetSubscriptionNodeKey = Symbol('getSubscriptionNode');
@@ -212,9 +212,9 @@ export interface Calculation<Result> {
     $__id: string;
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
-    flush: () => Result | undefined;
+    flush: () => boolean;
     onError: (handler: (errorType: 'cycle' | 'error') => Result) => this;
-    [CalculationSetErrorTag]: (error: 'cycle' | 'error') => boolean;
+    [CalculationSetCycleTag]: () => boolean;
     [CalculationRecalculateTag]: () => boolean;
     [CalculationInvalidateTag]: () => void;
 }

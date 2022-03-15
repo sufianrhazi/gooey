@@ -2,7 +2,7 @@ import {
     Calculation,
     CalculationRecalculateTag,
     CalculationInvalidateTag,
-    CalculationSetErrorTag,
+    CalculationSetCycleTag,
     CalculationTypeTag,
     DAGNode,
     EqualityFunc,
@@ -132,7 +132,7 @@ function makeCalculation<Ret>(
         [CalculationTypeTag]: isEffect
             ? ('effect' as const)
             : ('calculation' as const),
-        [CalculationSetErrorTag]: calculationSetError,
+        [CalculationSetCycleTag]: calculationSetError,
         [CalculationRecalculateTag]: calculationRecalculate,
         [CalculationInvalidateTag]: calculationInvalidate,
         flush: calculationFlush,
@@ -222,10 +222,9 @@ function makeCalculation<Ret>(
     }
 
     function calculationFlush() {
-        const priorResult = result?.result;
         switch (state) {
             case CalculationState.STATE_FLUSHED:
-                break;
+                return false;
             case CalculationState.STATE_TRACKING:
                 throw new InvariantError(
                     'Cannot flush calculation while it is being calculated'
@@ -235,7 +234,7 @@ function makeCalculation<Ret>(
                 errorResult = undefined;
                 result = undefined;
                 state = CalculationState.STATE_FLUSHED;
-                break;
+                return true;
             case CalculationState.STATE_CYCLE:
             case CalculationState.STATE_ERROR: {
                 DEBUG &&
@@ -262,12 +261,11 @@ function makeCalculation<Ret>(
                         otherNode[CalculationInvalidateTag]();
                     }
                 });
-                break;
+                return true;
             }
             default:
                 log.assertExhausted(state, 'Unexpected calculation state');
         }
-        return priorResult;
     }
 
     function calculationInvalidate() {
@@ -294,7 +292,7 @@ function makeCalculation<Ret>(
         }
     }
 
-    function calculationSetError(errorType: 'error' | 'cycle') {
+    function calculationSetError() {
         switch (state) {
             case CalculationState.STATE_TRACKING:
                 throw new InvariantError(
@@ -305,19 +303,16 @@ function makeCalculation<Ret>(
             case CalculationState.STATE_CACHED:
                 result = undefined;
                 if (errorHandler) {
-                    errorResult = { result: errorHandler(errorType) };
+                    errorResult = { result: errorHandler('cycle') };
                 }
-                state =
-                    errorType === 'cycle'
-                        ? CalculationState.STATE_CYCLE
-                        : CalculationState.STATE_ERROR;
-                return false;
+                state = CalculationState.STATE_CYCLE;
+                return true;
             case CalculationState.STATE_CYCLE:
             case CalculationState.STATE_ERROR: {
                 result = undefined;
                 let isErrorResultEqual = false;
                 if (errorHandler) {
-                    const newResult = errorHandler(errorType);
+                    const newResult = errorHandler('cycle');
                     if (errorResult) {
                         isErrorResultEqual = isEqual(
                             errorResult.result,
@@ -328,11 +323,8 @@ function makeCalculation<Ret>(
                         errorResult = { result: newResult };
                     }
                 }
-                state =
-                    errorType === 'cycle'
-                        ? CalculationState.STATE_CYCLE
-                        : CalculationState.STATE_ERROR;
-                return isErrorResultEqual;
+                state = CalculationState.STATE_CYCLE;
+                return !isErrorResultEqual;
             }
             default:
                 log.assertExhausted(state, 'Unexpected calculation state');
@@ -348,16 +340,16 @@ function makeCalculation<Ret>(
                 break;
             case CalculationState.STATE_FLUSHED:
                 calculationBody();
-                return false;
+                return true;
             case CalculationState.STATE_CACHED: {
                 const priorResult = result;
                 calculationFlush();
                 result = { result: calculationBody() };
                 if (priorResult && isEqual(priorResult.result, result.result)) {
                     result = priorResult;
-                    return true;
+                    return false;
                 }
-                return false;
+                return true;
             }
             case CalculationState.STATE_CYCLE:
                 throw new InvariantError(
@@ -519,13 +511,13 @@ export function flush() {
 
     // Then flush dependencies in topological order
     globalDependencyGraph.process((item, action) => {
-        let isEqual = false;
+        let shouldPropagate = true;
 
         switch (action) {
             case 'cycle':
             case 'cycle-dependency':
                 if (isCalculation(item)) {
-                    isEqual = item[CalculationSetErrorTag]('cycle');
+                    shouldPropagate = item[CalculationSetCycleTag]();
                 } else {
                     throw new Error('Unexpected dependency on cycle');
                 }
@@ -537,13 +529,13 @@ export function flush() {
                 break;
             case 'recalculate':
                 if (isCalculation(item)) {
-                    isEqual = item[CalculationRecalculateTag]();
+                    shouldPropagate = item[CalculationRecalculateTag]();
                 } else if (
                     isCollection(item) ||
                     isModel(item) ||
                     isSubscription(item)
                 ) {
-                    isEqual = item[FlushKey]();
+                    shouldPropagate = item[FlushKey]();
                 }
                 break;
             default:
@@ -553,15 +545,15 @@ export function flush() {
             log.debug(
                 `process:${action}`,
                 debugNameFor(item),
-                `isEqual=${isEqual}`
+                `shouldPropagate=${shouldPropagate}`
             );
             debugSubscription &&
                 debugSubscription(
                     debug(item),
-                    `process:${action}:isEqual=${isEqual}`
+                    `process:${action}:shouldPropagate=${shouldPropagate}`
                 );
         }
-        return isEqual;
+        return shouldPropagate;
     });
 
     if (globalDependencyGraph.hasDirtyNodes()) {
