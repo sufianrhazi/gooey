@@ -268,7 +268,7 @@ export function isNodeOrdering(thing: any): thing is NodeOrdering {
     return !!(thing && thing[TypeTag] === 'nodeOrdering');
 }
 
-export type DAGNode =
+export type GraphNode =
     | Model<any>
     | Collection<any>
     | Calculation<any>

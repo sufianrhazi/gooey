@@ -1,4 +1,4 @@
-import { DAG } from './dag';
+import { Graph } from './graph';
 import type { ProcessAction } from './types';
 import { suite, test, beforeEach, assert } from '@srhazi/test-jig';
 
@@ -14,18 +14,18 @@ suite('Graph', () => {
     }
 
     test('cycles can be identified', () => {
-        const graph = new DAG<TNode>();
+        const graph = new Graph<TNode>();
         graph.addNode(a);
         graph.addNode(b);
         graph.addNode(c);
         graph.addNode(d);
         graph.addNode(e);
 
-        graph.addEdge(a, b, DAG.EDGE_HARD);
-        graph.addEdge(b, c, DAG.EDGE_HARD);
-        graph.addEdge(c, d, DAG.EDGE_HARD);
-        graph.addEdge(d, b, DAG.EDGE_HARD);
-        graph.addEdge(c, e, DAG.EDGE_HARD);
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(c, d, Graph.EDGE_HARD);
+        graph.addEdge(d, b, Graph.EDGE_HARD);
+        graph.addEdge(c, e, Graph.EDGE_HARD);
         graph.retain(e);
         graph.markNodeDirty(a);
 
@@ -49,13 +49,13 @@ suite('Graph', () => {
     });
 
     test('errors do not stop traversal', () => {
-        const graph = new DAG<TNode>();
+        const graph = new Graph<TNode>();
         graph.addNode(a);
         graph.addNode(b);
         graph.addNode(c);
 
-        graph.addEdge(a, b, DAG.EDGE_HARD);
-        graph.addEdge(b, c, DAG.EDGE_HARD);
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(b, c, Graph.EDGE_HARD);
         graph.retain(c);
         graph.markNodeDirty(a);
 
@@ -71,7 +71,7 @@ suite('Graph', () => {
     });
 });
 
-suite('DAG', () => {
+suite('Graph', () => {
     const a = { name: 'a', $__id: 0 };
     const b = { name: 'b', $__id: 1 };
     const c = { name: 'c', $__id: 2 };
@@ -87,44 +87,44 @@ suite('DAG', () => {
     }
 
     test('addNode returns whether or not node added', () => {
-        const dag = new DAG<TNode>();
-        assert.is(true, dag.addNode(a));
-        assert.is(false, dag.addNode(a));
+        const graph = new Graph<TNode>();
+        assert.is(true, graph.addNode(a));
+        assert.is(false, graph.addNode(a));
     });
 
     test('addEdge fails if nodes not added', () => {
-        const dag = new DAG<TNode>();
+        const graph = new Graph<TNode>();
         assert.throwsMatching(
             /cannot add edge from node that does not exist/,
             () => {
-                dag.addEdge(a, b, DAG.EDGE_HARD);
+                graph.addEdge(a, b, Graph.EDGE_HARD);
             }
         );
     });
 
     test('getDependencies gets dependencies', () => {
-        const dag = new DAG<TNode>();
-        dag.addNode(a);
-        dag.addNode(b);
-        dag.addNode(c);
-        dag.addNode(d);
+        const graph = new Graph<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+        graph.addNode(d);
 
-        dag.addEdge(a, b, DAG.EDGE_HARD);
-        dag.addEdge(b, c, DAG.EDGE_HARD);
-        dag.addEdge(b, d, DAG.EDGE_HARD);
-        dag.addEdge(c, d, DAG.EDGE_HARD);
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(b, d, Graph.EDGE_HARD);
+        graph.addEdge(c, d, Graph.EDGE_HARD);
 
-        dag._test_processPending();
+        graph._test_processPending();
 
-        assert.arrayIs([b], dag.getDependencies(a));
-        assert.arrayIs([c, d], dag.getDependencies(b));
-        assert.arrayIs([d], dag.getDependencies(c));
-        assert.arrayIs([], dag.getDependencies(d));
-        assert.arrayIs([], dag.getDependencies(e));
+        assert.arrayIs([b], graph.getDependencies(a));
+        assert.arrayIs([c, d], graph.getDependencies(b));
+        assert.arrayIs([d], graph.getDependencies(c));
+        assert.arrayIs([], graph.getDependencies(d));
+        assert.arrayIs([], graph.getDependencies(e));
     });
 
     suite('complex graph', () => {
-        let dag = new DAG<TNode>();
+        let graph = new Graph<TNode>();
 
         /*
          * Graph for reference:
@@ -145,39 +145,39 @@ suite('DAG', () => {
          */
 
         beforeEach(() => {
-            dag = new DAG<TNode>();
+            graph = new Graph<TNode>();
 
-            dag.addNode(a);
-            dag.addNode(b);
-            dag.addNode(c);
-            dag.addNode(d);
-            dag.addNode(e);
-            dag.addNode(f);
-            dag.addNode(g);
-            dag.addNode(h);
-            dag.addNode(i);
+            graph.addNode(a);
+            graph.addNode(b);
+            graph.addNode(c);
+            graph.addNode(d);
+            graph.addNode(e);
+            graph.addNode(f);
+            graph.addNode(g);
+            graph.addNode(h);
+            graph.addNode(i);
 
-            dag.addEdge(a, b, DAG.EDGE_HARD);
-            dag.addEdge(b, c, DAG.EDGE_HARD);
-            dag.addEdge(b, d, DAG.EDGE_HARD);
-            dag.addEdge(c, e, DAG.EDGE_HARD);
-            dag.addEdge(d, e, DAG.EDGE_HARD);
-            dag.addEdge(a, e, DAG.EDGE_HARD);
-            dag.addEdge(a, f, DAG.EDGE_HARD);
-            dag.addEdge(f, g, DAG.EDGE_HARD);
-            dag.addEdge(e, h, DAG.EDGE_HARD);
-            dag.addEdge(h, i, DAG.EDGE_HARD);
-            dag.addEdge(f, h, DAG.EDGE_HARD);
-            dag.addEdge(g, i, DAG.EDGE_HARD);
+            graph.addEdge(a, b, Graph.EDGE_HARD);
+            graph.addEdge(b, c, Graph.EDGE_HARD);
+            graph.addEdge(b, d, Graph.EDGE_HARD);
+            graph.addEdge(c, e, Graph.EDGE_HARD);
+            graph.addEdge(d, e, Graph.EDGE_HARD);
+            graph.addEdge(a, e, Graph.EDGE_HARD);
+            graph.addEdge(a, f, Graph.EDGE_HARD);
+            graph.addEdge(f, g, Graph.EDGE_HARD);
+            graph.addEdge(e, h, Graph.EDGE_HARD);
+            graph.addEdge(h, i, Graph.EDGE_HARD);
+            graph.addEdge(f, h, Graph.EDGE_HARD);
+            graph.addEdge(g, i, Graph.EDGE_HARD);
 
-            dag.retain(i); // the almost end node is retained
+            graph.retain(i); // the almost end node is retained
         });
 
         suite('process', () => {
             test('nothing visited if nothing dirty', () => {
                 const items: TNode[] = [];
 
-                dag.process((item) => {
+                graph.process((item) => {
                     items.push(item);
                     return false;
                 });
@@ -186,11 +186,11 @@ suite('DAG', () => {
             });
 
             test('all nodes visited starting from dirty nodes', () => {
-                dag.markNodeDirty(a);
+                graph.markNodeDirty(a);
 
                 const items: TNode[] = [];
 
-                dag.process((item) => {
+                graph.process((item) => {
                     items.push(item);
                     return true;
                 });
@@ -200,16 +200,16 @@ suite('DAG', () => {
             });
 
             test('nodes that do not lead to reatined nodes are not visited', () => {
-                dag.release(i); // no nodes are retained now
-                dag.retain(e);
-                dag.retain(f);
+                graph.release(i); // no nodes are retained now
+                graph.retain(e);
+                graph.retain(f);
 
-                dag.markNodeDirty(a);
-                dag.markNodeDirty(i);
+                graph.markNodeDirty(a);
+                graph.markNodeDirty(i);
 
                 const items: { node: TNode; action: string }[] = [];
 
-                dag.process((node, action) => {
+                graph.process((node, action) => {
                     items.push({ node, action });
                     return true;
                 });
@@ -254,11 +254,11 @@ suite('DAG', () => {
             });
 
             test('nodes can stop traversal by returning true', () => {
-                dag.markNodeDirty(a);
+                graph.markNodeDirty(a);
 
                 const items: TNode[] = [];
 
-                dag.process((item) => {
+                graph.process((item) => {
                     items.push(item);
                     return false;
                 });
@@ -268,12 +268,12 @@ suite('DAG', () => {
             });
 
             test('given c -> e; d -> e, and visiting c returns true but visiting d returns false, we still visit e and all dependencies', () => {
-                dag.markNodeDirty(c);
-                dag.markNodeDirty(d);
+                graph.markNodeDirty(c);
+                graph.markNodeDirty(d);
 
                 const items: TNode[] = [];
 
-                dag.process((item) => {
+                graph.process((item) => {
                     items.push(item);
                     if (item === c) return false;
                     return true;
@@ -286,11 +286,11 @@ suite('DAG', () => {
             });
 
             test('given c -> e; d -> e, and visiting c returns true but visiting d returns false, we still visit e and all dependencies', () => {
-                dag.markNodeDirty(b);
+                graph.markNodeDirty(b);
 
                 const items: TNode[] = [];
 
-                dag.process((item) => {
+                graph.process((item) => {
                     items.push(item);
                     if (item === c) return false;
                     return true;
@@ -305,11 +305,11 @@ suite('DAG', () => {
             });
 
             test('dirty nodes visited in topological order', () => {
-                dag.markNodeDirty(a);
+                graph.markNodeDirty(a);
 
                 const items: TNode[] = [];
 
-                dag.process((item) => {
+                graph.process((item) => {
                     items.push(item);
                     return true;
                 });
@@ -323,7 +323,7 @@ suite('DAG', () => {
                 }
 
                 function visit(root: TNode) {
-                    dag.getDependencies(root).forEach((dependency) => {
+                    graph.getDependencies(root).forEach((dependency) => {
                         assertBefore(root, dependency);
                         visit(dependency);
                     });
@@ -336,7 +336,7 @@ suite('DAG', () => {
     });
 
     suite('complex graph with soft edges', () => {
-        let dag = new DAG<TNode>();
+        let graph = new Graph<TNode>();
 
         /*
          * Graph for reference: (soft edges are ..>)
@@ -357,39 +357,39 @@ suite('DAG', () => {
          */
 
         beforeEach(() => {
-            dag = new DAG<TNode>();
+            graph = new Graph<TNode>();
 
-            dag.addNode(a);
-            dag.addNode(b);
-            dag.addNode(c);
-            dag.addNode(d);
-            dag.addNode(e);
-            dag.addNode(f);
-            dag.addNode(g);
-            dag.addNode(h);
-            dag.addNode(i);
+            graph.addNode(a);
+            graph.addNode(b);
+            graph.addNode(c);
+            graph.addNode(d);
+            graph.addNode(e);
+            graph.addNode(f);
+            graph.addNode(g);
+            graph.addNode(h);
+            graph.addNode(i);
 
-            dag.addEdge(a, b, DAG.EDGE_HARD);
-            dag.addEdge(b, c, DAG.EDGE_HARD);
-            dag.addEdge(b, d, DAG.EDGE_HARD);
-            dag.addEdge(c, e, DAG.EDGE_HARD);
-            dag.addEdge(d, e, DAG.EDGE_HARD);
-            dag.addEdge(a, e, DAG.EDGE_HARD);
-            dag.addEdge(a, f, DAG.EDGE_SOFT);
-            dag.addEdge(f, g, DAG.EDGE_SOFT);
-            dag.addEdge(e, h, DAG.EDGE_SOFT);
-            dag.addEdge(h, i, DAG.EDGE_HARD);
-            dag.addEdge(f, h, DAG.EDGE_HARD);
-            dag.addEdge(g, i, DAG.EDGE_HARD);
+            graph.addEdge(a, b, Graph.EDGE_HARD);
+            graph.addEdge(b, c, Graph.EDGE_HARD);
+            graph.addEdge(b, d, Graph.EDGE_HARD);
+            graph.addEdge(c, e, Graph.EDGE_HARD);
+            graph.addEdge(d, e, Graph.EDGE_HARD);
+            graph.addEdge(a, e, Graph.EDGE_HARD);
+            graph.addEdge(a, f, Graph.EDGE_SOFT);
+            graph.addEdge(f, g, Graph.EDGE_SOFT);
+            graph.addEdge(e, h, Graph.EDGE_SOFT);
+            graph.addEdge(h, i, Graph.EDGE_HARD);
+            graph.addEdge(f, h, Graph.EDGE_HARD);
+            graph.addEdge(g, i, Graph.EDGE_HARD);
 
-            dag.retain(i);
+            graph.retain(i);
         });
 
         suite('process', () => {
             test('nothing visited if nothing dirty', () => {
                 const items: TNode[] = [];
 
-                dag.process((item) => {
+                graph.process((item) => {
                     items.push(item);
                     return false;
                 });
@@ -398,11 +398,11 @@ suite('DAG', () => {
             });
 
             test('all nodes reachable from hard edges visited', () => {
-                dag.markNodeDirty(a);
+                graph.markNodeDirty(a);
 
                 const items: TNode[] = [];
 
-                dag.process((item) => {
+                graph.process((item) => {
                     items.push(item);
                     return true;
                 });
@@ -412,12 +412,12 @@ suite('DAG', () => {
             });
 
             test('soft edges, despite not being visited dictate topological order', () => {
-                dag.markNodeDirty(a);
-                dag.markNodeDirty(f);
+                graph.markNodeDirty(a);
+                graph.markNodeDirty(f);
 
                 const items: TNode[] = [];
 
-                dag.process((item) => {
+                graph.process((item) => {
                     items.push(item);
                     return true;
                 });
@@ -431,7 +431,7 @@ suite('DAG', () => {
                 }
 
                 function visit(root: TNode) {
-                    dag.getDependencies(root).forEach((dependency) => {
+                    graph.getDependencies(root).forEach((dependency) => {
                         // Note: 'g' is not visited
                         if (dependency.name !== 'g') {
                             assertBefore(root, dependency);

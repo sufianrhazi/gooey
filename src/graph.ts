@@ -15,9 +15,9 @@ type GraphOperations =
       };
 
 /**
- * A directed acyclic graph
+ * A directed graph
  *
- * Edges may me marked as DAG.EDGE_SOFT (visualized as ->) or DAG.EDGE_HARD (visualized as =>):
+ * Edges may me marked as Graph.EDGE_SOFT (visualized as ->) or Graph.EDGE_HARD (visualized as =>):
  * - An EDGE_SOFT edge from A to B indicate an order dependency, but not a data dependency
  *   - If A and B are both dirty, A should be flushed **after** B is flushed
  *   - If A is not dirty and B is dirty and B is visited and B does not short-circuit, A does not get marked as dirty
@@ -28,7 +28,7 @@ type GraphOperations =
  *   - If A and B are both dirty, A should be flushed **after** B is flushed
  *   - If A is not dirty and B is dirty and B is visited and B does not short-circuit, A gets marked as dirty and is visited
  */
-export class DAG<Type extends object> {
+export class Graph<Type extends object> {
     private static EDGE_NONE = 0b00 as const;
     static EDGE_SOFT = 0b01 as const;
     static EDGE_HARD = 0b10 as const;
@@ -91,9 +91,11 @@ export class DAG<Type extends object> {
             if (otherNodeIds[visitId]) return;
             if (visitId !== nodeId) otherNodes.push(this.nodesSet[visitId]);
             otherNodeIds[visitId] = 2;
-            this.getDependenciesInner(visitId, DAG.EDGE_ANY).forEach((toId) => {
-                visit(toId);
-            });
+            this.getDependenciesInner(visitId, Graph.EDGE_ANY).forEach(
+                (toId) => {
+                    visit(toId);
+                }
+            );
             otherNodeIds[visitId] = 1;
         };
 
@@ -115,10 +117,14 @@ export class DAG<Type extends object> {
             this.getRecursiveDependenciesInner(nodeId);
         log.assert(isCycle, 'breakCycle did not find a cycle');
 
-        this.getReverseDependenciesInner(nodeId, DAG.EDGE_HARD).forEach(
+        this.getReverseDependenciesInner(nodeId, Graph.EDGE_HARD).forEach(
             (fromId) => {
                 if (otherNodeIds[fromId]) {
-                    this.removeEdge(this.nodesSet[fromId], node, DAG.EDGE_HARD);
+                    this.removeEdge(
+                        this.nodesSet[fromId],
+                        node,
+                        Graph.EDGE_HARD
+                    );
                 }
             }
         );
@@ -233,7 +239,7 @@ export class DAG<Type extends object> {
 
         const beforeFromIds = this.getReverseDependenciesInner(
             toId,
-            DAG.EDGE_HARD
+            Graph.EDGE_HARD
         );
         const beforeFromSet = new Set(beforeFromIds);
         const newFromIds = newIncomingNodes.map((fromNode) =>
@@ -245,7 +251,7 @@ export class DAG<Type extends object> {
                 this.pendingOperations.push({
                     fromId,
                     toId,
-                    kind: DAG.EDGE_HARD,
+                    kind: Graph.EDGE_HARD,
                     type: 'remove',
                 });
             }
@@ -255,7 +261,7 @@ export class DAG<Type extends object> {
                 this.pendingOperations.push({
                     fromId,
                     toId,
-                    kind: DAG.EDGE_HARD,
+                    kind: Graph.EDGE_HARD,
                     type: 'add',
                 });
             }
@@ -267,11 +273,11 @@ export class DAG<Type extends object> {
 
         const fromIds = this.getReverseDependenciesInner(nodeId);
         fromIds.forEach((fromId) => {
-            if (this.reverseGraph[nodeId][fromId] & DAG.EDGE_HARD) {
+            if (this.reverseGraph[nodeId][fromId] & Graph.EDGE_HARD) {
                 this.graph[fromId][nodeId] =
-                    (this.graph[fromId][nodeId] || 0) & ~DAG.EDGE_HARD;
+                    (this.graph[fromId][nodeId] || 0) & ~Graph.EDGE_HARD;
                 this.reverseGraph[nodeId][fromId] =
-                    (this.reverseGraph[nodeId][fromId] || 0) & ~DAG.EDGE_HARD;
+                    (this.reverseGraph[nodeId][fromId] || 0) & ~Graph.EDGE_HARD;
             }
         });
     }
@@ -281,7 +287,7 @@ export class DAG<Type extends object> {
      */
     private getDependenciesInner(
         nodeId: string,
-        edgeType: 0b01 | 0b10 | 0b11 = DAG.EDGE_ANY
+        edgeType: 0b01 | 0b10 | 0b11 = Graph.EDGE_ANY
     ): string[] {
         if (!this.graph[nodeId]) return [];
         return Object.keys(this.graph[nodeId]).filter(
@@ -294,7 +300,7 @@ export class DAG<Type extends object> {
      */
     private getReverseDependenciesInner(
         nodeId: string,
-        edgeType: 0b01 | 0b10 | 0b11 = DAG.EDGE_ANY
+        edgeType: 0b01 | 0b10 | 0b11 = Graph.EDGE_ANY
     ): string[] {
         if (!this.reverseGraph[nodeId]) return [];
         return Object.keys(this.reverseGraph[nodeId]).filter(
@@ -307,7 +313,7 @@ export class DAG<Type extends object> {
      */
     getDependencies(
         fromNode: Type,
-        edgeType: 0b01 | 0b10 | 0b11 = DAG.EDGE_ANY
+        edgeType: 0b01 | 0b10 | 0b11 = Graph.EDGE_ANY
     ): Type[] {
         const nodeId = this.getId(fromNode);
         return this.getDependenciesInner(nodeId, edgeType).map(
@@ -543,21 +549,21 @@ export class DAG<Type extends object> {
                     if (isCycle || cycleDependencyNodes[nodeId]) {
                         this.getDependenciesInner(
                             nodeId,
-                            DAG.EDGE_HARD
+                            Graph.EDGE_HARD
                         ).forEach((toId) => {
                             cycleDependencyNodes[toId] = true;
                         });
                     } else if (shouldPropagate || isError) {
                         this.getDependenciesInner(
                             nodeId,
-                            DAG.EDGE_HARD
+                            Graph.EDGE_HARD
                         ).forEach((toId) => {
                             this.dirtyNodes[toId] = true;
                         });
                     }
                 }
                 if (this.pendingOperations.length > 0) {
-                    log.warn('DAG mutated while processing, restarting...');
+                    log.warn('Graph mutated while processing, restarting...');
                     return this.process(callback);
                 }
             });
@@ -591,7 +597,7 @@ export class DAG<Type extends object> {
         ) => { label: string; subgraph: object | undefined; penwidth: string }
     ) {
         const lines = [
-            'digraph dag {',
+            'digraph Graph {',
             //'graph [rankdir="LR"];',
             'node [style="filled", fillcolor="#DDDDDD"];',
         ];
@@ -683,48 +689,48 @@ export class DAG<Type extends object> {
             );
             allDestinations.forEach((toId) => {
                 if (
-                    this.graph[fromId][toId] & DAG.EDGE_HARD &&
-                    newGraph[fromId][toId] & DAG.EDGE_HARD
+                    this.graph[fromId][toId] & Graph.EDGE_HARD &&
+                    newGraph[fromId][toId] & Graph.EDGE_HARD
                 ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="solid"];`
                     );
                 }
                 if (
-                    !(this.graph[fromId][toId] & DAG.EDGE_HARD) &&
-                    newGraph[fromId][toId] & DAG.EDGE_HARD
+                    !(this.graph[fromId][toId] & Graph.EDGE_HARD) &&
+                    newGraph[fromId][toId] & Graph.EDGE_HARD
                 ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="solid",color="#0000FF"];`
                     );
                 }
                 if (
-                    this.graph[fromId][toId] & DAG.EDGE_HARD &&
-                    !(newGraph[fromId][toId] & DAG.EDGE_HARD)
+                    this.graph[fromId][toId] & Graph.EDGE_HARD &&
+                    !(newGraph[fromId][toId] & Graph.EDGE_HARD)
                 ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="solid",color="#FF0000"];`
                     );
                 }
                 if (
-                    this.graph[fromId][toId] & DAG.EDGE_SOFT &&
-                    newGraph[fromId][toId] & DAG.EDGE_SOFT
+                    this.graph[fromId][toId] & Graph.EDGE_SOFT &&
+                    newGraph[fromId][toId] & Graph.EDGE_SOFT
                 ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="dashed"];`
                     );
                 }
                 if (
-                    !(this.graph[fromId][toId] & DAG.EDGE_SOFT) &&
-                    newGraph[fromId][toId] & DAG.EDGE_SOFT
+                    !(this.graph[fromId][toId] & Graph.EDGE_SOFT) &&
+                    newGraph[fromId][toId] & Graph.EDGE_SOFT
                 ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="dashed",color="#0000FF"];`
                     );
                 }
                 if (
-                    this.graph[fromId][toId] & DAG.EDGE_SOFT &&
-                    !(newGraph[fromId][toId] & DAG.EDGE_SOFT)
+                    this.graph[fromId][toId] & Graph.EDGE_SOFT &&
+                    !(newGraph[fromId][toId] & Graph.EDGE_SOFT)
                 ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="dashed",color="#FF0000"];`

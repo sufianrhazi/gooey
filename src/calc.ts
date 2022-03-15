@@ -4,7 +4,7 @@ import {
     CalculationInvalidateTag,
     CalculationSetCycleTag,
     CalculationTypeTag,
-    DAGNode,
+    GraphNode,
     EqualityFunc,
     FlushKey,
     InvariantError,
@@ -16,14 +16,14 @@ import {
     isSubscription,
 } from './types';
 import * as log from './log';
-import { DAG } from './dag';
+import { Graph } from './graph';
 import { alwaysTrue, noop, strictEqual, uniqueid } from './util';
 import { clearNames, debugNameFor, name } from './debug';
 
-let activeCalculations: { calc: null | Calculation<any>; deps: DAGNode[] }[] =
+let activeCalculations: { calc: null | Calculation<any>; deps: GraphNode[] }[] =
     [];
 
-let globalDependencyGraph = new DAG<DAGNode>();
+let globalDependencyGraph = new Graph<GraphNode>();
 
 let refcountMap: Record<string, number> = {};
 
@@ -33,7 +33,7 @@ let refcountMap: Record<string, number> = {};
 export function reset() {
     activeCalculations = [];
 
-    globalDependencyGraph = new DAG();
+    globalDependencyGraph = new Graph();
     refcountMap = {};
     clearNames();
 }
@@ -374,7 +374,7 @@ function makeCalculation<Ret>(
     return calculation;
 }
 
-export function addDepToCurrentCalculation(item: DAGNode) {
+export function addDepToCurrentCalculation(item: GraphNode) {
     if (activeCalculations.length === 0) return;
     const dependentCalculation =
         activeCalculations[activeCalculations.length - 1];
@@ -389,10 +389,10 @@ export function addDepToCurrentCalculation(item: DAGNode) {
         );
 }
 
-export function addManualDep(fromNode: DAGNode, toNode: DAGNode) {
+export function addManualDep(fromNode: GraphNode, toNode: GraphNode) {
     globalDependencyGraph.addNode(fromNode);
     globalDependencyGraph.addNode(toNode);
-    globalDependencyGraph.addEdge(fromNode, toNode, DAG.EDGE_HARD);
+    globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_HARD);
     DEBUG &&
         log.debug(
             'New manual dependency',
@@ -402,12 +402,12 @@ export function addManualDep(fromNode: DAGNode, toNode: DAGNode) {
         );
 }
 
-export function registerNode(node: DAGNode) {
+export function registerNode(node: GraphNode) {
     globalDependencyGraph.addNode(node);
 }
 
-export function addOrderingDep(fromNode: DAGNode, toNode: DAGNode) {
-    globalDependencyGraph.addEdge(fromNode, toNode, DAG.EDGE_SOFT);
+export function addOrderingDep(fromNode: GraphNode, toNode: GraphNode) {
+    globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_SOFT);
     DEBUG &&
         log.debug(
             'New manual ordering dependency',
@@ -417,8 +417,8 @@ export function addOrderingDep(fromNode: DAGNode, toNode: DAGNode) {
         );
 }
 
-export function removeManualDep(fromNode: DAGNode, toNode: DAGNode) {
-    globalDependencyGraph.removeEdge(fromNode, toNode, DAG.EDGE_HARD);
+export function removeManualDep(fromNode: GraphNode, toNode: GraphNode) {
+    globalDependencyGraph.removeEdge(fromNode, toNode, Graph.EDGE_HARD);
     DEBUG &&
         log.debug(
             'Removed manual dependency',
@@ -428,8 +428,8 @@ export function removeManualDep(fromNode: DAGNode, toNode: DAGNode) {
         );
 }
 
-export function removeOrderingDep(fromNode: DAGNode, toNode: DAGNode) {
-    globalDependencyGraph.removeEdge(fromNode, toNode, DAG.EDGE_SOFT);
+export function removeOrderingDep(fromNode: GraphNode, toNode: GraphNode) {
+    globalDependencyGraph.removeEdge(fromNode, toNode, Graph.EDGE_SOFT);
     DEBUG &&
         log.debug(
             'Removed manual ordering dependency',
@@ -439,7 +439,7 @@ export function removeOrderingDep(fromNode: DAGNode, toNode: DAGNode) {
         );
 }
 
-export function markDirty(item: DAGNode) {
+export function markDirty(item: GraphNode) {
     DEBUG && log.debug('Dirtying', debugNameFor(item));
     globalDependencyGraph.addNode(item);
     globalDependencyGraph.markNodeDirty(item);
@@ -557,7 +557,7 @@ export function flush() {
     });
 
     if (globalDependencyGraph.hasDirtyNodes()) {
-        DEBUG && log.debug('DAG contained dirty nodes post-flush');
+        DEBUG && log.debug('Graph contained dirty nodes post-flush');
         scheduleFlush();
     }
 
@@ -569,7 +569,7 @@ export function flush() {
 /**
  * Retain a calculation (increase the refcount)
  */
-export function retain(item: DAGNode) {
+export function retain(item: GraphNode) {
     const refcount = refcountMap[item.$__id] ?? 0;
     const newRefcount = refcount + 1;
     if (refcount === 0) {
@@ -598,7 +598,7 @@ export function retain(item: DAGNode) {
  * Release a calculation (decrease the refcount). If the refcount reaches zero, the calculation will be garbage
  * collected.
  */
-export function release(item: DAGNode) {
+export function release(item: GraphNode) {
     const refcount = refcountMap[item.$__id] ?? 0;
     const newRefcount = Math.min(refcount - 1, 0);
     if (refcount < 1) {

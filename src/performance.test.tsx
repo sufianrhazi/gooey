@@ -15,7 +15,7 @@ import Revise, {
     reset,
     subscribe,
 } from './index';
-import { DAG } from './dag';
+import { Graph } from './graph';
 import { randint } from './util';
 import { suite, test, beforeEach, afterEach, assert } from '@srhazi/test-jig';
 
@@ -491,10 +491,10 @@ suite('perf tests', () => {
         }
         await assert.medianRuntimeLessThan(0.5, (measure) => {
             // Build a random graph of 10k nodes and edges all consolidating on a single destination node
-            const dag = new DAG();
+            const graph = new Graph();
             measure(() => {
                 for (let i = 0; i < COUNT; ++i) {
-                    dag.addNode(objects[i]);
+                    graph.addNode(objects[i]);
                 }
             });
         });
@@ -508,9 +508,9 @@ suite('perf tests', () => {
         }
         await assert.medianRuntimeLessThan(1, (measure) => {
             // Build a random graph of 10k nodes and edges all consolidating on a single destination node
-            const dag = new DAG();
+            const graph = new Graph();
             for (let i = 0; i < COUNT; ++i) {
-                dag.addNode(objects[i]);
+                graph.addNode(objects[i]);
             }
             const edges: [number, number][] = [];
             for (let i = 0; i < COUNT - 1; ++i) {
@@ -519,10 +519,10 @@ suite('perf tests', () => {
             }
             measure(() => {
                 edges.forEach(([fromIndex, toIndex]) => {
-                    dag.addEdge(
+                    graph.addEdge(
                         objects[fromIndex],
                         objects[toIndex],
-                        DAG.EDGE_HARD
+                        Graph.EDGE_HARD
                     );
                 });
             });
@@ -537,19 +537,19 @@ suite('perf tests', () => {
         }
         await assert.medianRuntimeLessThan(2, (measure) => {
             // Build a random graph of 10k nodes and edges all consolidating on a single destination node
-            const dag = new DAG();
+            const graph = new Graph();
             for (let i = 0; i < COUNT; ++i) {
-                dag.addNode(objects[i]);
+                graph.addNode(objects[i]);
                 if (Math.random() < 0.1) {
-                    dag.markNodeDirty(objects[i]);
+                    graph.markNodeDirty(objects[i]);
                 }
             }
             for (let i = 0; i < COUNT - 1; ++i) {
                 const candidate = randint(i + 1, COUNT);
-                dag.addEdge(objects[i], objects[candidate], DAG.EDGE_HARD);
+                graph.addEdge(objects[i], objects[candidate], Graph.EDGE_HARD);
             }
             measure(() => {
-                dag.process(() => false);
+                graph.process(() => false);
             });
         });
     });
