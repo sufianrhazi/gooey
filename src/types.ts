@@ -22,10 +22,9 @@ export const NotifyKey = Symbol('notify');
 
 export type ProcessAction =
     | 'recalculate'
-    | 'invalidate'
     | 'cycle'
-    | 'error-dependency'
-    | 'cycle-dependency';
+    | 'cycle-dependency'
+    | 'invalidate';
 
 /**
  * A ref object that can be passed to native elements.

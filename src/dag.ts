@@ -78,38 +78,46 @@ export class DAG<Type extends object> {
         });
     }
 
-    /**
-     * Given a node in a cycle, break the cycle. Return the _other_ nodes in the cycle.
-     *
-     * The cycle is broken by
-     * - Removing the incoming dependencies from the target node
-     * - Marking the target node as dirty
-     * - Marking the non-target node as
-     */
-    breakCycle(node: Type) {
-        const nodeId = this.getId(node);
-
-        const cycleNodeIds: Record<string, 1 | 2 | undefined> = {};
+    private getRecursiveDependenciesInner(nodeId: string): {
+        otherNodeIds: Record<string, 1 | 2 | undefined>;
+        otherNodes: Type[];
+        isCycle: boolean;
+    } {
+        const otherNodeIds: Record<string, 1 | 2 | undefined> = {};
         const otherNodes: Type[] = [];
         let foundCycle = false;
         const visit = (visitId: string) => {
-            if (cycleNodeIds[visitId] === 2) foundCycle = true;
-            if (cycleNodeIds[visitId]) return;
+            if (otherNodeIds[visitId] === 2) foundCycle = true;
+            if (otherNodeIds[visitId]) return;
             if (visitId !== nodeId) otherNodes.push(this.nodesSet[visitId]);
-            cycleNodeIds[visitId] = 2;
+            otherNodeIds[visitId] = 2;
             this.getDependenciesInner(visitId, DAG.EDGE_ANY).forEach((toId) => {
                 visit(toId);
             });
-            cycleNodeIds[visitId] = 1;
+            otherNodeIds[visitId] = 1;
         };
 
         visit(nodeId);
+        return { otherNodeIds, otherNodes, isCycle: foundCycle };
+    }
 
-        log.assert(foundCycle, 'breakCycle did not find a cycle');
+    getRecursiveDependencies(node: Type): Type[] {
+        const nodeId = this.getId(node);
+        const { otherNodes, isCycle } =
+            this.getRecursiveDependenciesInner(nodeId);
+        log.assert(!isCycle, 'getRecursiveDependencies found a cycle');
+        return otherNodes;
+    }
+
+    breakCycle(node: Type) {
+        const nodeId = this.getId(node);
+        const { otherNodes, otherNodeIds, isCycle } =
+            this.getRecursiveDependenciesInner(nodeId);
+        log.assert(isCycle, 'breakCycle did not find a cycle');
 
         this.getReverseDependenciesInner(nodeId, DAG.EDGE_HARD).forEach(
             (fromId) => {
-                if (cycleNodeIds[fromId]) {
+                if (otherNodeIds[fromId]) {
                     this.removeEdge(this.nodesSet[fromId], node, DAG.EDGE_HARD);
                 }
             }
@@ -502,7 +510,6 @@ export class DAG<Type extends object> {
         const toposort = this._toposortRetained();
 
         const cycleDependencyNodes: Record<string, boolean> = {};
-        const errorDependencyNodes: Record<string, boolean> = {};
         const visited: Record<string, boolean> = {};
         for (let i = 0; i < toposort.length; ++i) {
             const nodeIds: string[] = [];
@@ -514,9 +521,7 @@ export class DAG<Type extends object> {
                     ? 'recalculate'
                     : null;
                 const isCycle = toposort[i].length > 1;
-                if (errorDependencyNodes[nodeId]) {
-                    action = 'error-dependency';
-                } else if (isCycle) {
+                if (isCycle) {
                     action = 'cycle';
                 } else if (cycleDependencyNodes[nodeId]) {
                     action = 'cycle-dependency';
@@ -527,26 +532,19 @@ export class DAG<Type extends object> {
                     let isError = false;
                     try {
                         isEqual = callback(this.nodesSet[nodeId], action);
-                        delete this.dirtyNodes[nodeId];
                     } catch (e) {
                         isError = true;
                         log.error('Caught error during flush', e);
                     }
-                    if (isError) {
-                        this.getDependenciesInner(
-                            nodeId,
-                            DAG.EDGE_HARD
-                        ).forEach((toId) => {
-                            errorDependencyNodes[toId] = true;
-                        });
-                    } else if (isCycle || cycleDependencyNodes[nodeId]) {
+                    delete this.dirtyNodes[nodeId];
+                    if (isCycle || cycleDependencyNodes[nodeId]) {
                         this.getDependenciesInner(
                             nodeId,
                             DAG.EDGE_HARD
                         ).forEach((toId) => {
                             cycleDependencyNodes[toId] = true;
                         });
-                    } else if (!isEqual) {
+                    } else if (!isEqual || isError) {
                         this.getDependenciesInner(
                             nodeId,
                             DAG.EDGE_HARD
@@ -562,9 +560,24 @@ export class DAG<Type extends object> {
             });
         }
 
-        // TODO: this is wrong, we should notify the caller that all nodes
-        // reachable from the remaining dirty nodes should be transitioned to
-        // flushed state
+        const isInvalidated: Record<string, boolean> = {};
+        const invalidate = (nodeId: string) => {
+            if (isInvalidated[nodeId]) return;
+            // TODO: rename isEqual to shouldPropagate
+            const isEqual = callback(this.nodesSet[nodeId], 'invalidate');
+            isInvalidated[nodeId] = true;
+            if (!isEqual) {
+                this.getDependenciesInner(nodeId).forEach((toId) => {
+                    invalidate(toId);
+                });
+            }
+        };
+
+        Object.keys(this.dirtyNodes).forEach((nodeId) => {
+            if (this.dirtyNodes[nodeId]) {
+                invalidate(nodeId);
+            }
+        });
         this.dirtyNodes = {};
     }
 

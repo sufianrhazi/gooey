@@ -249,10 +249,14 @@ function makeCalculation<Ret>(
                     );
                 errorResult = undefined;
                 result = undefined;
-                state = CalculationState.STATE_FLUSHED;
                 markDirty(calculation);
                 const otherNodes =
-                    globalDependencyGraph.breakCycle(calculation);
+                    state === CalculationState.STATE_CYCLE
+                        ? globalDependencyGraph.breakCycle(calculation)
+                        : globalDependencyGraph.getRecursiveDependencies(
+                              calculation
+                          );
+                state = CalculationState.STATE_FLUSHED;
                 otherNodes.forEach((otherNode) => {
                     if (isCalculation(otherNode)) {
                         otherNode[CalculationInvalidateTag]();
@@ -523,17 +527,13 @@ export function flush() {
                 if (isCalculation(item)) {
                     isEqual = item[CalculationSetErrorTag]('cycle');
                 } else {
-                    log.assert(false, 'Unexpected dependency on cycle');
-                }
-                break;
-            case 'error-dependency':
-                if (isCalculation(item)) {
-                    isEqual = item[CalculationSetErrorTag]('error');
-                } else {
-                    log.assert(false, 'Unexpected dependency on error');
+                    throw new Error('Unexpected dependency on cycle');
                 }
                 break;
             case 'invalidate':
+                if (isCalculation(item)) {
+                    item.flush();
+                }
                 break;
             case 'recalculate':
                 if (isCalculation(item)) {

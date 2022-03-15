@@ -1,4 +1,5 @@
 import { DAG } from './dag';
+import type { ProcessAction } from './types';
 import { suite, test, beforeEach, assert } from '@srhazi/test-jig';
 
 suite('Graph', () => {
@@ -28,20 +29,45 @@ suite('Graph', () => {
         graph.retain(e);
         graph.markNodeDirty(a);
 
-        const items: TNode[][] = [];
+        const items: { node: TNode; action: ProcessAction }[] = [];
 
-        graph.process((group) => {
-            items.push(group);
+        graph.process((node, action) => {
+            items.push({ node, action });
             return false;
         });
 
-        assert.arrayEqualsUnsorted([a], items[0]);
-        assert.arrayEqualsUnsorted([b, c, d], items[1]);
-        assert.arrayEqualsUnsorted([e], items[2]);
-        // Topgraphic sort:
-        // - [a]
-        // - [b,c,d]
-        // - [e]
+        assert.deepEqual({ node: a, action: 'recalculate' }, items[0]);
+        assert.arrayEqualsUnsorted(
+            [b, c, d],
+            items.slice(1, 4).map((item) => item.node)
+        );
+        assert.deepEqual(
+            ['cycle', 'cycle', 'cycle'],
+            items.slice(1, 4).map((item) => item.action)
+        );
+        assert.deepEqual({ node: e, action: 'cycle-dependency' }, items[4]);
+    });
+
+    test('errors do not stop traversal', () => {
+        const graph = new DAG<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+
+        graph.addEdge(a, b, DAG.EDGE_HARD);
+        graph.addEdge(b, c, DAG.EDGE_HARD);
+        graph.retain(c);
+        graph.markNodeDirty(a);
+
+        const items: TNode[] = [];
+
+        graph.process((node, action) => {
+            items.push(node);
+            if (node === b) throw new Error('ruh roh');
+            return false;
+        });
+
+        assert.deepEqual([a, b, c], items);
     });
 });
 
@@ -144,7 +170,7 @@ suite('DAG', () => {
             dag.addEdge(f, h, DAG.EDGE_HARD);
             dag.addEdge(g, i, DAG.EDGE_HARD);
 
-            dag.retain(i); // the end node is retained
+            dag.retain(i); // the almost end node is retained
         });
 
         suite('process', () => {
@@ -152,7 +178,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item[0]);
+                    items.push(item);
                     return true;
                 });
 
@@ -165,7 +191,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item[0]);
+                    items.push(item);
                     return false;
                 });
 
@@ -181,36 +207,51 @@ suite('DAG', () => {
                 dag.markNodeDirty(a);
                 dag.markNodeDirty(i);
 
-                const items: TNode[] = [];
+                const items: { node: TNode; action: string }[] = [];
 
-                dag.process((item) => {
-                    items.push(item[0]);
+                dag.process((node, action) => {
+                    items.push({ node, action });
                     return false;
                 });
 
-                // we visit only nodes up to e and f
-                assert.arrayEqualsUnsorted([a, b, c, d, e, f], items);
+                // unretained nodes that become dirtied are flushed
+                assert.deepEqual(
+                    { node: a, action: 'recalculate' },
+                    items.find((item) => item.node === a)
+                );
+                assert.deepEqual(
+                    { node: b, action: 'recalculate' },
+                    items.find((item) => item.node === b)
+                );
+                assert.deepEqual(
+                    { node: c, action: 'recalculate' },
+                    items.find((item) => item.node === c)
+                );
+                assert.deepEqual(
+                    { node: d, action: 'recalculate' },
+                    items.find((item) => item.node === d)
+                );
+                assert.deepEqual(
+                    { node: e, action: 'recalculate' },
+                    items.find((item) => item.node === e)
+                );
+                assert.deepEqual(
+                    { node: f, action: 'recalculate' },
+                    items.find((item) => item.node === f)
+                );
+                assert.deepEqual(
+                    { node: g, action: 'invalidate' },
+                    items.find((item) => item.node === g)
+                );
+                assert.deepEqual(
+                    { node: h, action: 'invalidate' },
+                    items.find((item) => item.node === h)
+                );
+                assert.deepEqual(
+                    { node: i, action: 'invalidate' },
+                    items.find((item) => item.node === i)
+                );
             });
-
-            /*
-             * TODO: garbage collection in the DAG... maybe
-            test('nodes reached that are not retained are removed', () => {
-                dag.release(i); // no nodes are retained now
-                dag.retain(e);
-                dag.retain(f);
-
-                dag.markNodeDirty(a);
-                dag.markNodeDirty(i);
-
-                dag.process((item) => {
-                    return false;
-                });
-
-                assert.is(false, dag.hasNode(g));
-                assert.is(false, dag.hasNode(h));
-                assert.is(false, dag.hasNode(i));
-            });
-            */
 
             test('nodes can stop traversal by returning true', () => {
                 dag.markNodeDirty(a);
@@ -218,7 +259,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item[0]);
+                    items.push(item);
                     return true;
                 });
 
@@ -233,8 +274,8 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item[0]);
-                    if (item[0] === c) return true;
+                    items.push(item);
+                    if (item === c) return true;
                     return false;
                 });
 
@@ -250,8 +291,8 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item[0]);
-                    if (item[0] === c) return true;
+                    items.push(item);
+                    if (item === c) return true;
                     return false;
                 });
 
@@ -269,7 +310,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item[0]);
+                    items.push(item);
                     return false;
                 });
 
@@ -349,7 +390,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item[0]);
+                    items.push(item);
                     return true;
                 });
 
@@ -362,7 +403,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item[0]);
+                    items.push(item);
                     return false;
                 });
 
@@ -377,7 +418,7 @@ suite('DAG', () => {
                 const items: TNode[] = [];
 
                 dag.process((item) => {
-                    items.push(item[0]);
+                    items.push(item);
                     return false;
                 });
 
