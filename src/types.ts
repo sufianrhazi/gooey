@@ -20,11 +20,7 @@ export const FlushKey = Symbol('flush');
 export const AddDeferredWorkKey = Symbol('addDeferredWork');
 export const NotifyKey = Symbol('notify');
 
-export type ProcessAction =
-    | 'recalculate'
-    | 'cycle'
-    | 'cycle-dependency'
-    | 'invalidate';
+export type ProcessAction = 'recalculate' | 'cycle' | 'invalidate';
 
 /**
  * A ref object that can be passed to native elements.

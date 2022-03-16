@@ -379,13 +379,14 @@ export function addDepToCurrentCalculation(item: GraphNode) {
     const dependentCalculation =
         activeCalculations[activeCalculations.length - 1];
     dependentCalculation.deps.push(item);
-    // TODO: Do we log here? Or elsewhere?
     DEBUG &&
         log.debug(
             'New global dependency',
             debugNameFor(item),
             '->',
-            debugNameFor(dependentCalculation)
+            dependentCalculation.calc
+                ? debugNameFor(dependentCalculation.calc)
+                : '<untracked>' // TODO: should we even add to .deps if we are untracked?
         );
 }
 
@@ -515,7 +516,6 @@ export function flush() {
 
         switch (action) {
             case 'cycle':
-            case 'cycle-dependency':
                 if (isCalculation(item)) {
                     shouldPropagate = item[CalculationSetCycleTag]();
                 } else {

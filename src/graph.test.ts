@@ -45,7 +45,7 @@ suite('Graph', () => {
             ['cycle', 'cycle', 'cycle'],
             items.slice(1, 4).map((item) => item.action)
         );
-        assert.deepEqual({ node: e, action: 'cycle-dependency' }, items[4]);
+        assert.deepEqual({ node: e, action: 'recalculate' }, items[4]);
     });
 
     test('errors do not stop traversal', () => {

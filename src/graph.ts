@@ -334,6 +334,13 @@ export class Graph<Type extends object> {
      *
      * This means that we do not need to reverse the topological sort produced
      * by Tarjan's algorithm if we follow the reverse edges.
+     *
+     * Note: handling of dynamic additions/deletions of edges in this algorithm is incredibly inefficient!
+     * TODO: Implement the algorithm outlined in:
+     * - Title: Incremental Topological Sort and Cycle Detection in O(msqrt{n}) Expected Total Time
+     * - Authors: Aaron Bernstein and Shiri Chechik
+     * - Paper: https://aaronbernstein.cs.rutgers.edu/wp-content/uploads/sites/43/2018/12/Dynamic-Cycle-Detection.pdf
+     * - From: https://aaronbernstein.cs.rutgers.edu/publications/
      */
     private _toposortRetained() {
         type Vertex = {
@@ -530,7 +537,8 @@ export class Graph<Type extends object> {
                 if (isCycle) {
                     action = 'cycle';
                 } else if (cycleDependencyNodes[nodeId]) {
-                    action = 'cycle-dependency';
+                    // TODO: do we recalculate here, or do we need a separate action (trigger error if handler? try to recalculate but if fail reuse cached value?)
+                    action = 'recalculate';
                 }
 
                 if (action) {

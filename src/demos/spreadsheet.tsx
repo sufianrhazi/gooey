@@ -6,8 +6,13 @@ import Revise, {
     model,
     mount,
     ref,
+    setLogLevel,
 } from '../index';
+import { makeGraphvizDebuggerRef } from './debug';
 import * as log from '../log';
+
+const graphvizRef = makeGraphvizDebuggerRef();
+setLogLevel('debug');
 
 type Table = Model<{
     rows: number;
@@ -120,7 +125,7 @@ const api = {
 };
 
 const makeTable = ({ rows, cols }: { rows: number; cols: number }): Table => {
-    const code: Model<Record<string, string | null>> = model({});
+    const code: Model<Record<string, string | null>> = model({}, 'code');
     const data: Model<
         Record<
             string,
@@ -130,7 +135,7 @@ const makeTable = ({ rows, cols }: { rows: number; cols: number }): Table => {
                 | { type: 'result'; result: any }
             >
         >
-    > = model({});
+    > = model({}, 'data');
     const proxy = new Proxy(
         {},
         {
@@ -264,17 +269,27 @@ const makeTable = ({ rows, cols }: { rows: number; cols: number }): Table => {
                         error: new Error('Unknown error: ' + e),
                     };
                 }
-            }).onCycle(() => ({
-                type: 'cycle',
-            }));
+            }, `datacalc:${col}:${row}`).onError((type) => {
+                console.error('Cell', col, row, 'got error!');
+                if (type === 'cycle') {
+                    return { type: 'cycle' };
+                }
+                return {
+                    type: 'error',
+                    error: new Error('Unknown internal error'),
+                };
+            });
         }
     }
-    return model({
-        cols,
-        rows,
-        code,
-        data,
-    });
+    return model(
+        {
+            cols,
+            rows,
+            code,
+            data,
+        },
+        'table'
+    );
 };
 
 const HeaderCell: Component<{ row?: number; col?: number }> = ({
@@ -322,17 +337,22 @@ const Cell: Component<{
         <td
             ref={tdRef}
             id={`cell-${col}-${row}`}
-            tabindex={calc(() => (isFocused() ? 0 : -1))}
+            tabindex={calc(
+                () => (isFocused() ? 0 : -1),
+                `cell:${col}:${row}:tabindex`
+            )}
             on:dblclick={onDblClick}
             on:mouseover={onMouseOver}
             on:mousedown={onMouseDown}
-            class={calc(() =>
-                classNames('cell', {
-                    active: isActive(),
-                    error:
-                        table.data[positionToKey({ col, row })]().type ===
-                        'error',
-                })
+            class={calc(
+                () =>
+                    classNames('cell', {
+                        active: isActive(),
+                        error:
+                            table.data[positionToKey({ col, row })]().type ===
+                            'error',
+                    }),
+                `cell:${col}:${row}:class`
             )}
         >
             {calc(() => {
@@ -347,6 +367,14 @@ const Cell: Component<{
                     );
                 }
                 return repr(result.result);
+            }, `cell:${col}:${row}:display`).onError((type) => {
+                console.error('Display cell', col, row, 'got error');
+                if (type === 'error') {
+                    return <div title="Cell Display Catch Error">Err!</div>;
+                }
+                if (type === 'cycle') {
+                    return <div title="Cell Display Catch Cycle">Cycle!</div>;
+                }
             })}
         </td>
     );
@@ -391,7 +419,7 @@ const Spreadsheet: Component<{ table: Table }> = ({ table }) => {
             return undefined;
         }
         return positionToKey(state.selection.position);
-    });
+    }, 'getSelectedKey');
 
     const getSelectedCellCode = calc(() => {
         const selectedKey = getSelectedKey();
@@ -399,12 +427,13 @@ const Spreadsheet: Component<{ table: Table }> = ({ table }) => {
             return '';
         }
         return table.code[selectedKey] || '';
-    });
+    }, 'getSelectedCellCode');
 
     const onInputChange = (e: Event) => {
         const selectedKey = getSelectedKey();
         if (selectedKey && e.target instanceof HTMLInputElement) {
             table.code[selectedKey] = e.target.value;
+            table.data[selectedKey].flush();
         }
     };
 
@@ -412,6 +441,7 @@ const Spreadsheet: Component<{ table: Table }> = ({ table }) => {
         const selectedKey = getSelectedKey();
         if (selectedKey && textAreaRef.current) {
             table.code[selectedKey] = textAreaRef.current.value;
+            table.data[selectedKey].flush();
         }
     };
 
@@ -471,146 +501,154 @@ const Spreadsheet: Component<{ table: Table }> = ({ table }) => {
                 Formula:{' '}
                 <input
                     type="text"
-                    disabled={calc(() => !getSelectedKey())}
+                    disabled={calc(() => !getSelectedKey(), 'input:disabled')}
                     value={getSelectedCellCode}
                     on:change={onInputChange}
                     ref={inputRef}
                 />
             </label>
             <table on:keydown={onKeyDown}>
-                {calc(() =>
-                    Array.from(makeRange(table.rows + 1)).map(
-                        (tableRowIndex) => (
-                            <tr>
-                                {Array.from(makeRange(table.cols + 1)).map(
-                                    (tableColIndex) => {
-                                        const cellPosition = {
-                                            row: tableRowIndex - 1,
-                                            col: tableColIndex - 1,
-                                        };
-                                        if (
-                                            cellPosition.row < 0 &&
-                                            cellPosition.col < 0
-                                        ) {
-                                            return <td />;
-                                        }
-                                        if (cellPosition.row < 0) {
+                {calc(
+                    () =>
+                        Array.from(makeRange(table.rows + 1)).map(
+                            (tableRowIndex) => (
+                                <tr>
+                                    {Array.from(makeRange(table.cols + 1)).map(
+                                        (tableColIndex) => {
+                                            const cellPosition = {
+                                                row: tableRowIndex - 1,
+                                                col: tableColIndex - 1,
+                                            };
+                                            if (
+                                                cellPosition.row < 0 &&
+                                                cellPosition.col < 0
+                                            ) {
+                                                return <td />;
+                                            }
+                                            if (cellPosition.row < 0) {
+                                                return (
+                                                    <HeaderCell
+                                                        col={cellPosition.col}
+                                                    />
+                                                );
+                                            }
+                                            if (cellPosition.col < 0) {
+                                                return (
+                                                    <HeaderCell
+                                                        row={cellPosition.row}
+                                                    />
+                                                );
+                                            }
                                             return (
-                                                <HeaderCell
-                                                    col={cellPosition.col}
-                                                />
-                                            );
-                                        }
-                                        if (cellPosition.col < 0) {
-                                            return (
-                                                <HeaderCell
-                                                    row={cellPosition.row}
-                                                />
-                                            );
-                                        }
-                                        return (
-                                            <Cell
-                                                onDblClick={() => {
-                                                    inputRef.current?.focus();
-                                                }}
-                                                onMouseOver={() => {
-                                                    if (
-                                                        !state.isDragging ||
-                                                        !state.selection
-                                                    )
-                                                        return;
-                                                    if (
-                                                        state.selection.type ===
-                                                        'range'
-                                                    ) {
-                                                        state.selection = {
-                                                            type: 'range',
-                                                            position:
-                                                                state.selection
-                                                                    .position,
-                                                            start: state
-                                                                .selection
-                                                                .start,
-                                                            end: cellPosition,
-                                                        };
-                                                    } else if (
-                                                        state.selection.type ===
-                                                        'cell'
-                                                    ) {
-                                                        state.selection = {
-                                                            type: 'range',
-                                                            position:
-                                                                state.selection
-                                                                    .position,
-                                                            start: state
-                                                                .selection
-                                                                .position,
-                                                            end: cellPosition,
-                                                        };
-                                                    } else {
-                                                        log.assertExhausted(
+                                                <Cell
+                                                    onDblClick={() => {
+                                                        inputRef.current?.focus();
+                                                    }}
+                                                    onMouseOver={() => {
+                                                        if (
+                                                            !state.isDragging ||
+                                                            !state.selection
+                                                        )
+                                                            return;
+                                                        if (
                                                             state.selection
-                                                        );
-                                                    }
-                                                }}
-                                                onMouseDown={(e) => {
-                                                    e.preventDefault();
-                                                    state.selection = {
-                                                        type: 'cell',
-                                                        position: cellPosition,
-                                                    };
-                                                    state.isDragging = true;
-
-                                                    const handler = (
-                                                        e: MouseEvent
-                                                    ) => {
+                                                                .type ===
+                                                            'range'
+                                                        ) {
+                                                            state.selection = {
+                                                                type: 'range',
+                                                                position:
+                                                                    state
+                                                                        .selection
+                                                                        .position,
+                                                                start: state
+                                                                    .selection
+                                                                    .start,
+                                                                end: cellPosition,
+                                                            };
+                                                        } else if (
+                                                            state.selection
+                                                                .type === 'cell'
+                                                        ) {
+                                                            state.selection = {
+                                                                type: 'range',
+                                                                position:
+                                                                    state
+                                                                        .selection
+                                                                        .position,
+                                                                start: state
+                                                                    .selection
+                                                                    .position,
+                                                                end: cellPosition,
+                                                            };
+                                                        } else {
+                                                            log.assertExhausted(
+                                                                state.selection
+                                                            );
+                                                        }
+                                                    }}
+                                                    onMouseDown={(e) => {
                                                         e.preventDefault();
-                                                        state.isDragging =
-                                                            false;
-                                                        document.body.removeEventListener(
+                                                        state.selection = {
+                                                            type: 'cell',
+                                                            position:
+                                                                cellPosition,
+                                                        };
+                                                        state.isDragging = true;
+
+                                                        const handler = (
+                                                            e: MouseEvent
+                                                        ) => {
+                                                            e.preventDefault();
+                                                            state.isDragging =
+                                                                false;
+                                                            document.body.removeEventListener(
+                                                                'mouseup',
+                                                                handler
+                                                            );
+                                                        };
+                                                        document.body.addEventListener(
                                                             'mouseup',
                                                             handler
                                                         );
-                                                    };
-                                                    document.body.addEventListener(
-                                                        'mouseup',
-                                                        handler
-                                                    );
-                                                }}
-                                                table={table}
-                                                row={cellPosition.row}
-                                                col={cellPosition.col}
-                                                isActive={calc(
-                                                    () =>
-                                                        !!(
-                                                            state.selection &&
-                                                            inSelection(
-                                                                state.selection,
-                                                                cellPosition
-                                                            )
-                                                        )
-                                                )}
-                                                isFocused={calc(
-                                                    () =>
-                                                        !!(
-                                                            state.selection &&
-                                                            state.selection
-                                                                .position
-                                                                .row ===
-                                                                cellPosition.row &&
-                                                            state.selection
-                                                                .position
-                                                                .col ===
-                                                                cellPosition.col
-                                                        )
-                                                )}
-                                            />
-                                        );
-                                    }
-                                )}
-                            </tr>
-                        )
-                    )
+                                                    }}
+                                                    table={table}
+                                                    row={cellPosition.row}
+                                                    col={cellPosition.col}
+                                                    isActive={calc(
+                                                        () =>
+                                                            !!(
+                                                                state.selection &&
+                                                                inSelection(
+                                                                    state.selection,
+                                                                    cellPosition
+                                                                )
+                                                            ),
+                                                        `cell:${cellPosition.col}:${cellPosition.row}:isActive`
+                                                    )}
+                                                    isFocused={calc(
+                                                        () =>
+                                                            !!(
+                                                                state.selection &&
+                                                                state.selection
+                                                                    .position
+                                                                    .row ===
+                                                                    cellPosition.row &&
+                                                                state.selection
+                                                                    .position
+                                                                    .col ===
+                                                                    cellPosition.col
+                                                            ),
+                                                        `cell:${cellPosition.col}:${cellPosition.row}:isFocused`
+                                                    )}
+                                                />
+                                            );
+                                        }
+                                    )}
+                                </tr>
+                            )
+                        ),
+                    'table:body'
                 )}
             </table>
             <label>
@@ -618,7 +656,10 @@ const Spreadsheet: Component<{ table: Table }> = ({ table }) => {
                 <textarea
                     on:input={onTextAreaInput}
                     ref={textAreaRef}
-                    disabled={calc(() => !getSelectedKey())}
+                    disabled={calc(
+                        () => !getSelectedKey(),
+                        'textarea:disabled'
+                    )}
                 >
                     {getSelectedCellCode}
                 </textarea>
@@ -628,7 +669,8 @@ const Spreadsheet: Component<{ table: Table }> = ({ table }) => {
 };
 
 const App: Component<{}> = () => {
-    const table = makeTable({ rows: 20, cols: 20 });
+    const table = makeTable({ rows: 1, cols: 3 });
+    /*
     table.code['A0'] = '"Hello,"';
     table.code['B0'] = '"+"';
     table.code['C0'] = '"world"';
@@ -648,10 +690,13 @@ const App: Component<{}> = () => {
     for (let i = 1; i < 11; ++i) {
         table.code[`${colKeys[i]}3`] = `sum(cell["B2:${colKeys[i]}2"])`;
     }
+    */
 
     return (
         <div class="container">
             <Spreadsheet table={table} />
+            <hr />
+            <div ref={graphvizRef} />
         </div>
     );
 };

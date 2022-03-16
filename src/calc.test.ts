@@ -535,7 +535,7 @@ suite('cycles', () => {
         data.hasCycle = true;
         flush();
 
-        assert.is('D', calculations.d());
+        assert.is('dCd', calculations.d());
         assert.is('A', calculations.a());
         assert.is('B', calculations.b());
         assert.is('C', calculations.c());
@@ -546,11 +546,111 @@ suite('cycles', () => {
         assert.is('A', calculations.a());
         assert.is('B', calculations.b());
         assert.is('C', calculations.c());
-        assert.is('D', calculations.d());
+        assert.is('dCd', calculations.d());
 
         calculations.a.flush();
         flush();
 
         assert.is('dcbxbcd', calculations.d());
+    });
+
+    test('cycle can catch and resolve itself (depend on all)', () => {
+        const calculations: Record<string, Calculation<string>> = {};
+
+        const data = model({ hasCycle: false });
+
+        calculations.a = calc(() => {
+            if (!data.hasCycle) return 'a no cycle';
+            return 'a cycle' + calculations.b();
+        }).onError(() => {
+            return 'A CAUGHT';
+        });
+        calculations.b = calc(() => {
+            if (!data.hasCycle) return 'b no cycle';
+            return 'b cycle' + calculations.a();
+        }).onError(() => {
+            return 'B CAUGHT';
+        });
+
+        const catcher = calc(() => {
+            return [calculations.a(), calculations.b()];
+        }).onError(() => {
+            return ['catcher caught'];
+        });
+
+        retain(catcher);
+
+        assert.deepEqual(['a no cycle', 'b no cycle'], catcher());
+
+        data.hasCycle = true;
+        flush();
+
+        assert.deepEqual(['A CAUGHT', 'B CAUGHT'], catcher());
+    });
+
+    test('cycle can catch and resolve itself (depend on one)', () => {
+        const calculations: Record<string, Calculation<string>> = {};
+
+        const data = model({ hasCycle: false });
+
+        calculations.a = calc(() => {
+            if (!data.hasCycle) return 'a no cycle';
+            return 'a cycle' + calculations.b();
+        }).onError(() => {
+            return 'A CAUGHT';
+        });
+        calculations.b = calc(() => {
+            if (!data.hasCycle) return 'b no cycle';
+            return 'b cycle' + calculations.a();
+        }).onError(() => {
+            return 'B CAUGHT';
+        });
+
+        const catcher = calc(() => {
+            return calculations.a();
+        }).onError(() => {
+            return 'catcher caught';
+        });
+
+        retain(catcher);
+
+        assert.deepEqual('a no cycle', catcher());
+
+        data.hasCycle = true;
+        flush();
+
+        assert.deepEqual('A CAUGHT', catcher());
+    });
+
+    test('cycle does not catch and resolve itself if all cycles do not catch', () => {
+        const calculations: Record<string, Calculation<string>> = {};
+
+        const data = model({ hasCycle: false });
+
+        calculations.a = calc(() => {
+            if (!data.hasCycle) return 'a no cycle';
+            return 'a cycle' + calculations.b();
+        });
+        calculations.b = calc(() => {
+            if (!data.hasCycle) return 'b no cycle';
+            return 'b cycle' + calculations.a();
+        }).onError(() => {
+            return 'B CAUGHT';
+        });
+
+        const catcher = calc(() => {
+            return calculations.a();
+        }).onError(() => {
+            return 'catcher caught';
+        });
+
+        retain(catcher);
+
+        assert.deepEqual('a no cycle', catcher());
+
+        data.hasCycle = true;
+        flush();
+
+        assert.deepEqual('catcher caught', catcher());
     });
 });
