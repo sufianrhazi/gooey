@@ -599,6 +599,80 @@ suite('cycles', () => {
         });
     });
 
+    suite('cycle call behavior', () => {
+        let calculations: Record<string, Calculation<string>> = {};
+        let data = model({
+            hasCycle: 0,
+        });
+        let calls: string[] = [];
+
+        beforeEach(() => {
+            calculations = {};
+            data = model({
+                hasCycle: 0,
+            });
+
+            calculations.a = calc(() => {
+                calls.push('a');
+                if (data.hasCycle > 0) {
+                    return 'a' + calculations.c() + 'a';
+                } else {
+                    return 'x';
+                }
+            }, 'a');
+            calculations.b = calc(() => {
+                calls.push('b');
+                return 'b' + calculations.a() + 'b';
+            }, 'b');
+            calculations.c = calc(() => {
+                calls.push('c');
+                return 'c' + calculations.b() + 'c';
+            }, 'c');
+            calculations.d = calc(() => {
+                calls.push('d');
+                const result = 'd' + calculations.c() + 'd';
+                return result;
+            }, 'd');
+
+            retain(calculations.a);
+            retain(calculations.b);
+            retain(calculations.c);
+            retain(calculations.d);
+        });
+
+        test('cycle nodes called only once when calculating', () => {
+            data.hasCycle = true;
+
+            assert.throwsMatching(/.*/i, () => calculations.d());
+            assert.deepEqual(['d', 'c', 'b', 'a'], calls);
+
+            calls = [];
+            flush(); // should have no effect
+
+            assert.deepEqual([], calls);
+        });
+
+        test('cycle nodes called only once when recalculating', () => {
+            calculations.d();
+
+            assert.deepEqual(['d', 'c', 'b', 'a'], calls);
+
+            data.hasCycle = true;
+            calls = [];
+            flush(); // recalculates _some_ nodes
+            // a is called because hasCycle dependency changed
+            // b is not called, as once a is called we know a -> b -> c -> a exists
+            // c is not called, as once a is called we know a -> b -> c -> a exists
+            // d is called because c is part of a newly created cycle
+            assert.deepEqual(['a', 'd'], calls);
+
+            calls = [];
+            flush();
+
+            assert.deepEqual([], calls);
+        });
+    });
+
     test('cycle can catch and resolve itself (depend on all)', () => {
         const calculations: Record<string, Calculation<string>> = {};
 

@@ -562,6 +562,13 @@ export class Graph<Type extends object> {
                     return this.process(callback);
                 }
             });
+
+            // If we hit a cycle, manually mark the cycle as _not_ dirty so we can safely proceed
+            if (toposort[i].length > 1) {
+                toposort[i].forEach((vertex) => {
+                    delete this.dirtyNodes[vertex.nodeId];
+                });
+            }
         }
 
         // Second pass: the remaining dirty nodes are not retained.
