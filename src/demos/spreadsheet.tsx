@@ -11,9 +11,6 @@ import Revise, {
 import { makeGraphvizDebuggerRef } from './debug';
 import * as log from '../log';
 
-const graphvizRef = makeGraphvizDebuggerRef();
-setLogLevel('debug');
-
 type Table = Model<{
     rows: number;
     cols: number;
@@ -495,13 +492,18 @@ const Spreadsheet: Component<{ table: Table }> = ({ table }) => {
         }
     };
 
+    const isDisabledCalc = calc(() => !getSelectedKey(), 'input:disabled');
+    window.isDisabledCalc = isDisabledCalc;
+    window.getSelectedKey = getSelectedKey;
+    window.state = state;
+
     return (
         <div>
             <label>
                 Formula:{' '}
                 <input
                     type="text"
-                    disabled={calc(() => !getSelectedKey(), 'input:disabled')}
+                    disabled={isDisabledCalc}
                     value={getSelectedCellCode}
                     on:change={onInputChange}
                     ref={inputRef}
@@ -669,8 +671,7 @@ const Spreadsheet: Component<{ table: Table }> = ({ table }) => {
 };
 
 const App: Component<{}> = () => {
-    const table = makeTable({ rows: 1, cols: 3 });
-    /*
+    const table = makeTable({ rows: 20, cols: 20 });
     table.code['A0'] = '"Hello,"';
     table.code['B0'] = '"+"';
     table.code['C0'] = '"world"';
@@ -690,13 +691,10 @@ const App: Component<{}> = () => {
     for (let i = 1; i < 11; ++i) {
         table.code[`${colKeys[i]}3`] = `sum(cell["B2:${colKeys[i]}2"])`;
     }
-    */
 
     return (
         <div class="container">
             <Spreadsheet table={table} />
-            <hr />
-            <div ref={graphvizRef} />
         </div>
     );
 };
