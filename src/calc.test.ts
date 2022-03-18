@@ -423,135 +423,180 @@ suite('cycles', () => {
         assert.deepEqual([], calls);
     });
 
-    test('cycles can be caught when triggered via standard calling', () => {
-        setLogLevel('debug');
-        const calculations: Record<string, Calculation<string>> = {};
-        const calls: string[] = [];
-        calculations.a = calc(() => {
-            calls.push('a');
-            return calculations.c() + 'a';
-        }, 'a').onError(() => {
-            calls.push('cycle:a');
-            return 'A';
-        });
-        calculations.b = calc(() => {
-            calls.push('b');
-            return calculations.a() + 'b';
-        }, 'b').onError(() => {
-            calls.push('cycle:b');
-            return 'B';
-        });
-        calculations.c = calc(() => {
-            calls.push('c');
-            return calculations.b() + 'c';
-        }, 'c').onError(() => {
-            calls.push('cycle:c');
-            return 'C';
-        });
-        calculations.d = calc(() => {
-            calls.push('d:before');
-            const result = calculations.c() + 'd';
-            calls.push('d:after');
-            return result;
-        }, 'd').onError(() => {
-            calls.push('cycle:d');
-            return 'D';
-        });
-        retain(calculations.a);
-        retain(calculations.b);
-        retain(calculations.c);
-        retain(calculations.d);
-
-        assert.is('D', calculations.d());
-        assert.deepEqual(
-            [
-                'd:before',
-                'c',
-                'b',
-                'a',
-                'cycle:a',
-                'cycle:b',
-                'cycle:c',
-                'cycle:d',
-            ],
-            calls
-        );
-
-        assert.is('C', calculations.c());
-        assert.is('B', calculations.b());
-        assert.is('A', calculations.a());
-        assert.deepEqual(
-            [
-                'd:before',
-                'c',
-                'b',
-                'a',
-                'cycle:a',
-                'cycle:b',
-                'cycle:c',
-                'cycle:d',
-            ],
-            calls
-        );
-    });
-
-    test('cycles can be caught when triggered via standard calling', () => {
-        const calculations: Record<string, Calculation<string>> = {};
-        const data = model({
+    suite('cycle dependencies (caught cycle)', () => {
+        let calculations: Record<string, Calculation<string>> = {};
+        let data = model({
             hasCycle: false,
         });
-        calculations.a = calc(() => {
-            if (data.hasCycle) {
-                return 'a' + calculations.c() + 'a';
-            } else {
-                return 'x';
-            }
-        }, 'a').onError(() => {
-            return 'A';
+
+        beforeEach(() => {
+            calculations = {};
+            data = model({
+                hasCycle: false,
+            });
+
+            calculations.a = calc(() => {
+                if (data.hasCycle) {
+                    return 'a' + calculations.c() + 'a';
+                } else {
+                    return 'x';
+                }
+            }, 'a').onError(() => {
+                return 'A';
+            });
+            calculations.b = calc(() => {
+                return 'b' + calculations.a() + 'b';
+            }, 'b').onError(() => {
+                return 'B';
+            });
+            calculations.c = calc(() => {
+                return 'c' + calculations.b() + 'c';
+            }, 'c').onError(() => {
+                return 'C';
+            });
+            calculations.d = calc(() => {
+                const result = 'd' + calculations.c() + 'd';
+                return result;
+            }, 'd').onError(() => {
+                return 'D';
+            });
+
+            retain(calculations.a);
+            retain(calculations.b);
+            retain(calculations.c);
+            retain(calculations.d);
         });
-        calculations.b = calc(() => {
-            return 'b' + calculations.a() + 'b';
-        }, 'b').onError(() => {
-            return 'B';
+
+        test('cycles can be caught when triggered via standard calling', () => {
+            data.hasCycle = true;
+
+            assert.is('A', calculations.a());
+            assert.is('B', calculations.b());
+            assert.is('C', calculations.c());
+            assert.is('dCd', calculations.d()); // because c caught its cycle, d is unaware and runs as expected
         });
-        calculations.c = calc(() => {
-            return 'c' + calculations.b() + 'c';
-        }, 'c').onError(() => {
-            return 'C';
+
+        test('cycles can be caught when triggered via recalculation', () => {
+            assert.is('dcbxbcd', calculations.d());
+
+            data.hasCycle = true;
+            flush();
+
+            assert.is('A', calculations.a());
+            assert.is('B', calculations.b());
+            assert.is('C', calculations.c());
+            assert.is('dCd', calculations.d()); // because c caught its cycle, d is unaware and runs as expected
+
+            data.hasCycle = false;
+            flush(); // Has no effect, as the cycle hasn't been manually flushed
+
+            assert.is('A', calculations.a());
+            assert.is('B', calculations.b());
+            assert.is('C', calculations.c());
+            assert.is('dCd', calculations.d());
+
+            calculations.a.flush();
+            flush(); // Properly recalculates things
+
+            assert.is('dcbxbcd', calculations.d());
         });
-        calculations.d = calc(() => {
-            const result = 'd' + calculations.c() + 'd';
-            return result;
-        }, 'd').onError(() => {
-            return 'D';
+    });
+
+    suite('cycle dependencies (uncaught cycle)', () => {
+        let calculations: Record<string, Calculation<string>> = {};
+        let data = model({
+            hasCycle: false,
         });
-        retain(calculations.a);
-        retain(calculations.b);
-        retain(calculations.c);
-        retain(calculations.d);
 
-        assert.is('dcbxbcd', calculations.d());
+        beforeEach(() => {
+            calculations = {};
+            data = model({
+                hasCycle: false,
+            });
 
-        data.hasCycle = true;
-        flush();
+            calculations.a = calc(() => {
+                if (data.hasCycle) {
+                    return 'a' + calculations.c() + 'a';
+                } else {
+                    return 'x';
+                }
+            }, 'a');
+            calculations.b = calc(() => {
+                return 'b' + calculations.a() + 'b';
+            }, 'b');
+            calculations.c = calc(() => {
+                return 'c' + calculations.b() + 'c';
+            }, 'c');
+            calculations.d = calc(() => {
+                const result = 'd' + calculations.c() + 'd';
+                return result;
+            }, 'd');
+            calculations.e = calc(() => {
+                const result = 'e' + calculations.d() + 'e';
+                return result;
+            }, 'e').onError(() => 'E');
+            calculations.f = calc(() => {
+                const result = 'f' + calculations.c() + 'f';
+                return result;
+            }, 'f').onError(() => 'F');
+            calculations.g = calc(() => {
+                const result = 'g' + calculations.f() + 'g';
+                return result;
+            }, 'g').onError(() => 'G');
 
-        assert.is('dCd', calculations.d());
-        assert.is('A', calculations.a());
-        assert.is('B', calculations.b());
-        assert.is('C', calculations.c());
+            retain(calculations.a);
+            retain(calculations.b);
+            retain(calculations.c);
+            retain(calculations.d);
+            retain(calculations.e);
+            retain(calculations.g);
+        });
 
-        data.hasCycle = false;
-        flush();
+        test('cycles can be caught when triggered via standard calling', () => {
+            data.hasCycle = true;
 
-        assert.is('A', calculations.a());
-        assert.is('B', calculations.b());
-        assert.is('C', calculations.c());
-        assert.is('dCd', calculations.d());
+            assert.throwsMatching(/cycle/i, () => calculations.a());
+            assert.throwsMatching(/cycle/i, () => calculations.b());
+            assert.throwsMatching(/cycle/i, () => calculations.c());
+            assert.throwsMatching(/cycle/i, () => calculations.d());
+            assert.is('E', calculations.e());
+            assert.is('F', calculations.f());
+            assert.is('gFg', calculations.g());
+        });
 
-        calculations.a.flush();
-        flush();
+        test('cycles can be caught when triggered via recalculation', () => {
+            setLogLevel('debug');
+            assert.is('edcbxbcde', calculations.e());
+            assert.is('gfcbxbcfg', calculations.g());
 
-        assert.is('dcbxbcd', calculations.d());
+            data.hasCycle = true;
+            flush();
+
+            assert.throwsMatching(/cycle/i, () => calculations.a());
+            assert.throwsMatching(/cycle/i, () => calculations.b());
+            assert.throwsMatching(/cycle/i, () => calculations.c());
+            assert.throwsMatching(/error/i, () => calculations.d());
+            assert.is('E', calculations.e());
+            assert.is('F', calculations.f());
+            assert.is('gFg', calculations.g());
+
+            data.hasCycle = false;
+            flush(); // Has no effect, as the cycle hasn't been manually flushed
+
+            assert.throwsMatching(/cycle/i, () => calculations.a());
+            assert.throwsMatching(/cycle/i, () => calculations.b());
+            assert.throwsMatching(/cycle/i, () => calculations.c());
+            assert.throwsMatching(/error/i, () => calculations.d());
+            assert.is('E', calculations.e());
+            assert.is('F', calculations.f());
+            assert.is('gFg', calculations.g());
+
+            calculations.a.flush();
+            flush(); // Properly recalculates things
+
+            assert.is('edcbxbcde', calculations.e());
+            assert.is('gfcbxbcfg', calculations.g());
+        });
     });
 
     test('cycle can catch and resolve itself (depend on all)', () => {

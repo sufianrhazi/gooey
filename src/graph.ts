@@ -522,22 +522,16 @@ export class Graph<Type extends object> {
         this.processPendingOperations();
         const toposort = this._toposortRetained();
 
-        const cycleDependencyNodes: Record<string, boolean> = {};
-        const visited: Record<string, boolean> = {};
+        // First pass: traverse the _retained_ dirty nodes in topological order
         for (let i = 0; i < toposort.length; ++i) {
             const nodeIds: string[] = [];
             toposort[i].forEach((vertex) => {
                 const nodeId = vertex.nodeId;
-                visited[i] = true;
                 nodeIds.push(nodeId);
-                let action: ProcessAction | null = this.dirtyNodes[nodeId]
-                    ? 'recalculate'
-                    : null;
-                const isCycle = toposort[i].length > 1;
-                if (isCycle) {
+                let action: ProcessAction | null = null;
+                if (toposort[i].length > 1) {
                     action = 'cycle';
-                } else if (cycleDependencyNodes[nodeId]) {
-                    // TODO: do we recalculate here, or do we need a separate action (trigger error if handler? try to recalculate but if fail reuse cached value?)
+                } else if (this.dirtyNodes[nodeId]) {
                     action = 'recalculate';
                 }
 
@@ -554,14 +548,7 @@ export class Graph<Type extends object> {
                         log.error('Caught error during flush', e);
                     }
                     delete this.dirtyNodes[nodeId];
-                    if (isCycle || cycleDependencyNodes[nodeId]) {
-                        this.getDependenciesInner(
-                            nodeId,
-                            Graph.EDGE_HARD
-                        ).forEach((toId) => {
-                            cycleDependencyNodes[toId] = true;
-                        });
-                    } else if (shouldPropagate || isError) {
+                    if (shouldPropagate || isError) {
                         this.getDependenciesInner(
                             nodeId,
                             Graph.EDGE_HARD
@@ -577,6 +564,9 @@ export class Graph<Type extends object> {
             });
         }
 
+        // Second pass: the remaining dirty nodes are not retained.
+        // All dirty nodes and their dependencies should be invalidated, so the
+        // next time they come online they have fresh data.
         const isInvalidated: Record<string, boolean> = {};
         const invalidate = (nodeId: string) => {
             if (isInvalidated[nodeId]) return;

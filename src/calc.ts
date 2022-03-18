@@ -120,7 +120,6 @@ function makeCalculation<Ret>(
         throw new InvariantError('calculation must be provided a function');
     }
 
-    let errorResult: { result: Ret } | undefined = undefined;
     let result: { result: Ret } | undefined = undefined;
     let state: CalculationState = CalculationState.STATE_FLUSHED;
     let errorHandler: ((errorType: 'cycle' | 'error') => Ret) | undefined =
@@ -168,14 +167,18 @@ function makeCalculation<Ret>(
                         ? CalculationState.STATE_CYCLE
                         : CalculationState.STATE_ERROR;
                     if (errorHandler) {
-                        errorResult = {
+                        result = {
                             result: errorHandler(isCycle ? 'cycle' : 'error'),
                         };
+                    } else {
+                        // If we don't have an error handler, but we hit an error, we need to become flushed.
+                        // TODO: is there a difference between flushed and cached?
+                        result = undefined;
                     }
                     // Only return a value if we're the _outermost_ tracked call.
                     // Otherwise, we need to propagate the error to catch the remaining ones.
-                    if (errorResult && activeCalculations.length === 0) {
-                        return errorResult.result;
+                    if (result && activeCalculations.length === 0) {
+                        return result.result;
                     }
                     throw e;
                 }
@@ -193,27 +196,40 @@ function makeCalculation<Ret>(
             }
             case CalculationState.STATE_TRACKING:
                 state = CalculationState.STATE_ERROR;
+                if (errorHandler) {
+                    result = {
+                        result: errorHandler('cycle'),
+                    };
+                    // TODO: if we have an error handler and we call ourselves,
+                    // only return a value if we are the outermost tracked
+                    // call. Otherwise, we need to propagate the error to the
+                    // callers
+                    if (activeCalculations.length === 0) {
+                        return result.result;
+                    }
+                }
                 throw new CycleAbortError(
                     'Cycle reached: calculation processing reached itself'
                 );
                 break;
+            // TODO: the next three are suspiciously similar
             case CalculationState.STATE_CACHED:
-                log.assert(result, 'cached calculation missing result');
-                return result.result;
+                if (result) {
+                    return result.result;
+                }
+                throw new Error('Cached calculation missing result');
             case CalculationState.STATE_CYCLE:
-                if (errorResult) {
-                    return errorResult.result;
+                if (result) {
+                    return result.result;
                 }
                 throw new Error(
                     'Cycle reached: calculation contains or depends on cycle'
                 );
-                break;
             case CalculationState.STATE_ERROR:
-                if (errorResult) {
-                    return errorResult.result;
+                if (result) {
+                    return result.result;
                 }
                 throw new Error('Calculation in error state');
-                break;
             default:
                 log.assertExhausted(state, 'Unexpected calculation state');
         }
@@ -231,7 +247,6 @@ function makeCalculation<Ret>(
                 );
                 break;
             case CalculationState.STATE_CACHED:
-                errorResult = undefined;
                 result = undefined;
                 state = CalculationState.STATE_FLUSHED;
                 return true;
@@ -246,21 +261,21 @@ function makeCalculation<Ret>(
                         } state`,
                         debugNameFor(calculation)
                     );
-                errorResult = undefined;
                 result = undefined;
-                markDirty(calculation);
+                // When we are manually flushing a computation, we assume the intent is a recomputation will either
+                // break the cycle or "fix" the error. For cycles, we need to invalidate the _other_ cycles
+                // When an cycle is flushed, we need to invalidate the _other_ nodes in the cycle so that calling into the other nodes recomputes the cycle
                 const otherNodes =
                     state === CalculationState.STATE_CYCLE
                         ? globalDependencyGraph.breakCycle(calculation)
-                        : globalDependencyGraph.getRecursiveDependencies(
-                              calculation
-                          );
+                        : globalDependencyGraph.getDependencies(calculation);
                 state = CalculationState.STATE_FLUSHED;
                 otherNodes.forEach((otherNode) => {
                     if (isCalculation(otherNode)) {
                         otherNode[CalculationInvalidateTag]();
                     }
                 });
+                markDirty(calculation); // TODO: why do we do this?
                 return true;
             }
             default:
@@ -281,10 +296,9 @@ function makeCalculation<Ret>(
             case CalculationState.STATE_ERROR: {
                 DEBUG &&
                     log.debug('Invalidating node', debugNameFor(calculation));
-                errorResult = undefined;
                 result = undefined;
                 state = CalculationState.STATE_FLUSHED;
-                markDirty(calculation);
+                markDirty(calculation); // TODO: why do we do this?
                 break;
             }
             default:
@@ -301,30 +315,26 @@ function makeCalculation<Ret>(
                 break;
             case CalculationState.STATE_FLUSHED:
             case CalculationState.STATE_CACHED:
-                result = undefined;
-                if (errorHandler) {
-                    errorResult = { result: errorHandler('cycle') };
-                }
-                state = CalculationState.STATE_CYCLE;
-                return true;
             case CalculationState.STATE_CYCLE:
             case CalculationState.STATE_ERROR: {
-                result = undefined;
-                let isErrorResultEqual = false;
-                if (errorHandler) {
-                    const newResult = errorHandler('cycle');
-                    if (errorResult) {
-                        isErrorResultEqual = isEqual(
-                            errorResult.result,
-                            newResult
-                        );
-                    }
-                    if (!isErrorResultEqual) {
-                        errorResult = { result: newResult };
-                    }
-                }
                 state = CalculationState.STATE_CYCLE;
-                return !isErrorResultEqual;
+                if (errorHandler) {
+                    let isResultEqual = false;
+                    const newResult = errorHandler('cycle');
+                    if (result) {
+                        isResultEqual = isEqual(result.result, newResult);
+                    }
+                    if (!isResultEqual) {
+                        result = { result: newResult };
+                    }
+                    return !isResultEqual;
+                } else {
+                    if (result) {
+                        result = undefined;
+                        return true;
+                    }
+                    return false;
+                }
             }
             default:
                 log.assertExhausted(state, 'Unexpected calculation state');
@@ -344,8 +354,8 @@ function makeCalculation<Ret>(
             case CalculationState.STATE_CACHED: {
                 const priorResult = result;
                 calculationFlush();
-                result = { result: calculationBody() };
-                if (priorResult && isEqual(priorResult.result, result.result)) {
+                const newResult = calculationBody();
+                if (priorResult && isEqual(priorResult.result, newResult)) {
                     result = priorResult;
                     return false;
                 }
