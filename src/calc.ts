@@ -171,8 +171,9 @@ function makeCalculation<Ret>(
                             result: errorHandler(isCycle ? 'cycle' : 'error'),
                         };
                     } else {
-                        // If we don't have an error handler, but we hit an error, we need to become flushed.
-                        // TODO: is there a difference between flushed and cached?
+                        // If we don't have an error handler, but we hit an
+                        // error, we need to clear out the preexisting result
+                        // so we throw when called in an error state.
                         result = undefined;
                     }
                     // Only return a value if we're the _outermost_ tracked call.
@@ -200,7 +201,7 @@ function makeCalculation<Ret>(
                     result = {
                         result: errorHandler('cycle'),
                     };
-                    // TODO: if we have an error handler and we call ourselves,
+                    // If we have an error handler and we call ourselves,
                     // only return a value if we are the outermost tracked
                     // call. Otherwise, we need to propagate the error to the
                     // callers
@@ -212,12 +213,13 @@ function makeCalculation<Ret>(
                     'Cycle reached: calculation processing reached itself'
                 );
                 break;
-            // TODO: the next three are suspiciously similar
             case CalculationState.STATE_CACHED:
                 if (result) {
                     return result.result;
                 }
-                throw new Error('Cached calculation missing result');
+                throw new InvariantError(
+                    'Calculation in cached state missing result value'
+                );
             case CalculationState.STATE_CYCLE:
                 if (result) {
                     return result.result;
@@ -271,7 +273,6 @@ function makeCalculation<Ret>(
                         otherNode[CalculationInvalidateTag]();
                     }
                 });
-                markDirty(calculation); // TODO: why do we do this?
                 return true;
             }
             default:
@@ -294,7 +295,6 @@ function makeCalculation<Ret>(
                     log.debug('Invalidating node', debugNameFor(calculation));
                 result = undefined;
                 state = CalculationState.STATE_FLUSHED;
-                markDirty(calculation); // TODO: why do we do this?
                 break;
             }
             default:
@@ -389,7 +389,7 @@ export function addDepToCurrentCalculation(item: GraphNode) {
             '->',
             dependentCalculation.calc
                 ? debugNameFor(dependentCalculation.calc)
-                : '<untracked>' // TODO: should we even add to .deps if we are untracked?
+                : '<untracked>' // We probably could avoid adding to .deps if we were untracked, but it may be helpful to log these
         );
 }
 
