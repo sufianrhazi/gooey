@@ -602,7 +602,7 @@ export class Graph<Type extends object> {
         ) => { label: string; subgraph: object | undefined; penwidth: string }
     ) {
         const lines = [
-            'digraph Graph {',
+            'digraph debug {',
             //'graph [rankdir="LR"];',
             'node [style="filled", fillcolor="#DDDDDD"];',
         ];

@@ -1,9 +1,16 @@
 import { suite, test, assert, beforeEach } from '@srhazi/test-jig';
 import { model } from './model';
 import { collection } from './collection';
-import { flush, calc, effect, retain, release, reset, subscribe } from './calc';
+import {
+    flush,
+    calc,
+    effect,
+    retain,
+    release,
+    reset,
+    subscribe,
+} from './calc';
 import { Calculation } from './types';
-import { setLogLevel } from './log';
 
 beforeEach(() => {
     subscribe();
@@ -565,7 +572,6 @@ suite('cycles', () => {
         });
 
         test('cycles can be caught when triggered via recalculation', () => {
-            setLogLevel('debug');
             assert.is('edcbxbcde', calculations.e());
             assert.is('gfcbxbcfg', calculations.g());
 
@@ -641,7 +647,7 @@ suite('cycles', () => {
         });
 
         test('cycle nodes called only once when calculating', () => {
-            data.hasCycle = true;
+            data.hasCycle = 1;
 
             assert.throwsMatching(/.*/i, () => calculations.d());
             assert.deepEqual(['d', 'c', 'b', 'a'], calls);
@@ -657,7 +663,7 @@ suite('cycles', () => {
 
             assert.deepEqual(['d', 'c', 'b', 'a'], calls);
 
-            data.hasCycle = true;
+            data.hasCycle = 1;
             calls = [];
             flush(); // recalculates _some_ nodes
             // a is called because hasCycle dependency changed
