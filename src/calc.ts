@@ -247,18 +247,14 @@ function makeCalculation<Ret>(
                 );
                 break;
             case CalculationState.STATE_CACHED:
+            case CalculationState.STATE_ERROR:
                 result = undefined;
                 state = CalculationState.STATE_FLUSHED;
                 return true;
-            case CalculationState.STATE_CYCLE:
-            case CalculationState.STATE_ERROR: {
+            case CalculationState.STATE_CYCLE: {
                 DEBUG &&
                     log.debug(
-                        `Manually flushing node in ${
-                            state === CalculationState.STATE_CYCLE
-                                ? 'cycle'
-                                : 'error'
-                        } state`,
+                        `Manually flushing node in cycle state`,
                         debugNameFor(calculation)
                     );
                 result = undefined;
@@ -351,6 +347,7 @@ function makeCalculation<Ret>(
             case CalculationState.STATE_FLUSHED:
                 calculationBody();
                 return true;
+            case CalculationState.STATE_ERROR:
             case CalculationState.STATE_CACHED: {
                 const priorResult = result;
                 calculationFlush();
@@ -364,10 +361,6 @@ function makeCalculation<Ret>(
             case CalculationState.STATE_CYCLE:
                 throw new InvariantError(
                     'Cannot recalculate calculation in cycle state without flushing'
-                );
-            case CalculationState.STATE_ERROR:
-                throw new InvariantError(
-                    'Cannot recalculate calculation in error state without flushing'
                 );
             default:
                 log.assertExhausted(state, 'Unexpected calculation state');

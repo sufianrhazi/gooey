@@ -779,3 +779,54 @@ suite('cycles', () => {
         assert.deepEqual('catcher caught', catcher());
     });
 });
+
+suite('errors', () => {
+    function setup() {
+        const data = model({
+            num: 4,
+            denom: 2,
+        });
+        const divide = calc<string | number>(() => {
+            if (data.denom === 0) throw new Error('divide by zero');
+            return data.num / data.denom;
+        }, 'divide').onError(() => {
+            return 'caught error';
+        });
+        const items: (number | string)[] = [];
+        const root = effect(() => {
+            items.push(divide());
+        }, 'root');
+        retain(root);
+        root();
+        return { items, data };
+    }
+    test('errors thrown as a result of recalculation can be caught', () => {
+        const { items, data } = setup();
+
+        assert.deepEqual([2], items);
+        data.num = 6;
+        flush();
+        assert.deepEqual([2, 3], items);
+
+        data.num = 5;
+        data.denom = 1;
+        flush();
+        assert.deepEqual([2, 3, 5], items);
+
+        data.denom = 0;
+        flush();
+        assert.deepEqual([2, 3, 5, 'caught error'], items);
+    });
+
+    test('caught errors can be recalculated if their dependencies are updated', () => {
+        const { items, data } = setup();
+
+        data.denom = 0;
+        flush();
+        assert.deepEqual([2, 'caught error'], items);
+
+        data.denom = 1;
+        flush();
+        assert.deepEqual([2, 'caught error', 4], items);
+    });
+});
