@@ -16,6 +16,7 @@ export const CalculationSetCycleTag = Symbol('calculationSetCycle');
 export const ObserveKey = Symbol('observe');
 export const GetSubscriptionNodeKey = Symbol('getSubscriptionNode');
 export const MakeModelViewKey = Symbol('makeModelView');
+export const DisposeKey = Symbol('dispose');
 export const FlushKey = Symbol('flush');
 export const AddDeferredWorkKey = Symbol('addDeferredWork');
 export const NotifyKey = Symbol('notify');
@@ -111,6 +112,7 @@ export type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementation & {
     ) => () => void;
     [GetSubscriptionNodeKey]: () => Subscription;
     [NotifyKey]: (event: TEvent) => void;
+    [DisposeKey]: () => void;
 };
 
 /**
@@ -141,7 +143,7 @@ export type Collection<T> = TrackedData<
         flatMapFn: MappingFunction<T, V[]>,
         debugName?: string
     ): View<V>;
-    reject(shouldReject: (item: T, index: number) => boolean): void;
+    reject(shouldReject: (item: T, index: number) => boolean): T[];
     moveSlice(fromIndex: number, fromCount: number, toIndex: number): void;
 };
 
@@ -209,6 +211,7 @@ export interface Calculation<Result> {
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
     flush: () => boolean;
+    dispose: () => void;
     onError: (handler: (errorType: 'cycle' | 'error') => Result) => this;
     [CalculationSetCycleTag]: () => boolean;
     [CalculationRecalculateTag]: () => boolean;

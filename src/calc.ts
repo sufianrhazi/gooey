@@ -38,6 +38,22 @@ export function reset() {
     clearNames();
 }
 
+let createdCalculations: Calculation<any>[] | undefined;
+/**
+ * Collect all synchronously created calc() and effect() calls
+ */
+export function trackCreatedCalculations(fn: () => void): Calculation<any>[] {
+    const before = createdCalculations;
+    createdCalculations = [];
+    try {
+        fn();
+        const toReturn = createdCalculations;
+        return toReturn;
+    } finally {
+        createdCalculations = before;
+    }
+}
+
 /**
  * Create a calculation cell: while the provided function is executed, all dependencies are tracked.
  *
@@ -65,6 +81,7 @@ export function calc<Ret>(
     if (typeof debugName !== 'string') debugName = undefined;
     const calculation = makeCalculation(func, isEqual, false);
     if (debugName) name(calculation, debugName);
+    if (createdCalculations) createdCalculations.push(calculation);
     return calculation;
 }
 
@@ -89,6 +106,7 @@ export function effect(
         true
     );
     if (debugName) name(calculation, debugName);
+    if (createdCalculations) createdCalculations.push(calculation);
     return calculation;
 }
 
@@ -124,6 +142,7 @@ function makeCalculation<Ret>(
     let state: CalculationState = CalculationState.STATE_FLUSHED;
     let errorHandler: ((errorType: 'cycle' | 'error') => Ret) | undefined =
         undefined;
+    let isDisposed = false;
 
     const calculation: Calculation<Ret> = Object.assign(calculationBody, {
         $__id: uniqueid(),
@@ -136,11 +155,13 @@ function makeCalculation<Ret>(
         [CalculationInvalidateTag]: calculationInvalidate,
         flush: calculationFlush,
         onError: calculationOnError,
+        dispose: calculationDispose,
     });
 
     globalDependencyGraph.addNode(calculation);
 
     function calculationBody() {
+        log.assert(!isDisposed, 'calculation already disposed');
         if (!isEffect) {
             // effects return void, so they **cannot** have an effect on the current calculation
             addDepToCurrentCalculation(calculation);
@@ -240,6 +261,7 @@ function makeCalculation<Ret>(
     }
 
     function calculationFlush() {
+        log.assert(!isDisposed, 'calculation already disposed');
         switch (state) {
             case CalculationState.STATE_FLUSHED:
                 return false;
@@ -281,6 +303,7 @@ function makeCalculation<Ret>(
     }
 
     function calculationInvalidate() {
+        log.assert(!isDisposed, 'calculation already disposed');
         switch (state) {
             case CalculationState.STATE_TRACKING:
                 throw new InvariantError(
@@ -303,6 +326,7 @@ function makeCalculation<Ret>(
     }
 
     function calculationSetError() {
+        log.assert(!isDisposed, 'calculation already disposed');
         switch (state) {
             case CalculationState.STATE_TRACKING:
                 throw new InvariantError(
@@ -338,6 +362,7 @@ function makeCalculation<Ret>(
     }
 
     function calculationRecalculate() {
+        log.assert(!isDisposed, 'calculation already disposed');
         switch (state) {
             case CalculationState.STATE_TRACKING:
                 throw new InvariantError(
@@ -370,8 +395,20 @@ function makeCalculation<Ret>(
     function calculationOnError(
         handler: (errorType: 'cycle' | 'error') => Ret
     ) {
+        log.assert(!isDisposed, 'calculation already disposed');
         errorHandler = handler;
         return calculation;
+    }
+
+    function calculationDispose() {
+        log.assert(!isDisposed, 'calculation already disposed');
+        globalDependencyGraph.removeNode(calculation);
+
+        // Delete local state
+        result = undefined;
+        errorHandler = undefined;
+
+        isDisposed = true;
     }
 
     return calculation;
@@ -408,6 +445,10 @@ export function addManualDep(fromNode: GraphNode, toNode: GraphNode) {
 
 export function registerNode(node: GraphNode) {
     globalDependencyGraph.addNode(node);
+}
+
+export function disposeNode(node: GraphNode) {
+    globalDependencyGraph.removeNode(node);
 }
 
 export function addOrderingDep(fromNode: GraphNode, toNode: GraphNode) {

@@ -6,6 +6,8 @@ import {
     addOrderingDep,
     removeOrderingDep,
     registerNode,
+    disposeNode,
+    trackCreatedCalculations,
 } from './calc';
 import { name, debugNameFor } from './debug';
 import {
@@ -293,6 +295,7 @@ function makeElementVNode(
                 }, `viewattr:${key}`);
                 onReleaseActions.push(() => {
                     removeOrderingDep(boundEffect, nodeOrdering);
+                    boundEffect.dispose();
                 });
                 addOrderingDep(boundEffect, nodeOrdering);
 
@@ -393,41 +396,50 @@ function makeComponentVNode<TProps>(
     const onUnmount: Function[] = [];
     const onMount: Function[] = [];
 
-    const jsxNode = Component(
-        {
-            ...props,
-            children: children,
-        },
-        {
-            onUnmount: (unmountCallback) => {
-                onUnmount.push(unmountCallback);
+    let jsxNode: JSXNode;
+    const createdCalculations = trackCreatedCalculations(() => {
+        jsxNode = Component(
+            {
+                ...props,
+                children: children,
             },
-            onMount: (mountCallback) => {
-                onMount.push(mountCallback);
-            },
-            onEffect: (effectCallback: () => void, debugName?: string) => {
-                const effectCalc = effect(
-                    effectCallback,
-                    `componenteffect:${Component.name}:${debugName ?? '?'}`
-                );
-                onMount.push(() => {
-                    retain(effectCalc);
-                    addOrderingDep(nodeOrdering, effectCalc);
-                    effectCalc();
-                });
-                onUnmount.push(() => {
-                    removeOrderingDep(nodeOrdering, effectCalc);
-                    release(effectCalc);
-                });
-            },
-            getContext: <TVal>(context: Context<TVal>): TVal => {
-                if (contextMap.has(context)) {
-                    return contextMap.get(context);
-                }
-                return context();
-            },
-        }
-    );
+            {
+                onUnmount: (unmountCallback) => {
+                    onUnmount.push(unmountCallback);
+                },
+                onMount: (mountCallback) => {
+                    onMount.push(mountCallback);
+                },
+                onEffect: (effectCallback: () => void, debugName?: string) => {
+                    const effectCalc = effect(
+                        effectCallback,
+                        `componenteffect:${Component.name}:${debugName ?? '?'}`
+                    );
+                    onMount.push(() => {
+                        retain(effectCalc);
+                        addOrderingDep(nodeOrdering, effectCalc);
+                        effectCalc();
+                    });
+                    onUnmount.push(() => {
+                        removeOrderingDep(nodeOrdering, effectCalc);
+                        release(effectCalc);
+                        effectCalc.dispose();
+                    });
+                },
+                getContext: <TVal>(context: Context<TVal>): TVal => {
+                    if (contextMap.has(context)) {
+                        return contextMap.get(context);
+                    }
+                    return context();
+                },
+            }
+        );
+    });
+    onUnmount.push(() => {
+        createdCalculations.forEach((calculation) => {
+            calculation.dispose();
+        });
+    });
 
     const childVNode = jsxNodeToVNode(
         jsxNode,
@@ -496,6 +508,8 @@ function makeCalculationVNode(
     onUnmount.push(() => {
         removeOrderingDep(calculationNodeOrdering, parentNodeOrdering);
         removeOrderingDep(resultEffect, calculationNodeOrdering);
+        resultEffect.dispose();
+        disposeNode(calculationNodeOrdering);
     });
 
     resultEffect();

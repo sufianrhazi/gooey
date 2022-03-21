@@ -11,6 +11,7 @@ import {
     DataTypeTag,
     ModelField,
     TrackedData,
+    DisposeKey,
 } from './types';
 import { collection } from './collection';
 import {
@@ -22,6 +23,8 @@ import {
     addDepToCurrentCalculation,
     markDirty,
     registerNode,
+    disposeNode,
+    nextFlush,
 } from './calc';
 import { uniqueid } from './util';
 import { name } from './debug';
@@ -82,6 +85,7 @@ export function trackedData<
 
     let subscriptionEvents: Map<Observer, TEvent[]> = new Map();
     let observers: Observer[] = [];
+    let isDisposed = false;
 
     let deferredTasks: (() => void)[] = [];
 
@@ -94,6 +98,7 @@ export function trackedData<
     name(subscriptionNode, `${debugName || '?'}:sub`);
 
     function flushSubscription() {
+        log.assert(!isDisposed, 'data already disposed');
         let processed = false;
         const toProcess = subscriptionEvents;
         subscriptionEvents = new Map();
@@ -105,6 +110,7 @@ export function trackedData<
     }
 
     function flush() {
+        log.assert(!isDisposed, 'data already disposed');
         const toProcess = deferredTasks;
         let processed = false;
         deferredTasks = [];
@@ -116,11 +122,13 @@ export function trackedData<
     }
 
     function addDeferredTask(task: () => void) {
+        log.assert(!isDisposed, 'data already disposed');
         deferredTasks.push(task);
         markDirty(proxy);
     }
 
     function notify(event: TEvent) {
+        log.assert(!isDisposed, 'data already disposed');
         if (observers.length > 0) {
             observers.forEach((observer) => {
                 let observerEvents = subscriptionEvents.get(observer);
@@ -135,10 +143,12 @@ export function trackedData<
     }
 
     function getSubscriptionNode() {
+        log.assert(!isDisposed, 'data already disposed');
         return subscriptionNode;
     }
 
     function observe(observer: (events: TEvent[]) => void) {
+        log.assert(!isDisposed, 'data already disposed');
         if (observers.length === 0) {
             registerNode(proxy);
             registerNode(subscriptionNode);
@@ -163,6 +173,7 @@ export function trackedData<
         spec: ViewSpec<TData, V, TEvent>,
         viewDebugName?: string | undefined
     ) {
+        log.assert(!isDisposed, 'data already disposed');
         const viewArray: V[] = untracked(() => spec.initialize(initialValue));
         const view = collection(viewArray, viewDebugName);
         observe((events: TEvent[]) => {
@@ -177,13 +188,39 @@ export function trackedData<
     }
 
     function processFieldChange(key: string | symbol) {
+        log.assert(!isDisposed, 'data already disposed');
         const field = getField(key);
         markDirty(field);
     }
 
     function processFieldDelete(key: string | symbol) {
+        log.assert(!isDisposed, 'data already disposed');
         const field = getField(key);
         markDirty(field);
+    }
+
+    function dispose() {
+        log.assert(!isDisposed, 'data already disposed');
+        // Delete and clean everything up
+        fieldRecords.forEach((field) => {
+            removeOrderingDep(proxy, field);
+            if (observers.length > 0) {
+                removeOrderingDep(field, subscriptionNode);
+            }
+            disposeNode(field);
+        });
+        fieldRecords.clear();
+        disposeNode(proxy);
+        disposeNode(subscriptionNode);
+
+        observers.splice(0, observers.length);
+        subscriptionEvents.clear();
+        deferredTasks.splice(0, deferredTasks.length);
+        // TODO: this is very gross!
+        nextFlush().then(() => {
+            revokableProxy.revoke();
+        });
+        isDisposed = true;
     }
 
     const pseudoPrototype = {
@@ -195,6 +232,7 @@ export function trackedData<
         [ObserveKey]: observe,
         [NotifyKey]: notify,
         [GetSubscriptionNodeKey]: getSubscriptionNode,
+        [DisposeKey]: dispose,
         ...bindMethods({
             observe,
             notify,
@@ -224,63 +262,64 @@ export function trackedData<
         return field;
     }
 
+    const revokableProxy = Proxy.revocable(initialValue, {
+        get(target: any, key: string | symbol) {
+            if (key in pseudoPrototype) {
+                return (pseudoPrototype as any)[key];
+            }
+            const field = getField(key);
+            addDepToCurrentCalculation(field);
+            return implSpec.get.call(proxy, notify, target, key);
+        },
+
+        has(target: any, key: string | symbol) {
+            if (key in pseudoPrototype) {
+                return true;
+            }
+            const field = getField(key);
+            addDepToCurrentCalculation(field);
+            return implSpec.has.call(proxy, notify, target, key);
+        },
+
+        set(target: any, key: string | symbol, value: any) {
+            if (key in pseudoPrototype) {
+                log.error(`Overriding ${String(key)} not supported`, key);
+                return false;
+            }
+            const changed = implSpec.set.call(
+                proxy,
+                notify,
+                target,
+                key,
+                value
+            );
+            if (changed) {
+                const field = getField(key);
+                markDirty(field);
+            }
+            return changed;
+        },
+
+        deleteProperty(target: any, key: string | symbol) {
+            if (key in pseudoPrototype) {
+                log.error(`Deleting ${String(key)} not supported`, key);
+                return false;
+            }
+            const changed = implSpec.deleteProperty.call(
+                proxy,
+                notify,
+                target,
+                key
+            );
+            if (changed) {
+                const field = getField(key);
+                markDirty(field); // Anything depending on this value will need to be recalculated
+            }
+            return changed;
+        },
+    });
     const proxy: TrackedData<TData & TMethods, TDataTypeTag, TEvent> =
-        new Proxy(initialValue, {
-            get(target: any, key: string | symbol) {
-                if (key in pseudoPrototype) {
-                    return (pseudoPrototype as any)[key];
-                }
-                const field = getField(key);
-                addDepToCurrentCalculation(field);
-                return implSpec.get.call(proxy, notify, target, key);
-            },
-
-            has(target: any, key: string | symbol) {
-                if (key in pseudoPrototype) {
-                    return true;
-                }
-                const field = getField(key);
-                addDepToCurrentCalculation(field);
-                return implSpec.has.call(proxy, notify, target, key);
-            },
-
-            set(target: any, key: string | symbol, value: any) {
-                if (key in pseudoPrototype) {
-                    log.error(`Overriding ${String(key)} not supported`, key);
-                    return false;
-                }
-                const changed = implSpec.set.call(
-                    proxy,
-                    notify,
-                    target,
-                    key,
-                    value
-                );
-                if (changed) {
-                    const field = getField(key);
-                    markDirty(field);
-                }
-                return changed;
-            },
-
-            deleteProperty(target: any, key: string | symbol) {
-                if (key in pseudoPrototype) {
-                    log.error(`Deleting ${String(key)} not supported`, key);
-                    return false;
-                }
-                const changed = implSpec.deleteProperty.call(
-                    proxy,
-                    notify,
-                    target,
-                    key
-                );
-                if (changed) {
-                    const field = getField(key);
-                    markDirty(field); // Anything depending on this value will need to be recalculated
-                }
-                return changed;
-            },
-        });
+        revokableProxy.proxy;
 
     subscriptionNode.item = proxy;
 

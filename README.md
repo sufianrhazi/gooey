@@ -59,6 +59,13 @@ diagnostic logging and other debugging purposes.
 ```typescript
 type EqualityFunc<T> = (a: T, b: T) => boolean
 
+interface Calculation<Ret> {
+  (): Ret;
+  dispose(): void;
+  onError(errorHandler: (errorType: 'cycle' | 'error') => Ret): void;
+  flush(): void;
+}
+
 function calc<Ret>(func: () => Ret, isEqual: EqualityFunc<Ret>, debugName: string): Calculation<Ret>
 function calc<Ret>(func: () => Ret, isEqual: EqualityFunc<Ret>): Calculation<Ret>
 function calc<Ret>(func: () => Ret, debugName: string): Calculation<Ret>
@@ -107,6 +114,25 @@ placed in JSX.
 Note: if used outside of jsx, calculations must be manually `retain()`ed and `release()`d, otherwise they will not be
 recalculated.
 
+#### Disposal
+
+When a calculation is no longer needed, it may be disposed by calling the `.dispose()` method. Disposed calculations
+will not be recalculated and if manually called, an exception will be raised.
+
+Note: Calls to `calc()` that are synchronously executed within the body of a component function (or created via
+`onEffect()`) should not be disposed: these will automatically be disposed when the component unmounts.
+
+
+#### Handling errors
+
+If a calculation throws an error or is in a cycle, it may be "caught" using the `.onError(errorHandler)` function. In
+this error state, the return value of the `errorHandler` will be returned by the calculation. `errorHandler` will be
+called with either `'cycle'` or `'error'`, depending on the kind of error.
+
+In case a cycle is encountered, the calculation will never leave the error state unless `flush()` is called on one of
+the calculations in the cycle. This "breaks" the cycle, clears the error state, and allows the calculation to be
+re-called.
+
 
 ### effect(fn)
 
@@ -132,6 +158,16 @@ function model<T>(init: T, debugName?: string): Model<T>
 The `model` function produces `Model` types, which act just like normal JavaScript objects.
 
 
+### model.dispose(target)
+
+```typescript
+(method) model.dispose(target: Model<any>): void
+```
+
+The `model.dispose` function disposes of the model. Disposed models are inert and able to be garbage collected. Disposed
+model's should not be accessed or manipulated in any way.
+
+
 ### model.keys(target)
 
 ```typescript
@@ -153,13 +189,27 @@ The `collection` function produces `Collection` types, which act just like norma
 additional methods.
 
 
+### collection.dispose(target)
+
+```typescript
+(method) collection.dispose(target: Collection<any>): void
+```
+
+The `collection.dispose` function disposes of the collection. Disposed collections are inert and able to be garbage
+collected. Disposed collection's should not be accessed or manipulated in any way.
+
+
 #### .reject(shouldReject)
 
 ```typescript
-(method) Collection<T>.reject(shouldReject: (item: T, index: number) => boolean): void`
+(method) Collection<T>.reject(shouldReject: (item: T, index: number) => boolean): T[]`
 ```
 
 The `reject` method mutates the collection to remove all items which pass the provided `shouldReject` predicate test.
+The returned array contains the items removed.
+
+Note: the order of items in the returned array does not necessarily match the order of the items as they were in the
+array.
 
 
 #### .mapView(mapFn, debugName)
@@ -405,6 +455,15 @@ Dump the current dependency graph in a [graphviz DOT file format](https://graphv
 `debugName` values passed to models, collections, calculations, and effects will be represented in this directed graph.
 
 
+### debugSubscribe(observer)
+
+```typescript
+function debugSubscribe(callback: ((graphviz: string, detail: string) => void) | null): void
+```
+
+Subscribe to a stream of debug() calls as the dependency graph is being processed.
+
+
 ### retain(obj); release(obj);
 
 ```typescript
@@ -424,6 +483,9 @@ The `retain` function adds to the reference count of `item`; the `release` funct
 
 If you are using the exported `effect` or `calc` functions outside of calculations, you must manually `retain` and
 `release` these functions, otherwise they will not be processed when their dependencies change.
+
+Note: despite the name, `retain` and `release` have nothing to do with memory management. Please use the various
+`dispose` functions to free memory.
 
 
 ### reset()

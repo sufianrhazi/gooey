@@ -114,11 +114,10 @@ const TodoControls: Component<{}> = (_props, { onMount }) => {
     };
 
     const onClickClear = () => {
-        for (let i = globalState.items.length - 1; i >= 0; --i) {
-            if (globalState.items[i].done) {
-                globalState.items.splice(i, 1);
-            }
-        }
+        const removed = globalState.items.reject((item) => item.done);
+        removed.forEach((removed) => {
+            model.dispose(removed);
+        });
 
         if (inputRef.current) inputRef.current.focus();
     };

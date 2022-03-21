@@ -1,4 +1,10 @@
-import { InvariantError, MakeModelViewKey, Model, View } from './types';
+import {
+    InvariantError,
+    MakeModelViewKey,
+    DisposeKey,
+    Model,
+    View,
+} from './types';
 import { trackedData } from './trackeddata';
 
 export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
@@ -89,4 +95,7 @@ model.keys = function keys<T>(
     );
 
     return view;
+};
+model.dispose = function dispose(m: Model<any>) {
+    m[DisposeKey]();
 };

@@ -9,6 +9,7 @@ type GraphOperations =
           kind: number;
           type: 'add' | 'remove';
       }
+    | { nodeId: string; type: 'dispose' }
     | {
           nodeId: string;
           type: 'dirty';
@@ -172,6 +173,9 @@ export class Graph<Type extends object> {
                     this.reverseGraph[op.toId][op.fromId] =
                         (this.reverseGraph[op.toId][op.fromId] || 0) & ~op.kind;
                     break;
+                case 'dispose':
+                    this.removeNodeInner(op.nodeId);
+                    break;
                 case 'dirty':
                     this.dirtyNodes[op.nodeId] = true;
                     break;
@@ -197,6 +201,11 @@ export class Graph<Type extends object> {
             'cannot remove edge to node that does not exist'
         );
         this.pendingOperations.push({ fromId, toId, kind, type: 'remove' });
+    }
+
+    removeNode(node: Type) {
+        const nodeId = this.getId(node);
+        this.pendingOperations.push({ nodeId, type: 'dispose' });
     }
 
     private removeNodeInner(nodeId: string) {
@@ -638,14 +647,27 @@ export class Graph<Type extends object> {
                 case 'add':
                     newGraph[op.fromId][op.toId] =
                         (newGraph[op.fromId][op.toId] || 0) | op.kind;
+                    if (!newReverseGraph[op.toId]) {
+                        newReverseGraph[op.toId] = {};
+                    }
                     newReverseGraph[op.toId][op.fromId] =
                         (newReverseGraph[op.toId][op.fromId] || 0) | op.kind;
                     break;
                 case 'remove':
                     newGraph[op.fromId][op.toId] =
                         (newGraph[op.fromId][op.toId] || 0) & ~op.kind;
+                    if (!newReverseGraph[op.toId]) {
+                        newReverseGraph[op.toId] = {};
+                    }
                     newReverseGraph[op.toId][op.fromId] =
                         (newReverseGraph[op.toId][op.fromId] || 0) & ~op.kind;
+                    break;
+                case 'dispose':
+                    Object.keys(newGraph[op.nodeId] || {}).forEach((toId) => {
+                        delete newReverseGraph[toId];
+                    });
+                    delete newGraph[op.nodeId];
+                    delete newDirtyNodes[op.nodeId];
                     break;
                 case 'dirty':
                     newDirtyNodes[op.nodeId] = true;
@@ -668,7 +690,9 @@ export class Graph<Type extends object> {
                     shape: this.retained[nodeId] ? 'box' : 'ellipse',
                     label: nodeAttributes[nodeId].label,
                     penwidth: nodeAttributes[nodeId].penwidth,
-                    fillcolor: this.dirtyNodes[nodeId]
+                    fillcolor: !newGraph[nodeId]
+                        ? '#666666'
+                        : this.dirtyNodes[nodeId]
                         ? '#FFDDDD'
                         : newDirtyNodes[nodeId]
                         ? '#FFFFDD'
@@ -689,13 +713,13 @@ export class Graph<Type extends object> {
             const allDestinations = Array.from(
                 new Set([
                     ...Object.keys(this.graph[fromId]),
-                    ...Object.keys(newGraph[fromId]),
+                    ...Object.keys(newGraph[fromId] || {}),
                 ])
             );
             allDestinations.forEach((toId) => {
                 if (
                     this.graph[fromId][toId] & Graph.EDGE_HARD &&
-                    newGraph[fromId][toId] & Graph.EDGE_HARD
+                    newGraph[fromId]?.[toId] & Graph.EDGE_HARD
                 ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="solid"];`
@@ -703,7 +727,7 @@ export class Graph<Type extends object> {
                 }
                 if (
                     !(this.graph[fromId][toId] & Graph.EDGE_HARD) &&
-                    newGraph[fromId][toId] & Graph.EDGE_HARD
+                    newGraph[fromId]?.[toId] & Graph.EDGE_HARD
                 ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="solid",color="#0000FF"];`
@@ -711,7 +735,7 @@ export class Graph<Type extends object> {
                 }
                 if (
                     this.graph[fromId][toId] & Graph.EDGE_HARD &&
-                    !(newGraph[fromId][toId] & Graph.EDGE_HARD)
+                    !(newGraph[fromId]?.[toId] & Graph.EDGE_HARD)
                 ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="solid",color="#FF0000"];`
@@ -719,7 +743,7 @@ export class Graph<Type extends object> {
                 }
                 if (
                     this.graph[fromId][toId] & Graph.EDGE_SOFT &&
-                    newGraph[fromId][toId] & Graph.EDGE_SOFT
+                    newGraph[fromId]?.[toId] & Graph.EDGE_SOFT
                 ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="dashed"];`
@@ -727,7 +751,7 @@ export class Graph<Type extends object> {
                 }
                 if (
                     !(this.graph[fromId][toId] & Graph.EDGE_SOFT) &&
-                    newGraph[fromId][toId] & Graph.EDGE_SOFT
+                    newGraph[fromId]?.[toId] & Graph.EDGE_SOFT
                 ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="dashed",color="#0000FF"];`
@@ -735,7 +759,7 @@ export class Graph<Type extends object> {
                 }
                 if (
                     this.graph[fromId][toId] & Graph.EDGE_SOFT &&
-                    !(newGraph[fromId][toId] & Graph.EDGE_SOFT)
+                    !(newGraph[fromId]?.[toId] & Graph.EDGE_SOFT)
                 ) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="dashed",color="#FF0000"];`

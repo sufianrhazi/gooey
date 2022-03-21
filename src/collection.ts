@@ -6,6 +6,7 @@ import {
     MappingFunction,
     View,
     NotifyKey,
+    DisposeKey,
 } from './types';
 import * as log from './log';
 import { trackedData } from './trackeddata';
@@ -142,11 +143,13 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                 this: Collection<T>,
                 func: (item: T, index: number) => boolean
             ) {
+                const removed: T[] = [];
                 for (let i = array.length - 1; i >= 0; --i) {
                     if (func(this[i], i)) {
-                        this.splice(i, 1);
+                        removed.push(...this.splice(i, 1));
                     }
                 }
+                return removed;
             },
             moveSlice: function moveSlice(
                 this: Collection<T>,
@@ -229,6 +232,9 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         debugName
     );
 }
+collection.dispose = function dispose(c: Collection<any>) {
+    c[DisposeKey]();
+};
 
 function mapViewImplementation<T, V>(
     sourceCollection: Collection<T> | View<T>,
