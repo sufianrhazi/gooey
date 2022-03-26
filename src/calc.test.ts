@@ -770,6 +770,224 @@ suite('cycles', () => {
 
         assert.deepEqual('catcher caught', catcher());
     });
+
+    test('cycle expanded by recalculation is detected correctly on all nodes', () => {
+        // Before:
+        //     A <-> B
+        //     ^     |
+        //     |     v
+        //     C     D
+        //     ^
+        //     |
+        //     E
+        //
+        // After:
+        //     A <-> B
+        //     ^     |
+        //     |     v
+        //     C <-- D
+        //     ^
+        //     |
+        //     E
+        const calculations: Record<string, Calculation<any>> = {};
+        const data = model({ e: 0 }, 'data');
+        calculations.a = calc(() => {
+            return calculations.b() + ' and A';
+        }, 'a');
+        calculations.b = calc(() => {
+            return calculations.c() + ' and ' + calculations.a() + ' and B';
+        }, 'b');
+        calculations.c = calc(() => {
+            if (data.e > 0) {
+                return calculations.d() + ' and C';
+            }
+            return 'C';
+        }, 'c');
+        calculations.d = calc(() => {
+            return calculations.b() + ' and D';
+        }, 'd');
+        retain(calculations.a);
+        retain(calculations.b);
+        retain(calculations.c);
+        retain(calculations.d);
+
+        assert.throwsMatching(/cycle/, () => calculations.a());
+        assert.throwsMatching(/cycle/, () => calculations.b());
+        assert.is('C', calculations.c());
+        assert.throwsMatching(/error/, () => calculations.d());
+
+        data.e = 1;
+        flush();
+
+        assert.throwsMatching(/cycle/, () => calculations.a());
+        assert.throwsMatching(/cycle/, () => calculations.b());
+        assert.throwsMatching(/cycle/, () => calculations.c());
+        assert.throwsMatching(/cycle/, () => calculations.d());
+    });
+
+    test('cycle created by recalculation is detected correctly on all nodes', () => {
+        // Before:
+        //     A --> B
+        //     ^     |
+        //     |     v
+        //     C     D
+        //     ^
+        //     |
+        //     E
+        //
+        // After:
+        //     A --> B
+        //     ^     |
+        //     |     v
+        //     C <-- D
+        //     ^
+        //     |
+        //     E
+        const calculations: Record<string, Calculation<any>> = {};
+        const data = model({ e: 0 }, 'data');
+        calculations.a = calc(() => {
+            return calculations.b() + ' and A';
+        }, 'a');
+        calculations.b = calc(() => {
+            return calculations.c() + ' and B';
+        }, 'b');
+        calculations.c = calc(() => {
+            if (data.e > 0) {
+                return calculations.d() + ' and C';
+            }
+            return 'C';
+        }, 'c');
+        calculations.d = calc(() => {
+            return calculations.b() + ' and D';
+        }, 'd');
+        retain(calculations.a);
+        retain(calculations.b);
+        retain(calculations.c);
+        retain(calculations.d);
+
+        assert.is('C and B and A', calculations.a());
+        assert.is('C and B', calculations.b());
+        assert.is('C', calculations.c());
+        assert.is('C and B and D', calculations.d());
+
+        data.e = 1;
+        flush();
+
+        assert.throwsMatching(/cycle/, () => calculations.a());
+        assert.throwsMatching(/cycle/, () => calculations.b());
+        assert.throwsMatching(/cycle/, () => calculations.c());
+        assert.throwsMatching(/cycle/, () => calculations.d());
+    });
+
+    test('cycle is not created when a near-cycle is reversed', () => {
+        // When E = 0:
+        //     A --> B
+        //     ^     |
+        //     |     v
+        //     C     D
+        //
+        // When E = 1:
+        //     A <-- B
+        //     |
+        //     v
+        //     C --> D
+        //
+        // When E = 2:
+        //     A     B
+        //     ^     |
+        //     |     v
+        //     C <-- D
+        //
+        // When E = 3:
+        //     A <-- B
+        //           ^
+        //           |
+        //     C --> D
+        //
+        const calculations: Record<string, Calculation<any>> = {};
+        const data = model({ e: 0 }, 'data');
+        calculations.a = calc(() => {
+            switch (data.e) {
+                case 0:
+                    return calculations.c() + ' and A';
+                case 1:
+                    return calculations.b() + ' and A';
+                case 2:
+                    return 'A';
+                case 3:
+                    return calculations.b() + ' and A';
+            }
+        }, 'a');
+        calculations.b = calc(() => {
+            switch (data.e) {
+                case 0:
+                    return calculations.a() + ' and B';
+                case 1:
+                    return 'B';
+                case 2:
+                    return 'B';
+                case 3:
+                    return calculations.d() + 'and B';
+            }
+        }, 'b');
+        calculations.c = calc(() => {
+            switch (data.e) {
+                case 0:
+                    return 'C';
+                case 1:
+                    return calculations.a() + ' and C';
+                case 2:
+                    return calculations.d() + ' and C';
+                case 3:
+                    return 'C';
+            }
+        }, 'c');
+        calculations.d = calc(() => {
+            switch (data.e) {
+                case 0:
+                    return calculations.b() + ' and D';
+                case 1:
+                    return calculations.c() + ' and D';
+                case 2:
+                    return calculations.b() + ' and D';
+                case 3:
+                    return calculations.c() + ' and D';
+            }
+        }, 'd');
+        retain(calculations.a);
+        retain(calculations.b);
+        retain(calculations.c);
+        retain(calculations.d);
+
+        assert.is('C and A', calculations.a());
+        assert.is('C and A and B', calculations.b());
+        assert.is('C', calculations.c());
+        assert.is('C and A and B and D', calculations.d());
+
+        data.e = 1;
+        flush();
+
+        assert.is('B and A', calculations.a());
+        assert.is('B', calculations.b());
+        assert.is('B and A and C', calculations.c());
+        assert.is('B and A and C and D', calculations.d());
+
+        data.e = 2;
+        flush();
+
+        assert.is('B and D and C and A', calculations.a());
+        assert.is('B', calculations.b());
+        assert.is('B and D and C', calculations.c());
+        assert.is('B and D', calculations.d());
+
+        data.e = 3;
+        flush();
+
+        assert.is('C and D and B and A', calculations.a());
+        assert.is('C and D and B', calculations.b());
+        assert.is('C', calculations.c());
+        assert.is('C and D', calculations.d());
+    });
 });
 
 suite('errors', () => {
