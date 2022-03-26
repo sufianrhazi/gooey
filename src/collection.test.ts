@@ -1,10 +1,11 @@
 import { suite, test, assert, beforeEach } from '@srhazi/test-jig';
 import { model } from './model';
 import { collection } from './collection';
-import { calc, flush, retain, release, subscribe } from './calc';
+import { reset, calc, flush, retain, release, subscribe } from './calc';
 
 beforeEach(() => {
     subscribe();
+    reset();
 });
 
 suite('collection', () => {

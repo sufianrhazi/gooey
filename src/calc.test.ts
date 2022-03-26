@@ -674,24 +674,24 @@ suite('cycles', () => {
     test('cycle can catch and resolve itself (depend on all)', () => {
         const calculations: Record<string, Calculation<string>> = {};
 
-        const data = model({ hasCycle: false });
+        const data = model({ hasCycle: false }, 'data');
 
         calculations.a = calc(() => {
             if (!data.hasCycle) return 'a no cycle';
             return 'a cycle' + calculations.b();
-        }).onError(() => {
+        }, 'a').onError(() => {
             return 'A CAUGHT';
         });
         calculations.b = calc(() => {
             if (!data.hasCycle) return 'b no cycle';
             return 'b cycle' + calculations.a();
-        }).onError(() => {
+        }, 'b').onError(() => {
             return 'B CAUGHT';
         });
 
         const catcher = calc(() => {
             return [calculations.a(), calculations.b()];
-        }).onError(() => {
+        }, 'catcher').onError(() => {
             return ['catcher caught'];
         });
 
