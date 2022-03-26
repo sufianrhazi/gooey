@@ -557,7 +557,7 @@ suite('cycles', () => {
             assert.throwsMatching(/cycle/i, () => calculations.a());
             assert.throwsMatching(/cycle/i, () => calculations.b());
             assert.throwsMatching(/cycle/i, () => calculations.c());
-            assert.throwsMatching(/cycle/i, () => calculations.d());
+            assert.throwsMatching(/error/i, () => calculations.d()); // D is not a part of the cycle
             assert.is('E', calculations.e());
             assert.is('F', calculations.f());
             assert.is('gFg', calculations.g());

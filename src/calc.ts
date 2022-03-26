@@ -127,6 +127,14 @@ enum CalculationState {
     STATE_ERROR,
 }
 
+class CalculationError extends Error {
+    public originalError: unknown;
+    constructor(msg: string, originalError: unknown) {
+        super(msg);
+        this.originalError = originalError;
+    }
+}
+
 class CycleAbortError extends Error {}
 
 function makeCalculation<Ret>(
@@ -202,7 +210,13 @@ function makeCalculation<Ret>(
                     if (result && activeCalculations.length === 0) {
                         return result.result;
                     }
-                    throw e;
+                    if (isCycle) {
+                        throw e;
+                    }
+                    throw new CalculationError(
+                        'Calculation error: calculation threw error while being called',
+                        e
+                    );
                 }
                 state = CalculationState.STATE_CACHED;
                 const calcRecord = activeCalculations.pop();
@@ -231,7 +245,7 @@ function makeCalculation<Ret>(
                     }
                 }
                 throw new CycleAbortError(
-                    'Cycle reached: calculation processing reached itself'
+                    'Cycle reached: calculation is part of a cycle'
                 );
                 break;
             case CalculationState.STATE_CACHED:
@@ -246,7 +260,7 @@ function makeCalculation<Ret>(
                     return result.result;
                 }
                 throw new Error(
-                    'Cycle reached: calculation contains or depends on cycle'
+                    'Cycle reached: calculation is part of a cycle'
                 );
             case CalculationState.STATE_ERROR:
                 if (result) {
