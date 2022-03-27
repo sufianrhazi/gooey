@@ -878,34 +878,40 @@ suite('cycles', () => {
         assert.throwsMatching(/cycle/, () => calculations.c());
         assert.throwsMatching(/cycle/, () => calculations.d());
     });
+});
 
-    test('cycle is not created when a near-cycle is reversed', () => {
-        // When E = 0:
-        //     A --> B
-        //     ^     |
-        //     |     v
-        //     C     D
-        //
-        // When E = 1:
-        //     A <-- B
-        //     |
-        //     v
-        //     C --> D
-        //
-        // When E = 2:
-        //     A     B
-        //     ^     |
-        //     |     v
-        //     C <-- D
-        //
-        // When E = 3:
-        //     A <-- B
-        //           ^
-        //           |
-        //     C --> D
-        //
-        const calculations: Record<string, Calculation<any>> = {};
-        const data = model({ e: 0 }, 'data');
+suite('near cycles', () => {
+    let calculations: Record<string, Calculation<any>> = {};
+    let data = model({ e: 0 }, 'data');
+
+    // When E = 0:
+    //     A --> B
+    //     ^     |
+    //     |     v
+    //     C     D
+    //
+    // When E = 1:
+    //     A <-- B
+    //     |
+    //     v
+    //     C --> D
+    //
+    // When E = 2:
+    //     A     B
+    //     ^     |
+    //     |     v
+    //     C <-- D
+    //
+    // When E = 3:
+    //     A <-- B
+    //           ^
+    //           |
+    //     C --> D
+    //
+
+    beforeEach(() => {
+        calculations = {};
+        data = model({ e: 0 }, 'data');
         calculations.a = calc(() => {
             switch (data.e) {
                 case 0:
@@ -913,7 +919,7 @@ suite('cycles', () => {
                 case 1:
                     return calculations.b() + ' and A';
                 case 2:
-                    return 'A';
+                    return calculations.c() + ' and A';
                 case 3:
                     return calculations.b() + ' and A';
             }
@@ -927,7 +933,7 @@ suite('cycles', () => {
                 case 2:
                     return 'B';
                 case 3:
-                    return calculations.d() + 'and B';
+                    return calculations.d() + ' and B';
             }
         }, 'b');
         calculations.c = calc(() => {
@@ -958,35 +964,94 @@ suite('cycles', () => {
         retain(calculations.b);
         retain(calculations.c);
         retain(calculations.d);
+    });
 
+    function assertCase0() {
         assert.is('C and A', calculations.a());
         assert.is('C and A and B', calculations.b());
         assert.is('C', calculations.c());
         assert.is('C and A and B and D', calculations.d());
+    }
 
-        data.e = 1;
-        flush();
-
+    function assertCase1() {
         assert.is('B and A', calculations.a());
         assert.is('B', calculations.b());
         assert.is('B and A and C', calculations.c());
         assert.is('B and A and C and D', calculations.d());
+    }
 
-        data.e = 2;
-        flush();
-
+    function assertCase2() {
         assert.is('B and D and C and A', calculations.a());
         assert.is('B', calculations.b());
         assert.is('B and D and C', calculations.c());
         assert.is('B and D', calculations.d());
+    }
 
-        data.e = 3;
-        flush();
-
+    function assertCase3() {
         assert.is('C and D and B and A', calculations.a());
         assert.is('C and D and B', calculations.b());
         assert.is('C', calculations.c());
         assert.is('C and D', calculations.d());
+    }
+
+    test('initialization works for case E=0', () => {
+        data.e = 0;
+        assertCase0();
+    });
+
+    test('initialization works for case E=1', () => {
+        data.e = 1;
+        assertCase1();
+    });
+
+    test('initialization works for case E=2', () => {
+        data.e = 2;
+        assertCase2();
+    });
+
+    test('initialization works for case E=3', () => {
+        data.e = 3;
+        assertCase3();
+    });
+
+    test('E=0 -> E=1 does not produce cycle', () => {
+        data.e = 0;
+        assertCase0();
+
+        data.e = 1;
+        flush();
+
+        assertCase1();
+    });
+
+    test('E=1 -> E=2 does not produce cycle', () => {
+        data.e = 1;
+        assertCase1();
+
+        data.e = 2;
+        flush();
+
+        assertCase2();
+    });
+
+    test('E=2 -> E=3 does not produce cycle', () => {
+        data.e = 2;
+        assertCase2();
+
+        data.e = 3;
+        flush();
+
+        assertCase3();
+    });
+
+    test('E=3 -> E=0 does not produce cycle', () => {
+        data.e = 3;
+        assertCase3();
+
+        data.e = 0;
+        flush();
+
+        assertCase0();
     });
 });
 
