@@ -161,7 +161,6 @@ function makeCalculation<Ret>(
         [CalculationSetCycleTag]: calculationSetError,
         [CalculationRecalculateTag]: calculationRecalculate,
         [CalculationInvalidateTag]: calculationInvalidate,
-        flush: calculationFlush,
         onError: calculationOnError,
         dispose: calculationDispose,
     });
@@ -179,6 +178,7 @@ function makeCalculation<Ret>(
             case CalculationState.STATE_FLUSHED: {
                 state = CalculationState.STATE_TRACKING;
                 activeCalculations.push({ calc: calculation, deps: [] });
+                const prevResult = result;
                 try {
                     result = { result: calculationFunc() };
                 } catch (e) {
@@ -208,7 +208,10 @@ function makeCalculation<Ret>(
                     // Only return a value if we're the _outermost_ tracked call.
                     // Otherwise, we need to propagate the error to catch the remaining ones.
                     if (result && activeCalculations.length === 0) {
-                        return result.result;
+                        return prevResult &&
+                            isEqual(prevResult.result, result.result)
+                            ? prevResult.result
+                            : result.result;
                     }
                     if (isCycle) {
                         throw e;
@@ -228,7 +231,9 @@ function makeCalculation<Ret>(
                     calculation,
                     calcRecord.deps
                 );
-                break;
+                return prevResult && isEqual(prevResult.result, result.result)
+                    ? prevResult.result
+                    : result.result;
             }
             case CalculationState.STATE_TRACKING:
                 state = CalculationState.STATE_ERROR;
@@ -270,50 +275,6 @@ function makeCalculation<Ret>(
             default:
                 log.assertExhausted(state, 'Unexpected calculation state');
         }
-
-        return result.result;
-    }
-
-    function calculationFlush() {
-        log.assert(!isDisposed, 'calculation already disposed');
-        switch (state) {
-            case CalculationState.STATE_FLUSHED:
-                return false;
-            case CalculationState.STATE_TRACKING:
-                throw new InvariantError(
-                    'Cannot flush calculation while it is being calculated'
-                );
-                break;
-            case CalculationState.STATE_CACHED:
-            case CalculationState.STATE_ERROR:
-                result = undefined;
-                state = CalculationState.STATE_FLUSHED;
-                return true;
-            case CalculationState.STATE_CYCLE: {
-                DEBUG &&
-                    log.debug(
-                        `Manually flushing node in cycle state`,
-                        debugNameFor(calculation)
-                    );
-                result = undefined;
-                // When we are manually flushing a computation, we assume the intent is a recomputation will either
-                // break the cycle or "fix" the error. For cycles, we need to invalidate the _other_ cycles
-                // When an cycle is flushed, we need to invalidate the _other_ nodes in the cycle so that calling into the other nodes recomputes the cycle
-                const otherNodes =
-                    state === CalculationState.STATE_CYCLE
-                        ? globalDependencyGraph.breakCycle(calculation)
-                        : globalDependencyGraph.getDependencies(calculation);
-                state = CalculationState.STATE_FLUSHED;
-                otherNodes.forEach((otherNode) => {
-                    if (isCalculation(otherNode)) {
-                        otherNode[CalculationInvalidateTag]();
-                    }
-                });
-                return true;
-            }
-            default:
-                log.assertExhausted(state, 'Unexpected calculation state');
-        }
     }
 
     function calculationInvalidate() {
@@ -325,12 +286,19 @@ function makeCalculation<Ret>(
                 );
             case CalculationState.STATE_FLUSHED:
                 return;
-            case CalculationState.STATE_CACHED:
             case CalculationState.STATE_CYCLE:
+                DEBUG &&
+                    log.debug(
+                        'Invalidating node in a cycle',
+                        debugNameFor(calculation)
+                    );
+                globalDependencyGraph.removeIncoming(calculation);
+                state = CalculationState.STATE_FLUSHED;
+                break;
+            case CalculationState.STATE_CACHED:
             case CalculationState.STATE_ERROR: {
                 DEBUG &&
                     log.debug('Invalidating node', debugNameFor(calculation));
-                result = undefined;
                 state = CalculationState.STATE_FLUSHED;
                 break;
             }
@@ -384,14 +352,19 @@ function makeCalculation<Ret>(
                 );
                 break;
             case CalculationState.STATE_FLUSHED:
-                calculationBody();
-                return true;
             case CalculationState.STATE_ERROR:
             case CalculationState.STATE_CACHED: {
                 const priorResult = result;
-                calculationFlush();
-                const newResult = calculationBody();
-                if (priorResult && isEqual(priorResult.result, newResult)) {
+                try {
+                    calculationBody();
+                } catch (e) {
+                    // Completely ignore, at this point `result` should hold the correct value
+                }
+                if (
+                    priorResult &&
+                    result &&
+                    isEqual(priorResult.result, result.result)
+                ) {
                     result = priorResult;
                     return false;
                 }
@@ -582,7 +555,7 @@ export function flush() {
                 break;
             case 'invalidate':
                 if (isCalculation(item)) {
-                    item.flush();
+                    item[CalculationInvalidateTag]();
                 }
                 break;
             case 'recalculate':

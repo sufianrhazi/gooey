@@ -1,5 +1,4 @@
 import { Graph } from './graph';
-import type { ProcessAction } from './types';
 import { suite, test, beforeEach, assert } from '@srhazi/test-jig';
 
 suite('Graph', () => {
@@ -29,45 +28,31 @@ suite('Graph', () => {
         graph.retain(e);
         graph.markNodeDirty(a);
 
-        const items: { node: TNode; action: ProcessAction }[] = [];
+        const actionsPerNode: Record<string, string[]> = {
+            a: [],
+            b: [],
+            c: [],
+            d: [],
+            e: [],
+        };
 
         graph.process((node, action) => {
-            items.push({ node, action });
+            if (action !== 'invalidate') {
+                actionsPerNode[node.name].push(action);
+            }
             return true;
         });
 
-        assert.deepEqual({ node: a, action: 'recalculate' }, items[0]);
-        assert.arrayEqualsUnsorted(
-            [b, c, d],
-            items.slice(1, 4).map((item) => item.node)
-        );
         assert.deepEqual(
-            ['cycle', 'cycle', 'cycle'],
-            items.slice(1, 4).map((item) => item.action)
+            {
+                a: ['recalculate'],
+                b: ['cycle'],
+                c: ['cycle'],
+                d: ['cycle'],
+                e: ['recalculate'],
+            },
+            actionsPerNode
         );
-        assert.deepEqual({ node: e, action: 'recalculate' }, items[4]);
-    });
-
-    test('errors do not stop traversal', () => {
-        const graph = new Graph<TNode>();
-        graph.addNode(a);
-        graph.addNode(b);
-        graph.addNode(c);
-
-        graph.addEdge(a, b, Graph.EDGE_HARD);
-        graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.retain(c);
-        graph.markNodeDirty(a);
-
-        const items: TNode[] = [];
-
-        graph.process((node, action) => {
-            items.push(node);
-            if (node === b) throw new Error('ruh roh');
-            return true;
-        });
-
-        assert.deepEqual([a, b, c], items);
     });
 });
 
@@ -113,8 +98,6 @@ suite('Graph', () => {
         graph.addEdge(b, c, Graph.EDGE_HARD);
         graph.addEdge(b, d, Graph.EDGE_HARD);
         graph.addEdge(c, d, Graph.EDGE_HARD);
-
-        graph._test_processPending();
 
         assert.arrayIs([b], graph.getDependencies(a));
         assert.arrayIs([c, d], graph.getDependencies(b));
@@ -207,64 +190,64 @@ suite('Graph', () => {
                 graph.markNodeDirty(a);
                 graph.markNodeDirty(i);
 
-                const items: { node: TNode; action: string }[] = [];
+                const actionsPerNode: Record<string, string[]> = {
+                    a: [],
+                    b: [],
+                    c: [],
+                    d: [],
+                    e: [],
+                    f: [],
+                    g: [],
+                    h: [],
+                    i: [],
+                };
 
                 graph.process((node, action) => {
-                    items.push({ node, action });
+                    actionsPerNode[node.name].push(action);
                     return true;
                 });
 
-                // unretained nodes that become dirtied are flushed
+                // TODO: many of these redundant 'invalidate' actions could probably be eliminated
                 assert.deepEqual(
-                    { node: a, action: 'recalculate' },
-                    items.find((item) => item.node === a)
-                );
-                assert.deepEqual(
-                    { node: b, action: 'recalculate' },
-                    items.find((item) => item.node === b)
-                );
-                assert.deepEqual(
-                    { node: c, action: 'recalculate' },
-                    items.find((item) => item.node === c)
-                );
-                assert.deepEqual(
-                    { node: d, action: 'recalculate' },
-                    items.find((item) => item.node === d)
-                );
-                assert.deepEqual(
-                    { node: e, action: 'recalculate' },
-                    items.find((item) => item.node === e)
-                );
-                assert.deepEqual(
-                    { node: f, action: 'recalculate' },
-                    items.find((item) => item.node === f)
-                );
-                assert.deepEqual(
-                    { node: g, action: 'invalidate' },
-                    items.find((item) => item.node === g)
-                );
-                assert.deepEqual(
-                    { node: h, action: 'invalidate' },
-                    items.find((item) => item.node === h)
-                );
-                assert.deepEqual(
-                    { node: i, action: 'invalidate' },
-                    items.find((item) => item.node === i)
+                    {
+                        a: ['invalidate', 'recalculate'],
+                        b: ['invalidate', 'recalculate'],
+                        c: ['invalidate', 'recalculate'],
+                        d: ['invalidate', 'recalculate'],
+                        e: [
+                            'invalidate',
+                            'invalidate',
+                            'invalidate',
+                            'recalculate',
+                        ],
+                        f: ['invalidate', 'recalculate'],
+                        // unretained nodes that become dirtied are flushed, but not recalculated
+                        g: ['invalidate', 'invalidate'],
+                        h: ['invalidate', 'invalidate', 'invalidate'],
+                        i: ['invalidate', 'invalidate'],
+                    },
+                    actionsPerNode
                 );
             });
 
             test('nodes can stop traversal by returning true', () => {
                 graph.markNodeDirty(a);
 
-                const items: TNode[] = [];
+                const items: { item: TNode; action: string }[] = [];
 
-                graph.process((item) => {
-                    items.push(item);
+                graph.process((item, action) => {
+                    items.push({ item, action });
                     return false;
                 });
 
-                // we only visit a nodes
-                assert.arrayIs([a], items);
+                // we only visit A nodes
+                assert.deepEqual(
+                    [
+                        { item: a, action: 'invalidate' },
+                        { item: a, action: 'recalculate' },
+                    ],
+                    items
+                );
             });
 
             test('given c -> e; d -> e, and visiting c returns true but visiting d returns false, we still visit e and all dependencies', () => {
@@ -273,8 +256,10 @@ suite('Graph', () => {
 
                 const items: TNode[] = [];
 
-                graph.process((item) => {
-                    items.push(item);
+                graph.process((item, action) => {
+                    if (action === 'recalculate') {
+                        items.push(item);
+                    }
                     if (item === c) return false;
                     return true;
                 });
@@ -290,8 +275,10 @@ suite('Graph', () => {
 
                 const items: TNode[] = [];
 
-                graph.process((item) => {
-                    items.push(item);
+                graph.process((item, action) => {
+                    if (action === 'recalculate') {
+                        items.push(item);
+                    }
                     if (item === c) return false;
                     return true;
                 });
@@ -309,8 +296,10 @@ suite('Graph', () => {
 
                 const items: TNode[] = [];
 
-                graph.process((item) => {
-                    items.push(item);
+                graph.process((item, action) => {
+                    if (action === 'recalculate') {
+                        items.push(item);
+                    }
                     return true;
                 });
 
@@ -417,8 +406,10 @@ suite('Graph', () => {
 
                 const items: TNode[] = [];
 
-                graph.process((item) => {
-                    items.push(item);
+                graph.process((item, action) => {
+                    if (action === 'recalculate') {
+                        items.push(item);
+                    }
                     return true;
                 });
 

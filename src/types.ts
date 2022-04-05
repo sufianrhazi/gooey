@@ -210,7 +210,6 @@ export interface Calculation<Result> {
     $__id: string;
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
-    flush: () => boolean;
     dispose: () => void;
     onError: (handler: (errorType: 'cycle' | 'error') => Result) => this;
     [CalculationSetCycleTag]: () => boolean;

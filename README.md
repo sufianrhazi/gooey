@@ -63,7 +63,6 @@ interface Calculation<Ret> {
   (): Ret;
   dispose(): void;
   onError(errorHandler: (errorType: 'cycle' | 'error') => Ret): void;
-  flush(): void;
 }
 
 function calc<Ret>(func: () => Ret, isEqual: EqualityFunc<Ret>, debugName: string): Calculation<Ret>
@@ -129,9 +128,8 @@ If a calculation throws an error or is in a cycle, it may be "caught" using the 
 this error state, the return value of the `errorHandler` will be returned by the calculation. `errorHandler` will be
 called with either `'cycle'` or `'error'`, depending on the kind of error.
 
-In case a cycle is encountered, the calculation will never leave the error state unless `flush()` is called on one of
-the calculations in the cycle. This "breaks" the cycle, clears the error state, and allows the calculation to be
-re-called.
+Recalculations of nodes caused by changes in their dependencies may cause errors to be recovered and cycles to be
+broken.
 
 
 ### effect(fn)

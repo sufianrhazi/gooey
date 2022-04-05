@@ -6,9 +6,7 @@ import Revise, {
     model,
     mount,
     ref,
-    setLogLevel,
 } from '../index';
-import { makeGraphvizDebuggerRef } from './debug';
 import * as log from '../log';
 
 type Table = Model<{
@@ -430,7 +428,6 @@ const Spreadsheet: Component<{ table: Table }> = ({ table }) => {
         const selectedKey = getSelectedKey();
         if (selectedKey && e.target instanceof HTMLInputElement) {
             table.code[selectedKey] = e.target.value;
-            table.data[selectedKey].flush();
         }
     };
 
@@ -438,7 +435,6 @@ const Spreadsheet: Component<{ table: Table }> = ({ table }) => {
         const selectedKey = getSelectedKey();
         if (selectedKey && textAreaRef.current) {
             table.code[selectedKey] = textAreaRef.current.value;
-            table.data[selectedKey].flush();
         }
     };
 
@@ -493,9 +489,6 @@ const Spreadsheet: Component<{ table: Table }> = ({ table }) => {
     };
 
     const isDisabledCalc = calc(() => !getSelectedKey(), 'input:disabled');
-    window.isDisabledCalc = isDisabledCalc;
-    window.getSelectedKey = getSelectedKey;
-    window.state = state;
 
     return (
         <div>

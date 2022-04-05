@@ -125,11 +125,14 @@ suite('calc', () => {
     });
 
     test('dependencies are path-dependent', () => {
-        const dependency = model({
-            a: 1,
-            b: 2,
-            which: 'a' as 'a' | 'b',
-        });
+        const dependency = model(
+            {
+                a: 1,
+                b: 2,
+                which: 'a' as 'a' | 'b',
+            },
+            'model'
+        );
         const calls: string[] = [];
         const calculation = calc(() => {
             if (dependency.which === 'a') {
@@ -419,23 +422,38 @@ suite('cycles', () => {
         data.value = 'y';
         flush();
 
-        assert.deepEqual([], calls);
+        assert.deepEqual(['a', 'b', 'c'], calls);
     });
 
     suite('cycle dependencies (caught cycle)', () => {
-        let calculations: Record<string, Calculation<string>> = {};
-        let data = model({
-            hasCycle: false,
-        });
-
-        beforeEach(() => {
-            calculations = {};
-            data = model({
-                hasCycle: false,
+        const makeData = () => {
+            const calculations: Record<string, Calculation<string>> = {};
+            const data = model({
+                hasCycle: 0,
+                unrelated: 0,
             });
+            const calls: string[] = [];
 
+            //
+            // hasCycle=0
+            // |
+            // v
+            // A
+            // |
+            // v
+            // B --> C --> D
+            //
+            // hasCycle=1
+            // |
+            // v
+            // A <---+
+            // |     |
+            // v     |
+            // B --> C --> D
+            //
             calculations.a = calc(() => {
-                if (data.hasCycle) {
+                calls.push('a');
+                if (data.hasCycle > 0) {
                     return 'a' + calculations.c() + 'a';
                 } else {
                     return 'x';
@@ -444,16 +462,19 @@ suite('cycles', () => {
                 return 'A';
             });
             calculations.b = calc(() => {
+                calls.push('b');
                 return 'b' + calculations.a() + 'b';
             }, 'b').onError(() => {
                 return 'B';
             });
             calculations.c = calc(() => {
+                calls.push('c');
                 return 'c' + calculations.b() + 'c';
             }, 'c').onError(() => {
                 return 'C';
             });
             calculations.d = calc(() => {
+                calls.push('d');
                 const result = 'd' + calculations.c() + 'd';
                 return result;
             }, 'd').onError(() => {
@@ -464,10 +485,12 @@ suite('cycles', () => {
             retain(calculations.b);
             retain(calculations.c);
             retain(calculations.d);
-        });
+            return { calculations, data, calls };
+        };
 
         test('cycles can be caught when triggered via standard calling', () => {
-            data.hasCycle = true;
+            const { calculations, data } = makeData();
+            data.hasCycle = 1;
 
             assert.is('A', calculations.a());
             assert.is('B', calculations.b());
@@ -476,9 +499,10 @@ suite('cycles', () => {
         });
 
         test('cycles can be caught when triggered via recalculation', () => {
+            const { calculations, data } = makeData();
             assert.is('dcbxbcd', calculations.d());
 
-            data.hasCycle = true;
+            data.hasCycle = 1;
             flush();
 
             assert.is('A', calculations.a());
@@ -486,30 +510,38 @@ suite('cycles', () => {
             assert.is('C', calculations.c());
             assert.is('dCd', calculations.d()); // because c caught its cycle, d is unaware and runs as expected
 
-            data.hasCycle = false;
-            flush(); // Has no effect, as the cycle hasn't been manually flushed
+            data.hasCycle = 0;
+            flush();
 
-            assert.is('A', calculations.a());
-            assert.is('B', calculations.b());
-            assert.is('C', calculations.c());
-            assert.is('dCd', calculations.d());
-
-            calculations.a.flush();
-            flush(); // Properly recalculates things
-
+            assert.is('x', calculations.a());
+            assert.is('bxb', calculations.b());
+            assert.is('cbxbc', calculations.c());
             assert.is('dcbxbcd', calculations.d());
+        });
+
+        test('cycles do not get re-processed if unrelated fields are modified', () => {
+            const { calculations, data, calls } = makeData();
+            assert.is('dcbxbcd', calculations.d());
+
+            assert.deepEqual(['d', 'c', 'b', 'a'], calls);
+
+            data.hasCycle = 1;
+            flush();
+
+            calls.splice(0, calls.length);
+
+            data.unrelated = 1;
+            flush();
+
+            // No additional calls performed
+            assert.deepEqual([], calls);
         });
     });
 
     suite('cycle dependencies (uncaught cycle)', () => {
-        let calculations: Record<string, Calculation<string>> = {};
-        let data = model({
-            hasCycle: false,
-        });
-
-        beforeEach(() => {
-            calculations = {};
-            data = model({
+        const makeData = () => {
+            const calculations: Record<string, Calculation<string>> = {};
+            const data = model({
                 hasCycle: false,
             });
 
@@ -549,9 +581,11 @@ suite('cycles', () => {
             retain(calculations.d);
             retain(calculations.e);
             retain(calculations.g);
-        });
+            return { calculations, data };
+        };
 
         test('cycles can be caught when triggered via standard calling', () => {
+            const { calculations, data } = makeData();
             data.hasCycle = true;
 
             assert.throwsMatching(/cycle/i, () => calculations.a());
@@ -564,6 +598,7 @@ suite('cycles', () => {
         });
 
         test('cycles can be caught when triggered via recalculation', () => {
+            const { calculations, data } = makeData();
             assert.is('edcbxbcde', calculations.e());
             assert.is('gfcbxbcfg', calculations.g());
 
@@ -579,17 +614,6 @@ suite('cycles', () => {
             assert.is('gFg', calculations.g());
 
             data.hasCycle = false;
-            flush(); // Has no effect, as the cycle hasn't been manually flushed
-
-            assert.throwsMatching(/cycle/i, () => calculations.a());
-            assert.throwsMatching(/cycle/i, () => calculations.b());
-            assert.throwsMatching(/cycle/i, () => calculations.c());
-            assert.throwsMatching(/error/i, () => calculations.d());
-            assert.is('E', calculations.e());
-            assert.is('F', calculations.f());
-            assert.is('gFg', calculations.g());
-
-            calculations.a.flush();
             flush(); // Properly recalculates things
 
             assert.is('edcbxbcde', calculations.e());
@@ -598,18 +622,29 @@ suite('cycles', () => {
     });
 
     suite('cycle call behavior', () => {
-        let calculations: Record<string, Calculation<string>> = {};
-        let data = model({
-            hasCycle: 0,
-        });
-        let calls: string[] = [];
-
-        beforeEach(() => {
-            calculations = {};
-            data = model({
+        const makeData = () => {
+            const calculations: Record<string, Calculation<string>> = {};
+            const data = model({
                 hasCycle: 0,
             });
-
+            const calls: string[] = [];
+            //
+            // hasCycle=0
+            // |
+            // v
+            // A
+            // |
+            // v
+            // B --> C --> D
+            //
+            // hasCycle=1
+            // |
+            // v
+            // A <---+
+            // |     |
+            // v     |
+            // B --> C --> D
+            //
             calculations.a = calc(() => {
                 calls.push('a');
                 if (data.hasCycle > 0) {
@@ -636,35 +671,47 @@ suite('cycles', () => {
             retain(calculations.b);
             retain(calculations.c);
             retain(calculations.d);
-        });
+            return { calculations, data, calls };
+        };
 
         test('cycle nodes called only once when calculating', () => {
+            const { calculations, data, calls } = makeData();
             data.hasCycle = 1;
 
+            // TODO: confirm error message
             assert.throwsMatching(/.*/i, () => calculations.d());
             assert.deepEqual(['d', 'c', 'b', 'a'], calls);
 
-            calls = [];
-            flush(); // should have no effect
+            calls.splice(0, calls.length);
+            flush();
+            // Note: although this could hypothetically not have any effect,
+            // the dirty node is the "hasCycle" field, so it needs to propagate
+            // through all the nodes (including the cycle).
+            // hasCycle is flushed, dirtying a
+            // a, b, and c are called as a component
+            // TODO: why is d called? We could presumably stop propagation since the (a, b, c) component has errored and none of the items have values
 
-            assert.deepEqual([], calls);
+            assert.deepEqual(['a', 'b', 'c', 'd'], calls);
         });
 
         test('cycle nodes called only once when recalculating', () => {
+            const { calculations, data, calls } = makeData();
             calculations.d();
 
             assert.deepEqual(['d', 'c', 'b', 'a'], calls);
 
             data.hasCycle = 1;
-            calls = [];
-            flush(); // recalculates _some_ nodes
-            // a is called because hasCycle dependency changed
-            // b is not called, as once a is called we know a -> b -> c -> a exists
-            // c is not called, as once a is called we know a -> b -> c -> a exists
-            // d is called because c is part of a newly created cycle
-            assert.deepEqual(['a', 'd'], calls);
+            calls.splice(0, calls.length);
+            flush(); // recalculates _all_ nodes (and D twice!?)
+            // a is called because hasCycle dependency changed; reads stale cache of c
+            // b is called because it depended on a
+            // c is called because it depended on b
+            // d is called because it depended on c
+            // a, b, and c are then marked as a cycle
+            // d is called because it depends on a cycle
+            assert.deepEqual(['a', 'b', 'c', 'd', 'd'], calls);
 
-            calls = [];
+            calls.splice(0, calls.length);
             flush();
 
             assert.deepEqual([], calls);
@@ -774,21 +821,21 @@ suite('cycles', () => {
     test('cycle expanded by recalculation is detected correctly on all nodes', () => {
         // Before:
         //     A <-> B
-        //     ^     |
-        //     |     v
-        //     C     D
-        //     ^
-        //     |
-        //     E
+        //     |     ^
+        //     v     |
+        //     D     C
+        //           ^
+        //           |
+        //           E
         //
         // After:
         //     A <-> B
-        //     ^     |
-        //     |     v
-        //     C <-- D
-        //     ^
-        //     |
-        //     E
+        //     |     ^
+        //     v     |
+        //     D --> C
+        //           ^
+        //           |
+        //           E
         const calculations: Record<string, Calculation<any>> = {};
         const data = model({ e: 0 }, 'data');
         calculations.a = calc(() => {
@@ -804,7 +851,7 @@ suite('cycles', () => {
             return 'C';
         }, 'c');
         calculations.d = calc(() => {
-            return calculations.b() + ' and D';
+            return calculations.a() + ' and D';
         }, 'd');
         retain(calculations.a);
         retain(calculations.b);
@@ -827,22 +874,22 @@ suite('cycles', () => {
 
     test('cycle created by recalculation is detected correctly on all nodes', () => {
         // Before:
-        //     A --> B
-        //     ^     |
-        //     |     v
-        //     C     D
-        //     ^
-        //     |
-        //     E
+        //     A <-- B
+        //     |     ^
+        //     v     |
+        //     D     C
+        //           ^
+        //           |
+        //           E
         //
         // After:
-        //     A --> B
-        //     ^     |
-        //     |     v
-        //     C <-- D
-        //     ^
-        //     |
-        //     E
+        //     A <-- B
+        //     |     ^
+        //     v     |
+        //     D --> C
+        //           ^
+        //           |
+        //           E
         const calculations: Record<string, Calculation<any>> = {};
         const data = model({ e: 0 }, 'data');
         calculations.a = calc(() => {
@@ -858,7 +905,7 @@ suite('cycles', () => {
             return 'C';
         }, 'c');
         calculations.d = calc(() => {
-            return calculations.b() + ' and D';
+            return calculations.a() + ' and D';
         }, 'd');
         retain(calculations.a);
         retain(calculations.b);
@@ -868,7 +915,7 @@ suite('cycles', () => {
         assert.is('C and B and A', calculations.a());
         assert.is('C and B', calculations.b());
         assert.is('C', calculations.c());
-        assert.is('C and B and D', calculations.d());
+        assert.is('C and B and A and D', calculations.d());
 
         data.e = 1;
         flush();

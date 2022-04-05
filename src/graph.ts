@@ -2,19 +2,6 @@ import * as log from './log';
 import type { ProcessAction } from './types';
 import { groupBy } from './util';
 
-type GraphOperations =
-    | {
-          fromId: string;
-          toId: string;
-          kind: number;
-          type: 'add' | 'remove';
-      }
-    | { nodeId: string; type: 'dispose' }
-    | {
-          nodeId: string;
-          type: 'dirty';
-      };
-
 /**
  * A directed graph
  *
@@ -39,8 +26,7 @@ export class Graph<Type extends object> {
     private nodesSet: Record<string, Type>;
     private retained: Record<string, true>;
     private dirtyNodes: Record<string, true>;
-
-    private pendingOperations: GraphOperations[];
+    private knownCycles: Record<string, boolean>;
 
     private graph: Record<string, Record<string, number>>;
     private reverseGraph: Record<string, Record<string, number>>;
@@ -52,7 +38,7 @@ export class Graph<Type extends object> {
         this.graph = {};
         this.reverseGraph = {};
         this.dirtyNodes = {};
-        this.pendingOperations = [];
+        this.knownCycles = {};
     }
 
     private getId(node: Type): string {
@@ -73,10 +59,7 @@ export class Graph<Type extends object> {
     }
 
     markNodeDirty(node: Type): void {
-        this.pendingOperations.push({
-            type: 'dirty',
-            nodeId: this.getId(node),
-        });
+        this.dirtyNodes[this.getId(node)] = true;
     }
 
     private getRecursiveDependenciesInner(nodeId: string): {
@@ -112,27 +95,6 @@ export class Graph<Type extends object> {
         return otherNodes;
     }
 
-    breakCycle(node: Type) {
-        const nodeId = this.getId(node);
-        const { otherNodes, otherNodeIds, isCycle } =
-            this.getRecursiveDependenciesInner(nodeId);
-        log.assert(isCycle, 'breakCycle did not find a cycle');
-
-        this.getReverseDependenciesInner(nodeId, Graph.EDGE_HARD).forEach(
-            (fromId) => {
-                if (otherNodeIds[fromId]) {
-                    this.removeEdge(
-                        this.nodesSet[fromId],
-                        node,
-                        Graph.EDGE_HARD
-                    );
-                }
-            }
-        );
-
-        return otherNodes;
-    }
-
     hasDirtyNodes(): boolean {
         return Object.keys(this.dirtyNodes).length > 0;
     }
@@ -143,6 +105,14 @@ export class Graph<Type extends object> {
     addEdge(fromNode: Type, toNode: Type, kind: 0b01 | 0b10): void {
         const fromId = this.getId(fromNode);
         const toId = this.getId(toNode);
+        this.addEdgeInner(fromId, toId, kind);
+    }
+
+    private addEdgeInner(
+        fromId: string,
+        toId: string,
+        kind: 0b01 | 0b10
+    ): void {
         log.assert(
             !!this.nodesSet[fromId],
             'cannot add edge from node that does not exist'
@@ -151,39 +121,9 @@ export class Graph<Type extends object> {
             !!this.nodesSet[toId],
             'cannot add edge to node that does not exist'
         );
-        this.pendingOperations.push({ fromId, toId, kind, type: 'add' });
-    }
-
-    _test_processPending() {
-        this.processPendingOperations();
-    }
-
-    private processPendingOperations() {
-        this.pendingOperations.forEach((op) => {
-            switch (op.type) {
-                case 'add':
-                    this.graph[op.fromId][op.toId] =
-                        (this.graph[op.fromId][op.toId] || 0) | op.kind;
-                    this.reverseGraph[op.toId][op.fromId] =
-                        (this.reverseGraph[op.toId][op.fromId] || 0) | op.kind;
-                    break;
-                case 'remove':
-                    this.graph[op.fromId][op.toId] =
-                        (this.graph[op.fromId][op.toId] || 0) & ~op.kind;
-                    this.reverseGraph[op.toId][op.fromId] =
-                        (this.reverseGraph[op.toId][op.fromId] || 0) & ~op.kind;
-                    break;
-                case 'dispose':
-                    this.removeNodeInner(op.nodeId);
-                    break;
-                case 'dirty':
-                    this.dirtyNodes[op.nodeId] = true;
-                    break;
-                default:
-                    log.assertExhausted(op);
-            }
-        });
-        this.pendingOperations = [];
+        this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) | kind;
+        this.reverseGraph[toId][fromId] =
+            (this.reverseGraph[toId][fromId] || 0) | kind;
     }
 
     /**
@@ -192,6 +132,14 @@ export class Graph<Type extends object> {
     removeEdge(fromNode: Type, toNode: Type, kind: 0b01 | 0b10 | 0b11) {
         const fromId = this.getId(fromNode);
         const toId = this.getId(toNode);
+        this.removeEdgeInner(fromId, toId, kind);
+    }
+
+    private removeEdgeInner(
+        fromId: string,
+        toId: string,
+        kind: 0b01 | 0b10 | 0b11
+    ) {
         log.assert(
             !!this.nodesSet[fromId],
             'cannot remove edge from node that does not exist'
@@ -200,12 +148,14 @@ export class Graph<Type extends object> {
             !!this.nodesSet[toId],
             'cannot remove edge to node that does not exist'
         );
-        this.pendingOperations.push({ fromId, toId, kind, type: 'remove' });
+        this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) & ~kind;
+        this.reverseGraph[toId][fromId] =
+            (this.reverseGraph[toId][fromId] || 0) & ~kind;
     }
 
     removeNode(node: Type) {
         const nodeId = this.getId(node);
-        this.pendingOperations.push({ nodeId, type: 'dispose' });
+        this.removeNodeInner(nodeId);
     }
 
     private removeNodeInner(nodeId: string) {
@@ -229,6 +179,7 @@ export class Graph<Type extends object> {
         delete this.nodesSet[nodeId];
         delete this.dirtyNodes[nodeId];
         delete this.retained[nodeId];
+        delete this.knownCycles[nodeId];
     }
 
     retain(node: Type) {
@@ -257,37 +208,22 @@ export class Graph<Type extends object> {
         const newFromSet = new Set(newFromIds);
         beforeFromIds.forEach((fromId) => {
             if (!newFromSet.has(fromId)) {
-                this.pendingOperations.push({
-                    fromId,
-                    toId,
-                    kind: Graph.EDGE_HARD,
-                    type: 'remove',
-                });
+                this.removeEdgeInner(fromId, toId, Graph.EDGE_HARD);
             }
         });
         newFromIds.forEach((fromId) => {
             if (!beforeFromSet.has(fromId)) {
-                this.pendingOperations.push({
-                    fromId,
-                    toId,
-                    kind: Graph.EDGE_HARD,
-                    type: 'add',
-                });
+                this.addEdgeInner(fromId, toId, Graph.EDGE_HARD);
             }
         });
     }
 
     removeIncoming(node: Type) {
-        const nodeId = this.getId(node);
+        const toId = this.getId(node);
 
-        const fromIds = this.getReverseDependenciesInner(nodeId);
+        const fromIds = this.getReverseDependenciesInner(toId);
         fromIds.forEach((fromId) => {
-            if (this.reverseGraph[nodeId][fromId] & Graph.EDGE_HARD) {
-                this.graph[fromId][nodeId] =
-                    (this.graph[fromId][nodeId] || 0) & ~Graph.EDGE_HARD;
-                this.reverseGraph[nodeId][fromId] =
-                    (this.reverseGraph[nodeId][fromId] || 0) & ~Graph.EDGE_HARD;
-            }
+            this.removeEdgeInner(fromId, toId, Graph.EDGE_HARD);
         });
     }
 
@@ -527,78 +463,160 @@ export class Graph<Type extends object> {
      * This uses Tarjan's strongly connected component algorithm to both segment strongly connected nodes and
      * topologically sort them.
      */
+    /*
+     * Core Processing Algorithm
+     * =========================
+     *
+     * First, soft-flush all dirty nodes in case recalculating a node grows a dependency on a dirty node.
+     * This prevents basic forms of stale reads.
+     *
+     * Until we perform the rest of the algorithm without visiting a dirty node, repeat:
+     * - Visit all strongly connected components in topological order reachable from retained nodes.
+     * - For each component:
+     *   - If it is a cycle (length > 1), flush + mark dirty all nodes that are not known to already be in a cycle, and record the node is known to be in a cycle
+     *   - If it is not cycle (length = 1), flush + mark dirty all nodes that are not known to already be in a cycle, and clear the record that the node is not to be known to be in a cycle
+     *   - Process the node if it is dirty, propagating dirtiness (if specified) to all hard edges that is not in the component
+     *     - When a node becomes dirty, flush the node
+     *   - After visiting all nodes in the component, mark all nodes in the component as not dirty
+     *
+     * For all remaining dirty nodes:
+     * - Recursively flush the node and its hard dependencies, (keeping track of those visited so we only visit a node at most one time)
+     *
+     * This should handle all tricky edge cases, and in most cases flush the graph with either 2 or 3 topological sorts.
+     *
+     *
+     * ## Edge cases to handle:
+     *
+     * Edge case 1: It's possible that a dirty node grows a dependency on a cached node that has a dependency on a dirty node.
+     * In this case, when processing is complete, if we topologically order all nodes reachable from retained nodes, a dirty node will be discovered.
+     * To account for this, we loop until visiting all newly topologically ordered strongly connected components are not dirty.
+     *
+     * Edge case 2: It's possible that a cycle is detected (a strongly connected component with more than 1 node)
+     * We keep track of known cycle nodes. To handle cycles correctly, we need to: identify when a node newly becomes part of a cycle and identify when a node is no longer part of a cycle.
+     * The graph keeps track of known cycle nodes.
+     *
+     * In case of a component of length > 1 for each node, we (in this specific order):
+     * 1. for all of the nodes that are not known to be in a cycle:
+     *   a. flush the node
+     *   b. mark the node as dirty
+     *   c. set the node to be known to be in a cycle
+     * 2. process _all_ of the dirty nodes in the cycle, propagating dirtiness **only to nodes not in the cycle**
+     * This handles the case for identifying when a node becomes part of a cycle.
+     *
+     * In case of a component of length = 1 where the node is known to be in a cycle, we (in this specific order):
+     * 1. flush the node
+     * 2. mark the node as dirty
+     * 3. set the node to not be known to be in a cycle
+     * 4. process the node, propagating dirtiness if needed
+     * This handles the case for identifying when a node becomes part of a cycle.
+     *
+     *
+     * ## In pseudocode
+     *
+     * for node in dirty_nodes:
+     *   soft_flush(node)
+     * do:
+     *   visited_dirty := false
+     *   to_process := tarjan_connected(retained)
+     *   for component in to_process:
+     *     is_cycle := len(component) > 1
+     *     if is_cycle:
+     *       for node in component:
+     *         if not is_known_cycle(node):
+     *           soft_flush(node)
+     *           set_dirty(node)
+     *           set_known_cycle(node)
+     *     elif is_known_cycle(component[0]):
+     *       soft_flush(component[0])
+     *       set_dirty(component[0])
+     *       clear_known_cycle(component[0])
+     *     for node in component:
+     *       if is_dirty(node):
+     *         should_propagate := callback(node, is_cycle ? 'cycle' : 'recalculate')
+     *         if should_propagate:
+     *           for to_node in hard_edges(node):
+     *             if to_node not in component:
+     *               set_dirty(to_node)
+     *               soft_flush(to_node)
+     *         visited_dirty := true
+     *     for node in component:
+     *       clear_dirty(node)
+     * while visited_dirty
+     */
     process(callback: (node: Type, action: ProcessAction) => boolean): void {
-        this.processPendingOperations();
-        const toposort = this._toposortRetained();
-
-        // First pass: traverse the _retained_ dirty nodes in topological order
-        for (let i = 0; i < toposort.length; ++i) {
-            const nodeIds: string[] = [];
-            toposort[i].forEach((vertex) => {
-                const nodeId = vertex.nodeId;
-                nodeIds.push(nodeId);
-                let action: ProcessAction | null = null;
-                if (toposort[i].length > 1) {
-                    action = 'cycle';
-                } else if (this.dirtyNodes[nodeId]) {
-                    action = 'recalculate';
-                }
-
-                if (action) {
-                    let shouldPropagate = true;
-                    let isError = false;
-                    try {
-                        shouldPropagate = callback(
-                            this.nodesSet[nodeId],
-                            action
-                        );
-                    } catch (e) {
-                        isError = true;
-                        log.error('Caught error during flush', e);
-                    }
-                    delete this.dirtyNodes[nodeId];
-                    if (shouldPropagate || isError) {
-                        this.getDependenciesInner(
-                            nodeId,
-                            Graph.EDGE_HARD
-                        ).forEach((toId) => {
-                            this.dirtyNodes[toId] = true;
-                        });
-                    }
-                }
-                if (this.pendingOperations.length > 0) {
-                    log.warn('Graph mutated while processing, restarting...');
-                    return this.process(callback);
-                }
-            });
-
-            // If we hit a cycle, manually mark the cycle as _not_ dirty so we can safely proceed
-            if (toposort[i].length > 1) {
-                toposort[i].forEach((vertex) => {
-                    delete this.dirtyNodes[vertex.nodeId];
-                });
-            }
-        }
-
-        // Second pass: the remaining dirty nodes are not retained.
-        // All dirty nodes and their dependencies should be invalidated, so the
-        // next time they come online they have fresh data.
-        const isInvalidated: Record<string, boolean> = {};
-        const invalidate = (nodeId: string) => {
-            if (isInvalidated[nodeId]) return;
-            callback(this.nodesSet[nodeId], 'invalidate');
-            isInvalidated[nodeId] = true;
-            this.getDependenciesInner(nodeId).forEach((toId) => {
-                invalidate(toId);
-            });
-        };
-
+        // Preemptively flush all of the dirty nodes to prevent direct stale accesses
         Object.keys(this.dirtyNodes).forEach((nodeId) => {
             if (this.dirtyNodes[nodeId]) {
-                invalidate(nodeId);
+                callback(this.nodesSet[nodeId], 'invalidate');
             }
         });
-        this.dirtyNodes = {};
+
+        let visitedAnyDirty = false;
+        do {
+            visitedAnyDirty = false;
+            this._toposortRetained().forEach((component) => {
+                const isCycle = component.length > 1;
+                const nodeIds = new Set(
+                    component.map((vertex) => vertex.nodeId)
+                );
+
+                // If the nodes in the component have either become part of a
+                // cycle or been removed from a cycle, flush and dirty the node
+                // so it is processed
+                nodeIds.forEach((nodeId) => {
+                    const wasCycle = !!this.knownCycles[nodeId];
+                    if (wasCycle !== isCycle) {
+                        callback(this.nodesSet[nodeId], 'invalidate');
+                        this.dirtyNodes[nodeId] = true;
+                        this.knownCycles[nodeId] = isCycle;
+                    }
+                });
+
+                // Process and propagate dirty nodes, omitting those in the
+                // current component
+                nodeIds.forEach((nodeId) => {
+                    if (this.dirtyNodes[nodeId]) {
+                        const shouldPropagate = callback(
+                            this.nodesSet[nodeId],
+                            isCycle ? 'cycle' : 'recalculate'
+                        );
+                        if (shouldPropagate) {
+                            this.getDependenciesInner(
+                                nodeId,
+                                Graph.EDGE_HARD
+                            ).forEach((toId) => {
+                                if (!nodeIds.has(toId)) {
+                                    this.dirtyNodes[toId] = true;
+                                    callback(this.nodesSet[toId], 'invalidate');
+                                }
+                            });
+                        }
+                        visitedAnyDirty = true;
+                        delete this.dirtyNodes[nodeId];
+                    }
+                });
+            });
+        } while (visitedAnyDirty);
+
+        // Flush all remaining stray dirty nodes (and unfortunately their transitive dependencies) --
+        // these do not reach retained nodes, but need to be flushed so future reads are not stale
+        const visited: Record<string, boolean> = {};
+        const flushTransitive = (nodeId: string) => {
+            if (visited[nodeId]) return;
+            visited[nodeId] = true;
+            callback(this.nodesSet[nodeId], 'invalidate');
+            this.getDependenciesInner(nodeId, Graph.EDGE_HARD).forEach(
+                (toId) => {
+                    flushTransitive(toId);
+                }
+            );
+        };
+        Object.keys(this.dirtyNodes).forEach((nodeId) => {
+            if (this.dirtyNodes[nodeId]) {
+                flushTransitive(nodeId);
+                delete this.dirtyNodes[nodeId];
+            }
+        });
     }
 
     /**
@@ -633,50 +651,6 @@ export class Graph<Type extends object> {
             return [nodeAttributes[nodeId].subgraph, nodeId];
         });
 
-        // Pending!!!
-        const newGraph: Record<string, Record<string, number>> = {};
-        const newReverseGraph: Record<string, Record<string, number>> = {};
-        const newDirtyNodes = { ...this.dirtyNodes };
-        nodeIds.forEach((nodeId) => {
-            newGraph[nodeId] = { ...this.graph[nodeId] };
-            newReverseGraph[nodeId] = { ...this.reverseGraph[nodeId] };
-        });
-
-        this.pendingOperations.forEach((op) => {
-            switch (op.type) {
-                case 'add':
-                    newGraph[op.fromId][op.toId] =
-                        (newGraph[op.fromId][op.toId] || 0) | op.kind;
-                    if (!newReverseGraph[op.toId]) {
-                        newReverseGraph[op.toId] = {};
-                    }
-                    newReverseGraph[op.toId][op.fromId] =
-                        (newReverseGraph[op.toId][op.fromId] || 0) | op.kind;
-                    break;
-                case 'remove':
-                    newGraph[op.fromId][op.toId] =
-                        (newGraph[op.fromId][op.toId] || 0) & ~op.kind;
-                    if (!newReverseGraph[op.toId]) {
-                        newReverseGraph[op.toId] = {};
-                    }
-                    newReverseGraph[op.toId][op.fromId] =
-                        (newReverseGraph[op.toId][op.fromId] || 0) & ~op.kind;
-                    break;
-                case 'dispose':
-                    Object.keys(newGraph[op.nodeId] || {}).forEach((toId) => {
-                        delete newReverseGraph[toId];
-                    });
-                    delete newGraph[op.nodeId];
-                    delete newDirtyNodes[op.nodeId];
-                    break;
-                case 'dirty':
-                    newDirtyNodes[op.nodeId] = true;
-                    break;
-                default:
-                    log.assertExhausted(op);
-            }
-        });
-
         let clusterId = 0;
         groupedNodes.forEach((nodeIds, group) => {
             if (group)
@@ -690,13 +664,7 @@ export class Graph<Type extends object> {
                     shape: this.retained[nodeId] ? 'box' : 'ellipse',
                     label: nodeAttributes[nodeId].label,
                     penwidth: nodeAttributes[nodeId].penwidth,
-                    fillcolor: !newGraph[nodeId]
-                        ? '#666666'
-                        : this.dirtyNodes[nodeId]
-                        ? '#FFDDDD'
-                        : newDirtyNodes[nodeId]
-                        ? '#FFFFDD'
-                        : '#DDDDDD',
+                    fillcolor: this.dirtyNodes[nodeId] ? '#FFDDDD' : '#DDDDDD',
                 };
                 lines.push(
                     `  item_${nodeId} [${Object.entries(props)
@@ -711,58 +679,17 @@ export class Graph<Type extends object> {
 
         nodeIds.forEach((fromId) => {
             const allDestinations = Array.from(
-                new Set([
-                    ...Object.keys(this.graph[fromId]),
-                    ...Object.keys(newGraph[fromId] || {}),
-                ])
+                new Set(Object.keys(this.graph[fromId]))
             );
             allDestinations.forEach((toId) => {
-                if (
-                    this.graph[fromId][toId] & Graph.EDGE_HARD &&
-                    newGraph[fromId]?.[toId] & Graph.EDGE_HARD
-                ) {
+                if (this.graph[fromId][toId] & Graph.EDGE_HARD) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="solid"];`
                     );
                 }
-                if (
-                    !(this.graph[fromId][toId] & Graph.EDGE_HARD) &&
-                    newGraph[fromId]?.[toId] & Graph.EDGE_HARD
-                ) {
-                    lines.push(
-                        `  item_${fromId} -> item_${toId} [style="solid",color="#0000FF"];`
-                    );
-                }
-                if (
-                    this.graph[fromId][toId] & Graph.EDGE_HARD &&
-                    !(newGraph[fromId]?.[toId] & Graph.EDGE_HARD)
-                ) {
-                    lines.push(
-                        `  item_${fromId} -> item_${toId} [style="solid",color="#FF0000"];`
-                    );
-                }
-                if (
-                    this.graph[fromId][toId] & Graph.EDGE_SOFT &&
-                    newGraph[fromId]?.[toId] & Graph.EDGE_SOFT
-                ) {
+                if (this.graph[fromId][toId] & Graph.EDGE_SOFT) {
                     lines.push(
                         `  item_${fromId} -> item_${toId} [style="dashed"];`
-                    );
-                }
-                if (
-                    !(this.graph[fromId][toId] & Graph.EDGE_SOFT) &&
-                    newGraph[fromId]?.[toId] & Graph.EDGE_SOFT
-                ) {
-                    lines.push(
-                        `  item_${fromId} -> item_${toId} [style="dashed",color="#0000FF"];`
-                    );
-                }
-                if (
-                    this.graph[fromId][toId] & Graph.EDGE_SOFT &&
-                    !(newGraph[fromId]?.[toId] & Graph.EDGE_SOFT)
-                ) {
-                    lines.push(
-                        `  item_${fromId} -> item_${toId} [style="dashed",color="#FF0000"];`
                     );
                 }
             });
