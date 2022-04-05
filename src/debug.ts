@@ -1,5 +1,5 @@
 import {
-    DAGNode,
+    GraphNode,
     isCalculation,
     isCollection,
     isEffect,
@@ -14,7 +14,7 @@ export function clearNames() {
     nameMap = new WeakMap();
 }
 
-export function debugNameFor(item: DAGNode): string {
+export function debugNameFor(item: GraphNode): string {
     if (!DEBUG) {
         return '';
     }
