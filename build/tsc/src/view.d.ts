@@ -1,11 +1,10 @@
 import { Context } from './types';
-import { Component, JSXNode } from './jsx';
-export declare function createElement(Constructor: string, props?: any, ...children: JSXNode[]): JSXNode;
+import { Component, JSXNode, RenderElement } from './jsx';
+export declare function createElement(Constructor: string, props?: any, ...children: JSXNode[]): RenderElement<any, any>;
 export declare function createElement<TContext>(Constructor: Context<TContext>, props: {
     value: TContext;
-}, ...children: JSXNode[]): JSXNode;
-export declare function createElement<Props extends {}>(Constructor: Component<Props>, props?: Props, ...children: JSXNode[]): JSXNode;
-export declare function createElement<Props extends {}>(Constructor: Component<Props>, props?: Props, ...children: JSXNode[]): JSXNode;
+}, ...children: JSXNode[]): RenderElement<TContext, any>;
+export declare function createElement<TProps extends {}>(Constructor: Component<TProps>, props: TProps, ...children: JSXNode[]): RenderElement<any, TProps>;
 /**
  * Mount the provided JSX to an element
  */

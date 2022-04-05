@@ -4,14 +4,18 @@ export declare class InvariantError extends Error {
 }
 export declare const TypeTag: unique symbol;
 export declare const DataTypeTag: unique symbol;
-declare const CalculationTypeTag: unique symbol;
-export declare const RecalculationTag: unique symbol;
+export declare const CalculationTypeTag: unique symbol;
+export declare const CalculationRecalculateTag: unique symbol;
+export declare const CalculationInvalidateTag: unique symbol;
+export declare const CalculationSetCycleTag: unique symbol;
 export declare const ObserveKey: unique symbol;
 export declare const GetSubscriptionNodeKey: unique symbol;
 export declare const MakeModelViewKey: unique symbol;
+export declare const DisposeKey: unique symbol;
 export declare const FlushKey: unique symbol;
 export declare const AddDeferredWorkKey: unique symbol;
 export declare const NotifyKey: unique symbol;
+export declare type ProcessAction = 'recalculate' | 'cycle' | 'invalidate';
 /**
  * A ref object that can be passed to native elements.
  */
@@ -69,11 +73,12 @@ export declare type CollectionEvent<T> = {
 export declare type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementation & {
     [TypeTag]: 'data';
     [DataTypeTag]: TTypeTag;
-    [FlushKey]: () => void;
+    [FlushKey]: () => boolean;
     [AddDeferredWorkKey]: (task: () => void) => void;
     [ObserveKey]: (listener: (events: TEvent[], subscriptionNode: Subscription) => void) => () => void;
     [GetSubscriptionNodeKey]: () => Subscription;
     [NotifyKey]: (event: TEvent) => void;
+    [DisposeKey]: () => void;
 };
 /**
  * A mutable object to hold state
@@ -89,7 +94,7 @@ export declare type Collection<T> = TrackedData<Array<T>, 'collection', Collecti
     mapView<V>(mapFn: MappingFunction<T, V>, debugName?: string): View<V>;
     filterView(filterFn: FilterFunction<T>, debugName?: string): View<T>;
     flatMapView<V>(flatMapFn: MappingFunction<T, V[]>, debugName?: string): View<V>;
-    reject(shouldReject: (item: T, index: number) => boolean): void;
+    reject(shouldReject: (item: T, index: number) => boolean): T[];
     moveSlice(fromIndex: number, fromCount: number, toIndex: number): void;
 };
 /**
@@ -102,11 +107,13 @@ export declare type View<T> = TrackedData<ReadonlyArray<T>, 'collection', Collec
     flatMapView<V>(flatMapFn: MappingFunction<T, V[]>, debugName?: string): View<V>;
 };
 export interface Subscription {
+    $__id: string;
     [TypeTag]: 'subscription';
     item: any;
-    [FlushKey]: () => void;
+    [FlushKey]: () => boolean;
 }
 export interface NodeOrdering {
+    $__id: string;
     [TypeTag]: 'nodeOrdering';
 }
 /**
@@ -128,19 +135,24 @@ export declare function isContext(val: any): val is Context<any>;
 /**
  * A calculation cell that recalculates when dependencies change
  */
-export declare type Calculation<Result> = (() => Result) & {
+export interface Calculation<Result> {
+    (): Result;
+    $__id: string;
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
-    [RecalculationTag]: () => boolean;
-};
+    dispose: () => void;
+    onError: (handler: (errorType: 'cycle' | 'error') => Result) => this;
+    [CalculationSetCycleTag]: () => boolean;
+    [CalculationRecalculateTag]: () => boolean;
+    [CalculationInvalidateTag]: () => void;
+}
 export interface ModelField {
+    $__id: string;
     model: {
         [DataTypeTag]: any;
     };
     key: string | number | symbol;
 }
-export declare function makeCalculation<Ret>(fn: () => Ret, recalcFn: () => boolean): Calculation<Ret>;
-export declare function makeEffect(fn: () => void, recalcFn: () => boolean): Calculation<void>;
 export declare function isModel(thing: any): thing is Model<unknown>;
 export declare function isModelField(thing: any): thing is ModelField;
 export declare function isCollection(thing: any): thing is Collection<any> | View<any>;
@@ -148,6 +160,5 @@ export declare function isCalculation(thing: any): thing is Calculation<any>;
 export declare function isEffect(thing: Calculation<unknown>): boolean;
 export declare function isSubscription(thing: any): thing is Subscription;
 export declare function isNodeOrdering(thing: any): thing is NodeOrdering;
-export declare type DAGNode = Model<any> | Collection<any> | Calculation<any> | ModelField | View<any> | Subscription | NodeOrdering;
-export {};
+export declare type GraphNode = Model<any> | Collection<any> | Calculation<any> | ModelField | View<any> | Subscription | NodeOrdering;
 //# sourceMappingURL=types.d.ts.map
