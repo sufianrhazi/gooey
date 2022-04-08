@@ -8,7 +8,7 @@ import Revise, {
     Collection,
     collection,
     calc,
-} from '../index';
+} from '../../index';
 
 const Log: Component<{ messages: Collection<string> }> = (
     { messages },

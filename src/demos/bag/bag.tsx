@@ -11,7 +11,7 @@ import Revise, {
     subscribe,
     flush,
     ref,
-} from '../index';
+} from '../../index';
 
 const graphvizRef = ref<HTMLDivElement>();
 

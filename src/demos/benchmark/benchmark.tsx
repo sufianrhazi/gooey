@@ -8,7 +8,7 @@ import Revise, {
     Model,
     Collection,
     subscribe,
-} from '../index';
+} from '../../index';
 
 // Disable default flushing
 // eslint-disable-next-line @typescript-eslint/no-empty-function

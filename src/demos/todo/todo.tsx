@@ -9,8 +9,8 @@ import Revise, {
     model,
     mount,
     ref,
-} from '../index';
-import { makeGraphvizDebuggerRef } from './debug';
+} from '../../index';
+import { makeGraphvizDebuggerRef } from '../debug';
 
 const graphvizRef = makeGraphvizDebuggerRef();
 

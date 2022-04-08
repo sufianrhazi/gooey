@@ -5,8 +5,8 @@ import Revise, {
     model,
     mount,
     setLogLevel,
-} from '../index';
-import { makeGraphvizDebuggerRef } from './debug';
+} from '../../index';
+import { makeGraphvizDebuggerRef } from '../debug';
 
 setLogLevel('debug');
 

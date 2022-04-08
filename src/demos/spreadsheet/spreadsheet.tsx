@@ -6,8 +6,8 @@ import Revise, {
     model,
     mount,
     ref,
-} from '../index';
-import * as log from '../log';
+} from '../../index';
+import * as log from '../../log';
 
 type Table = Model<{
     rows: number;
