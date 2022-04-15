@@ -516,6 +516,221 @@ suite('mount components', () => {
             sequence
         );
     });
+
+    test('children can be rendered multiple times and act independently', () => {
+        const calls: string[] = [];
+
+        const data = model({
+            a: false,
+            b: false,
+            c: false,
+        });
+        const Parent: Component<{}> = (
+            { children },
+            { onMount, onUnmount }
+        ) => {
+            onMount(() => calls.push('parent:onMount'));
+            onUnmount(() => calls.push('parent:onUnmount'));
+            return (
+                <div>
+                    {calc(() => data.a && <div id="child-1">{children}</div>)}
+                    {calc(() => data.b && <div id="child-2">{children}</div>)}
+                    {calc(() => data.c && <div id="child-3">{children}</div>)}
+                </div>
+            );
+        };
+
+        const Child: Component<{ name: string }> = (
+            { name },
+            { onMount, onUnmount }
+        ) => {
+            onMount(() => calls.push(`child:${name}:onMount`));
+            onUnmount(() => calls.push(`child:${name}:onUnmount`));
+            const state = model({ clicked: false });
+            return (
+                <button
+                    data-name={name}
+                    on:click={() => {
+                        state.clicked = true;
+                    }}
+                >
+                    {calc(() => (state.clicked ? 'clicked' : name))}
+                </button>
+            );
+        };
+
+        // Mount all items with no children passed
+        const unmount = mount(
+            testRoot,
+            <Parent>
+                <Child name="one" />
+                <Child name="two" />
+                <Child name="three" />
+            </Parent>
+        );
+
+        assert.deepEqual(['parent:onMount'], calls);
+
+        // Enable all children
+        data.a = true;
+        data.b = true;
+        data.c = true;
+
+        calls.splice(0, calls.length);
+        flush();
+
+        assert.deepEqual(
+            [
+                'child:one:onMount',
+                'child:two:onMount',
+                'child:three:onMount',
+                'child:one:onMount',
+                'child:two:onMount',
+                'child:three:onMount',
+                'child:one:onMount',
+                'child:two:onMount',
+                'child:three:onMount',
+            ],
+            calls
+        );
+
+        // Interact with the children in different ways
+        testRoot
+            .querySelector('#child-1 [data-name="one"]')
+            ?.dispatchEvent(new MouseEvent('click'));
+        testRoot
+            .querySelector('#child-2 [data-name="two"]')
+            ?.dispatchEvent(new MouseEvent('click'));
+        testRoot
+            .querySelector('#child-3 [data-name="three"]')
+            ?.dispatchEvent(new MouseEvent('click'));
+        flush();
+
+        assert.deepEqual(
+            [
+                ['clicked', 'two', 'three'],
+                ['one', 'clicked', 'three'],
+                ['one', 'two', 'clicked'],
+            ],
+            [
+                Array.from(testRoot.querySelectorAll('#child-1 button')).map(
+                    (el) => el.textContent
+                ),
+                Array.from(testRoot.querySelectorAll('#child-2 button')).map(
+                    (el) => el.textContent
+                ),
+                Array.from(testRoot.querySelectorAll('#child-3 button')).map(
+                    (el) => el.textContent
+                ),
+            ]
+        );
+
+        // Unmount one child
+        data.b = false;
+
+        calls.splice(0, calls.length);
+        flush();
+
+        assert.deepEqual(
+            [
+                'child:one:onUnmount',
+                'child:two:onUnmount',
+                'child:three:onUnmount',
+            ],
+            calls
+        );
+        assert.deepEqual(
+            [['clicked', 'two', 'three'], [], ['one', 'two', 'clicked']],
+            [
+                Array.from(testRoot.querySelectorAll('#child-1 button')).map(
+                    (el) => el.textContent
+                ),
+                Array.from(testRoot.querySelectorAll('#child-2 button')).map(
+                    (el) => el.textContent
+                ),
+                Array.from(testRoot.querySelectorAll('#child-3 button')).map(
+                    (el) => el.textContent
+                ),
+            ]
+        );
+
+        // Unmount everything
+        calls.splice(0, calls.length);
+        unmount();
+
+        assert.deepEqual(
+            [
+                'child:one:onUnmount',
+                'child:two:onUnmount',
+                'child:three:onUnmount',
+                'child:one:onUnmount',
+                'child:two:onUnmount',
+                'child:three:onUnmount',
+                'parent:onUnmount',
+            ],
+            calls
+        );
+    });
+
+    test('children can read contexts correctly', () => {
+        const Context = createContext('no-context');
+
+        const Parent: Component<{}> = ({ children }) => {
+            return (
+                <div>
+                    <div id="child-1">{children}</div>
+                    <Context value="child-2">
+                        <div id="child-2">{children}</div>
+                    </Context>
+                    <Context value="child-3">
+                        <div id="child-3">{children}</div>
+                    </Context>
+                </div>
+            );
+        };
+
+        const Child: Component<{ name: string }> = (
+            { name },
+            { getContext }
+        ) => {
+            const contextValue = getContext(Context);
+            return (
+                <p>
+                    {contextValue}:{name}
+                </p>
+            );
+        };
+
+        // Mount all items with no children passed
+        const unmount = mount(
+            testRoot,
+            <Parent>
+                <Child name="one" />
+                <Child name="two" />
+            </Parent>
+        );
+
+        assert.deepEqual(
+            [
+                ['no-context:one', 'no-context:two'],
+                ['child-2:one', 'child-2:two'],
+                ['child-3:one', 'child-3:two'],
+            ],
+            [
+                Array.from(testRoot.querySelectorAll('#child-1 p')).map(
+                    (el) => el.textContent
+                ),
+                Array.from(testRoot.querySelectorAll('#child-2 p')).map(
+                    (el) => el.textContent
+                ),
+                Array.from(testRoot.querySelectorAll('#child-3 p')).map(
+                    (el) => el.textContent
+                ),
+            ]
+        );
+
+        unmount();
+    });
 });
 
 suite('mount arrays', () => {
