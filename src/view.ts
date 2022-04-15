@@ -23,6 +23,7 @@ import {
     ObserveKey,
     GetSubscriptionNodeKey,
     TypeTag,
+    createContext,
 } from './types';
 import * as log from './log';
 import { uniqueid } from './util';
@@ -71,6 +72,7 @@ function setAttributeValue(
         element.addEventListener(eventName, value as any);
         boundEvents[key] = value as any;
     } else {
+        const attributeNamespace = attributeNamespaceMap[key] || null;
         const mapping = getElementTypeMapping(elementType, key);
         if (mapping) {
             if (mapping.makeAttrValue !== null) {
@@ -84,9 +86,13 @@ function setAttributeValue(
                 ) {
                     element.removeAttribute(key);
                 } else if (attributeValue === true) {
-                    element.setAttribute(key, '');
+                    element.setAttributeNS(attributeNamespace, key, '');
                 } else {
-                    element.setAttribute(key, attributeValue);
+                    element.setAttributeNS(
+                        attributeNamespace,
+                        key,
+                        attributeValue
+                    );
                 }
             }
             if (mapping.idlName !== null) {
@@ -95,11 +101,11 @@ function setAttributeValue(
                     : value;
             }
         } else if (value === false || value === undefined || value === null) {
-            element.removeAttribute(key);
+            element.removeAttributeNS(attributeNamespace, key);
         } else if (value === true) {
-            element.setAttribute(key, '');
-        } else if (typeof value === 'string') {
-            element.setAttribute(key, value);
+            element.setAttributeNS(attributeNamespace, key, '');
+        } else if (typeof value === 'string' || typeof value === 'number') {
+            element.setAttributeNS(attributeNamespace, key, value.toString());
         }
     }
 }
@@ -252,6 +258,50 @@ function renderElementToVNode(
     );
 }
 
+const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+const MATHML_NAMESPACE = 'http://www.w3.org/1998/Math/MathML';
+const XLINK_NAMESPACE = 'http://www.w3.org/1999/xlink';
+const XML_NAMESPACE = 'http://www.w3.org/XML/1998/namespace';
+const XMLNS_NAMESPACE = 'http://www.w3.org/2000/xmlns/';
+
+const attributeNamespaceMap: Record<string, string> = {
+    'xlink:actuate': XLINK_NAMESPACE,
+    'xlink:arcrole': XLINK_NAMESPACE,
+    'xlink:href': XLINK_NAMESPACE,
+    'xlink:role': XLINK_NAMESPACE,
+    'xlink:show': XLINK_NAMESPACE,
+    'xlink:title': XLINK_NAMESPACE,
+    'xlink:type': XLINK_NAMESPACE,
+    'xml:lang': XML_NAMESPACE,
+    'xml:space': XML_NAMESPACE,
+    xmlns: XMLNS_NAMESPACE,
+    'xmlns:xlink': XMLNS_NAMESPACE,
+};
+const elementNamespaceTransitionMap: Record<
+    string,
+    Record<string, { node: string; children: string } | undefined> | undefined
+> = {
+    [HTML_NAMESPACE]: {
+        svg: {
+            node: SVG_NAMESPACE,
+            children: SVG_NAMESPACE,
+        },
+        math: {
+            node: MATHML_NAMESPACE,
+            children: MATHML_NAMESPACE,
+        },
+    },
+    [SVG_NAMESPACE]: {
+        foreignObject: {
+            node: SVG_NAMESPACE,
+            children: HTML_NAMESPACE,
+        },
+    },
+} as const;
+
+const XmlNamespaceContext = createContext(HTML_NAMESPACE);
+
 function makeElementVNode(
     elementType: string,
     props: {} | undefined,
@@ -261,9 +311,29 @@ function makeElementVNode(
     contextMap: Map<Context<any>, any>,
     documentFragment: DocumentFragment
 ) {
+    let subContextMap = contextMap;
+    let elementXMLNamespace: string = contextMap.has(XmlNamespaceContext)
+        ? contextMap.get(XmlNamespaceContext)
+        : XmlNamespaceContext();
+    let childElementXMLNamespace: null | string = null;
+    const xmlNamespaceTransition =
+        elementNamespaceTransitionMap[elementXMLNamespace]?.[elementType];
+    if (xmlNamespaceTransition) {
+        elementXMLNamespace = xmlNamespaceTransition.node;
+        childElementXMLNamespace = xmlNamespaceTransition.children;
+    }
+    if (childElementXMLNamespace != null) {
+        subContextMap = new Map(contextMap);
+        subContextMap.set(XmlNamespaceContext, childElementXMLNamespace);
+    }
     DEBUG &&
-        log.debug('view makeElementVNode', { elementType, props, children });
-    const element = document.createElement(elementType);
+        log.debug('view makeElementVNode', {
+            elementType,
+            elementXMLNamespace,
+            props,
+            children,
+        });
+    const element = document.createElementNS(elementXMLNamespace, elementType);
     const elementBoundEvents: Record<string, (ev: Event) => void> = {};
 
     const onReleaseActions: (() => void)[] = [];
@@ -339,7 +409,7 @@ function makeElementVNode(
                 child,
                 elementNode,
                 nodeOrdering,
-                contextMap,
+                subContextMap,
                 childDocumentFragment
             )
         );
@@ -636,6 +706,12 @@ function makeNodeOrdering(debugName?: string): NodeOrdering {
  */
 export function mount(parentElement: Element, jsxNode: JSXNode) {
     const contextMap: Map<Context<any>, any> = new Map();
+    if (
+        parentElement.namespaceURI === SVG_NAMESPACE ||
+        parentElement.namespaceURI === MATHML_NAMESPACE
+    ) {
+        contextMap.set(XmlNamespaceContext, parentElement.namespaceURI);
+    }
     const nodeOrdering = makeNodeOrdering('mount');
     retain(nodeOrdering);
     const anchorNode: VNode = { domNode: parentElement };

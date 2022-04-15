@@ -1014,6 +1014,129 @@ suite('mount collection mapped view', () => {
     });
 });
 
+suite('foreign elements', () => {
+    test('svg elements are supported within an svg context', () => {
+        mount(
+            testRoot,
+            <div>
+                <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="50" cy="40" r="30" />
+                </svg>
+            </div>
+        );
+
+        assert.isTruthy(
+            testRoot.children[0].children[0] instanceof SVGSVGElement
+        );
+        assert.is(
+            testRoot.children[0].children[0].getAttribute('viewBox'),
+            '0 0 100 100'
+        );
+        assert.is(
+            testRoot.children[0].children[0].getAttributeNS(
+                'http://www.w3.org/2000/xmlns/',
+                'xmlns'
+            ),
+            'http://www.w3.org/2000/svg'
+        );
+        assert.isTruthy(
+            testRoot.children[0].children[0].children[0] instanceof
+                SVGCircleElement
+        );
+        assert.is(
+            testRoot.children[0].children[0].children[0].getAttribute('cx'),
+            '50'
+        );
+        assert.is(
+            testRoot.children[0].children[0].children[0].getAttribute('cy'),
+            '40'
+        );
+        assert.is(
+            testRoot.children[0].children[0].children[0].getAttribute('r'),
+            '30'
+        );
+    });
+    test('svg elements are not rendered as svg outside of an svg context', () => {
+        mount(
+            testRoot,
+            // @ts-expect-error viewBox does not exist on div
+            <div viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="50" cy="40" r="30" />
+            </div>
+        );
+
+        assert.isTruthy(testRoot.children[0] instanceof HTMLDivElement);
+        assert.isTruthy(
+            testRoot.children[0].children[0] instanceof HTMLUnknownElement
+        );
+    });
+    test('html elements are not rendered as html inside an svg context', () => {
+        mount(
+            testRoot,
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <input type="text" />
+            </svg>
+        );
+
+        assert.isTruthy(testRoot.children[0] instanceof SVGSVGElement);
+        assert.isTruthy(testRoot.children[0].children[0] instanceof SVGElement);
+        assert.isFalsy(testRoot.children[0].children[0] instanceof HTMLElement);
+    });
+    test('svg elements can break out of svg context using foreignObject', () => {
+        mount(
+            testRoot,
+            <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+                <foreignObject>
+                    <input type="text" />
+                </foreignObject>
+            </svg>
+        );
+
+        assert.isTruthy(testRoot.children[0] instanceof SVGSVGElement);
+        assert.isTruthy(
+            testRoot.children[0].children[0] instanceof SVGForeignObjectElement
+        );
+        assert.isTruthy(
+            testRoot.children[0].children[0].children[0] instanceof
+                HTMLInputElement
+        );
+    });
+
+    if (typeof MathMLElement !== 'undefined') {
+        test('mathml elements work inside math element', () => {
+            mount(
+                testRoot,
+                <div>
+                    <math>
+                        <mi>a</mi>
+                        <mn>2</mn>
+                    </math>
+                </div>
+            );
+            assert.isTruthy(testRoot.children[0] instanceof HTMLDivElement);
+            assert.isTruthy(
+                testRoot.children[0].children[0] instanceof MathMLElement
+            );
+            assert.isTruthy(
+                testRoot.children[0].children[0].children[0] instanceof
+                    MathMLElement
+            );
+        });
+
+        test('mathml elements do not work outside math element', () => {
+            mount(
+                testRoot,
+                <div>
+                    <math>
+                        <mi>a</mi>
+                        <mn>2</mn>
+                    </math>
+                </div>
+            );
+        });
+    }
+});
+
 suite('createContext', () => {
     test('uses default context value when missing', () => {
         const CtxA = createContext<string>('hello');
