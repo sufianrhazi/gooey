@@ -36,6 +36,8 @@ import {
 } from './jsx';
 import { VNode, spliceVNode, callOnMount } from './vnode';
 
+export const Fragment = ({ children }: { children: JSXNode[] }) => children;
+
 export function createElement(
     Constructor: string,
     props?: any,
@@ -56,6 +58,8 @@ export function createElement<TContext, TProps extends {}>(
 ): RenderElement<TContext, TProps> {
     return { __node: args };
 }
+
+createElement.Fragment = Fragment;
 
 function setAttributeValue(
     elementType: string,
@@ -735,5 +739,3 @@ export function mount(parentElement: Element, jsxNode: JSXNode) {
         release(nodeOrdering);
     };
 }
-
-export const Fragment = ({ children }: { children: JSXNode[] }) => children;

@@ -13,7 +13,7 @@ const demoFiles = fs
 export default defineConfig({
     esbuild: {
         jsxFactory: 'Gooey',
-        jsxFragment: 'Fragment',
+        jsxFragment: 'Gooey.Fragment',
     },
     build: {
         rollupOptions: {

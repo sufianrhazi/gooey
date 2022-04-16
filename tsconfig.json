@@ -5,7 +5,7 @@
 
     "jsx": "react",
     "jsxFactory": "Gooey",
-    "jsxFragmentFactory": "Fragment",
+    "jsxFragmentFactory": "Gooey.Fragment",
 
     "module": "ES2015",
     "moduleResolution": "node",
