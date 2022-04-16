@@ -1,4 +1,4 @@
-import Revise, {
+import Gooey, {
     mount,
     model,
     collection,
@@ -266,7 +266,7 @@ const JsFrameworkBenchmark = () => {
             <div class="jumbotron">
                 <div class="row">
                     <div class="col-md-6">
-                        <h1>Revise-"keyed"</h1>
+                        <h1>Gooey-"keyed"</h1>
                     </div>
                     <Controls store={store} />
                 </div>

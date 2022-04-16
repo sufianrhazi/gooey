@@ -12,7 +12,7 @@ const demoFiles = fs
 
 export default defineConfig({
     esbuild: {
-        jsxFactory: 'Revise',
+        jsxFactory: 'Gooey',
         jsxFragment: 'Fragment',
     },
     build: {

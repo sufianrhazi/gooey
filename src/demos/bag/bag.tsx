@@ -1,5 +1,5 @@
 import { graphviz } from '@hpcc-js/wasm';
-import Revise, {
+import Gooey, {
     mount,
     Fragment,
     Model,

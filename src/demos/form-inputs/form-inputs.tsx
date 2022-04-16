@@ -1,4 +1,4 @@
-import Revise, {
+import Gooey, {
     Fragment,
     Component,
     Ref,

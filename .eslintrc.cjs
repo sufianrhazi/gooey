@@ -11,12 +11,12 @@ module.exports = {
         ecmaFeatures: {
             jsx: true,
         },
-        jxPragma: 'Revise',
+        jxPragma: 'Gooey',
     },
     plugins: ['@typescript-eslint', 'react'],
     settings: {
         react: {
-            pragma: 'Revise',
+            pragma: 'Gooey',
         },
     },
     rules: {

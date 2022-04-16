@@ -1,13 +1,13 @@
 import { suite, test, beforeEach, assert } from '@srhazi/test-jig';
-import * as revise from './index';
+import * as gooey from './index';
 
 beforeEach(() => {
-    revise.subscribe();
+    gooey.subscribe();
 });
 
 suite('behavior', () => {
     beforeEach(() => {
-        revise.reset();
+        gooey.reset();
     });
     function setUp() {
         type Renderer = () => string;
@@ -21,35 +21,35 @@ suite('behavior', () => {
             items: TodoItem[];
         }
 
-        const model0 = revise.model<TodoItem>(
+        const model0 = gooey.model<TodoItem>(
             {
                 task: 'apples',
                 done: false,
             },
             'model0'
         );
-        const model1 = revise.model<TodoItem>(
+        const model1 = gooey.model<TodoItem>(
             {
                 task: 'bananas',
                 done: false,
             },
             'model1'
         );
-        const model2 = revise.model<TodoItem>(
+        const model2 = gooey.model<TodoItem>(
             {
                 task: 'milk',
                 done: false,
             },
             'model2'
         );
-        const model3 = revise.model<TodoItem>(
+        const model3 = gooey.model<TodoItem>(
             {
                 task: 'cookies',
                 done: false,
             },
             'model3'
         );
-        const model4 = revise.model<TodoItem>(
+        const model4 = gooey.model<TodoItem>(
             {
                 task: 'and',
                 done: true,
@@ -57,10 +57,10 @@ suite('behavior', () => {
             'model4'
         );
 
-        const todoList = revise.model<TodoList>(
+        const todoList = gooey.model<TodoList>(
             {
                 name: 'Shopping',
-                items: revise.collection<TodoItem>([model0, model1]),
+                items: gooey.collection<TodoItem>([model0, model1]),
             },
             'todoList'
         );
@@ -75,7 +75,7 @@ suite('behavior', () => {
         const renders: string[] = [];
 
         const makeItemRenderer = (item: TodoItem) => {
-            return revise.calc(() => {
+            return gooey.calc(() => {
                 renders.push(`item:${itemNames.get(item)}`);
                 return `[${item.done ? 'x' : ' '}] ${item.task}`;
             }, 'itemRenderer:' + item.task);
@@ -92,7 +92,7 @@ suite('behavior', () => {
         };
 
         const makeTodoListRenderer = (todoList: TodoList) => {
-            return revise.calc(() => {
+            return gooey.calc(() => {
                 renders.push('list');
                 const lines = [`${todoList.name}:`];
                 todoList.items.forEach((item) => {
@@ -103,7 +103,7 @@ suite('behavior', () => {
         };
 
         const app = makeTodoListRenderer(todoList);
-        revise.retain(app);
+        gooey.retain(app);
 
         return {
             model0,
@@ -123,7 +123,7 @@ suite('behavior', () => {
         assert.is(app(), 'Shopping:\n[ ] apples\n[ ] bananas');
         assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
         model0.task = 'what';
-        revise.flush();
+        gooey.flush();
         assert.is(app(), 'Shopping:\n[ ] what\n[ ] bananas');
     });
 
@@ -154,7 +154,7 @@ suite('behavior', () => {
         renders.splice(0, renders.length); // clear renders
 
         // flush causes update
-        revise.flush();
+        gooey.flush();
         assert.deepEqual(renders, ['item:model0', 'list']);
 
         // manual recomupute does nothing
@@ -172,12 +172,12 @@ suite('behavior', () => {
 
         // flush causes update
         renders.splice(0, renders.length);
-        revise.flush();
+        gooey.flush();
         assert.deepEqual(renders, ['item:model0', 'list']);
 
         // flush again does nothing
         renders.splice(0, renders.length);
-        revise.flush();
+        gooey.flush();
         assert.deepEqual(renders, []);
     });
 
@@ -190,7 +190,7 @@ suite('behavior', () => {
         // change another dependency
         model0.done = true;
         model1.task = 'cherries';
-        revise.flush();
+        gooey.flush();
 
         assert.arrayIncludes(renders, 'item:model0');
         assert.arrayIncludes(renders, 'item:model1');
@@ -214,7 +214,7 @@ suite('behavior', () => {
 
         renders.splice(0, renders.length);
         todoList.name = 'Grocery';
-        revise.flush();
+        gooey.flush();
         assert.deepEqual(renders, ['list']);
         assert.is(app(), 'Grocery:\n[ ] apples\n[ ] bananas');
     });
@@ -227,7 +227,7 @@ suite('behavior', () => {
         renders.splice(0, renders.length);
         todoList.items.push(model2);
         todoList.items.unshift(model3);
-        revise.flush();
+        gooey.flush();
         assert.deepEqual(renders, [
             'list',
             'item:model3',
@@ -251,11 +251,11 @@ suite('behavior', () => {
             app,
             renders,
         } = setUp();
-        todoList.items = revise.collection([model3, model0, model1, model2]);
+        todoList.items = gooey.collection([model3, model0, model1, model2]);
         app(); // initial render
 
         todoList.items.splice(1, 2, model4);
-        revise.flush();
+        gooey.flush();
         assert.deepEqual(renders, [
             'list',
             'item:model3',
@@ -273,9 +273,9 @@ suite('behavior', () => {
         const { model0, todoList, app, renders } = setUp();
         app(); // initial render
         todoList.items.shift(); // remove model0
-        revise.flush(); // flush 1: update with model0 removed
+        gooey.flush(); // flush 1: update with model0 removed
         model0.task = 'whatever';
-        revise.flush(); // flush 2: nothing should happen
+        gooey.flush(); // flush 2: nothing should happen
         assert.deepEqual(renders, [
             'list',
             'item:model0',
@@ -298,7 +298,7 @@ suite('invariants', () => {
         }
 
         beforeEach((ctx: Ctx) => {
-            ctx.model = revise.model({
+            ctx.model = gooey.model({
                 foo: 3,
                 bar: {
                     hello: 'world',

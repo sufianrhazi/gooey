@@ -1,10 +1,10 @@
-Revise is a tool to ~re~build user interfaces and applications.
+Gooey is a tool to ~re~build user interfaces and applications.
 
 
 Motivation
 ----------
 
-Revise embraces mutation: when things change, it knows exactly what needs to be updated and updates things in place.
+Gooey embraces mutation: when things change, it knows exactly what needs to be updated and updates things in place.
 
 It's inspired by build systems (specifically by [tup](http://gittup.org/tup/)), which need to understand how to rebuild
 files when dependent files change.
@@ -13,7 +13,7 @@ files when dependent files change.
 Concepts
 --------
 
-There are four main concepts in Revise:
+There are four main concepts in Gooey:
 1. A **model** is an ordinary JavaScript object that is watched for changes.
 2. A **collection** is an ordinary JavaScript array that is watched for changes. It additionally has a few extra
    functions for convenience.
@@ -23,7 +23,7 @@ There are four main concepts in Revise:
 For example, here is a simple counter application:
 
 ```typescript
-import Revise, { model, calc, mount, subscribe, flush } from 'revise';
+import Gooey, { model, calc, mount, subscribe, flush } from 'gooey';
 
 const Counter = () => {
   const state = model({ count: 0 });
@@ -438,7 +438,7 @@ Get a promise which will resolve on the next flush (or immediately, if there is 
 function subscribe(onReadyToFlush: () => void): void
 ```
 
-By default, Revise will call `flush` automatically once any calculation/effect dependencies have changed after a
+By default, Gooey will call `flush` automatically once any calculation/effect dependencies have changed after a
 timeout. If you wish to configure this behavior, use the `subscribe` function, which will be called once when a
 `flush()` is necessary.
 
@@ -471,9 +471,9 @@ function release(item: Calculation<any> | Collection<any> | View<any>): void;
 
 Note: In typical use, you should not need to use these functions unless you are using `effect` or `calc` outside of
 components. There is no need to ever pass a `Collection` or `View` to these methods; this is only required internally
-within Revise.
+within Gooey.
 
-Revise automatically stops processing items that are leaf nodes in the dependency tree: if no calculation or effect has
+Gooey automatically stops processing items that are leaf nodes in the dependency tree: if no calculation or effect has
 a dependency on an item, that item is no longer processed further.
 
 The `retain` function adds to the reference count of `item`; the `release` function removes from the reference count of
@@ -499,7 +499,7 @@ aside from within a test.
 Differences from React
 ----------------------
 
-Revise has fewer moving parts than React. There are no component classes, no component state, no hooks, and no lifecycle
+Gooey has fewer moving parts than React. There are no component classes, no component state, no hooks, and no lifecycle
 events.
 
 Component functions get called exactly once in their lifecycle: when they are to be rendered. Components do not

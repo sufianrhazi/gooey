@@ -6,7 +6,7 @@ export class InvariantError extends Error {
     }
 }
 
-export const TypeTag = Symbol('reviseType');
+export const TypeTag = Symbol('typeTag');
 export const DataTypeTag = Symbol('dataTypeTag');
 export const CalculationTypeTag = Symbol('calculationType');
 export const CalculationRecalculateTag = Symbol('calculationRecalculate');
