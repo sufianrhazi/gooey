@@ -1,4 +1,4 @@
-var Revise = (() => {
+var Gooey = (() => {
   var __defProp = Object.defineProperty;
   var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
   var __getOwnPropNames = Object.getOwnPropertyNames;
@@ -62,7 +62,7 @@ var Revise = (() => {
       this.detail = detail;
     }
   };
-  var TypeTag = Symbol("reviseType");
+  var TypeTag = Symbol("typeTag");
   var DataTypeTag = Symbol("dataTypeTag");
   var CalculationTypeTag = Symbol("calculationType");
   var CalculationRecalculateTag = Symbol("calculationRecalculate");
@@ -1931,9 +1931,11 @@ ${debugNameFor(item)}`,
   }
 
   // src/view.ts
+  var Fragment = ({ children }) => children;
   function createElement(...args) {
     return { __node: args };
   }
+  createElement.Fragment = Fragment;
   function setAttributeValue(elementType, element, key, value, boundEvents) {
     if (key.startsWith("on:") && typeof value === "function") {
       const eventName = key.slice(3);
@@ -1943,6 +1945,7 @@ ${debugNameFor(item)}`,
       element.addEventListener(eventName, value);
       boundEvents[key] = value;
     } else {
+      const attributeNamespace = attributeNamespaceMap[key] || null;
       const mapping = getElementTypeMapping(elementType, key);
       if (mapping) {
         if (mapping.makeAttrValue !== null) {
@@ -1950,20 +1953,20 @@ ${debugNameFor(item)}`,
           if (attributeValue === void 0 || attributeValue === null || attributeValue === false) {
             element.removeAttribute(key);
           } else if (attributeValue === true) {
-            element.setAttribute(key, "");
+            element.setAttributeNS(attributeNamespace, key, "");
           } else {
-            element.setAttribute(key, attributeValue);
+            element.setAttributeNS(attributeNamespace, key, attributeValue);
           }
         }
         if (mapping.idlName !== null) {
           element[mapping.idlName ?? key] = mapping.makeIdlValue ? mapping.makeIdlValue(value) : value;
         }
       } else if (value === false || value === void 0 || value === null) {
-        element.removeAttribute(key);
+        element.removeAttributeNS(attributeNamespace, key);
       } else if (value === true) {
-        element.setAttribute(key, "");
-      } else if (typeof value === "string") {
-        element.setAttribute(key, value);
+        element.setAttributeNS(attributeNamespace, key, "");
+      } else if (typeof value === "string" || typeof value === "number") {
+        element.setAttributeNS(attributeNamespace, key, value.toString());
       }
     }
   }
@@ -2021,9 +2024,59 @@ ${debugNameFor(item)}`,
     false;
     return makeComponentVNode(Constructor, props, children, domParent, nodeOrdering, contextMap, documentFragment);
   }
+  var HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
+  var SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+  var MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML";
+  var XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
+  var XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace";
+  var XMLNS_NAMESPACE = "http://www.w3.org/2000/xmlns/";
+  var attributeNamespaceMap = {
+    "xlink:actuate": XLINK_NAMESPACE,
+    "xlink:arcrole": XLINK_NAMESPACE,
+    "xlink:href": XLINK_NAMESPACE,
+    "xlink:role": XLINK_NAMESPACE,
+    "xlink:show": XLINK_NAMESPACE,
+    "xlink:title": XLINK_NAMESPACE,
+    "xlink:type": XLINK_NAMESPACE,
+    "xml:lang": XML_NAMESPACE,
+    "xml:space": XML_NAMESPACE,
+    xmlns: XMLNS_NAMESPACE,
+    "xmlns:xlink": XMLNS_NAMESPACE
+  };
+  var elementNamespaceTransitionMap = {
+    [HTML_NAMESPACE]: {
+      svg: {
+        node: SVG_NAMESPACE,
+        children: SVG_NAMESPACE
+      },
+      math: {
+        node: MATHML_NAMESPACE,
+        children: MATHML_NAMESPACE
+      }
+    },
+    [SVG_NAMESPACE]: {
+      foreignObject: {
+        node: SVG_NAMESPACE,
+        children: HTML_NAMESPACE
+      }
+    }
+  };
+  var XmlNamespaceContext = createContext(HTML_NAMESPACE);
   function makeElementVNode(elementType, props, children, domParent, nodeOrdering, contextMap, documentFragment) {
+    let subContextMap = contextMap;
+    let elementXMLNamespace = contextMap.has(XmlNamespaceContext) ? contextMap.get(XmlNamespaceContext) : XmlNamespaceContext();
+    let childElementXMLNamespace = null;
+    const xmlNamespaceTransition = elementNamespaceTransitionMap[elementXMLNamespace]?.[elementType];
+    if (xmlNamespaceTransition) {
+      elementXMLNamespace = xmlNamespaceTransition.node;
+      childElementXMLNamespace = xmlNamespaceTransition.children;
+    }
+    if (childElementXMLNamespace != null) {
+      subContextMap = new Map(contextMap);
+      subContextMap.set(XmlNamespaceContext, childElementXMLNamespace);
+    }
     false;
-    const element = document.createElement(elementType);
+    const element = document.createElementNS(elementXMLNamespace, elementType);
     const elementBoundEvents = {};
     const onReleaseActions = [];
     let refCallback = void 0;
@@ -2076,7 +2129,7 @@ ${debugNameFor(item)}`,
     };
     if (children && children.length > 0) {
       const childDocumentFragment = document.createDocumentFragment();
-      const childVNodes = children.map((child) => jsxNodeToVNode(child, elementNode, nodeOrdering, contextMap, childDocumentFragment));
+      const childVNodes = children.map((child) => jsxNodeToVNode(child, elementNode, nodeOrdering, subContextMap, childDocumentFragment));
       elementNode.children = childVNodes;
       element.appendChild(childDocumentFragment);
     }
@@ -2240,6 +2293,9 @@ ${debugNameFor(item)}`,
   }
   function mount(parentElement, jsxNode) {
     const contextMap = /* @__PURE__ */ new Map();
+    if (parentElement.namespaceURI === SVG_NAMESPACE || parentElement.namespaceURI === MATHML_NAMESPACE) {
+      contextMap.set(XmlNamespaceContext, parentElement.namespaceURI);
+    }
     const nodeOrdering = makeNodeOrdering("mount");
     retain(nodeOrdering);
     const anchorNode = { domNode: parentElement };
@@ -2253,7 +2309,6 @@ ${debugNameFor(item)}`,
       release(nodeOrdering);
     };
   }
-  var Fragment = ({ children }) => children;
 
   // src/collection.ts
   function defaultSort(x, y) {
@@ -2801,7 +2856,7 @@ ${debugNameFor(item)}`,
 
   // src/index.ts
   var src_default = createElement;
-  var VERSION = true ? "0.6.0" : "development";
+  var VERSION = true ? "0.6.1" : "development";
   return __toCommonJS(src_exports);
 })();
 //# sourceMappingURL=index.js.map
