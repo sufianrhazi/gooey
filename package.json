@@ -1,6 +1,6 @@
 {
   "name": "@srhazi/gooey",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "A library for building UI",
   "main": "build/esm/index.js",
   "type": "module",

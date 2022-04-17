@@ -2855,6 +2855,6 @@ model.dispose = function dispose2(m) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.6.1" : "development";
+var VERSION = true ? "0.6.2" : "development";
 module.exports = __toCommonJS(src_exports);
 //# sourceMappingURL=index.js.map
