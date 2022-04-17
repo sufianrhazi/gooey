@@ -1,5 +1,5 @@
 import { Graph } from './graph';
-import { suite, test, beforeEach, assert } from '@srhazi/test-jig';
+import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
 
 suite('Graph', () => {
     const a = { name: 'a', $__id: 0 };

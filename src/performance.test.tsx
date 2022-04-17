@@ -17,7 +17,7 @@ import Gooey, {
 } from './index';
 import { Graph } from './graph';
 import { randint } from './util';
-import { suite, test, beforeEach, afterEach, assert } from '@srhazi/test-jig';
+import { suite, test, beforeEach, afterEach, assert } from '@srhazi/gooey-test';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
 

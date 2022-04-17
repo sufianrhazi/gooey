@@ -105,12 +105,23 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@srhazi/gooey@workspace:.":
+"@srhazi/gooey-test@npm:0.2.0":
+  version: 0.2.0
+  resolution: "@srhazi/gooey-test@npm:0.2.0"
+  dependencies:
+    "@srhazi/gooey": 0.6.1
+    lodash: ^4.17.21
+    yargs: ^17.3.1
+  checksum: 0bae0cef7c1ba2e7e6f10cdbc9157cf2db20ec752d6d609e46da5a7df31bd31bcf25356b5cbdc4487de3409d6cc181e7fc43bb2ba61372f77138c108fd34a923
+  languageName: node
+  linkType: hard
+
+"@srhazi/gooey@0.6.1, @srhazi/gooey@workspace:.":
   version: 0.0.0-use.local
   resolution: "@srhazi/gooey@workspace:."
   dependencies:
     "@hpcc-js/wasm": ^1.12.7
-    "@srhazi/test-jig": "git+https://git.abstract.properties/test-jig.git#7dd27f0445d14820cf2be13317e52a6ffccaa350"
+    "@srhazi/gooey-test": 0.2.0
     "@types/lodash": ^4.14.174
     "@typescript-eslint/eslint-plugin": ^5.2.0
     "@typescript-eslint/parser": ^5.2.0
@@ -126,24 +137,6 @@ __metadata:
     vite: latest
   languageName: unknown
   linkType: soft
-
-"@srhazi/revise@npm:0.5.0":
-  version: 0.5.0
-  resolution: "@srhazi/revise@npm:0.5.0"
-  checksum: c23bfdee8b31520b30daf12a2440107590b59d0b66899a54e3654ea850fafcbfd1b2f8d931b9ddb93b60ba73a7e2d44bafaa4b98297a34d04416ad6a50e41300
-  languageName: node
-  linkType: hard
-
-"@srhazi/test-jig@git+https://git.abstract.properties/test-jig.git#7dd27f0445d14820cf2be13317e52a6ffccaa350":
-  version: 0.0.1
-  resolution: "@srhazi/test-jig@https://git.abstract.properties/test-jig.git#commit=7dd27f0445d14820cf2be13317e52a6ffccaa350"
-  dependencies:
-    "@srhazi/revise": 0.5.0
-    lodash: ^4.17.21
-    yargs: ^17.3.1
-  checksum: 6a33b461a26c67b23297d88507fcda2263d1056886a124141aceff449e8cd076b46e3c28c3d7153209fc5a1ac8610250b919875b52138deb4a1710399112b1ec
-  languageName: node
-  linkType: hard
 
 "@tootallnate/once@npm:1":
   version: 1.1.2

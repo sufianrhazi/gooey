@@ -10,7 +10,7 @@ import Gooey, {
     createContext,
     subscribe,
 } from './index';
-import { suite, test, beforeEach, assert } from '@srhazi/test-jig';
+import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
 

@@ -1,4 +1,4 @@
-import { suite, test, assert, beforeEach } from '@srhazi/test-jig';
+import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
 import { flush, retain, release, subscribe } from './calc';
 
