@@ -6,8 +6,7 @@ export type NoChildren = typeof NoChildren;
 /**
  * The core type that can be used as a child or root of a JSX expression
  */
-export type JSXNodeSingle =
-    // Simple literal types:
+export type JSXNode =
     | string
     | number
     | boolean
@@ -20,11 +19,6 @@ export type JSXNodeSingle =
     | Context<any>
     | View<JSXNode>
     | RenderedElement<any, any, any>;
-
-/**
- * The core type that can be used as a child or root of a JSX expression
- */
-export type JSXNode = JSXNodeSingle | Array<JSXNodeSingle>;
 
 declare global {
     // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -54,8 +48,16 @@ type ComponentListeners = {
     onEffect: (callback: EffectCallback) => void;
     getContext: <TVal>(context: Context<TVal>) => TVal;
 };
+/**
+ * This is a big ol hack that allows components which don't declare any props (const MyComponent: Component<{}> = ...) to enforce that no children can be passed.
+ * Why does this work? {} types as function properties accept _any_ props
+ *
+ * See:
+ * - https://www.typescriptlang.org/play?jsx=1#code/C4TwDgpgBAShB2ATCAnCiDCB7AtmL8CwUAvFAN5QDGWWANgFxQBGtdEAhvFAL4DcAKGRU6HNNQIBnYgFd4MyegDKIHK0ZQ5ASwCOM6JNXrBoSFGx4CRADwAVAAoosYSQD5SUABRgnLpg99JKAAyCigAbTkFZSN6AF0AfiZWek5uHgBKUnc4JFR0C3xCeGBBIQgRMWh4DhwISTAOKmgAKSUADQoBKB6oU2gASRKULXhJLSoAUXY6kqCycm7e5Yg8UCZF5eWeJa2oAC9ULA3dvd6AfXOoxUQkvpR9ABpT7ZfeqxOzraoACy06RBoeBMNrtAB001WREEXx4zy+VgA8mBgJ8vr1fv9AQg7qCITNoW8ejsvjgZHRgFo0ejqH8AUCQR18VCSuE4jCznCiVAyRStMjUV0aT1MfScYzwZDZsA2Ry9lyEYRESgALLkynU9Gi7HAqB4qVEKAAHz1TINrPZ3IVZyRqvV-JRmq+2qBuLNBJKxtNko9MstsPhZ3CVAUwFw5sF0hG8AA5nEnUGQ9Jw76AILAYAjZgyYAQJhR0ZxphcEByrb8U47U6jXMoABmTWgEYwdJ16czWmzuaFZxdCA2Fdep36UAjHgLsa98jUqC9KXYXC9cmQddG6Cn5LoXtyyDQmFwRUJVYA9MeBKeoEMO2MJlAIL7JOez0-R2sQFAfM4gp49PVKQQmAAdx+d9ECweo+j+IJmAgH4OAAN2gYAoKgQCOBABIMgEaxVhRd9j1cQQcLfVxrAADygAjrGPXDQEI7DaJAUiKKoljSJokiygvAAtI5aSxIFsMOJxKPo6xhKwZjROoiSxNk8jpLYmSjnol9EUIO8yKaYhtWwqxRKI-SpKo48rDEsyFNY6TTMIVSL3U6BnH-Got106wkRRAy9KVTzjPYjzgHMnzAssvzqICuzjygNU+TAdhNO0-ixXgbDeUpLzrDSrQoDC48srE-LQqKvL7Ui6LyS0OLHJRLQCA4VzW0EzL7QFDKsta3L2pRAqWu6oqlJKvkBTKyYtKoYA6HffSsBQHkZugPsUvcpU7T5DLbRi9Lco20rDJWzatDCgadr5MqBVqlzJqgabZpweakp1LwSygacYJQLDlogZUDtagi9q+1bKQ64qTqB7r-u+3qQqU479qhyKX0KKxPXvFlgEfC8BAEGgxmISY3yYJHimAaxyB4dwyE8LISHcTxKBoegmEzfReAyQQcekKBeKcQmD2RkmyYprxqdp+m2CZh5oEydmpGIBzecsYnSYehlvWZaVeCFqnsi8MXGfuFnpex2WoAcgUFcPEplcWt0fTRzWPG1mndYkfXmaltnjdx8q+Qt-nrca-s1YjNkHcpkWXYZjR3dZmXvZ+x1zD5pX6cD+BbfVohQ-Jx2I7p13o8l2Ovc5s3AapJPFZsVOBKD-VfS9eu0ezrW871wvDc9jm5bhobE6J6uVfFYOG5NJvpRb3OdfzqOJc7riovxvCP0CLxf2kC6gJAqAwIg5CtGg2CEKQlC0Iwj6l9ADLL6Y4qb7E+-+us++F65vjFuw7msAyr-ct-ojf5PxMv-LG9kNIQDGjpVs2EHIZVgblByYlEFAPYog1+sCnIXXqg9GBwU4F4IQcFJBRCUHUTNuDUBUUDpVQSuNIeS0DoZUYblA6YlWGkOPKw1+MVKrxUwXVBqtcGFQyYSIlh8MiIJ2hopayUiRqQKujdOa4gP7WDLowv6uCAbMOKuo3aWjIanQ4Xo066CaoCMURpGayiFppyevAd8r1UAfRMWDYgmi1G9zcTlXRXiHSBSIq4-xR1rJBOGgvRGydDSo2lEEUYdZUB7hfFjbul4b6O3OJ+PwFBMjT3bnPD2cdOYDC-o7LJkgNhQEuNcdAdx5xpFZnkguBTi6pIGLAym5TKmLQlJnT0uTnYz3FgbQpJdiDtLwZTTJgRulpwzmOAZotmkjNaSbAYjCpldLCD0kezc4iNMGfklZRs2lSIyVsmuyV5m+mzm3ZZMcTlrKCecmZ2y069LHGPd0eyDlLNnscruTy-GtU2a8y5Oprn2y+XbCe+zFmR2GQ8z2L50nlLXvoDeAFULb13kEfeh84KIUggfVC6FMLYQGOkjxlKSLFRpXhMS9K6IcKZUxV+pTVElL4tSwBA0uVOEZbymRJl+WSXQeAyBODrATOgNS+BdK0EUuQTDayMqzpWPMS5KVMrfqMvIcQXKOqKHSv1SEkVpruH2hoRAxKnKNGMp0XyrhFL2EqpFc6l8PCaH8K1XakR1KzmGrkURdZ8MWXBsoaOBRU0rG3Xupy55cq-E+L5UEvVfizXsR1eXM6mr6qWMcnGlRdjPDPSce9JVwLPJJu0WIhVVaAmVtrX3aRVlzUNsIkAA
+ */
+const UnusedSymbol = Symbol('unused');
 export type Component<TProps extends {}> = (
-    props: TProps,
+    props: TProps & { [UnusedSymbol]?: boolean },
     listeners: ComponentListeners
 ) => JSXNode;
 
@@ -2128,95 +2130,120 @@ export function getElementTypeMapping(
     return (ElementTypeMapping as any)[elementName]?.[property];
 }
 
-type WithCalculationsAndRef<
-    TJSXType extends JSXElementInterface,
-    TElement extends HTMLElement,
-    HasChildren extends boolean
-> = {
-    ref?: undefined | Ref<TElement> | ((current: TElement | undefined) => void);
+/**
+ * Good old bivarianceHack to allow assignability of specific event handlers to more generic event handlers :facepalm:
+ */
+type EventHandler<TEvent extends Event> =
+    | undefined
+    | {
+          bivarianceHack(event: TEvent): void;
+      }['bivarianceHack'];
 
-    'on:abort'?: (event: Event) => void;
-    'on:auxclick'?: (event: PointerEvent) => void;
-    'on:beforeinput'?: (event: InputEvent) => void;
-    'on:blur'?: (event: FocusEvent) => void;
-    'on:cancel'?: (event: Event) => void;
-    'on:change'?: (event: Event) => void;
-    'on:click'?: (event: PointerEvent) => void;
-    'on:close'?: (event: Event) => void;
-    'on:compositionend'?: (event: CompositionEvent) => void;
-    'on:compositionstart'?: (event: CompositionEvent) => void;
-    'on:compositionupdate'?: (event: CompositionEvent) => void;
-    'on:connect'?: (event: MessageEvent) => void;
-    'on:contextlost'?: (event: Event) => void;
-    'on:contextmenu'?: (event: PointerEvent) => void;
-    'on:contextrestored'?: (event: Event) => void;
-    'on:copy'?: (event: Event) => void;
-    'on:cut'?: (event: Event) => void;
-    'on:dblclick'?: (event: MouseEvent) => void;
-    'on:drag'?: (event: DragEvent) => void;
-    'on:dragend'?: (event: DragEvent) => void;
-    'on:dragenter'?: (event: DragEvent) => void;
-    'on:dragleave'?: (event: DragEvent) => void;
-    'on:dragover'?: (event: DragEvent) => void;
-    'on:dragstart'?: (event: DragEvent) => void;
-    'on:drop'?: (event: DragEvent) => void;
-    'on:emptied'?: (event: Event) => void;
-    'on:error'?: (event: Event) => void;
-    'on:focus'?: (event: FocusEvent) => void;
-    'on:focusin'?: (event: FocusEvent) => void;
-    'on:focusout'?: (event: FocusEvent) => void;
-    'on:formdata'?: (event: FormDataEvent) => void;
-    'on:hashchange'?: (event: HashChangeEvent) => void;
-    'on:input'?: (event: InputEvent) => void;
-    'on:invalid'?: (event: Event) => void;
-    'on:keydown'?: (event: KeyboardEvent) => void;
-    'on:keyup'?: (event: KeyboardEvent) => void;
-    'on:languagechange'?: (event: Event) => void;
-    'on:load'?: (event: Event) => void;
-    'on:loadstart'?: (event: Event) => void;
-    'on:message'?: (event: MessageEvent) => void;
-    'on:messageerror'?: (event: MessageEvent) => void;
-    'on:mousedown'?: (event: MouseEvent) => void;
-    'on:mouseenter'?: (event: MouseEvent) => void;
-    'on:mouseleave'?: (event: MouseEvent) => void;
-    'on:mousemove'?: (event: MouseEvent) => void;
-    'on:mouseout'?: (event: MouseEvent) => void;
-    'on:mouseover'?: (event: MouseEvent) => void;
-    'on:mouseup'?: (event: MouseEvent) => void;
-    'on:offline'?: (event: Event) => void;
-    'on:online'?: (event: Event) => void;
-    'on:open'?: (event: Event) => void;
-    'on:pagehide'?: (event: PageTransitionEvent) => void;
-    'on:pageshow'?: (event: PageTransitionEvent) => void;
-    'on:paste'?: (event: Event) => void;
-    'on:popstate'?: (event: PopStateEvent) => void;
-    'on:progress'?: (event: Event) => void;
-    'on:readystatechange'?: (event: Event) => void;
-    'on:rejectionhandled'?: (event: PromiseRejectionEvent) => void;
-    'on:reset'?: (event: Event) => void;
-    'on:securitypolicyviolation'?: (event: Event) => void;
-    'on:select'?: (event: Event) => void;
-    'on:slotchange'?: (event: Event) => void;
-    'on:stalled'?: (event: Event) => void;
-    'on:storage'?: (event: StorageEvent) => void;
-    'on:submit'?: (event: SubmitEvent) => void;
-    'on:suspend'?: (event: Event) => void;
-    'on:toggle'?: (event: Event) => void;
-    'on:unhandledrejection'?: (event: PromiseRejectionEvent) => void;
-    'on:unload'?: (event: Event) => void;
-    'on:visibilitychange'?: (event: Event) => void;
-    'on:wheel'?: (event: WheelEvent) => void;
-} & {
-    //[key: `on:${string}`]: EventHandler<Event> | undefined;
+interface JSXRefProps<TElement extends HTMLElement> {
+    ref?: undefined | Ref<TElement> | ((current: TElement | undefined) => void);
+}
+
+interface JSXEventProps {
+    'on:abort'?: EventHandler<Event>;
+    'on:auxclick'?: EventHandler<PointerEvent>;
+    'on:beforeinput'?: EventHandler<InputEvent>;
+    'on:blur'?: EventHandler<FocusEvent>;
+    'on:cancel'?: EventHandler<Event>;
+    'on:change'?: EventHandler<Event>;
+    'on:click'?: EventHandler<PointerEvent>;
+    'on:close'?: EventHandler<Event>;
+    'on:compositionend'?: EventHandler<CompositionEvent>;
+    'on:compositionstart'?: EventHandler<CompositionEvent>;
+    'on:compositionupdate'?: EventHandler<CompositionEvent>;
+    'on:connect'?: EventHandler<MessageEvent>;
+    'on:contextlost'?: EventHandler<Event>;
+    'on:contextmenu'?: EventHandler<PointerEvent>;
+    'on:contextrestored'?: EventHandler<Event>;
+    'on:copy'?: EventHandler<Event>;
+    'on:cut'?: EventHandler<Event>;
+    'on:dblclick'?: EventHandler<MouseEvent>;
+    'on:drag'?: EventHandler<DragEvent>;
+    'on:dragend'?: EventHandler<DragEvent>;
+    'on:dragenter'?: EventHandler<DragEvent>;
+    'on:dragleave'?: EventHandler<DragEvent>;
+    'on:dragover'?: EventHandler<DragEvent>;
+    'on:dragstart'?: EventHandler<DragEvent>;
+    'on:drop'?: EventHandler<DragEvent>;
+    'on:emptied'?: EventHandler<Event>;
+    'on:error'?: EventHandler<Event>;
+    'on:focus'?: EventHandler<FocusEvent>;
+    'on:focusin'?: EventHandler<FocusEvent>;
+    'on:focusout'?: EventHandler<FocusEvent>;
+    'on:formdata'?: EventHandler<FormDataEvent>;
+    'on:hashchange'?: EventHandler<HashChangeEvent>;
+    'on:input'?: EventHandler<InputEvent>;
+    'on:invalid'?: EventHandler<Event>;
+    'on:keydown'?: EventHandler<KeyboardEvent>;
+    'on:keyup'?: EventHandler<KeyboardEvent>;
+    'on:languagechange'?: EventHandler<Event>;
+    'on:load'?: EventHandler<Event>;
+    'on:loadstart'?: EventHandler<Event>;
+    'on:message'?: EventHandler<MessageEvent>;
+    'on:messageerror'?: EventHandler<MessageEvent>;
+    'on:mousedown'?: EventHandler<MouseEvent>;
+    'on:mouseenter'?: EventHandler<MouseEvent>;
+    'on:mouseleave'?: EventHandler<MouseEvent>;
+    'on:mousemove'?: EventHandler<MouseEvent>;
+    'on:mouseout'?: EventHandler<MouseEvent>;
+    'on:mouseover'?: EventHandler<MouseEvent>;
+    'on:mouseup'?: EventHandler<MouseEvent>;
+    'on:offline'?: EventHandler<Event>;
+    'on:online'?: EventHandler<Event>;
+    'on:open'?: EventHandler<Event>;
+    'on:pagehide'?: EventHandler<PageTransitionEvent>;
+    'on:pageshow'?: EventHandler<PageTransitionEvent>;
+    'on:paste'?: EventHandler<Event>;
+    'on:popstate'?: EventHandler<PopStateEvent>;
+    'on:progress'?: EventHandler<Event>;
+    'on:readystatechange'?: EventHandler<Event>;
+    'on:rejectionhandled'?: EventHandler<PromiseRejectionEvent>;
+    'on:reset'?: EventHandler<Event>;
+    'on:securitypolicyviolation'?: EventHandler<Event>;
+    'on:select'?: EventHandler<Event>;
+    'on:slotchange'?: EventHandler<Event>;
+    'on:stalled'?: EventHandler<Event>;
+    'on:storage'?: EventHandler<StorageEvent>;
+    'on:submit'?: EventHandler<SubmitEvent>;
+    'on:suspend'?: EventHandler<Event>;
+    'on:toggle'?: EventHandler<Event>;
+    'on:unhandledrejection'?: EventHandler<PromiseRejectionEvent>;
+    'on:unload'?: EventHandler<Event>;
+    'on:visibilitychange'?: EventHandler<Event>;
+    'on:wheel'?: EventHandler<WheelEvent>;
+    [key: `on:${string}`]: EventHandler<Event>;
+}
+
+interface JSXDataProps {
     [key: `data-${string}`]:
         | Calculation<string | undefined>
         | string
         | undefined;
-} & {
+}
+
+type JSXElementInterfaceProps<TJSXType extends JSXElementInterface> = {
     [Key in keyof TJSXType]:
         | (Calculation<any> & (() => TJSXType[Key]))
         | TJSXType[Key];
-} & (HasChildren extends true ? { children?: JSXNode | JSXNode[] | undefined } : {});
+};
+
+type JSXChildrenProps<HasChildren extends boolean> = HasChildren extends true
+    ? { children?: JSX.Element | JSX.Element[] }
+    : { children?: never }; // TODO: this is not correct, leads to confusing errors; figure out why the types are not working as expected here...
+
+type WithCalculationsAndRef<
+    TJSXType extends JSXElementInterface,
+    TElement extends HTMLElement,
+    HasChildren extends boolean
+> = JSXRefProps<TElement> &
+    JSXEventProps &
+    JSXDataProps &
+    JSXElementInterfaceProps<TJSXType> &
+    JSXChildrenProps<HasChildren>;
 
 export interface KnownElements {
     a: WithCalculationsAndRef<
@@ -2229,7 +2256,7 @@ export interface KnownElements {
     area: WithCalculationsAndRef<
         JSXAreaElementInterface,
         HTMLAreaElement,
-        true
+        false
     >;
     article: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
     aside: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
@@ -2242,7 +2269,7 @@ export interface KnownElements {
     base: WithCalculationsAndRef<
         JSXBaseElementInterface,
         HTMLBaseElement,
-        true
+        false
     >;
     bdi: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
     bdo: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
@@ -2256,7 +2283,7 @@ export interface KnownElements {
         HTMLBodyElement,
         true
     >;
-    br: WithCalculationsAndRef<JSXBRElementInterface, HTMLBRElement, true>;
+    br: WithCalculationsAndRef<JSXBRElementInterface, HTMLBRElement, false>;
     button: WithCalculationsAndRef<
         JSXButtonElementInterface,
         HTMLButtonElement,
@@ -2277,7 +2304,7 @@ export interface KnownElements {
     col: WithCalculationsAndRef<
         JSXTableColElementInterface,
         HTMLTableColElement,
-        true
+        false
     >;
     colgroup: WithCalculationsAndRef<
         JSXTableColElementInterface,
@@ -2318,7 +2345,7 @@ export interface KnownElements {
     embed: WithCalculationsAndRef<
         JSXEmbedElementInterface,
         HTMLEmbedElement,
-        true
+        false
     >;
     fieldset: WithCalculationsAndRef<
         JSXFieldSetElementInterface,
@@ -2370,7 +2397,7 @@ export interface KnownElements {
     >;
     header: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
     hgroup: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
-    hr: WithCalculationsAndRef<JSXHRElementInterface, HTMLHRElement, true>;
+    hr: WithCalculationsAndRef<JSXHRElementInterface, HTMLHRElement, false>;
     html: WithCalculationsAndRef<
         JSXHtmlElementInterface,
         HTMLHtmlElement,
@@ -2385,12 +2412,12 @@ export interface KnownElements {
     img: WithCalculationsAndRef<
         JSXImageElementInterface,
         HTMLImageElement,
-        true
+        false
     >;
     input: WithCalculationsAndRef<
         JSXInputElementInterface,
         HTMLInputElement,
-        true
+        false
     >;
     ins: WithCalculationsAndRef<JSXModElementInterface, HTMLModElement, true>;
     kbd: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
@@ -2408,7 +2435,7 @@ export interface KnownElements {
     link: WithCalculationsAndRef<
         JSXLinkElementInterface,
         HTMLLinkElement,
-        true
+        false
     >;
     main: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
     map: WithCalculationsAndRef<JSXMapElementInterface, HTMLMapElement, true>;
@@ -2421,7 +2448,7 @@ export interface KnownElements {
     meta: WithCalculationsAndRef<
         JSXMetaElementInterface,
         HTMLMetaElement,
-        true
+        false
     >;
     meter: WithCalculationsAndRef<
         JSXMeterElementInterface,
@@ -2463,7 +2490,7 @@ export interface KnownElements {
     param: WithCalculationsAndRef<
         JSXParamElementInterface,
         HTMLParamElement,
-        true
+        false
     >;
     picture: WithCalculationsAndRef<
         JSXPictureElementInterface,
@@ -2502,7 +2529,7 @@ export interface KnownElements {
     source: WithCalculationsAndRef<
         JSXSourceElementInterface,
         HTMLSourceElement,
-        true
+        false
     >;
     span: WithCalculationsAndRef<
         JSXSpanElementInterface,
@@ -2576,7 +2603,7 @@ export interface KnownElements {
     track: WithCalculationsAndRef<
         JSXTrackElementInterface,
         HTMLTrackElement,
-        true
+        false
     >;
     u: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
     ul: WithCalculationsAndRef<
@@ -2590,5 +2617,5 @@ export interface KnownElements {
         HTMLVideoElement,
         true
     >;
-    wbr: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    wbr: WithCalculationsAndRef<JSXElementInterface, HTMLElement, false>;
 }

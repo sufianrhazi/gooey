@@ -11,8 +11,6 @@ import Gooey, {
     subscribe,
 } from './index';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
-import { JSXNode } from './jsx';
-import { debugSubscribe } from './calc';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
 
@@ -408,7 +406,8 @@ suite('mount components', () => {
 
             onEffect(() => {
                 operations.push(
-                    `child:onEffect1:${data.value}:${divRef.current!.textContent
+                    `child:onEffect1:${data.value}:${
+                        divRef.current!.textContent
                     }`
                 );
             });
@@ -565,9 +564,9 @@ suite('mount components', () => {
         const unmount = mount(
             testRoot,
             <Parent>
-                <Child name='one' />
-                <Child name='two' />
-                <Child name='three' />
+                <Child name="one" />
+                <Child name="two" />
+                <Child name="three" />
             </Parent>
         );
 
@@ -1260,7 +1259,7 @@ suite('foreign elements', () => {
         );
         assert.isTruthy(
             testRoot.children[0].children[0].children[0] instanceof
-            SVGCircleElement
+                SVGCircleElement
         );
         assert.is(
             testRoot.children[0].children[0].children[0].getAttribute('cx'),
@@ -1317,7 +1316,7 @@ suite('foreign elements', () => {
         );
         assert.isTruthy(
             testRoot.children[0].children[0].children[0] instanceof
-            HTMLInputElement
+                HTMLInputElement
         );
     });
 
@@ -1338,7 +1337,7 @@ suite('foreign elements', () => {
             );
             assert.isTruthy(
                 testRoot.children[0].children[0].children[0] instanceof
-                MathMLElement
+                    MathMLElement
             );
         });
 
@@ -1419,26 +1418,284 @@ suite('createContext', () => {
 });
 
 // Type tests
+// eslint-disable-next-line no-constant-condition
 if (2 < 1) {
-    const ParentWithNoChildren: Component<{}> = (_props) => <div />;
-
     suite('parent with no children', () => {
+        const ParentWithNoChildren: Component<{}> = (_props) => <div />;
+
         test('typechecks with no children', () => {
             assert.isTruthy(<ParentWithNoChildren />);
         });
-        
+
         test('fails when passed one or more children', () => {
-            // @ts-expect-error children
-            assert.isTruthy(<ParentWithNoChildren><div /></ParentWithNoChildren>);
+            assert.isTruthy(
+                // @ts-expect-error
+                <ParentWithNoChildren>
+                    <div />
+                </ParentWithNoChildren>
+            );
 
-            // @ts-expect-error children
-            assert.isTruthy(<ParentWithNoChildren><div /><div /></ParentWithNoChildren>);
-
+            assert.isTruthy(
+                // @ts-expect-error
+                <ParentWithNoChildren>
+                    <div />
+                    <div />
+                </ParentWithNoChildren>
+            );
         });
     });
 
-    const ParentWithExactlyOneChild: Component<{ children: JSX.Element }> = () => <div />;
-    const ParentWithOptionallyOneChild: Component<{ children?: JSX.Element }> = () => <div />;
-    const ParentWithExactlyManyChild: Component<{ children: JSX.Element[] }> = () => <div />;
-    const ParentWithOptionallyManyChild: Component<{ children?: JSX.Element[] }> = () => <div />;
+    suite('parent with one child', () => {
+        const ParentWithExactlyOneChild: Component<{ children: JSX.Element }> =
+            () => <div />;
+        const ParentWithOptionallyOneChild: Component<{
+            children?: JSX.Element;
+        }> = () => <div />;
+
+        test('exact fails with no children', () => {
+            // @ts-expect-error
+            assert.isTruthy(<ParentWithExactlyOneChild />);
+            assert.isTruthy(<ParentWithOptionallyOneChild />);
+        });
+
+        test('typechecks with one child', () => {
+            assert.isTruthy(
+                <ParentWithExactlyOneChild>
+                    <div />
+                </ParentWithExactlyOneChild>
+            );
+            assert.isTruthy(
+                <ParentWithOptionallyOneChild>
+                    <div />
+                </ParentWithOptionallyOneChild>
+            );
+        });
+
+        test('fails with multiple children', () => {
+            assert.isTruthy(
+                // @ts-expect-error
+                <ParentWithExactlyOneChild>
+                    <div />
+                    <div />
+                </ParentWithExactlyOneChild>
+            );
+            assert.isTruthy(
+                // @ts-expect-error
+                <ParentWithOptionallyOneChild>
+                    <div />
+                    <div />
+                </ParentWithOptionallyOneChild>
+            );
+        });
+    });
+
+    suite(
+        'parent with zero or 2+ children (this is odd and a weird limitation of TypeScript & JSX)',
+        () => {
+            const ParentWithExactlyManyChild: Component<{
+                children: JSX.Element[];
+            }> = () => <div />;
+            const ParentWithOptionallyManyChild: Component<{
+                children?: JSX.Element[];
+            }> = () => <div />;
+
+            test('typechecks fails with no children', () => {
+                // @ts-expect-error
+                assert.isTruthy(<ParentWithExactlyManyChild />);
+                assert.isTruthy(<ParentWithOptionallyManyChild />);
+            });
+
+            test('fails with one child (this is odd!)', () => {
+                assert.isTruthy(
+                    // @ts-expect-error
+                    <ParentWithExactlyManyChild>
+                        <div />
+                    </ParentWithExactlyManyChild>
+                );
+                assert.isTruthy(
+                    <ParentWithOptionallyManyChild>
+                        {/* @ts-expect-error */}
+                        <div />
+                    </ParentWithOptionallyManyChild>
+                );
+            });
+
+            test('typechecks with multiple children', () => {
+                assert.isTruthy(
+                    <ParentWithExactlyManyChild>
+                        <div />
+                        <div />
+                    </ParentWithExactlyManyChild>
+                );
+                assert.isTruthy(
+                    <ParentWithOptionallyManyChild>
+                        <div />
+                        <div />
+                    </ParentWithOptionallyManyChild>
+                );
+            });
+        }
+    );
+
+    suite('parent with any number of children', () => {
+        const ParentWithOneOrMoreChildren: Component<{
+            children: JSX.Element | JSX.Element[];
+        }> = () => <div />;
+        const ParentWithOptionallyAnyChildren: Component<{
+            children?: JSX.Element | JSX.Element[];
+        }> = () => <div />;
+
+        test('typechecks fails with no children', () => {
+            // @ts-expect-error
+            assert.isTruthy(<ParentWithOneOrMoreChildren />);
+            assert.isTruthy(<ParentWithOptionallyAnyChildren />);
+        });
+
+        test('typechecks with one child (this is odd!)', () => {
+            assert.isTruthy(
+                <ParentWithOneOrMoreChildren>
+                    <div />
+                </ParentWithOneOrMoreChildren>
+            );
+            assert.isTruthy(
+                <ParentWithOptionallyAnyChildren>
+                    <div />
+                </ParentWithOptionallyAnyChildren>
+            );
+        });
+
+        test('typechecks with multiple children', () => {
+            assert.isTruthy(
+                <ParentWithOneOrMoreChildren>
+                    <div />
+                    <div />
+                </ParentWithOneOrMoreChildren>
+            );
+            assert.isTruthy(
+                <ParentWithOptionallyAnyChildren>
+                    <div />
+                    <div />
+                </ParentWithOptionallyAnyChildren>
+            );
+        });
+    });
+
+    suite('Built-in html elements', () => {
+        test('data attributes work on all element types', () => {
+            assert.isTruthy(<div data-yes="cool" />);
+            assert.isTruthy(<p data-x="cool" />);
+        });
+
+        test('unexpected attributes are rejected', () => {
+            // @ts-expect-error
+            assert.isTruthy(<div src="cool" />);
+            assert.isTruthy(<script src="cool" />);
+        });
+
+        test('on: attributes infer correctly', () => {
+            assert.isTruthy(
+                <div
+                    on:click={(e) => {
+                        const mouseEvent: PointerEvent = e;
+                        return mouseEvent;
+                    }}
+                    on:keydown={(e) => {
+                        const keyEvent: KeyboardEvent = e;
+                        return keyEvent;
+                    }}
+                    on:customevent={(e) => {
+                        const customEvent: Event = e;
+                        return customEvent;
+                    }}
+                />
+            );
+        });
+
+        test('empty elements do not accept children', () => {
+            assert.isTruthy(
+                <area>
+                    {/* @ts-expect-error */}
+                    <div />
+                </area>
+            );
+            assert.isTruthy(
+                <base>
+                    {/* @ts-expect-error */}
+                    <div />
+                </base>
+            );
+            assert.isTruthy(
+                <br>
+                    {/* @ts-expect-error */}
+                    <div />
+                </br>
+            );
+            assert.isTruthy(
+                <col>
+                    {/* @ts-expect-error */}
+                    <div />
+                </col>
+            );
+            assert.isTruthy(
+                <embed>
+                    {/* @ts-expect-error */}
+                    <div />
+                </embed>
+            );
+            assert.isTruthy(
+                <hr>
+                    {/* @ts-expect-error */}
+                    <div />
+                </hr>
+            );
+            assert.isTruthy(
+                <img>
+                    {/* @ts-expect-error */}
+                    <div />
+                </img>
+            );
+            assert.isTruthy(
+                <input>
+                    {/* @ts-expect-error */}
+                    <div />
+                </input>
+            );
+            assert.isTruthy(
+                <link>
+                    {/* @ts-expect-error */}
+                    <div />
+                </link>
+            );
+            assert.isTruthy(
+                <meta>
+                    {/* @ts-expect-error */}
+                    <div />
+                </meta>
+            );
+            assert.isTruthy(
+                <param>
+                    {/* @ts-expect-error */}
+                    <div />
+                </param>
+            );
+            assert.isTruthy(
+                <source>
+                    {/* @ts-expect-error */}
+                    <div />
+                </source>
+            );
+            assert.isTruthy(
+                <track>
+                    {/* @ts-expect-error */}
+                    <div />
+                </track>
+            );
+            assert.isTruthy(
+                <wbr>
+                    {/* @ts-expect-error */}
+                    <div />
+                </wbr>
+            );
+        });
+    });
 }

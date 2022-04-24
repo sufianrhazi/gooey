@@ -53,6 +53,7 @@ module.exports = {
         '@typescript-eslint/no-unused-vars': ['error', { args: 'none' }],
         'no-unused-vars': ['error', { args: 'none' }],
         'react/jsx-uses-react': 2,
+        '@typescript-eslint/ban-ts-comment': 0,
     },
     overrides: [
         {

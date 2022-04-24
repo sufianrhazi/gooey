@@ -12,6 +12,6 @@ export declare function trackedData<TDataTypeTag, TData extends object, TEvent, 
     subscriptionNode: Subscription;
     processFieldChange: (field: string | symbol) => void;
     processFieldDelete: (field: string | symbol) => void;
-}) => TMethods, debugName?: string): TrackedData<TData & TMethods, TDataTypeTag, TEvent>;
+}) => TMethods, debugName?: string): TrackedData<TDataTypeTag, TEvent> & TData & TMethods;
 export {};
 //# sourceMappingURL=trackeddata.d.ts.map

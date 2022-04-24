@@ -31,7 +31,6 @@ import { uniqueid } from './util';
 import {
     Component,
     JSXNode,
-    JSXNodeSingle,
     RenderedElement,
     getElementTypeMapping,
 } from './jsx';
@@ -53,7 +52,7 @@ export function createElement<TContext, TProps extends { value: TContext }, TChi
 ): RenderedElement<unknown, TContext, TChildren>;
 // Component with one required child
 export function createElement<
-    TChildren extends JSXNodeSingle,
+    TChildren extends JSXNode,
     TProps extends { children: TChildren }
 >(
     Constructor: Component<TProps>,
@@ -71,7 +70,7 @@ export function createElement<
 ): RenderedElement<Omit<TProps, "children">, any, TChildren>;
 // Component with one optional child
 export function createElement<
-    TChildren extends JSXNodeSingle,
+    TChildren extends JSXNode,
     TProps extends { children?: TChildren | undefined }
 >(
     Constructor: Component<TProps>,

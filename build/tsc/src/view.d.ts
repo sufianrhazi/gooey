@@ -1,13 +1,25 @@
 import { Context } from './types';
-import { Component, JSXNode, RenderElement } from './jsx';
+import { Component, JSXNode, RenderedElement } from './jsx';
 export declare const Fragment: ({ children }: {
     children: JSXNode[];
 }) => JSXNode[];
-export declare function createElement(Constructor: string, props?: any, ...children: JSXNode[]): RenderElement<any, any>;
-export declare function createElement<TContext>(Constructor: Context<TContext>, props: {
+export declare function createElement<TProps, TChildren extends JSXNode>(Constructor: string, props: TProps, ...children: TChildren[]): RenderedElement<TProps, unknown, TChildren>;
+export declare function createElement<TContext, TProps extends {
     value: TContext;
-}, ...children: JSXNode[]): RenderElement<TContext, any>;
-export declare function createElement<TProps extends {}>(Constructor: Component<TProps>, props: TProps, ...children: JSXNode[]): RenderElement<any, TProps>;
+}, TChildren extends JSXNode>(Constructor: Context<TContext>, props: TProps, ...children: TChildren[]): RenderedElement<unknown, TContext, TChildren>;
+export declare function createElement<TChildren extends JSXNode, TProps extends {
+    children: TChildren;
+}>(Constructor: Component<TProps>, props: Omit<TProps, "children">, children: TChildren): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+export declare function createElement<TChildren extends JSXNode, TProps extends {
+    children: TChildren[];
+}>(Constructor: Component<TProps>, props: Omit<TProps, "children">, ...children: TChildren[]): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+export declare function createElement<TChildren extends JSXNode, TProps extends {
+    children?: TChildren | undefined;
+}>(Constructor: Component<TProps>, props: Omit<TProps, "children">, children?: TChildren | undefined): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+export declare function createElement<TChildren extends JSXNode, TProps extends {
+    children?: TChildren[] | undefined;
+}>(Constructor: Component<TProps>, props: Omit<TProps, "children">, ...children: TChildren[]): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+export declare function createElement<TChildren extends JSXNode, TProps extends {}>(Constructor: Component<TProps>, props: TProps): RenderedElement<Omit<TProps, "children">, any, TChildren>;
 export declare namespace createElement {
     var Fragment: ({ children }: {
         children: JSXNode[];

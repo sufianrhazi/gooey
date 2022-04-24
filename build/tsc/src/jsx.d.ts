@@ -1,7 +1,24 @@
 import { Ref, Calculation, Collection, View, Context } from './types';
-declare type PropsWithChildren<P> = P & {
-    children?: JSXNode[];
-};
+export declare const NoChildren: unique symbol;
+export declare type NoChildren = typeof NoChildren;
+/**
+ * The core type that can be used as a child or root of a JSX expression
+ */
+export declare type JSXNode = string | number | boolean | null | undefined | symbol | Function | Calculation<JSXNode> | Collection<JSXNode> | Context<any> | View<JSXNode> | RenderedElement<any, any, any>;
+declare global {
+    namespace JSX {
+        /**
+         * The core type that can be used as a child or root of a JSX expression
+         */
+        type Element = JSXNode;
+        interface IntrinsicElements extends KnownElements {
+            [unknownElement: string]: any;
+        }
+        interface ElementChildrenAttribute {
+            children: {};
+        }
+    }
+}
 declare type OnUnmountCallback = () => void;
 declare type OnMountCallback = () => void;
 declare type EffectCallback = () => void;
@@ -11,28 +28,65 @@ declare type ComponentListeners = {
     onEffect: (callback: EffectCallback) => void;
     getContext: <TVal>(context: Context<TVal>) => TVal;
 };
-export declare type Component<P extends {}> = (props: PropsWithChildren<P>, listeners: ComponentListeners) => JSXNode;
-declare type JsxRawNode = string | number | boolean | null | undefined | Function | RenderElement<any, any>;
 /**
- * The type returnable by JSX (raw nodes)
+ * This is a big ol hack that allows components which don't declare any props (const MyComponent: Component<{}> = ...) to enforce that no children can be passed.
+ * Why does this work? {} types as function properties accept _any_ props
+ *
+ * See:
+ * - https://www.typescriptlang.org/play?jsx=1#code/C4TwDgpgBAShB2ATCAnCiDCB7AtmL8CwUAvFAN5QDGWWANgFxQBGtdEAhvFAL4DcAKGRU6HNNQIBnYgFd4MyegDKIHK0ZQ5ASwCOM6JNXrBoSFGx4CRADwAVAAoosYSQD5SUABRgnLpg99JKAAyCigAbTkFZSN6AF0AfiZWek5uHgBKUnc4JFR0C3xCeGBBIQgRMWh4DhwISTAOKmgAKSUADQoBKB6oU2gASRKULXhJLSoAUXY6kqCycm7e5Yg8UCZF5eWeJa2oAC9ULA3dvd6AfXOoxUQkvpR9ABpT7ZfeqxOzraoACy06RBoeBMNrtAB001WREEXx4zy+VgA8mBgJ8vr1fv9AQg7qCITNoW8ejsvjgZHRgFo0ejqH8AUCQR18VCSuE4jCznCiVAyRStMjUV0aT1MfScYzwZDZsA2Ry9lyEYRESgALLkynU9Gi7HAqB4qVEKAAHz1TINrPZ3IVZyRqvV-JRmq+2qBuLNBJKxtNko9MstsPhZ3CVAUwFw5sF0hG8AA5nEnUGQ9Jw76AILAYAjZgyYAQJhR0ZxphcEByrb8U47U6jXMoABmTWgEYwdJ16czWmzuaFZxdCA2Fdep36UAjHgLsa98jUqC9KXYXC9cmQddG6Cn5LoXtyyDQmFwRUJVYA9MeBKeoEMO2MJlAIL7JOez0-R2sQFAfM4gp49PVKQQmAAdx+d9ECweo+j+IJmAgH4OAAN2gYAoKgQCOBABIMgEaxVhRd9j1cQQcLfVxrAADygAjrGPXDQEI7DaJAUiKKoljSJokiygvAAtI5aSxIFsMOJxKPo6xhKwZjROoiSxNk8jpLYmSjnol9EUIO8yKaYhtWwqxRKI-SpKo48rDEsyFNY6TTMIVSL3U6BnH-Got106wkRRAy9KVTzjPYjzgHMnzAssvzqICuzjygNU+TAdhNO0-ixXgbDeUpLzrDSrQoDC48srE-LQqKvL7Ui6LyS0OLHJRLQCA4VzW0EzL7QFDKsta3L2pRAqWu6oqlJKvkBTKyYtKoYA6HffSsBQHkZugPsUvcpU7T5DLbRi9Lco20rDJWzatDCgadr5MqBVqlzJqgabZpweakp1LwSygacYJQLDlogZUDtagi9q+1bKQ64qTqB7r-u+3qQqU479qhyKX0KKxPXvFlgEfC8BAEGgxmISY3yYJHimAaxyB4dwyE8LISHcTxKBoegmEzfReAyQQcekKBeKcQmD2RkmyYprxqdp+m2CZh5oEydmpGIBzecsYnSYehlvWZaVeCFqnsi8MXGfuFnpex2WoAcgUFcPEplcWt0fTRzWPG1mndYkfXmaltnjdx8q+Qt-nrca-s1YjNkHcpkWXYZjR3dZmXvZ+x1zD5pX6cD+BbfVohQ-Jx2I7p13o8l2Ovc5s3AapJPFZsVOBKD-VfS9eu0ezrW871wvDc9jm5bhobE6J6uVfFYOG5NJvpRb3OdfzqOJc7riovxvCP0CLxf2kC6gJAqAwIg5CtGg2CEKQlC0Iwj6l9ADLL6Y4qb7E+-+us++F65vjFuw7msAyr-ct-ojf5PxMv-LG9kNIQDGjpVs2EHIZVgblByYlEFAPYog1+sCnIXXqg9GBwU4F4IQcFJBRCUHUTNuDUBUUDpVQSuNIeS0DoZUYblA6YlWGkOPKw1+MVKrxUwXVBqtcGFQyYSIlh8MiIJ2hopayUiRqQKujdOa4gP7WDLowv6uCAbMOKuo3aWjIanQ4Xo066CaoCMURpGayiFppyevAd8r1UAfRMWDYgmi1G9zcTlXRXiHSBSIq4-xR1rJBOGgvRGydDSo2lEEUYdZUB7hfFjbul4b6O3OJ+PwFBMjT3bnPD2cdOYDC-o7LJkgNhQEuNcdAdx5xpFZnkguBTi6pIGLAym5TKmLQlJnT0uTnYz3FgbQpJdiDtLwZTTJgRulpwzmOAZotmkjNaSbAYjCpldLCD0kezc4iNMGfklZRs2lSIyVsmuyV5m+mzm3ZZMcTlrKCecmZ2y069LHGPd0eyDlLNnscruTy-GtU2a8y5Oprn2y+XbCe+zFmR2GQ8z2L50nlLXvoDeAFULb13kEfeh84KIUggfVC6FMLYQGOkjxlKSLFRpXhMS9K6IcKZUxV+pTVElL4tSwBA0uVOEZbymRJl+WSXQeAyBODrATOgNS+BdK0EUuQTDayMqzpWPMS5KVMrfqMvIcQXKOqKHSv1SEkVpruH2hoRAxKnKNGMp0XyrhFL2EqpFc6l8PCaH8K1XakR1KzmGrkURdZ8MWXBsoaOBRU0rG3Xupy55cq-E+L5UEvVfizXsR1eXM6mr6qWMcnGlRdjPDPSce9JVwLPJJu0WIhVVaAmVtrX3aRVlzUNsIkAA
  */
-export declare type JSXNodeSingle = JsxRawNode | Calculation<JsxRawNode> | Calculation<JsxRawNode[]>;
-export declare type JSXNode = JSXNodeSingle | JSXNodeSingle[] | Collection<JSXNodeSingle> | View<JSXNodeSingle>;
+declare const UnusedSymbol: unique symbol;
+export declare type Component<TProps extends {}> = (props: TProps & {
+    [UnusedSymbol]?: boolean;
+}, listeners: ComponentListeners) => JSXNode;
 /**
  * The type returned by createElement
  */
-export declare type RenderElement<TContext, TProps extends {}> = {
-    __node: [Constructor: string, props?: any, ...children: JSXNode[]] | [
-        Constructor: Context<TContext>,
-        props: {
-            value: TContext;
-        },
-        ...children: JSXNode[]
-    ] | [
-        Constructor: Component<TProps>,
-        props: TProps,
-        ...children: JSXNode[]
-    ];
+export declare type RenderedElement<TProps, TContext, TChildren extends JSXNode> = {
+    type: 'intrinsic';
+    element: string;
+    props: TProps;
+    children: TChildren[];
+} | {
+    type: 'context';
+    context: Context<TContext>;
+    props: {
+        value: TContext;
+    };
+    children: TChildren[];
+} | {
+    type: 'component';
+    component: Component<TProps & {
+        children: TChildren;
+    }>;
+    props: TProps;
+    children: TChildren[];
+} | {
+    type: 'component';
+    component: Component<TProps & {
+        children?: TChildren;
+    }>;
+    props: TProps;
+    children: TChildren[];
+} | {
+    type: 'component';
+    component: Component<TProps & {
+        children: TChildren[];
+    }>;
+    props: TProps;
+    children: TChildren[];
+} | {
+    type: 'component';
+    component: Component<TProps & {
+        children?: TChildren[];
+    }>;
+    props: TProps;
+    children: TChildren[];
+} | {
+    type: 'component';
+    component: Component<TProps>;
+    props: TProps;
+    children: TChildren[];
 };
 interface MissingFromTypescriptHTMLElementProperties {
     ariaColIndexText?: string | undefined;
@@ -793,205 +847,214 @@ interface ElementTypeMappingField {
     makeIdlValue?: (jsxAttr: any) => any;
 }
 export declare function getElementTypeMapping(elementName: string, property: string): ElementTypeMappingField;
-declare type WithCalculationsAndRef<TJSXType extends JSXElementInterface, TElement extends HTMLElement> = {
+/**
+ * Good old bivarianceHack to allow assignability of specific event handlers to more generic event handlers :facepalm:
+ */
+declare type EventHandler<TEvent extends Event> = undefined | {
+    bivarianceHack(event: TEvent): void;
+}['bivarianceHack'];
+interface JSXRefProps<TElement extends HTMLElement> {
     ref?: undefined | Ref<TElement> | ((current: TElement | undefined) => void);
-    'on:abort'?: (event: Event) => void;
-    'on:auxclick'?: (event: PointerEvent) => void;
-    'on:beforeinput'?: (event: InputEvent) => void;
-    'on:blur'?: (event: FocusEvent) => void;
-    'on:cancel'?: (event: Event) => void;
-    'on:change'?: (event: Event) => void;
-    'on:click'?: (event: PointerEvent) => void;
-    'on:close'?: (event: Event) => void;
-    'on:compositionend'?: (event: CompositionEvent) => void;
-    'on:compositionstart'?: (event: CompositionEvent) => void;
-    'on:compositionupdate'?: (event: CompositionEvent) => void;
-    'on:connect'?: (event: MessageEvent) => void;
-    'on:contextlost'?: (event: Event) => void;
-    'on:contextmenu'?: (event: PointerEvent) => void;
-    'on:contextrestored'?: (event: Event) => void;
-    'on:copy'?: (event: Event) => void;
-    'on:cut'?: (event: Event) => void;
-    'on:dblclick'?: (event: MouseEvent) => void;
-    'on:drag'?: (event: DragEvent) => void;
-    'on:dragend'?: (event: DragEvent) => void;
-    'on:dragenter'?: (event: DragEvent) => void;
-    'on:dragleave'?: (event: DragEvent) => void;
-    'on:dragover'?: (event: DragEvent) => void;
-    'on:dragstart'?: (event: DragEvent) => void;
-    'on:drop'?: (event: DragEvent) => void;
-    'on:emptied'?: (event: Event) => void;
-    'on:error'?: (event: Event) => void;
-    'on:focus'?: (event: FocusEvent) => void;
-    'on:focusin'?: (event: FocusEvent) => void;
-    'on:focusout'?: (event: FocusEvent) => void;
-    'on:formdata'?: (event: FormDataEvent) => void;
-    'on:hashchange'?: (event: HashChangeEvent) => void;
-    'on:input'?: (event: InputEvent) => void;
-    'on:invalid'?: (event: Event) => void;
-    'on:keydown'?: (event: KeyboardEvent) => void;
-    'on:keyup'?: (event: KeyboardEvent) => void;
-    'on:languagechange'?: (event: Event) => void;
-    'on:load'?: (event: Event) => void;
-    'on:loadstart'?: (event: Event) => void;
-    'on:message'?: (event: MessageEvent) => void;
-    'on:messageerror'?: (event: MessageEvent) => void;
-    'on:mousedown'?: (event: MouseEvent) => void;
-    'on:mouseenter'?: (event: MouseEvent) => void;
-    'on:mouseleave'?: (event: MouseEvent) => void;
-    'on:mousemove'?: (event: MouseEvent) => void;
-    'on:mouseout'?: (event: MouseEvent) => void;
-    'on:mouseover'?: (event: MouseEvent) => void;
-    'on:mouseup'?: (event: MouseEvent) => void;
-    'on:offline'?: (event: Event) => void;
-    'on:online'?: (event: Event) => void;
-    'on:open'?: (event: Event) => void;
-    'on:pagehide'?: (event: PageTransitionEvent) => void;
-    'on:pageshow'?: (event: PageTransitionEvent) => void;
-    'on:paste'?: (event: Event) => void;
-    'on:popstate'?: (event: PopStateEvent) => void;
-    'on:progress'?: (event: Event) => void;
-    'on:readystatechange'?: (event: Event) => void;
-    'on:rejectionhandled'?: (event: PromiseRejectionEvent) => void;
-    'on:reset'?: (event: Event) => void;
-    'on:securitypolicyviolation'?: (event: Event) => void;
-    'on:select'?: (event: Event) => void;
-    'on:slotchange'?: (event: Event) => void;
-    'on:stalled'?: (event: Event) => void;
-    'on:storage'?: (event: StorageEvent) => void;
-    'on:submit'?: (event: SubmitEvent) => void;
-    'on:suspend'?: (event: Event) => void;
-    'on:toggle'?: (event: Event) => void;
-    'on:unhandledrejection'?: (event: PromiseRejectionEvent) => void;
-    'on:unload'?: (event: Event) => void;
-    'on:visibilitychange'?: (event: Event) => void;
-    'on:wheel'?: (event: WheelEvent) => void;
-} & {
+}
+interface JSXEventProps {
+    'on:abort'?: EventHandler<Event>;
+    'on:auxclick'?: EventHandler<PointerEvent>;
+    'on:beforeinput'?: EventHandler<InputEvent>;
+    'on:blur'?: EventHandler<FocusEvent>;
+    'on:cancel'?: EventHandler<Event>;
+    'on:change'?: EventHandler<Event>;
+    'on:click'?: EventHandler<PointerEvent>;
+    'on:close'?: EventHandler<Event>;
+    'on:compositionend'?: EventHandler<CompositionEvent>;
+    'on:compositionstart'?: EventHandler<CompositionEvent>;
+    'on:compositionupdate'?: EventHandler<CompositionEvent>;
+    'on:connect'?: EventHandler<MessageEvent>;
+    'on:contextlost'?: EventHandler<Event>;
+    'on:contextmenu'?: EventHandler<PointerEvent>;
+    'on:contextrestored'?: EventHandler<Event>;
+    'on:copy'?: EventHandler<Event>;
+    'on:cut'?: EventHandler<Event>;
+    'on:dblclick'?: EventHandler<MouseEvent>;
+    'on:drag'?: EventHandler<DragEvent>;
+    'on:dragend'?: EventHandler<DragEvent>;
+    'on:dragenter'?: EventHandler<DragEvent>;
+    'on:dragleave'?: EventHandler<DragEvent>;
+    'on:dragover'?: EventHandler<DragEvent>;
+    'on:dragstart'?: EventHandler<DragEvent>;
+    'on:drop'?: EventHandler<DragEvent>;
+    'on:emptied'?: EventHandler<Event>;
+    'on:error'?: EventHandler<Event>;
+    'on:focus'?: EventHandler<FocusEvent>;
+    'on:focusin'?: EventHandler<FocusEvent>;
+    'on:focusout'?: EventHandler<FocusEvent>;
+    'on:formdata'?: EventHandler<FormDataEvent>;
+    'on:hashchange'?: EventHandler<HashChangeEvent>;
+    'on:input'?: EventHandler<InputEvent>;
+    'on:invalid'?: EventHandler<Event>;
+    'on:keydown'?: EventHandler<KeyboardEvent>;
+    'on:keyup'?: EventHandler<KeyboardEvent>;
+    'on:languagechange'?: EventHandler<Event>;
+    'on:load'?: EventHandler<Event>;
+    'on:loadstart'?: EventHandler<Event>;
+    'on:message'?: EventHandler<MessageEvent>;
+    'on:messageerror'?: EventHandler<MessageEvent>;
+    'on:mousedown'?: EventHandler<MouseEvent>;
+    'on:mouseenter'?: EventHandler<MouseEvent>;
+    'on:mouseleave'?: EventHandler<MouseEvent>;
+    'on:mousemove'?: EventHandler<MouseEvent>;
+    'on:mouseout'?: EventHandler<MouseEvent>;
+    'on:mouseover'?: EventHandler<MouseEvent>;
+    'on:mouseup'?: EventHandler<MouseEvent>;
+    'on:offline'?: EventHandler<Event>;
+    'on:online'?: EventHandler<Event>;
+    'on:open'?: EventHandler<Event>;
+    'on:pagehide'?: EventHandler<PageTransitionEvent>;
+    'on:pageshow'?: EventHandler<PageTransitionEvent>;
+    'on:paste'?: EventHandler<Event>;
+    'on:popstate'?: EventHandler<PopStateEvent>;
+    'on:progress'?: EventHandler<Event>;
+    'on:readystatechange'?: EventHandler<Event>;
+    'on:rejectionhandled'?: EventHandler<PromiseRejectionEvent>;
+    'on:reset'?: EventHandler<Event>;
+    'on:securitypolicyviolation'?: EventHandler<Event>;
+    'on:select'?: EventHandler<Event>;
+    'on:slotchange'?: EventHandler<Event>;
+    'on:stalled'?: EventHandler<Event>;
+    'on:storage'?: EventHandler<StorageEvent>;
+    'on:submit'?: EventHandler<SubmitEvent>;
+    'on:suspend'?: EventHandler<Event>;
+    'on:toggle'?: EventHandler<Event>;
+    'on:unhandledrejection'?: EventHandler<PromiseRejectionEvent>;
+    'on:unload'?: EventHandler<Event>;
+    'on:visibilitychange'?: EventHandler<Event>;
+    'on:wheel'?: EventHandler<WheelEvent>;
+    [key: `on:${string}`]: EventHandler<Event>;
+}
+interface JSXDataProps {
     [key: `data-${string}`]: Calculation<string | undefined> | string | undefined;
-} & {
+}
+declare type JSXElementInterfaceProps<TJSXType extends JSXElementInterface> = {
     [Key in keyof TJSXType]: (Calculation<any> & (() => TJSXType[Key])) | TJSXType[Key];
 };
+declare type JSXChildrenProps<HasChildren extends boolean> = HasChildren extends true ? {
+    children?: JSX.Element | JSX.Element[];
+} : {
+    children?: never;
+};
+declare type WithCalculationsAndRef<TJSXType extends JSXElementInterface, TElement extends HTMLElement, HasChildren extends boolean> = JSXRefProps<TElement> & JSXEventProps & JSXDataProps & JSXElementInterfaceProps<TJSXType> & JSXChildrenProps<HasChildren>;
 export interface KnownElements {
-    a: WithCalculationsAndRef<JSXAnchorElementInterface, HTMLAnchorElement>;
-    abbr: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    address: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    area: WithCalculationsAndRef<JSXAreaElementInterface, HTMLAreaElement>;
-    article: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    aside: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    audio: WithCalculationsAndRef<JSXAudioElementInterface, HTMLAudioElement>;
-    b: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    base: WithCalculationsAndRef<JSXBaseElementInterface, HTMLBaseElement>;
-    bdi: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    bdo: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    blockquote: WithCalculationsAndRef<JSXQuoteElementInterface, HTMLQuoteElement>;
-    body: WithCalculationsAndRef<JSXBodyElementInterface, HTMLBodyElement>;
-    br: WithCalculationsAndRef<JSXBRElementInterface, HTMLBRElement>;
-    button: WithCalculationsAndRef<JSXButtonElementInterface, HTMLButtonElement>;
-    canvas: WithCalculationsAndRef<JSXCanvasElementInterface, HTMLCanvasElement>;
-    caption: WithCalculationsAndRef<JSXTableCaptionElementInterface, HTMLTableCaptionElement>;
-    cite: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    code: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    col: WithCalculationsAndRef<JSXTableColElementInterface, HTMLTableColElement>;
-    colgroup: WithCalculationsAndRef<JSXTableColElementInterface, HTMLTableColElement>;
-    data: WithCalculationsAndRef<JSXDataElementInterface, HTMLDataElement>;
-    datalist: WithCalculationsAndRef<JSXDataListElementInterface, HTMLDataListElement>;
-    dd: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    del: WithCalculationsAndRef<JSXModElementInterface, HTMLModElement>;
-    details: WithCalculationsAndRef<JSXDetailsElementInterface, HTMLDetailsElement>;
-    dfn: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    dialog: WithCalculationsAndRef<JSXDialogElementInterface, HTMLDialogElement>;
-    div: WithCalculationsAndRef<JSXDivElementInterface, HTMLDivElement>;
-    dl: WithCalculationsAndRef<JSXDListElementInterface, HTMLDListElement>;
-    dt: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    em: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    embed: WithCalculationsAndRef<JSXEmbedElementInterface, HTMLEmbedElement>;
-    fieldset: WithCalculationsAndRef<JSXFieldSetElementInterface, HTMLFieldSetElement>;
-    figcaption: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    figure: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    footer: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    form: WithCalculationsAndRef<JSXFormElementInterface, HTMLFormElement>;
-    h1: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement>;
-    h2: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement>;
-    h3: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement>;
-    h4: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement>;
-    h5: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement>;
-    h6: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement>;
-    head: WithCalculationsAndRef<JSXHeadElementInterface, HTMLHeadElement>;
-    header: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    hgroup: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    hr: WithCalculationsAndRef<JSXHRElementInterface, HTMLHRElement>;
-    html: WithCalculationsAndRef<JSXHtmlElementInterface, HTMLHtmlElement>;
-    i: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    iframe: WithCalculationsAndRef<JSXIFrameElementInterface, HTMLIFrameElement>;
-    img: WithCalculationsAndRef<JSXImageElementInterface, HTMLImageElement>;
-    input: WithCalculationsAndRef<JSXInputElementInterface, HTMLInputElement>;
-    ins: WithCalculationsAndRef<JSXModElementInterface, HTMLModElement>;
-    kbd: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    label: WithCalculationsAndRef<JSXLabelElementInterface, HTMLLabelElement>;
-    legend: WithCalculationsAndRef<JSXLegendElementInterface, HTMLLegendElement>;
-    li: WithCalculationsAndRef<JSXLIElementInterface, HTMLLIElement>;
-    link: WithCalculationsAndRef<JSXLinkElementInterface, HTMLLinkElement>;
-    main: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    map: WithCalculationsAndRef<JSXMapElementInterface, HTMLMapElement>;
-    mark: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    menu: WithCalculationsAndRef<JSXMenuElementInterface, HTMLMenuElement>;
-    meta: WithCalculationsAndRef<JSXMetaElementInterface, HTMLMetaElement>;
-    meter: WithCalculationsAndRef<JSXMeterElementInterface, HTMLMeterElement>;
-    nav: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    noscript: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    object: WithCalculationsAndRef<JSXObjectElementInterface, HTMLObjectElement>;
-    ol: WithCalculationsAndRef<JSXOListElementInterface, HTMLOListElement>;
-    optgroup: WithCalculationsAndRef<JSXOptGroupElementInterface, HTMLOptGroupElement>;
-    option: WithCalculationsAndRef<JSXOptionElementInterface, HTMLOptionElement>;
-    output: WithCalculationsAndRef<JSXOutputElementInterface, HTMLOutputElement>;
-    p: WithCalculationsAndRef<JSXParagraphElementInterface, HTMLParagraphElement>;
-    param: WithCalculationsAndRef<JSXParamElementInterface, HTMLParamElement>;
-    picture: WithCalculationsAndRef<JSXPictureElementInterface, HTMLPictureElement>;
-    pre: WithCalculationsAndRef<JSXPreElementInterface, HTMLPreElement>;
-    progress: WithCalculationsAndRef<JSXProgressElementInterface, HTMLProgressElement>;
-    q: WithCalculationsAndRef<JSXQuoteElementInterface, HTMLQuoteElement>;
-    rp: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    rt: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    ruby: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    s: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    samp: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    script: WithCalculationsAndRef<JSXScriptElementInterface, HTMLScriptElement>;
-    section: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    select: WithCalculationsAndRef<JSXSelectElementInterface, HTMLSelectElement>;
-    slot: WithCalculationsAndRef<JSXSlotElementInterface, HTMLSlotElement>;
-    small: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    source: WithCalculationsAndRef<JSXSourceElementInterface, HTMLSourceElement>;
-    span: WithCalculationsAndRef<JSXSpanElementInterface, HTMLSpanElement>;
-    strong: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    style: WithCalculationsAndRef<JSXStyleElementInterface, HTMLStyleElement>;
-    sub: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    summary: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    sup: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    table: WithCalculationsAndRef<JSXTableElementInterface, HTMLTableElement>;
-    tbody: WithCalculationsAndRef<JSXTableSectionElementInterface, HTMLTableSectionElement>;
-    td: WithCalculationsAndRef<JSXTableCellElementInterface, HTMLTableCellElement>;
-    template: WithCalculationsAndRef<JSXTemplateElementInterface, HTMLTemplateElement>;
-    textarea: WithCalculationsAndRef<JSXTextAreaElementInterface, HTMLTextAreaElement>;
-    tfoot: WithCalculationsAndRef<JSXTableSectionElementInterface, HTMLTableSectionElement>;
-    th: WithCalculationsAndRef<JSXTableCellElementInterface, HTMLTableCellElement>;
-    thead: WithCalculationsAndRef<JSXTableSectionElementInterface, HTMLTableSectionElement>;
-    time: WithCalculationsAndRef<JSXTimeElementInterface, HTMLTimeElement>;
-    title: WithCalculationsAndRef<JSXTitleElementInterface, HTMLTitleElement>;
-    tr: WithCalculationsAndRef<JSXTableRowElementInterface, HTMLTableRowElement>;
-    track: WithCalculationsAndRef<JSXTrackElementInterface, HTMLTrackElement>;
-    u: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    ul: WithCalculationsAndRef<JSXUListElementInterface, HTMLUListElement>;
-    var: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    video: WithCalculationsAndRef<JSXVideoElementInterface, HTMLVideoElement>;
-    wbr: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-}
-declare global {
-    namespace JSX {
-        interface IntrinsicElements extends KnownElements {
-            [unknownElement: string]: any;
-        }
-        type Element = JSXNode;
-    }
+    a: WithCalculationsAndRef<JSXAnchorElementInterface, HTMLAnchorElement, true>;
+    abbr: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    address: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    area: WithCalculationsAndRef<JSXAreaElementInterface, HTMLAreaElement, false>;
+    article: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    aside: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    audio: WithCalculationsAndRef<JSXAudioElementInterface, HTMLAudioElement, true>;
+    b: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    base: WithCalculationsAndRef<JSXBaseElementInterface, HTMLBaseElement, false>;
+    bdi: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    bdo: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    blockquote: WithCalculationsAndRef<JSXQuoteElementInterface, HTMLQuoteElement, true>;
+    body: WithCalculationsAndRef<JSXBodyElementInterface, HTMLBodyElement, true>;
+    br: WithCalculationsAndRef<JSXBRElementInterface, HTMLBRElement, false>;
+    button: WithCalculationsAndRef<JSXButtonElementInterface, HTMLButtonElement, true>;
+    canvas: WithCalculationsAndRef<JSXCanvasElementInterface, HTMLCanvasElement, true>;
+    caption: WithCalculationsAndRef<JSXTableCaptionElementInterface, HTMLTableCaptionElement, true>;
+    cite: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    code: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    col: WithCalculationsAndRef<JSXTableColElementInterface, HTMLTableColElement, false>;
+    colgroup: WithCalculationsAndRef<JSXTableColElementInterface, HTMLTableColElement, true>;
+    data: WithCalculationsAndRef<JSXDataElementInterface, HTMLDataElement, true>;
+    datalist: WithCalculationsAndRef<JSXDataListElementInterface, HTMLDataListElement, true>;
+    dd: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    del: WithCalculationsAndRef<JSXModElementInterface, HTMLModElement, true>;
+    details: WithCalculationsAndRef<JSXDetailsElementInterface, HTMLDetailsElement, true>;
+    dfn: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    dialog: WithCalculationsAndRef<JSXDialogElementInterface, HTMLDialogElement, true>;
+    div: WithCalculationsAndRef<JSXDivElementInterface, HTMLDivElement, true>;
+    dl: WithCalculationsAndRef<JSXDListElementInterface, HTMLDListElement, true>;
+    dt: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    em: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    embed: WithCalculationsAndRef<JSXEmbedElementInterface, HTMLEmbedElement, false>;
+    fieldset: WithCalculationsAndRef<JSXFieldSetElementInterface, HTMLFieldSetElement, true>;
+    figcaption: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    figure: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    footer: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    form: WithCalculationsAndRef<JSXFormElementInterface, HTMLFormElement, true>;
+    h1: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement, true>;
+    h2: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement, true>;
+    h3: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement, true>;
+    h4: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement, true>;
+    h5: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement, true>;
+    h6: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement, true>;
+    head: WithCalculationsAndRef<JSXHeadElementInterface, HTMLHeadElement, true>;
+    header: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    hgroup: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    hr: WithCalculationsAndRef<JSXHRElementInterface, HTMLHRElement, false>;
+    html: WithCalculationsAndRef<JSXHtmlElementInterface, HTMLHtmlElement, true>;
+    i: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    iframe: WithCalculationsAndRef<JSXIFrameElementInterface, HTMLIFrameElement, true>;
+    img: WithCalculationsAndRef<JSXImageElementInterface, HTMLImageElement, false>;
+    input: WithCalculationsAndRef<JSXInputElementInterface, HTMLInputElement, false>;
+    ins: WithCalculationsAndRef<JSXModElementInterface, HTMLModElement, true>;
+    kbd: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    label: WithCalculationsAndRef<JSXLabelElementInterface, HTMLLabelElement, true>;
+    legend: WithCalculationsAndRef<JSXLegendElementInterface, HTMLLegendElement, true>;
+    li: WithCalculationsAndRef<JSXLIElementInterface, HTMLLIElement, true>;
+    link: WithCalculationsAndRef<JSXLinkElementInterface, HTMLLinkElement, false>;
+    main: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    map: WithCalculationsAndRef<JSXMapElementInterface, HTMLMapElement, true>;
+    mark: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    menu: WithCalculationsAndRef<JSXMenuElementInterface, HTMLMenuElement, true>;
+    meta: WithCalculationsAndRef<JSXMetaElementInterface, HTMLMetaElement, false>;
+    meter: WithCalculationsAndRef<JSXMeterElementInterface, HTMLMeterElement, true>;
+    nav: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    noscript: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    object: WithCalculationsAndRef<JSXObjectElementInterface, HTMLObjectElement, true>;
+    ol: WithCalculationsAndRef<JSXOListElementInterface, HTMLOListElement, true>;
+    optgroup: WithCalculationsAndRef<JSXOptGroupElementInterface, HTMLOptGroupElement, true>;
+    option: WithCalculationsAndRef<JSXOptionElementInterface, HTMLOptionElement, true>;
+    output: WithCalculationsAndRef<JSXOutputElementInterface, HTMLOutputElement, true>;
+    p: WithCalculationsAndRef<JSXParagraphElementInterface, HTMLParagraphElement, true>;
+    param: WithCalculationsAndRef<JSXParamElementInterface, HTMLParamElement, false>;
+    picture: WithCalculationsAndRef<JSXPictureElementInterface, HTMLPictureElement, true>;
+    pre: WithCalculationsAndRef<JSXPreElementInterface, HTMLPreElement, true>;
+    progress: WithCalculationsAndRef<JSXProgressElementInterface, HTMLProgressElement, true>;
+    q: WithCalculationsAndRef<JSXQuoteElementInterface, HTMLQuoteElement, true>;
+    rp: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    rt: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    ruby: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    s: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    samp: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    script: WithCalculationsAndRef<JSXScriptElementInterface, HTMLScriptElement, true>;
+    section: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    select: WithCalculationsAndRef<JSXSelectElementInterface, HTMLSelectElement, true>;
+    slot: WithCalculationsAndRef<JSXSlotElementInterface, HTMLSlotElement, true>;
+    small: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    source: WithCalculationsAndRef<JSXSourceElementInterface, HTMLSourceElement, false>;
+    span: WithCalculationsAndRef<JSXSpanElementInterface, HTMLSpanElement, true>;
+    strong: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    style: WithCalculationsAndRef<JSXStyleElementInterface, HTMLStyleElement, true>;
+    sub: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    summary: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    sup: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    table: WithCalculationsAndRef<JSXTableElementInterface, HTMLTableElement, true>;
+    tbody: WithCalculationsAndRef<JSXTableSectionElementInterface, HTMLTableSectionElement, true>;
+    td: WithCalculationsAndRef<JSXTableCellElementInterface, HTMLTableCellElement, true>;
+    template: WithCalculationsAndRef<JSXTemplateElementInterface, HTMLTemplateElement, true>;
+    textarea: WithCalculationsAndRef<JSXTextAreaElementInterface, HTMLTextAreaElement, true>;
+    tfoot: WithCalculationsAndRef<JSXTableSectionElementInterface, HTMLTableSectionElement, true>;
+    th: WithCalculationsAndRef<JSXTableCellElementInterface, HTMLTableCellElement, true>;
+    thead: WithCalculationsAndRef<JSXTableSectionElementInterface, HTMLTableSectionElement, true>;
+    time: WithCalculationsAndRef<JSXTimeElementInterface, HTMLTimeElement, true>;
+    title: WithCalculationsAndRef<JSXTitleElementInterface, HTMLTitleElement, true>;
+    tr: WithCalculationsAndRef<JSXTableRowElementInterface, HTMLTableRowElement, true>;
+    track: WithCalculationsAndRef<JSXTrackElementInterface, HTMLTrackElement, false>;
+    u: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    ul: WithCalculationsAndRef<JSXUListElementInterface, HTMLUListElement, true>;
+    var: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    video: WithCalculationsAndRef<JSXVideoElementInterface, HTMLVideoElement, true>;
+    wbr: WithCalculationsAndRef<JSXElementInterface, HTMLElement, false>;
 }
 export {};
 //# sourceMappingURL=jsx.d.ts.map

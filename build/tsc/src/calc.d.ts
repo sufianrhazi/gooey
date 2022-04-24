@@ -70,10 +70,10 @@ export declare function release(item: GraphNode): void;
  */
 export declare function debug(activeItem?: any): string;
 export declare function debugState(): {
-    globalDependencyGraph: Graph<any>;
+    globalDependencyGraph: Graph<GraphNode>;
     activeCalculations: {
         calc: Calculation<any> | null;
-        deps: any[];
+        deps: GraphNode[];
     }[];
     refcountMap: Record<string, number>;
     needsFlush: boolean;

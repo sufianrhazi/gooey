@@ -3,6 +3,7 @@ export declare class InvariantError extends Error {
     constructor(msg: string, detail?: any);
 }
 export declare const TypeTag: unique symbol;
+export declare const ContextGetterTag: unique symbol;
 export declare const DataTypeTag: unique symbol;
 export declare const CalculationTypeTag: unique symbol;
 export declare const CalculationRecalculateTag: unique symbol;
@@ -70,7 +71,8 @@ export declare type CollectionEvent<T> = {
     type: 'sort';
     indexes: readonly number[];
 };
-export declare type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementation & {
+export declare type TrackedData<TTypeTag, TEvent> = {
+    $__id: string;
     [TypeTag]: 'data';
     [DataTypeTag]: TTypeTag;
     [FlushKey]: () => boolean;
@@ -83,29 +85,36 @@ export declare type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementa
 /**
  * A mutable object to hold state
  */
-export declare type Model<T> = TrackedData<T, 'model', ModelEvent> & {
+interface ModelMethods<T extends {}> {
     [MakeModelViewKey]: <V>(modelViewSpec: ViewSpec<Readonly<T>, V, ModelEvent>, debugName?: string) => View<V>;
+}
+export declare type Model<T> = TrackedData<'model', ModelEvent> & ModelMethods<T> & {
+    [Key in keyof T]: T[Key];
 };
 /**
  * A mutable array to hold state, with some additional convenience methods
  */
-export declare type Collection<T> = TrackedData<Array<T>, 'collection', CollectionEvent<T>> & {
+interface CollectionMethods<T> {
     makeView<V>(viewSpec: ViewSpec<readonly T[], V, CollectionEvent<T>>, debugName?: string): View<V>;
     mapView<V>(mapFn: MappingFunction<T, V>, debugName?: string): View<V>;
     filterView(filterFn: FilterFunction<T>, debugName?: string): View<T>;
     flatMapView<V>(flatMapFn: MappingFunction<T, V[]>, debugName?: string): View<V>;
     reject(shouldReject: (item: T, index: number) => boolean): T[];
     moveSlice(fromIndex: number, fromCount: number, toIndex: number): void;
-};
+}
+export interface Collection<T> extends TrackedData<'collection', CollectionEvent<T>>, CollectionMethods<T>, Array<T> {
+}
 /**
  * A readonly array to hold projected state
  */
-export declare type View<T> = TrackedData<ReadonlyArray<T>, 'collection', CollectionEvent<T>> & {
+interface ViewMethods<T> {
     makeView<V>(viewSpec: ViewSpec<readonly T[], V, CollectionEvent<T>>, debugName?: string): View<V>;
     mapView<V>(mapFn: MappingFunction<T, V>, debugName?: string): View<V>;
     filterView(filterFn: FilterFunction<T>, debugName?: string): View<T>;
     flatMapView<V>(flatMapFn: MappingFunction<T, V[]>, debugName?: string): View<V>;
-};
+}
+export interface View<T> extends TrackedData<'collection', CollectionEvent<T>>, ViewMethods<T>, ReadonlyArray<T> {
+}
 export interface Subscription {
     $__id: string;
     [TypeTag]: 'subscription';
@@ -120,17 +129,12 @@ export interface NodeOrdering {
  * A key-value pair that is active for a subtree
  */
 export interface Context<TValue> {
-    /**
-     * Note: although this function has a signature, it does not actually take arguments when called directly.
-     *
-     * This is solely present so that TypeScript can auto-complete the "value" prop of Contexts
-     */
-    (unusedOnlyForJsxTypeInferrence?: {
-        value: TValue;
-    }): TValue;
+    (): never;
+    [ContextGetterTag]: () => TValue;
     [TypeTag]: 'context';
 }
 export declare function createContext<TValue>(val: TValue): Context<TValue>;
+export declare function getContext<TValue>(context: Context<TValue>): TValue;
 export declare function isContext(val: any): val is Context<any>;
 /**
  * A calculation cell that recalculates when dependencies change
@@ -160,5 +164,8 @@ export declare function isCalculation(thing: any): thing is Calculation<any>;
 export declare function isEffect(thing: Calculation<unknown>): boolean;
 export declare function isSubscription(thing: any): thing is Subscription;
 export declare function isNodeOrdering(thing: any): thing is NodeOrdering;
-export declare type GraphNode = Model<any> | Collection<any> | Calculation<any> | ModelField | View<any> | Subscription | NodeOrdering;
+export declare type GraphNode = {
+    $__id: string;
+};
+export {};
 //# sourceMappingURL=types.d.ts.map
