@@ -7,6 +7,7 @@ export class InvariantError extends Error {
 }
 
 export const TypeTag = Symbol('typeTag');
+export const ContextGetterTag = Symbol('contextGetter');
 export const DataTypeTag = Symbol('dataTypeTag');
 export const CalculationTypeTag = Symbol('calculationType');
 export const CalculationRecalculateTag = Symbol('calculationRecalculate');
@@ -46,18 +47,18 @@ export function ref<T>(val?: T): Ref<T> {
 
 export type ModelEvent =
     | {
-          type: 'add';
-          key: string | number | symbol;
-      }
+        type: 'add';
+        key: string | number | symbol;
+    }
     | {
-          type: 'set';
-          key: string | number | symbol;
-          value: any;
-      }
+        type: 'set';
+        key: string | number | symbol;
+        value: any;
+    }
     | {
-          type: 'delete';
-          key: string | number | symbol;
-      };
+        type: 'delete';
+        key: string | number | symbol;
+    };
 export type ModelObserver = (event: ModelEvent) => void;
 
 export type EqualityFunc<T> = (a: T, b: T) => boolean;
@@ -83,26 +84,26 @@ export interface ViewSpec<TInitialize, TItem, TEvent> {
 
 export type CollectionEvent<T> =
     | {
-          type: 'splice';
-          index: number;
-          count: number;
-          items: readonly T[];
-          removed: readonly T[];
-      }
+        type: 'splice';
+        index: number;
+        count: number;
+        items: readonly T[];
+        removed: readonly T[];
+    }
     | {
-          type: 'move';
-          fromIndex: number;
-          fromCount: number;
-          toIndex: number;
-          moved: readonly T[];
-      }
+        type: 'move';
+        fromIndex: number;
+        fromCount: number;
+        toIndex: number;
+        moved: readonly T[];
+    }
     | {
-          type: 'sort';
-          indexes: readonly number[];
-      };
+        type: 'sort';
+        indexes: readonly number[];
+    };
 
-export type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementation & {
-    // Note: contains $__id: string
+export type TrackedData<TTypeTag, TEvent> = {
+    $__id: string;
     [TypeTag]: 'data';
     [DataTypeTag]: TTypeTag;
     [FlushKey]: () => boolean;
@@ -118,21 +119,20 @@ export type TrackedData<TImplementation, TTypeTag, TEvent> = TImplementation & {
 /**
  * A mutable object to hold state
  */
-export type Model<T> = TrackedData<T, 'model', ModelEvent> & {
+interface ModelMethods<T extends {}> {
     [MakeModelViewKey]: <V>(
         modelViewSpec: ViewSpec<Readonly<T>, V, ModelEvent>,
         debugName?: string
     ) => View<V>;
+}
+export type Model<T> = TrackedData<'model', ModelEvent> & ModelMethods<T> & {
+    [Key in keyof T]: T[Key];
 };
 
 /**
  * A mutable array to hold state, with some additional convenience methods
  */
-export type Collection<T> = TrackedData<
-    Array<T>,
-    'collection',
-    CollectionEvent<T>
-> & {
+interface CollectionMethods<T> {
     makeView<V>(
         viewSpec: ViewSpec<readonly T[], V, CollectionEvent<T>>,
         debugName?: string
@@ -145,16 +145,14 @@ export type Collection<T> = TrackedData<
     ): View<V>;
     reject(shouldReject: (item: T, index: number) => boolean): T[];
     moveSlice(fromIndex: number, fromCount: number, toIndex: number): void;
+}
+export interface Collection<T> extends TrackedData<'collection', CollectionEvent<T>>, CollectionMethods<T>, Array<T> {
 };
 
 /**
  * A readonly array to hold projected state
  */
-export type View<T> = TrackedData<
-    ReadonlyArray<T>,
-    'collection',
-    CollectionEvent<T>
-> & {
+interface ViewMethods<T> {
     makeView<V>(
         viewSpec: ViewSpec<readonly T[], V, CollectionEvent<T>>,
         debugName?: string
@@ -165,6 +163,8 @@ export type View<T> = TrackedData<
         flatMapFn: MappingFunction<T, V[]>,
         debugName?: string
     ): View<V>;
+}
+export interface View<T> extends TrackedData<'collection', CollectionEvent<T>>, ViewMethods<T>, ReadonlyArray<T> {
 };
 
 export interface Subscription {
@@ -183,19 +183,20 @@ export interface NodeOrdering {
  * A key-value pair that is active for a subtree
  */
 export interface Context<TValue> {
-    /**
-     * Note: although this function has a signature, it does not actually take arguments when called directly.
-     *
-     * This is solely present so that TypeScript can auto-complete the "value" prop of Contexts
-     */
-    (unusedOnlyForJsxTypeInferrence?: { value: TValue }): TValue;
+    (): never;
+    [ContextGetterTag]: () => TValue;
     [TypeTag]: 'context';
 }
 
 export function createContext<TValue>(val: TValue): Context<TValue> {
-    return Object.assign(() => val, {
+    return Object.assign(() => { throw new Error('Do not call contexts as functions'); }, {
+        [ContextGetterTag]: () => val,
         [TypeTag]: 'context' as const,
     });
+}
+
+export function getContext<TValue>(context: Context<TValue>): TValue {
+    return context[ContextGetterTag]();
 }
 
 export function isContext(val: any): val is Context<any> {
@@ -266,11 +267,4 @@ export function isNodeOrdering(thing: any): thing is NodeOrdering {
     return !!(thing && thing[TypeTag] === 'nodeOrdering');
 }
 
-export type GraphNode =
-    | Model<any>
-    | Collection<any>
-    | Calculation<any>
-    | ModelField
-    | View<any>
-    | Subscription
-    | NodeOrdering;
+export type GraphNode = { $__id: string };

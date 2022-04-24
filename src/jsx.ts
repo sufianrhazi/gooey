@@ -1,7 +1,48 @@
 import { Ref, Calculation, Collection, View, Context } from './types';
 
-// General component props
-type PropsWithChildren<P> = P & { children?: JSXNode[] };
+export const NoChildren = Symbol('NoChildren');
+export type NoChildren = typeof NoChildren;
+
+/**
+ * The core type that can be used as a child or root of a JSX expression
+ */
+export type JSXNodeSingle =
+    // Simple literal types:
+    | string
+    | number
+    | boolean
+    | null
+    | undefined
+    | symbol
+    | Function
+    | Calculation<JSXNode>
+    | Collection<JSXNode>
+    | Context<any>
+    | View<JSXNode>
+    | RenderedElement<any, any, any>;
+
+/**
+ * The core type that can be used as a child or root of a JSX expression
+ */
+export type JSXNode = JSXNodeSingle | Array<JSXNodeSingle>;
+
+declare global {
+    // eslint-disable-next-line @typescript-eslint/no-namespace
+    namespace JSX {
+        /**
+         * The core type that can be used as a child or root of a JSX expression
+         */
+        type Element = JSXNode;
+
+        interface IntrinsicElements extends KnownElements {
+            [unknownElement: string]: any;
+        }
+
+        interface ElementChildrenAttribute {
+            children: {}; // specify children name to use
+        }
+    }
+}
 
 type OnUnmountCallback = () => void;
 type OnMountCallback = () => void;
@@ -13,50 +54,57 @@ type ComponentListeners = {
     onEffect: (callback: EffectCallback) => void;
     getContext: <TVal>(context: Context<TVal>) => TVal;
 };
-export type Component<P extends {}> = (
-    props: PropsWithChildren<P>,
+export type Component<TProps extends {}> = (
+    props: TProps,
     listeners: ComponentListeners
 ) => JSXNode;
-
-type JsxRawNode =
-    | string
-    | number
-    | boolean
-    | null
-    | undefined
-    | Function
-    | RenderElement<any, any>;
-
-/**
- * The type returnable by JSX (raw nodes)
- */
-export type JSXNodeSingle =
-    | JsxRawNode
-    | Calculation<JsxRawNode>
-    | Calculation<JsxRawNode[]>;
-export type JSXNode =
-    | JSXNodeSingle
-    | JSXNodeSingle[]
-    | Collection<JSXNodeSingle> // Note: this should be Collection<JSXNode>
-    | View<JSXNodeSingle>; // Note: this should be View<JSXNode>
 
 /**
  * The type returned by createElement
  */
-export type RenderElement<TContext, TProps extends {}> = {
-    __node:
-        | [Constructor: string, props?: any, ...children: JSXNode[]]
-        | [
-              Constructor: Context<TContext>,
-              props: { value: TContext },
-              ...children: JSXNode[]
-          ]
-        | [
-              Constructor: Component<TProps>,
-              props: TProps,
-              ...children: JSXNode[]
-          ];
-};
+export type RenderedElement<TProps, TContext, TChildren extends JSXNode> =
+    | {
+          type: 'intrinsic';
+          element: string;
+          props: TProps;
+          children: TChildren[];
+      }
+    | {
+          type: 'context';
+          context: Context<TContext>;
+          props: { value: TContext };
+          children: TChildren[];
+      }
+    | {
+          type: 'component';
+          component: Component<TProps & { children: TChildren }>;
+          props: TProps;
+          children: TChildren[];
+      }
+    | {
+          type: 'component';
+          component: Component<TProps & { children?: TChildren }>;
+          props: TProps;
+          children: TChildren[];
+      }
+    | {
+          type: 'component';
+          component: Component<TProps & { children: TChildren[] }>;
+          props: TProps;
+          children: TChildren[];
+      }
+    | {
+          type: 'component';
+          component: Component<TProps & { children?: TChildren[] }>;
+          props: TProps;
+          children: TChildren[];
+      }
+    | {
+          type: 'component';
+          component: Component<TProps>;
+          props: TProps;
+          children: TChildren[];
+      };
 
 /*
  * Interfaces adopted from HTML Living Standard Last Updated 30 November 2021: https://html.spec.whatwg.org/
@@ -2082,7 +2130,8 @@ export function getElementTypeMapping(
 
 type WithCalculationsAndRef<
     TJSXType extends JSXElementInterface,
-    TElement extends HTMLElement
+    TElement extends HTMLElement,
+    HasChildren extends boolean
 > = {
     ref?: undefined | Ref<TElement> | ((current: TElement | undefined) => void);
 
@@ -2167,219 +2216,379 @@ type WithCalculationsAndRef<
     [Key in keyof TJSXType]:
         | (Calculation<any> & (() => TJSXType[Key]))
         | TJSXType[Key];
-};
+} & (HasChildren extends true ? { children?: JSXNode | JSXNode[] | undefined } : {});
 
 export interface KnownElements {
-    a: WithCalculationsAndRef<JSXAnchorElementInterface, HTMLAnchorElement>;
-    abbr: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    address: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    area: WithCalculationsAndRef<JSXAreaElementInterface, HTMLAreaElement>;
-    article: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    aside: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    audio: WithCalculationsAndRef<JSXAudioElementInterface, HTMLAudioElement>;
-    b: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    base: WithCalculationsAndRef<JSXBaseElementInterface, HTMLBaseElement>;
-    bdi: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    bdo: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
+    a: WithCalculationsAndRef<
+        JSXAnchorElementInterface,
+        HTMLAnchorElement,
+        true
+    >;
+    abbr: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    address: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    area: WithCalculationsAndRef<
+        JSXAreaElementInterface,
+        HTMLAreaElement,
+        true
+    >;
+    article: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    aside: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    audio: WithCalculationsAndRef<
+        JSXAudioElementInterface,
+        HTMLAudioElement,
+        true
+    >;
+    b: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    base: WithCalculationsAndRef<
+        JSXBaseElementInterface,
+        HTMLBaseElement,
+        true
+    >;
+    bdi: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    bdo: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
     blockquote: WithCalculationsAndRef<
         JSXQuoteElementInterface,
-        HTMLQuoteElement
+        HTMLQuoteElement,
+        true
     >;
-    body: WithCalculationsAndRef<JSXBodyElementInterface, HTMLBodyElement>;
-    br: WithCalculationsAndRef<JSXBRElementInterface, HTMLBRElement>;
+    body: WithCalculationsAndRef<
+        JSXBodyElementInterface,
+        HTMLBodyElement,
+        true
+    >;
+    br: WithCalculationsAndRef<JSXBRElementInterface, HTMLBRElement, true>;
     button: WithCalculationsAndRef<
         JSXButtonElementInterface,
-        HTMLButtonElement
+        HTMLButtonElement,
+        true
     >;
     canvas: WithCalculationsAndRef<
         JSXCanvasElementInterface,
-        HTMLCanvasElement
+        HTMLCanvasElement,
+        true
     >;
     caption: WithCalculationsAndRef<
         JSXTableCaptionElementInterface,
-        HTMLTableCaptionElement
+        HTMLTableCaptionElement,
+        true
     >;
-    cite: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    code: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
+    cite: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    code: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
     col: WithCalculationsAndRef<
         JSXTableColElementInterface,
-        HTMLTableColElement
+        HTMLTableColElement,
+        true
     >;
     colgroup: WithCalculationsAndRef<
         JSXTableColElementInterface,
-        HTMLTableColElement
+        HTMLTableColElement,
+        true
     >;
-    data: WithCalculationsAndRef<JSXDataElementInterface, HTMLDataElement>;
+    data: WithCalculationsAndRef<
+        JSXDataElementInterface,
+        HTMLDataElement,
+        true
+    >;
     datalist: WithCalculationsAndRef<
         JSXDataListElementInterface,
-        HTMLDataListElement
+        HTMLDataListElement,
+        true
     >;
-    dd: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    del: WithCalculationsAndRef<JSXModElementInterface, HTMLModElement>;
+    dd: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    del: WithCalculationsAndRef<JSXModElementInterface, HTMLModElement, true>;
     details: WithCalculationsAndRef<
         JSXDetailsElementInterface,
-        HTMLDetailsElement
+        HTMLDetailsElement,
+        true
     >;
-    dfn: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
+    dfn: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
     dialog: WithCalculationsAndRef<
         JSXDialogElementInterface,
-        HTMLDialogElement
+        HTMLDialogElement,
+        true
     >;
-    div: WithCalculationsAndRef<JSXDivElementInterface, HTMLDivElement>;
-    dl: WithCalculationsAndRef<JSXDListElementInterface, HTMLDListElement>;
-    dt: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    em: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    embed: WithCalculationsAndRef<JSXEmbedElementInterface, HTMLEmbedElement>;
+    div: WithCalculationsAndRef<JSXDivElementInterface, HTMLDivElement, true>;
+    dl: WithCalculationsAndRef<
+        JSXDListElementInterface,
+        HTMLDListElement,
+        true
+    >;
+    dt: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    em: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    embed: WithCalculationsAndRef<
+        JSXEmbedElementInterface,
+        HTMLEmbedElement,
+        true
+    >;
     fieldset: WithCalculationsAndRef<
         JSXFieldSetElementInterface,
-        HTMLFieldSetElement
+        HTMLFieldSetElement,
+        true
     >;
-    figcaption: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    figure: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    footer: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    form: WithCalculationsAndRef<JSXFormElementInterface, HTMLFormElement>;
-    h1: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement>;
-    h2: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement>;
-    h3: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement>;
-    h4: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement>;
-    h5: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement>;
-    h6: WithCalculationsAndRef<JSXHeadingElementInterface, HTMLHeadingElement>;
-    head: WithCalculationsAndRef<JSXHeadElementInterface, HTMLHeadElement>;
-    header: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    hgroup: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    hr: WithCalculationsAndRef<JSXHRElementInterface, HTMLHRElement>;
-    html: WithCalculationsAndRef<JSXHtmlElementInterface, HTMLHtmlElement>;
-    i: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
+    figcaption: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    figure: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    footer: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    form: WithCalculationsAndRef<
+        JSXFormElementInterface,
+        HTMLFormElement,
+        true
+    >;
+    h1: WithCalculationsAndRef<
+        JSXHeadingElementInterface,
+        HTMLHeadingElement,
+        true
+    >;
+    h2: WithCalculationsAndRef<
+        JSXHeadingElementInterface,
+        HTMLHeadingElement,
+        true
+    >;
+    h3: WithCalculationsAndRef<
+        JSXHeadingElementInterface,
+        HTMLHeadingElement,
+        true
+    >;
+    h4: WithCalculationsAndRef<
+        JSXHeadingElementInterface,
+        HTMLHeadingElement,
+        true
+    >;
+    h5: WithCalculationsAndRef<
+        JSXHeadingElementInterface,
+        HTMLHeadingElement,
+        true
+    >;
+    h6: WithCalculationsAndRef<
+        JSXHeadingElementInterface,
+        HTMLHeadingElement,
+        true
+    >;
+    head: WithCalculationsAndRef<
+        JSXHeadElementInterface,
+        HTMLHeadElement,
+        true
+    >;
+    header: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    hgroup: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    hr: WithCalculationsAndRef<JSXHRElementInterface, HTMLHRElement, true>;
+    html: WithCalculationsAndRef<
+        JSXHtmlElementInterface,
+        HTMLHtmlElement,
+        true
+    >;
+    i: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
     iframe: WithCalculationsAndRef<
         JSXIFrameElementInterface,
-        HTMLIFrameElement
+        HTMLIFrameElement,
+        true
     >;
-    img: WithCalculationsAndRef<JSXImageElementInterface, HTMLImageElement>;
-    input: WithCalculationsAndRef<JSXInputElementInterface, HTMLInputElement>;
-    ins: WithCalculationsAndRef<JSXModElementInterface, HTMLModElement>;
-    kbd: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    label: WithCalculationsAndRef<JSXLabelElementInterface, HTMLLabelElement>;
+    img: WithCalculationsAndRef<
+        JSXImageElementInterface,
+        HTMLImageElement,
+        true
+    >;
+    input: WithCalculationsAndRef<
+        JSXInputElementInterface,
+        HTMLInputElement,
+        true
+    >;
+    ins: WithCalculationsAndRef<JSXModElementInterface, HTMLModElement, true>;
+    kbd: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    label: WithCalculationsAndRef<
+        JSXLabelElementInterface,
+        HTMLLabelElement,
+        true
+    >;
     legend: WithCalculationsAndRef<
         JSXLegendElementInterface,
-        HTMLLegendElement
+        HTMLLegendElement,
+        true
     >;
-    li: WithCalculationsAndRef<JSXLIElementInterface, HTMLLIElement>;
-    link: WithCalculationsAndRef<JSXLinkElementInterface, HTMLLinkElement>;
-    main: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    map: WithCalculationsAndRef<JSXMapElementInterface, HTMLMapElement>;
-    mark: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    menu: WithCalculationsAndRef<JSXMenuElementInterface, HTMLMenuElement>;
-    meta: WithCalculationsAndRef<JSXMetaElementInterface, HTMLMetaElement>;
-    meter: WithCalculationsAndRef<JSXMeterElementInterface, HTMLMeterElement>;
-    nav: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    noscript: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
+    li: WithCalculationsAndRef<JSXLIElementInterface, HTMLLIElement, true>;
+    link: WithCalculationsAndRef<
+        JSXLinkElementInterface,
+        HTMLLinkElement,
+        true
+    >;
+    main: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    map: WithCalculationsAndRef<JSXMapElementInterface, HTMLMapElement, true>;
+    mark: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    menu: WithCalculationsAndRef<
+        JSXMenuElementInterface,
+        HTMLMenuElement,
+        true
+    >;
+    meta: WithCalculationsAndRef<
+        JSXMetaElementInterface,
+        HTMLMetaElement,
+        true
+    >;
+    meter: WithCalculationsAndRef<
+        JSXMeterElementInterface,
+        HTMLMeterElement,
+        true
+    >;
+    nav: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    noscript: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
     object: WithCalculationsAndRef<
         JSXObjectElementInterface,
-        HTMLObjectElement
+        HTMLObjectElement,
+        true
     >;
-    ol: WithCalculationsAndRef<JSXOListElementInterface, HTMLOListElement>;
+    ol: WithCalculationsAndRef<
+        JSXOListElementInterface,
+        HTMLOListElement,
+        true
+    >;
     optgroup: WithCalculationsAndRef<
         JSXOptGroupElementInterface,
-        HTMLOptGroupElement
+        HTMLOptGroupElement,
+        true
     >;
     option: WithCalculationsAndRef<
         JSXOptionElementInterface,
-        HTMLOptionElement
+        HTMLOptionElement,
+        true
     >;
     output: WithCalculationsAndRef<
         JSXOutputElementInterface,
-        HTMLOutputElement
+        HTMLOutputElement,
+        true
     >;
     p: WithCalculationsAndRef<
         JSXParagraphElementInterface,
-        HTMLParagraphElement
+        HTMLParagraphElement,
+        true
     >;
-    param: WithCalculationsAndRef<JSXParamElementInterface, HTMLParamElement>;
+    param: WithCalculationsAndRef<
+        JSXParamElementInterface,
+        HTMLParamElement,
+        true
+    >;
     picture: WithCalculationsAndRef<
         JSXPictureElementInterface,
-        HTMLPictureElement
+        HTMLPictureElement,
+        true
     >;
-    pre: WithCalculationsAndRef<JSXPreElementInterface, HTMLPreElement>;
+    pre: WithCalculationsAndRef<JSXPreElementInterface, HTMLPreElement, true>;
     progress: WithCalculationsAndRef<
         JSXProgressElementInterface,
-        HTMLProgressElement
+        HTMLProgressElement,
+        true
     >;
-    q: WithCalculationsAndRef<JSXQuoteElementInterface, HTMLQuoteElement>;
-    rp: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    rt: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    ruby: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    s: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    samp: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
+    q: WithCalculationsAndRef<JSXQuoteElementInterface, HTMLQuoteElement, true>;
+    rp: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    rt: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    ruby: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    s: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    samp: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
     script: WithCalculationsAndRef<
         JSXScriptElementInterface,
-        HTMLScriptElement
+        HTMLScriptElement,
+        true
     >;
-    section: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
+    section: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
     select: WithCalculationsAndRef<
         JSXSelectElementInterface,
-        HTMLSelectElement
+        HTMLSelectElement,
+        true
     >;
-    slot: WithCalculationsAndRef<JSXSlotElementInterface, HTMLSlotElement>;
-    small: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
+    slot: WithCalculationsAndRef<
+        JSXSlotElementInterface,
+        HTMLSlotElement,
+        true
+    >;
+    small: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
     source: WithCalculationsAndRef<
         JSXSourceElementInterface,
-        HTMLSourceElement
+        HTMLSourceElement,
+        true
     >;
-    span: WithCalculationsAndRef<JSXSpanElementInterface, HTMLSpanElement>;
-    strong: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    style: WithCalculationsAndRef<JSXStyleElementInterface, HTMLStyleElement>;
-    sub: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    summary: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    sup: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    table: WithCalculationsAndRef<JSXTableElementInterface, HTMLTableElement>;
+    span: WithCalculationsAndRef<
+        JSXSpanElementInterface,
+        HTMLSpanElement,
+        true
+    >;
+    strong: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    style: WithCalculationsAndRef<
+        JSXStyleElementInterface,
+        HTMLStyleElement,
+        true
+    >;
+    sub: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    summary: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    sup: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    table: WithCalculationsAndRef<
+        JSXTableElementInterface,
+        HTMLTableElement,
+        true
+    >;
     tbody: WithCalculationsAndRef<
         JSXTableSectionElementInterface,
-        HTMLTableSectionElement
+        HTMLTableSectionElement,
+        true
     >;
     td: WithCalculationsAndRef<
         JSXTableCellElementInterface,
-        HTMLTableCellElement
+        HTMLTableCellElement,
+        true
     >;
     template: WithCalculationsAndRef<
         JSXTemplateElementInterface,
-        HTMLTemplateElement
+        HTMLTemplateElement,
+        true
     >;
     textarea: WithCalculationsAndRef<
         JSXTextAreaElementInterface,
-        HTMLTextAreaElement
+        HTMLTextAreaElement,
+        true
     >;
     tfoot: WithCalculationsAndRef<
         JSXTableSectionElementInterface,
-        HTMLTableSectionElement
+        HTMLTableSectionElement,
+        true
     >;
     th: WithCalculationsAndRef<
         JSXTableCellElementInterface,
-        HTMLTableCellElement
+        HTMLTableCellElement,
+        true
     >;
     thead: WithCalculationsAndRef<
         JSXTableSectionElementInterface,
-        HTMLTableSectionElement
+        HTMLTableSectionElement,
+        true
     >;
-    time: WithCalculationsAndRef<JSXTimeElementInterface, HTMLTimeElement>;
-    title: WithCalculationsAndRef<JSXTitleElementInterface, HTMLTitleElement>;
+    time: WithCalculationsAndRef<
+        JSXTimeElementInterface,
+        HTMLTimeElement,
+        true
+    >;
+    title: WithCalculationsAndRef<
+        JSXTitleElementInterface,
+        HTMLTitleElement,
+        true
+    >;
     tr: WithCalculationsAndRef<
         JSXTableRowElementInterface,
-        HTMLTableRowElement
+        HTMLTableRowElement,
+        true
     >;
-    track: WithCalculationsAndRef<JSXTrackElementInterface, HTMLTrackElement>;
-    u: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    ul: WithCalculationsAndRef<JSXUListElementInterface, HTMLUListElement>;
-    var: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-    video: WithCalculationsAndRef<JSXVideoElementInterface, HTMLVideoElement>;
-    wbr: WithCalculationsAndRef<JSXElementInterface, HTMLElement>;
-}
-
-declare global {
-    // eslint-disable-next-line @typescript-eslint/no-namespace
-    namespace JSX {
-        interface IntrinsicElements extends KnownElements {
-            [unknownElement: string]: any;
-        }
-        type Element = JSXNode;
-    }
+    track: WithCalculationsAndRef<
+        JSXTrackElementInterface,
+        HTMLTrackElement,
+        true
+    >;
+    u: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    ul: WithCalculationsAndRef<
+        JSXUListElementInterface,
+        HTMLUListElement,
+        true
+    >;
+    var: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
+    video: WithCalculationsAndRef<
+        JSXVideoElementInterface,
+        HTMLVideoElement,
+        true
+    >;
+    wbr: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
 }

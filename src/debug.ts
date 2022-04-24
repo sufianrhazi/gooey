@@ -6,6 +6,7 @@ import {
     isModel,
     isSubscription,
     isNodeOrdering,
+    isModelField,
 } from './types';
 
 let nameMap: WeakMap<any, string> = new WeakMap();
@@ -36,7 +37,10 @@ export function debugNameFor(item: GraphNode): string {
     if (isNodeOrdering(item)) {
         return `${id}:ord:${nameMap.get(item) ?? '?'}`;
     }
-    return `${id}:field:${nameMap.get(item.model) ?? '?'}:${String(item.key)}`;
+    if (isModelField(item)) {
+        return `${id}:field:${nameMap.get(item.model) ?? '?'}:${String(item.key)}`;
+    }
+    return `${id}:unknown`;
 }
 
 export function name<T>(item: T, name: string): T {

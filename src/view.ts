@@ -24,6 +24,7 @@ import {
     GetSubscriptionNodeKey,
     TypeTag,
     createContext,
+    getContext,
 } from './types';
 import * as log from './log';
 import { uniqueid } from './util';
@@ -31,32 +32,96 @@ import {
     Component,
     JSXNode,
     JSXNodeSingle,
-    RenderElement,
+    RenderedElement,
     getElementTypeMapping,
 } from './jsx';
 import { VNode, spliceVNode, callOnMount } from './vnode';
 
 export const Fragment = ({ children }: { children: JSXNode[] }) => children;
 
-export function createElement(
+// Intrinsic element
+export function createElement<TProps, TChildren extends JSXNode>(
     Constructor: string,
-    props?: any,
-    ...children: JSXNode[]
-): RenderElement<any, any>;
-export function createElement<TContext>(
+    props: TProps,
+    ...children: TChildren[]
+): RenderedElement<TProps, unknown, TChildren>;
+// Context component
+export function createElement<TContext, TProps extends { value: TContext }, TChildren extends JSXNode>(
     Constructor: Context<TContext>,
-    props: { value: TContext },
-    ...children: JSXNode[]
-): RenderElement<TContext, any>;
-export function createElement<TProps extends {}>(
+    props: TProps,
+    ...children: TChildren[]
+): RenderedElement<unknown, TContext, TChildren>;
+// Component with one required child
+export function createElement<
+    TChildren extends JSXNodeSingle,
+    TProps extends { children: TChildren }
+>(
+    Constructor: Component<TProps>,
+    props: Omit<TProps, "children">,
+    children: TChildren
+): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+// Component with multiple required children
+export function createElement<
+    TChildren extends JSXNode,
+    TProps extends { children: TChildren[] }
+>(
+    Constructor: Component<TProps>,
+    props: Omit<TProps, "children">,
+    ...children: TChildren[]
+): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+// Component with one optional child
+export function createElement<
+    TChildren extends JSXNodeSingle,
+    TProps extends { children?: TChildren | undefined }
+>(
+    Constructor: Component<TProps>,
+    props: Omit<TProps, "children">,
+    children?: TChildren | undefined
+): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+// Component with multiple required children
+export function createElement<
+    TChildren extends JSXNode,
+    TProps extends { children?: TChildren[] | undefined }
+>(
+    Constructor: Component<TProps>,
+    props: Omit<TProps, "children">,
+    ...children: TChildren[]
+): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+// Component with no children
+export function createElement<
+    TChildren extends JSXNode,
+    TProps extends {}
+>(
     Constructor: Component<TProps>,
     props: TProps,
-    ...children: JSXNode[]
-): RenderElement<any, TProps>;
-export function createElement<TContext, TProps extends {}>(
-    ...args: RenderElement<TContext, TProps>['__node']
-): RenderElement<TContext, TProps> {
-    return { __node: args };
+): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+export function createElement<TProps, TContext, TChildren extends JSXNode>(
+    Constructor: string | Component<TProps> | Component<TProps & { children?: TChildren }> | Component<TProps & { children: TChildren }>,
+    props: TProps,
+    ...children: TChildren[]
+): RenderedElement<TProps, TContext, TChildren> {
+    if (typeof Constructor === 'string') {
+        return {
+            type: 'intrinsic',
+            element: Constructor,
+            props,
+            children,
+        };
+    }
+    if (isContext(Constructor)) {
+        return {
+            type: 'context',
+            context: Constructor,
+            props: props as unknown as { value: TContext },
+            children,
+        }
+    }
+    return {
+        type: 'component',
+        component: Constructor,
+        props,
+        children,
+    }
 }
 
 createElement.Fragment = Fragment;
@@ -114,14 +179,9 @@ function setAttributeValue(
     }
 }
 
-/**
- * Sadly needed for TypeScript only, since I want to narrow a
- * Collection<JSXNodeSingle> | View<JSXNodeSingle> | Other and you can't narrow
- * with a (v: any) => v is Collection<any> | View<any>, which makes sense.
- */
 function isCollectionView(
     thing: JSXNode
-): thing is Collection<JSXNodeSingle> | View<JSXNodeSingle> {
+): thing is Collection<JSXNode> | View<JSXNode> {
     return isCollection(thing);
 }
 
@@ -177,7 +237,7 @@ function jsxNodeToVNode(
     if (Array.isArray(jsxNode)) {
         return {
             domParent,
-            children: (jsxNode as JSXNodeSingle[]).map((child) =>
+            children: jsxNode.map((child) =>
                 jsxNodeToVNode(
                     child,
                     domParent,
@@ -194,6 +254,12 @@ function jsxNodeToVNode(
         );
         return { domParent };
     }
+    if (typeof jsxNode === 'symbol') {
+        log.warn(
+            'Attempted to render JSX node that was a symbol, not rendering anything'
+        );
+        return { domParent };
+    }
     return renderElementToVNode(
         jsxNode,
         domParent,
@@ -204,62 +270,48 @@ function jsxNodeToVNode(
 }
 
 function renderElementToVNode(
-    renderElement: RenderElement<any, any>,
+    renderElement: RenderedElement<any, any, any>,
     domParent: VNode,
     nodeOrdering: NodeOrdering,
     contextMap: Map<Context<any>, any>,
     documentFragment: DocumentFragment
 ) {
-    const [Constructor, props, ...children] = renderElement.__node;
-    if (typeof Constructor === 'string') {
-        DEBUG &&
-            log.debug('view renderElementToVNode element', {
-                Constructor,
-                props,
-                children,
-            });
-        return makeElementVNode(
-            Constructor,
-            props,
-            children,
-            domParent,
-            nodeOrdering,
-            contextMap,
-            documentFragment
-        );
-    }
-    if (isContext(Constructor)) {
-        DEBUG &&
-            log.debug('view renderElementToVNode context', {
-                Constructor,
-                props,
-                children,
-            });
-        return makeContextVNode(
-            Constructor,
-            props.value,
-            children,
-            domParent,
-            nodeOrdering,
-            contextMap,
-            documentFragment
-        );
-    }
     DEBUG &&
-        log.debug('view renderElementToVNode component', {
-            Constructor,
-            props,
-            children,
-        });
-    return makeComponentVNode(
-        Constructor,
-        props,
-        children,
-        domParent,
-        nodeOrdering,
-        contextMap,
-        documentFragment
-    );
+        log.debug('view renderElementToVNode', renderElement);
+    switch (renderElement.type) {
+        case 'intrinsic':
+            return makeElementVNode(
+                renderElement.element,
+                renderElement.props,
+                renderElement.children,
+                domParent,
+                nodeOrdering,
+                contextMap,
+                documentFragment
+            );
+        case 'context':
+            return makeContextVNode(
+                renderElement.context,
+                renderElement.props.value,
+                renderElement.children,
+                domParent,
+                nodeOrdering,
+                contextMap,
+                documentFragment
+            );
+        case 'component':
+            return makeComponentVNode(
+                renderElement.component,
+                renderElement.props,
+                renderElement.children,
+                domParent,
+                nodeOrdering,
+                contextMap,
+                documentFragment
+            );
+        default:
+            log.assertExhausted(renderElement);
+    }
 }
 
 const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
@@ -318,7 +370,7 @@ function makeElementVNode(
     let subContextMap = contextMap;
     let elementXMLNamespace: string = contextMap.has(XmlNamespaceContext)
         ? contextMap.get(XmlNamespaceContext)
-        : XmlNamespaceContext();
+        : getContext(XmlNamespaceContext);
     let childElementXMLNamespace: null | string = null;
     const xmlNamespaceTransition =
         elementNamespaceTransitionMap[elementXMLNamespace]?.[elementType];
@@ -504,7 +556,7 @@ function makeComponentVNode<TProps>(
                     if (contextMap.has(context)) {
                         return contextMap.get(context);
                     }
-                    return context();
+                    return getContext(context);
                 },
             }
         );
@@ -592,7 +644,7 @@ function makeCalculationVNode(
 }
 
 function makeCollectionVNode(
-    collection: Collection<JSXNodeSingle> | View<JSXNodeSingle>,
+    collection: Collection<JSXNode> | View<JSXNode>,
     domParent: VNode,
     parentNodeOrdering: NodeOrdering,
     contextMap: Map<Context<any>, any>,

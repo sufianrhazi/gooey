@@ -78,7 +78,7 @@ export function trackedData<
         processFieldDelete: (field: string | symbol) => void;
     }) => TMethods,
     debugName?: string
-): TrackedData<TData & TMethods, TDataTypeTag, TEvent> {
+): TrackedData<TDataTypeTag, TEvent> & TData & TMethods {
     type Observer = (events: TEvent[]) => void;
 
     const fieldRecords: Map<string | number | symbol, ModelField> = new Map();
@@ -318,7 +318,7 @@ export function trackedData<
             return changed;
         },
     });
-    const proxy: TrackedData<TData & TMethods, TDataTypeTag, TEvent> =
+    const proxy: TrackedData<TDataTypeTag, TEvent> & TData & TMethods =
         revokableProxy.proxy;
 
     subscriptionNode.item = proxy;

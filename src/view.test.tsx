@@ -11,6 +11,8 @@ import Gooey, {
     subscribe,
 } from './index';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
+import { JSXNode } from './jsx';
+import { debugSubscribe } from './calc';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
 
@@ -406,8 +408,7 @@ suite('mount components', () => {
 
             onEffect(() => {
                 operations.push(
-                    `child:onEffect1:${data.value}:${
-                        divRef.current!.textContent
+                    `child:onEffect1:${data.value}:${divRef.current!.textContent
                     }`
                 );
             });
@@ -525,19 +526,20 @@ suite('mount components', () => {
             b: false,
             c: false,
         });
-        const Parent: Component<{}> = (
+        const Parent: Component<{ children: JSX.Element[] }> = (
             { children },
             { onMount, onUnmount }
         ) => {
             onMount(() => calls.push('parent:onMount'));
             onUnmount(() => calls.push('parent:onUnmount'));
-            return (
+            const x = (
                 <div>
                     {calc(() => data.a && <div id="child-1">{children}</div>)}
                     {calc(() => data.b && <div id="child-2">{children}</div>)}
                     {calc(() => data.c && <div id="child-3">{children}</div>)}
                 </div>
             );
+            return x;
         };
 
         const Child: Component<{ name: string }> = (
@@ -563,9 +565,9 @@ suite('mount components', () => {
         const unmount = mount(
             testRoot,
             <Parent>
-                <Child name="one" />
-                <Child name="two" />
-                <Child name="three" />
+                <Child name='one' />
+                <Child name='two' />
+                <Child name='three' />
             </Parent>
         );
 
@@ -675,7 +677,9 @@ suite('mount components', () => {
     test('children can read contexts correctly', () => {
         const Context = createContext('no-context');
 
-        const Parent: Component<{}> = ({ children }) => {
+        const Parent: Component<{ children?: JSX.Element[] }> = ({
+            children,
+        }) => {
             return (
                 <div>
                     <div id="child-1">{children}</div>
@@ -1256,7 +1260,7 @@ suite('foreign elements', () => {
         );
         assert.isTruthy(
             testRoot.children[0].children[0].children[0] instanceof
-                SVGCircleElement
+            SVGCircleElement
         );
         assert.is(
             testRoot.children[0].children[0].children[0].getAttribute('cx'),
@@ -1313,7 +1317,7 @@ suite('foreign elements', () => {
         );
         assert.isTruthy(
             testRoot.children[0].children[0].children[0] instanceof
-                HTMLInputElement
+            HTMLInputElement
         );
     });
 
@@ -1334,7 +1338,7 @@ suite('foreign elements', () => {
             );
             assert.isTruthy(
                 testRoot.children[0].children[0].children[0] instanceof
-                    MathMLElement
+                MathMLElement
             );
         });
 
@@ -1413,3 +1417,28 @@ suite('createContext', () => {
         );
     });
 });
+
+// Type tests
+if (2 < 1) {
+    const ParentWithNoChildren: Component<{}> = (_props) => <div />;
+
+    suite('parent with no children', () => {
+        test('typechecks with no children', () => {
+            assert.isTruthy(<ParentWithNoChildren />);
+        });
+        
+        test('fails when passed one or more children', () => {
+            // @ts-expect-error children
+            assert.isTruthy(<ParentWithNoChildren><div /></ParentWithNoChildren>);
+
+            // @ts-expect-error children
+            assert.isTruthy(<ParentWithNoChildren><div /><div /></ParentWithNoChildren>);
+
+        });
+    });
+
+    const ParentWithExactlyOneChild: Component<{ children: JSX.Element }> = () => <div />;
+    const ParentWithOptionallyOneChild: Component<{ children?: JSX.Element }> = () => <div />;
+    const ParentWithExactlyManyChild: Component<{ children: JSX.Element[] }> = () => <div />;
+    const ParentWithOptionallyManyChild: Component<{ children?: JSX.Element[] }> = () => <div />;
+}
