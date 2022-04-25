@@ -38,7 +38,9 @@ export function debugNameFor(item: GraphNode): string {
         return `${id}:ord:${nameMap.get(item) ?? '?'}`;
     }
     if (isModelField(item)) {
-        return `${id}:field:${nameMap.get(item.model) ?? '?'}:${String(item.key)}`;
+        return `${id}:field:${nameMap.get(item.model) ?? '?'}:${String(
+            item.key
+        )}`;
     }
     return `${id}:unknown`;
 }
