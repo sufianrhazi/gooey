@@ -2253,9 +2253,9 @@ ${debugNameFor(item)}`,
         firstRun = false;
         calculationNodeChildren.push(calculationChild);
       } else {
-        spliceVNode(calculationNode, 0, calculationNodeChildren.length, [
-          calculationChild
-        ]);
+        untracked(() => {
+          spliceVNode(calculationNode, 0, calculationNodeChildren.length, [calculationChild]);
+        });
       }
     }, `viewcalc:${debugNameFor(calculation) ?? "node"}`);
     addOrderingDep(calculationNodeOrdering, parentNodeOrdering);
