@@ -45,7 +45,11 @@ export function createElement<TProps, TChildren extends JSXNode>(
     ...children: TChildren[]
 ): RenderedElement<TProps, unknown, TChildren>;
 // Context component
-export function createElement<TContext, TProps extends { value: TContext }, TChildren extends JSXNode>(
+export function createElement<
+    TContext,
+    TProps extends { value: TContext },
+    TChildren extends JSXNode
+>(
     Constructor: Context<TContext>,
     props: TProps,
     ...children: TChildren[]
@@ -56,46 +60,47 @@ export function createElement<
     TProps extends { children: TChildren }
 >(
     Constructor: Component<TProps>,
-    props: Omit<TProps, "children">,
+    props: Omit<TProps, 'children'>,
     children: TChildren
-): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+): RenderedElement<Omit<TProps, 'children'>, any, TChildren>;
 // Component with multiple required children
 export function createElement<
     TChildren extends JSXNode,
     TProps extends { children: TChildren[] }
 >(
     Constructor: Component<TProps>,
-    props: Omit<TProps, "children">,
+    props: Omit<TProps, 'children'>,
     ...children: TChildren[]
-): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+): RenderedElement<Omit<TProps, 'children'>, any, TChildren>;
 // Component with one optional child
 export function createElement<
     TChildren extends JSXNode,
     TProps extends { children?: TChildren | undefined }
 >(
     Constructor: Component<TProps>,
-    props: Omit<TProps, "children">,
+    props: Omit<TProps, 'children'>,
     children?: TChildren | undefined
-): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+): RenderedElement<Omit<TProps, 'children'>, any, TChildren>;
 // Component with multiple required children
 export function createElement<
     TChildren extends JSXNode,
     TProps extends { children?: TChildren[] | undefined }
 >(
     Constructor: Component<TProps>,
-    props: Omit<TProps, "children">,
+    props: Omit<TProps, 'children'>,
     ...children: TChildren[]
-): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+): RenderedElement<Omit<TProps, 'children'>, any, TChildren>;
 // Component with no children
-export function createElement<
-    TChildren extends JSXNode,
-    TProps extends {}
->(
+export function createElement<TChildren extends JSXNode, TProps extends {}>(
     Constructor: Component<TProps>,
-    props: TProps,
-): RenderedElement<Omit<TProps, "children">, any, TChildren>;
+    props: TProps
+): RenderedElement<Omit<TProps, 'children'>, any, TChildren>;
 export function createElement<TProps, TContext, TChildren extends JSXNode>(
-    Constructor: string | Component<TProps> | Component<TProps & { children?: TChildren }> | Component<TProps & { children: TChildren }>,
+    Constructor:
+        | string
+        | Component<TProps>
+        | Component<TProps & { children?: TChildren }>
+        | Component<TProps & { children: TChildren }>,
     props: TProps,
     ...children: TChildren[]
 ): RenderedElement<TProps, TContext, TChildren> {
@@ -113,14 +118,14 @@ export function createElement<TProps, TContext, TChildren extends JSXNode>(
             context: Constructor,
             props: props as unknown as { value: TContext },
             children,
-        }
+        };
     }
     return {
         type: 'component',
         component: Constructor,
         props,
         children,
-    }
+    };
 }
 
 createElement.Fragment = Fragment;
@@ -275,8 +280,7 @@ function renderElementToVNode(
     contextMap: Map<Context<any>, any>,
     documentFragment: DocumentFragment
 ) {
-    DEBUG &&
-        log.debug('view renderElementToVNode', renderElement);
+    DEBUG && log.debug('view renderElementToVNode', renderElement);
     switch (renderElement.type) {
         case 'intrinsic':
             return makeElementVNode(
@@ -621,9 +625,15 @@ function makeCalculationVNode(
             firstRun = false;
             calculationNodeChildren.push(calculationChild);
         } else {
-            spliceVNode(calculationNode, 0, calculationNodeChildren.length, [
-                calculationChild,
-            ]);
+            // Untracked here since spliceVNode calls onMount / onUnmount handlers and we don't want to recalculate if those read values
+            untracked(() => {
+                spliceVNode(
+                    calculationNode,
+                    0,
+                    calculationNodeChildren.length,
+                    [calculationChild]
+                );
+            });
         }
     }, `viewcalc:${debugNameFor(calculation) ?? 'node'}`);
 
