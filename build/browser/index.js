@@ -63,6 +63,7 @@ var Gooey = (() => {
     }
   };
   var TypeTag = Symbol("typeTag");
+  var ContextGetterTag = Symbol("contextGetter");
   var DataTypeTag = Symbol("dataTypeTag");
   var CalculationTypeTag = Symbol("calculationType");
   var CalculationRecalculateTag = Symbol("calculationRecalculate");
@@ -85,9 +86,15 @@ var Gooey = (() => {
     };
   }
   function createContext(val) {
-    return Object.assign(() => val, {
+    return Object.assign(() => {
+      throw new Error("Do not call contexts as functions");
+    }, {
+      [ContextGetterTag]: () => val,
       [TypeTag]: "context"
     });
+  }
+  function getContext(context) {
+    return context[ContextGetterTag]();
   }
   function isContext(val) {
     return !!(val && val[TypeTag] === "context");
@@ -582,7 +589,10 @@ var Gooey = (() => {
     if (isNodeOrdering(item)) {
       return `${id}:ord:${nameMap.get(item) ?? "?"}`;
     }
-    return `${id}:field:${nameMap.get(item.model) ?? "?"}:${String(item.key)}`;
+    if (isModelField(item)) {
+      return `${id}:field:${nameMap.get(item.model) ?? "?"}:${String(item.key)}`;
+    }
+    return `${id}:unknown`;
   }
   function name(item, name2) {
     if (true)
@@ -1016,6 +1026,8 @@ ${debugNameFor(item)}`,
   }
 
   // src/jsx.ts
+  var NoChildren = Symbol("NoChildren");
+  var UnusedSymbol = Symbol("unused");
   function attrBooleanToEmptyString(val) {
     if (!val)
       return void 0;
@@ -1932,8 +1944,29 @@ ${debugNameFor(item)}`,
 
   // src/view.ts
   var Fragment = ({ children }) => children;
-  function createElement(...args) {
-    return { __node: args };
+  function createElement(Constructor, props, ...children) {
+    if (typeof Constructor === "string") {
+      return {
+        type: "intrinsic",
+        element: Constructor,
+        props,
+        children
+      };
+    }
+    if (isContext(Constructor)) {
+      return {
+        type: "context",
+        context: Constructor,
+        props,
+        children
+      };
+    }
+    return {
+      type: "component",
+      component: Constructor,
+      props,
+      children
+    };
   }
   createElement.Fragment = Fragment;
   function setAttributeValue(elementType, element, key, value, boundEvents) {
@@ -2009,20 +2042,24 @@ ${debugNameFor(item)}`,
       warn("Attempted to render JSX node that was a function, not rendering anything");
       return { domParent };
     }
+    if (typeof jsxNode === "symbol") {
+      warn("Attempted to render JSX node that was a symbol, not rendering anything");
+      return { domParent };
+    }
     return renderElementToVNode(jsxNode, domParent, parentOrdering, contextMap, documentFragment);
   }
   function renderElementToVNode(renderElement, domParent, nodeOrdering, contextMap, documentFragment) {
-    const [Constructor, props, ...children] = renderElement.__node;
-    if (typeof Constructor === "string") {
-      false;
-      return makeElementVNode(Constructor, props, children, domParent, nodeOrdering, contextMap, documentFragment);
-    }
-    if (isContext(Constructor)) {
-      false;
-      return makeContextVNode(Constructor, props.value, children, domParent, nodeOrdering, contextMap, documentFragment);
-    }
     false;
-    return makeComponentVNode(Constructor, props, children, domParent, nodeOrdering, contextMap, documentFragment);
+    switch (renderElement.type) {
+      case "intrinsic":
+        return makeElementVNode(renderElement.element, renderElement.props, renderElement.children, domParent, nodeOrdering, contextMap, documentFragment);
+      case "context":
+        return makeContextVNode(renderElement.context, renderElement.props.value, renderElement.children, domParent, nodeOrdering, contextMap, documentFragment);
+      case "component":
+        return makeComponentVNode(renderElement.component, renderElement.props, renderElement.children, domParent, nodeOrdering, contextMap, documentFragment);
+      default:
+        assertExhausted(renderElement);
+    }
   }
   var HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
   var SVG_NAMESPACE = "http://www.w3.org/2000/svg";
@@ -2064,7 +2101,7 @@ ${debugNameFor(item)}`,
   var XmlNamespaceContext = createContext(HTML_NAMESPACE);
   function makeElementVNode(elementType, props, children, domParent, nodeOrdering, contextMap, documentFragment) {
     let subContextMap = contextMap;
-    let elementXMLNamespace = contextMap.has(XmlNamespaceContext) ? contextMap.get(XmlNamespaceContext) : XmlNamespaceContext();
+    let elementXMLNamespace = contextMap.has(XmlNamespaceContext) ? contextMap.get(XmlNamespaceContext) : getContext(XmlNamespaceContext);
     let childElementXMLNamespace = null;
     const xmlNamespaceTransition = elementNamespaceTransitionMap[elementXMLNamespace]?.[elementType];
     if (xmlNamespaceTransition) {
@@ -2180,7 +2217,7 @@ ${debugNameFor(item)}`,
           if (contextMap.has(context)) {
             return contextMap.get(context);
           }
-          return context();
+          return getContext(context);
         }
       });
     });
