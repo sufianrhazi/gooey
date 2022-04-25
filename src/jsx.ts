@@ -14,11 +14,10 @@ export type JSXNode =
     | undefined
     | symbol
     | Function
+    | RenderedElement<any, any, any>
     | Calculation<JSXNode>
     | Collection<JSXNode>
-    | Context<any>
-    | View<JSXNode>
-    | RenderedElement<any, any, any>;
+    | View<JSXNode>;
 
 declare global {
     // eslint-disable-next-line @typescript-eslint/no-namespace

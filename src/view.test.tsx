@@ -1698,4 +1698,102 @@ if (2 < 1) {
             );
         });
     });
+
+    suite('JSX.Element', () => {
+        function receiveJSXElement(jsxElement: JSX.Element) {
+            return true;
+        }
+
+        test('JSX.Element can receive basic types', () => {
+            assert.isTruthy(receiveJSXElement('strings'));
+            assert.isTruthy(receiveJSXElement(123));
+            assert.isTruthy(receiveJSXElement(null));
+            assert.isTruthy(receiveJSXElement(undefined));
+            assert.isTruthy(receiveJSXElement(Symbol('hi')));
+            assert.isTruthy(receiveJSXElement((a: number, b: number) => a + b));
+            assert.isTruthy(receiveJSXElement(<p>exising jsx</p>));
+            function Component() {
+                return <p>cool</p>;
+            }
+            assert.isTruthy(receiveJSXElement(<Component />));
+        });
+
+        test('JSX.Element can receive basic types wrapped in calculations', () => {
+            assert.isTruthy(receiveJSXElement(calc(() => 'strings')));
+            assert.isTruthy(receiveJSXElement(calc(() => 123)));
+            assert.isTruthy(receiveJSXElement(calc(() => null)));
+            assert.isTruthy(receiveJSXElement(calc(() => undefined)));
+            assert.isTruthy(receiveJSXElement(calc(() => Symbol('hi'))));
+            assert.isTruthy(
+                receiveJSXElement(calc(() => (a: number, b: number) => a + b))
+            );
+            assert.isTruthy(receiveJSXElement(calc(() => <p>exising jsx</p>)));
+            function Component() {
+                return <p>cool</p>;
+            }
+            assert.isTruthy(receiveJSXElement(calc(() => <Component />)));
+        });
+
+        test('JSX.Element can receive basic types wrapped in collections', () => {
+            assert.isTruthy(receiveJSXElement(collection(['strings'])));
+            assert.isTruthy(receiveJSXElement(collection([123])));
+            assert.isTruthy(receiveJSXElement(collection([null])));
+            assert.isTruthy(receiveJSXElement(collection([undefined])));
+            assert.isTruthy(receiveJSXElement(collection([Symbol('hi')])));
+            assert.isTruthy(
+                receiveJSXElement(collection([(a: number, b: number) => a + b]))
+            );
+            assert.isTruthy(
+                receiveJSXElement(collection([<p>exising jsx</p>]))
+            );
+            function Component() {
+                return <p>cool</p>;
+            }
+            assert.isTruthy(receiveJSXElement(collection([<Component />])));
+        });
+
+        test('JSX.Element can receive basic types wrapped in views', () => {
+            assert.isTruthy(
+                receiveJSXElement(
+                    collection(['strings']).mapView((item) => item)
+                )
+            );
+            assert.isTruthy(
+                receiveJSXElement(collection([123]).mapView((item) => item))
+            );
+            assert.isTruthy(
+                receiveJSXElement(collection([null]).mapView((item) => item))
+            );
+            assert.isTruthy(
+                receiveJSXElement(
+                    collection([undefined]).mapView((item) => item)
+                )
+            );
+            assert.isTruthy(
+                receiveJSXElement(
+                    collection([Symbol('hi')]).mapView((item) => item)
+                )
+            );
+            assert.isTruthy(
+                receiveJSXElement(
+                    collection([(a: number, b: number) => a + b]).mapView(
+                        (item) => item
+                    )
+                )
+            );
+            assert.isTruthy(
+                receiveJSXElement(
+                    collection([<p>exising jsx</p>]).mapView((item) => item)
+                )
+            );
+            function Component() {
+                return <p>cool</p>;
+            }
+            assert.isTruthy(
+                receiveJSXElement(
+                    collection([<Component />]).mapView((item) => item)
+                )
+            );
+        });
+    });
 }

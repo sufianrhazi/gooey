@@ -4,7 +4,7 @@ export declare type NoChildren = typeof NoChildren;
 /**
  * The core type that can be used as a child or root of a JSX expression
  */
-export declare type JSXNode = string | number | boolean | null | undefined | symbol | Function | Calculation<JSXNode> | Collection<JSXNode> | Context<any> | View<JSXNode> | RenderedElement<any, any, any>;
+export declare type JSXNode = string | number | boolean | null | undefined | symbol | Function | RenderedElement<any, any, any> | Calculation<JSXNode> | Collection<JSXNode> | View<JSXNode>;
 declare global {
     namespace JSX {
         /**

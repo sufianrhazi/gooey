@@ -47,18 +47,18 @@ export function ref<T>(val?: T): Ref<T> {
 
 export type ModelEvent =
     | {
-        type: 'add';
-        key: string | number | symbol;
-    }
+          type: 'add';
+          key: string | number | symbol;
+      }
     | {
-        type: 'set';
-        key: string | number | symbol;
-        value: any;
-    }
+          type: 'set';
+          key: string | number | symbol;
+          value: any;
+      }
     | {
-        type: 'delete';
-        key: string | number | symbol;
-    };
+          type: 'delete';
+          key: string | number | symbol;
+      };
 export type ModelObserver = (event: ModelEvent) => void;
 
 export type EqualityFunc<T> = (a: T, b: T) => boolean;
@@ -84,23 +84,23 @@ export interface ViewSpec<TInitialize, TItem, TEvent> {
 
 export type CollectionEvent<T> =
     | {
-        type: 'splice';
-        index: number;
-        count: number;
-        items: readonly T[];
-        removed: readonly T[];
-    }
+          type: 'splice';
+          index: number;
+          count: number;
+          items: readonly T[];
+          removed: readonly T[];
+      }
     | {
-        type: 'move';
-        fromIndex: number;
-        fromCount: number;
-        toIndex: number;
-        moved: readonly T[];
-    }
+          type: 'move';
+          fromIndex: number;
+          fromCount: number;
+          toIndex: number;
+          moved: readonly T[];
+      }
     | {
-        type: 'sort';
-        indexes: readonly number[];
-    };
+          type: 'sort';
+          indexes: readonly number[];
+      };
 
 export type TrackedData<TTypeTag, TEvent> = {
     $__id: string;
@@ -112,7 +112,7 @@ export type TrackedData<TTypeTag, TEvent> = {
         listener: (events: TEvent[], subscriptionNode: Subscription) => void
     ) => () => void;
     [GetSubscriptionNodeKey]: () => Subscription;
-    [NotifyKey]: (event: TEvent) => void;
+    [NotifyKey](event: TEvent): void; // Note: bivariance needed here!
     [DisposeKey]: () => void;
 };
 
@@ -125,9 +125,10 @@ interface ModelMethods<T extends {}> {
         debugName?: string
     ) => View<V>;
 }
-export type Model<T> = TrackedData<'model', ModelEvent> & ModelMethods<T> & {
-    [Key in keyof T]: T[Key];
-};
+export type Model<T> = TrackedData<'model', ModelEvent> &
+    ModelMethods<T> & {
+        [Key in keyof T]: T[Key];
+    };
 
 /**
  * A mutable array to hold state, with some additional convenience methods
@@ -146,8 +147,10 @@ interface CollectionMethods<T> {
     reject(shouldReject: (item: T, index: number) => boolean): T[];
     moveSlice(fromIndex: number, fromCount: number, toIndex: number): void;
 }
-export interface Collection<T> extends TrackedData<'collection', CollectionEvent<T>>, CollectionMethods<T>, Array<T> {
-};
+export interface Collection<T>
+    extends TrackedData<'collection', CollectionEvent<T>>,
+        CollectionMethods<T>,
+        Array<T> {}
 
 /**
  * A readonly array to hold projected state
@@ -164,8 +167,10 @@ interface ViewMethods<T> {
         debugName?: string
     ): View<V>;
 }
-export interface View<T> extends TrackedData<'collection', CollectionEvent<T>>, ViewMethods<T>, ReadonlyArray<T> {
-};
+export interface View<T>
+    extends TrackedData<'collection', CollectionEvent<T>>,
+        ViewMethods<T>,
+        ReadonlyArray<T> {}
 
 export interface Subscription {
     $__id: string;
@@ -189,10 +194,15 @@ export interface Context<TValue> {
 }
 
 export function createContext<TValue>(val: TValue): Context<TValue> {
-    return Object.assign(() => { throw new Error('Do not call contexts as functions'); }, {
-        [ContextGetterTag]: () => val,
-        [TypeTag]: 'context' as const,
-    });
+    return Object.assign(
+        () => {
+            throw new Error('Do not call contexts as functions');
+        },
+        {
+            [ContextGetterTag]: () => val,
+            [TypeTag]: 'context' as const,
+        }
+    );
 }
 
 export function getContext<TValue>(context: Context<TValue>): TValue {

@@ -79,7 +79,7 @@ export declare type TrackedData<TTypeTag, TEvent> = {
     [AddDeferredWorkKey]: (task: () => void) => void;
     [ObserveKey]: (listener: (events: TEvent[], subscriptionNode: Subscription) => void) => () => void;
     [GetSubscriptionNodeKey]: () => Subscription;
-    [NotifyKey]: (event: TEvent) => void;
+    [NotifyKey](event: TEvent): void;
     [DisposeKey]: () => void;
 };
 /**
