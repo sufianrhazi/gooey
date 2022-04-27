@@ -1,4 +1,5 @@
 Next up:
+[ ] Understand the virtualized list re-render performance better: why so freakishly slow?
 
 Unprioritized:
 [ ] Model: We have model.keys, do we need model.values and model.entries?
@@ -19,3 +20,4 @@ Done:
 [x] Tracked Data: Fix notify ordering bug (see comment in notify()) 
 [x] DAG/Core: Perform GC at the same pass as processing; only visit nodes that have a directed path to a retained node; dirtied but visitable nodes that do not have a directed path to a retained node could either live as-is, or they could be GCd (maybe less often?)
 [x] View: Revisit how attr*, makeAttrValue, and makeIdlValue work; How to reduce the amount of data structures? How to ensure unexpected values are handled correctly?
+[x] Export a debug build so we can debug things developed separately

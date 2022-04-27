@@ -3,6 +3,10 @@
   "version": "0.6.2",
   "description": "A library for building UI",
   "main": "build/esm/index.js",
+  "exports": {
+      ".": "build/esm/index.js",
+      "./debug": "build/esm-debug/index.js"
+  },
   "type": "module",
   "types": "build/tsc/src/index.d.ts",
   "scripts": {
