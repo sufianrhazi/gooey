@@ -396,6 +396,43 @@ suite('mount components', () => {
         );
     });
 
+    test('the children prop is a non-array single value when components receive a single child', () => {
+        const Parent: Component<{ children: (val: string) => string }> = ({
+            children,
+        }) => <div id="parent">{children('hello')}</div>;
+        mount(testRoot, <Parent>{(str: string) => str.toUpperCase()}</Parent>);
+        assert.is('HELLO', testRoot.querySelector('#parent')?.textContent);
+    });
+
+    test('the children prop is an array of values when components receive multiple children', () => {
+        const Parent: Component<{ children: ((val: string) => string)[] }> = ({
+            children,
+        }) => <div id="parent">{children.map((child) => child('hello'))}</div>;
+        mount(
+            testRoot,
+            <Parent>
+                {(str: string) => str.toUpperCase()}
+                {(str: string) => `(${str}!)`}
+            </Parent>
+        );
+        assert.is(
+            'HELLO(hello!)',
+            testRoot.querySelector('#parent')?.textContent
+        );
+    });
+
+    test('the children prop is undefined when components receive no children', () => {
+        const Parent: Component<{ children?: ((val: string) => string)[] }> = ({
+            children,
+        }) => (
+            <div id="parent">
+                {children === undefined ? 'empty' : 'non-empty'}
+            </div>
+        );
+        mount(testRoot, <Parent />);
+        assert.is('empty', testRoot.querySelector('#parent')?.textContent);
+    });
+
     test('onEffect is called *after* mounted calculations are updated', () => {
         const operations: string[] = [];
         const data = model({

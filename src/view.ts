@@ -528,10 +528,18 @@ function makeComponentVNode<TProps>(
     let jsxNode: JSXNode;
     const createdCalculations = trackCreatedCalculations(() => {
         jsxNode = Component(
-            {
-                ...props,
-                children: children,
-            },
+            // The children prop is weird, mostly due to TypeScript
+            // - if there aren't any children, it is `undefined`
+            !children || children.length === 0
+                ? { ...props }
+                : // - if there is one child, it is the value of that sole child
+                children.length === 1
+                ? { ...props, children: children[0] }
+                : // - if there are two or more children, it is an array of children
+                  {
+                      ...props,
+                      children: children,
+                  },
             {
                 onUnmount: (unmountCallback) => {
                     onUnmount.push(unmountCallback);
