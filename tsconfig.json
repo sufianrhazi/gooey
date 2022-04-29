@@ -24,7 +24,7 @@
     "newLine": "lf",
 
     "rootDir": "./",
-    "outDir": "./build/tsc/",
+    "outDir": "./build/tsc",
 
     "strict": true
   },

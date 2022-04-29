@@ -93,6 +93,11 @@ function setLogLevel(logLevel) {
   invariant(() => logLevel in levels, logLevel);
   currentLevel = levels[logLevel];
 }
+function debug(...items) {
+  if (currentLevel >= levels.debug) {
+    console.log(...items);
+  }
+}
 function warn(...items) {
   if (currentLevel >= levels.warn) {
     console.warn(...items);
@@ -521,7 +526,7 @@ function clearNames() {
   nameMap = /* @__PURE__ */ new WeakMap();
 }
 function debugNameFor(item) {
-  if (true) {
+  if (false) {
     return "";
   }
   const id = item.$__id;
@@ -546,7 +551,7 @@ function debugNameFor(item) {
   return `${id}:unknown`;
 }
 function name(item, name2) {
-  if (true)
+  if (false)
     return item;
   nameMap.set(item, name2);
   return item;
@@ -710,13 +715,13 @@ function makeCalculation(calculationFunc, isEqual, isEffect2) {
       case 0 /* STATE_FLUSHED */:
         return;
       case 3 /* STATE_CYCLE */:
-        false;
+        debug("Invalidating node in a cycle", debugNameFor(calculation));
         globalDependencyGraph.removeIncoming(calculation);
         state = 0 /* STATE_FLUSHED */;
         break;
       case 2 /* STATE_CACHED */:
       case 4 /* STATE_ERROR */: {
-        false;
+        debug("Invalidating node", debugNameFor(calculation));
         state = 0 /* STATE_FLUSHED */;
         break;
       }
@@ -802,13 +807,13 @@ function addDepToCurrentCalculation(item) {
     return;
   const dependentCalculation = activeCalculations[activeCalculations.length - 1];
   dependentCalculation.deps.push(item);
-  false;
+  debug("New global dependency", debugNameFor(item), "->", dependentCalculation.calc ? debugNameFor(dependentCalculation.calc) : "<untracked>");
 }
 function addManualDep(fromNode, toNode) {
   globalDependencyGraph.addNode(fromNode);
   globalDependencyGraph.addNode(toNode);
   globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_HARD);
-  false;
+  debug("New manual dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
 }
 function registerNode(node) {
   globalDependencyGraph.addNode(node);
@@ -818,18 +823,18 @@ function disposeNode(node) {
 }
 function addOrderingDep(fromNode, toNode) {
   globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_SOFT);
-  false;
+  debug("New manual ordering dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
 }
 function removeManualDep(fromNode, toNode) {
   globalDependencyGraph.removeEdge(fromNode, toNode, Graph.EDGE_HARD);
-  false;
+  debug("Removed manual dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
 }
 function removeOrderingDep(fromNode, toNode) {
   globalDependencyGraph.removeEdge(fromNode, toNode, Graph.EDGE_SOFT);
-  false;
+  debug("Removed manual ordering dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
 }
 function markDirty(item) {
-  false;
+  debug("Dirtying", debugNameFor(item));
   globalDependencyGraph.addNode(item);
   globalDependencyGraph.markNodeDirty(item);
   scheduleFlush();
@@ -871,7 +876,7 @@ function flush() {
     return;
   }
   needsFlush = false;
-  false;
+  debugSubscription && debugSubscription(debug2(), "0: flush start");
   globalDependencyGraph.process((item, action) => {
     let shouldPropagate = true;
     switch (action) {
@@ -897,30 +902,30 @@ function flush() {
       default:
         assertExhausted(action);
     }
-    if (false) {
+    if (true) {
       debug(`process:${action}`, debugNameFor(item), `shouldPropagate=${shouldPropagate}`);
       debugSubscription && debugSubscription(debug2(item), `process:${action}:shouldPropagate=${shouldPropagate}`);
     }
     return shouldPropagate;
   });
   if (globalDependencyGraph.hasDirtyNodes()) {
-    false;
+    debug("Graph contained dirty nodes post-flush");
     scheduleFlush();
   }
-  false;
+  debugSubscription && debugSubscription(debug2(), `2: after visit`);
   resolveFlushPromise();
 }
 function retain(item) {
   const refcount = refcountMap[item.$__id] ?? 0;
   const newRefcount = refcount + 1;
   if (refcount === 0) {
-    false;
+    debug(`retain ${debugNameFor(item)} retained; refcount ${refcount} -> ${newRefcount}`);
     if (!globalDependencyGraph.hasNode(item)) {
       globalDependencyGraph.addNode(item);
     }
     globalDependencyGraph.retain(item);
   } else {
-    false;
+    debug(`retain ${debugNameFor(item)} incremented; refcount ${refcount} -> ${newRefcount}`);
   }
   refcountMap[item.$__id] = newRefcount;
 }
@@ -931,10 +936,10 @@ function release(item) {
     error(`release called on unretained item ${debugNameFor(item)}`, item);
   }
   if (newRefcount < 1) {
-    false;
+    debug(`release ${debugNameFor(item)} released; refcount ${refcount} -> ${newRefcount}`);
     globalDependencyGraph.release(item);
   } else {
-    false;
+    debug(`release ${debugNameFor(item)} decremented; refcount ${refcount} -> ${newRefcount}`);
   }
   refcountMap[item.$__id] = newRefcount;
 }
@@ -2000,7 +2005,7 @@ function jsxNodeToVNode(jsxNode, domParent, parentOrdering, contextMap, document
   return renderElementToVNode(jsxNode, domParent, parentOrdering, contextMap, documentFragment);
 }
 function renderElementToVNode(renderElement, domParent, nodeOrdering, contextMap, documentFragment) {
-  false;
+  debug("view renderElementToVNode", renderElement);
   switch (renderElement.type) {
     case "intrinsic":
       return makeElementVNode(renderElement.element, renderElement.props, renderElement.children, domParent, nodeOrdering, contextMap, documentFragment);
@@ -2063,7 +2068,12 @@ function makeElementVNode(elementType, props, children, domParent, nodeOrdering,
     subContextMap = new Map(contextMap);
     subContextMap.set(XmlNamespaceContext, childElementXMLNamespace);
   }
-  false;
+  debug("view makeElementVNode", {
+    elementType,
+    elementXMLNamespace,
+    props,
+    children
+  });
   const element = document.createElementNS(elementXMLNamespace, elementType);
   const elementBoundEvents = {};
   const onReleaseActions = [];
@@ -2136,7 +2146,7 @@ function makeContextVNode(context, value, children, domParent, nodeOrdering, con
   return providerNode;
 }
 function makeComponentVNode(Component2, props, children, domParent, nodeOrdering, contextMap, documentFragment) {
-  false;
+  debug("view makeComponentVNode", { Component: Component2, props, children });
   const onUnmount = [];
   const onMount = [];
   let jsxNode;
@@ -2194,7 +2204,7 @@ function makeCalculationVNode(calculation, domParent, parentNodeOrdering, contex
     children: calculationNodeChildren,
     onUnmount
   };
-  const calculationNodeOrdering = makeNodeOrdering(false ? `viewcalc:${debugNameFor(calculation) ?? "node"}:order` : "viewcalc:order");
+  const calculationNodeOrdering = makeNodeOrdering(true ? `viewcalc:${debugNameFor(calculation) ?? "node"}:order` : "viewcalc:order");
   registerNode(calculationNodeOrdering);
   let firstRun = true;
   const resultEffect = effect(() => {
@@ -2228,7 +2238,7 @@ function makeCollectionVNode(collection2, domParent, parentNodeOrdering, context
     children: collectionNodeChildren,
     onUnmount
   };
-  const collectionNodeOrdering = makeNodeOrdering(false ? `viewcoll:${debugNameFor(collection2) ?? "node"}:order` : "viewcoll:order");
+  const collectionNodeOrdering = makeNodeOrdering(true ? `viewcoll:${debugNameFor(collection2) ?? "node"}:order` : "viewcoll:order");
   registerNode(collectionNodeOrdering);
   addOrderingDep(collectionNodeOrdering, parentNodeOrdering);
   onUnmount.push(() => {
@@ -2869,4 +2879,4 @@ export {
   setLogLevel,
   subscribe
 };
-//# sourceMappingURL=index.js.map
+//# sourceMappingURL=index.debug.esm.js.map

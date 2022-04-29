@@ -2,10 +2,28 @@
   "name": "@srhazi/gooey",
   "version": "0.6.2",
   "description": "A library for building UI",
-  "main": "build/esm/index.js",
+  "main": "build/index.js",
+  "files": [
+    "build/index.esm.js",
+    "build/index.esm.js.map",
+    "build/index.debug.esm.js",
+    "build/index.debug.esm.js.map",
+    "build/index.cjs.js",
+    "build/index.cjs.js.map",
+    "build/index.debug.cjs.js",
+    "build/index.debug.cjs.js.map",
+    "build/tsc/src/index.d.ts",
+    "debug/index.d.ts"
+  ],
   "exports": {
-      ".": "build/esm/index.js",
-      "./debug": "build/esm-debug/index.js"
+    ".": {
+      "import": "build/index.esm.js",
+      "require": "build/index.cjs.js"
+    },
+    "./debug": {
+      "import": "build/index.debug.esm.js",
+      "require": "build/index.debug.cjs.js"
+    }
   },
   "type": "module",
   "types": "build/tsc/src/index.d.ts",

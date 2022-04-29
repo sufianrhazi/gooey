@@ -7,8 +7,8 @@ source "s/_tools.sh"
 
 VERSION=$(jq .version package.json)
 
-STATUS_OUT=$(git status --porcelain | grep -v '^M  package.json$' | wc -l)
-if [ "$STATUS_OUT" -gt 0 ]; then
+STATUS_OUT=$(git status --porcelain | grep -c -v '^M  package.json$')
+if [ "$1" != "--dirty" ] && [ "$STATUS_OUT" -gt 0 ]; then
     echo_error "ERROR: git state not clean, refusing to build"
     git status
     exit 1
@@ -23,11 +23,11 @@ rm -rf build/
 echo_info "Building types from tsc..."
 node_modules/.bin/tsc -p .
 echo_info "Bundling esm..."
-node_modules/.bin/esbuild src/index.ts --define:DEBUG=false --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=esm --outdir=build/esm
-node_modules/.bin/esbuild src/index.ts --define:DEBUG=true --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=esm --outdir=build/esm-debug
+node_modules/.bin/esbuild src/index.ts --define:DEBUG=false --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=esm --outfile=build/index.esm.js
+node_modules/.bin/esbuild src/index.ts --define:DEBUG=true --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=esm --outfile=build/index.debug.esm.js
 echo_info "Bundling cjs..."
-node_modules/.bin/esbuild src/index.ts --define:DEBUG=false --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=cjs --outfile=build/cjs/index.js
-node_modules/.bin/esbuild src/index.ts --define:DEBUG=true --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=cjs --outfile=build/cjs/index.debug.js
+node_modules/.bin/esbuild src/index.ts --define:DEBUG=false --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=cjs --outfile=build/index.cjs.js
+node_modules/.bin/esbuild src/index.ts --define:DEBUG=true --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=cjs --outfile=build/index.debug.cjs.js
 git add .
 
 echo_warn "Running tests + performance tests to confirm..."

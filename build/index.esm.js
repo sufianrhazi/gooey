@@ -1,57 +1,9 @@
 var __defProp = Object.defineProperty;
-var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-var __getOwnPropNames = Object.getOwnPropertyNames;
-var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __markAsModule = (target) => __defProp(target, "__esModule", { value: true });
-var __export = (target, all) => {
-  for (var name2 in all)
-    __defProp(target, name2, { get: all[name2], enumerable: true });
-};
-var __reExport = (target, module2, copyDefault, desc) => {
-  if (module2 && typeof module2 === "object" || typeof module2 === "function") {
-    for (let key of __getOwnPropNames(module2))
-      if (!__hasOwnProp.call(target, key) && (copyDefault || key !== "default"))
-        __defProp(target, key, { get: () => module2[key], enumerable: !(desc = __getOwnPropDesc(module2, key)) || desc.enumerable });
-  }
-  return target;
-};
-var __toCommonJS = /* @__PURE__ */ ((cache) => {
-  return (module2, temp) => {
-    return cache && cache.get(module2) || (temp = __reExport(__markAsModule({}), module2, 1), cache && cache.set(module2, temp), temp);
-  };
-})(typeof WeakMap !== "undefined" ? /* @__PURE__ */ new WeakMap() : 0);
 var __publicField = (obj, key, value) => {
   __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
   return value;
 };
-
-// src/index.ts
-var src_exports = {};
-__export(src_exports, {
-  Fragment: () => Fragment,
-  InvariantError: () => InvariantError,
-  VERSION: () => VERSION,
-  calc: () => calc,
-  collection: () => collection,
-  createContext: () => createContext,
-  debug: () => debug2,
-  debugState: () => debugState,
-  debugSubscribe: () => debugSubscribe,
-  default: () => src_default,
-  effect: () => effect,
-  flush: () => flush,
-  getLogLevel: () => getLogLevel,
-  model: () => model,
-  mount: () => mount,
-  nextFlush: () => nextFlush,
-  ref: () => ref,
-  release: () => release,
-  reset: () => reset,
-  retain: () => retain,
-  setLogLevel: () => setLogLevel,
-  subscribe: () => subscribe
-});
 
 // src/types.ts
 var InvariantError = class extends Error {
@@ -2893,5 +2845,28 @@ model.dispose = function dispose2(m) {
 // src/index.ts
 var src_default = createElement;
 var VERSION = true ? "0.6.2" : "development";
-module.exports = __toCommonJS(src_exports);
-//# sourceMappingURL=index.js.map
+export {
+  Fragment,
+  InvariantError,
+  VERSION,
+  calc,
+  collection,
+  createContext,
+  debug2 as debug,
+  debugState,
+  debugSubscribe,
+  src_default as default,
+  effect,
+  flush,
+  getLogLevel,
+  model,
+  mount,
+  nextFlush,
+  ref,
+  release,
+  reset,
+  retain,
+  setLogLevel,
+  subscribe
+};
+//# sourceMappingURL=index.esm.js.map
