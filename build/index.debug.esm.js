@@ -2151,7 +2151,7 @@ function makeComponentVNode(Component2, props, children, domParent, nodeOrdering
   const onMount = [];
   let jsxNode;
   const createdCalculations2 = trackCreatedCalculations(() => {
-    jsxNode = Component2({
+    jsxNode = Component2(!children || children.length === 0 ? { ...props } : children.length === 1 ? { ...props, children: children[0] } : {
       ...props,
       children
     }, {
