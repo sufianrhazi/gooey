@@ -555,7 +555,11 @@ export class Graph<Type extends object> {
         do {
             visitedAnyDirty = false;
             this._toposortRetained().forEach((component) => {
-                const isCycle = component.length > 1;
+                const isCycle =
+                    component.length > 1 ||
+                    (this.graph[component[0].nodeId][component[0].nodeId] &
+                        Graph.EDGE_HARD) ===
+                        Graph.EDGE_HARD;
                 const nodeIds = new Set(
                     component.map((vertex) => vertex.nodeId)
                 );

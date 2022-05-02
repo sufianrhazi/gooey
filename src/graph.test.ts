@@ -7,61 +7,6 @@ suite('Graph', () => {
     const c = { name: 'c', $__id: 2 };
     const d = { name: 'd', $__id: 3 };
     const e = { name: 'e', $__id: 4 };
-
-    interface TNode {
-        name: string;
-    }
-
-    test('cycles can be identified', () => {
-        const graph = new Graph<TNode>();
-        graph.addNode(a);
-        graph.addNode(b);
-        graph.addNode(c);
-        graph.addNode(d);
-        graph.addNode(e);
-
-        graph.addEdge(a, b, Graph.EDGE_HARD);
-        graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.addEdge(c, d, Graph.EDGE_HARD);
-        graph.addEdge(d, b, Graph.EDGE_HARD);
-        graph.addEdge(c, e, Graph.EDGE_HARD);
-        graph.retain(e);
-        graph.markNodeDirty(a);
-
-        const actionsPerNode: Record<string, string[]> = {
-            a: [],
-            b: [],
-            c: [],
-            d: [],
-            e: [],
-        };
-
-        graph.process((node, action) => {
-            if (action !== 'invalidate') {
-                actionsPerNode[node.name].push(action);
-            }
-            return true;
-        });
-
-        assert.deepEqual(
-            {
-                a: ['recalculate'],
-                b: ['cycle'],
-                c: ['cycle'],
-                d: ['cycle'],
-                e: ['recalculate'],
-            },
-            actionsPerNode
-        );
-    });
-});
-
-suite('Graph', () => {
-    const a = { name: 'a', $__id: 0 };
-    const b = { name: 'b', $__id: 1 };
-    const c = { name: 'c', $__id: 2 };
-    const d = { name: 'd', $__id: 3 };
-    const e = { name: 'e', $__id: 4 };
     const f = { name: 'f', $__id: 5 };
     const g = { name: 'g', $__id: 6 };
     const h = { name: 'h', $__id: 7 };
@@ -435,5 +380,229 @@ suite('Graph', () => {
                 visit(a);
             });
         });
+    });
+});
+
+suite('Graph Cycles', () => {
+    const a = { name: 'a', $__id: 0 };
+    const b = { name: 'b', $__id: 1 };
+    const c = { name: 'c', $__id: 2 };
+    const d = { name: 'd', $__id: 3 };
+    const e = { name: 'e', $__id: 4 };
+    const f = { name: 'f', $__id: 5 };
+
+    interface TNode {
+        name: string;
+    }
+
+    function processGraph(graph: Graph<TNode>) {
+        const actionsPerNode: Record<
+            string,
+            { invalidated: boolean; lastAction: string | null }
+        > = {};
+
+        graph.process((node, action) => {
+            if (!actionsPerNode[node.name]) {
+                actionsPerNode[node.name] = {
+                    invalidated: false,
+                    lastAction: null,
+                };
+            }
+            if (action === 'invalidate') {
+                actionsPerNode[node.name].invalidated = true;
+                actionsPerNode[node.name].lastAction = null;
+            } else {
+                assert.is(
+                    null,
+                    actionsPerNode[node.name].lastAction,
+                    `node ${node.name} told to ${action} without being invalidated`
+                );
+                actionsPerNode[node.name].lastAction = action;
+            }
+            return true;
+        });
+
+        return actionsPerNode;
+    }
+
+    test('cycles can be identified', () => {
+        const graph = new Graph<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+        graph.addNode(d);
+        graph.addNode(e);
+
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(c, d, Graph.EDGE_HARD);
+        graph.addEdge(d, b, Graph.EDGE_HARD);
+        graph.addEdge(c, e, Graph.EDGE_HARD);
+        graph.retain(e);
+        graph.markNodeDirty(a);
+
+        assert.deepEqual(
+            {
+                a: { invalidated: true, lastAction: 'recalculate' },
+                b: { invalidated: true, lastAction: 'cycle' },
+                c: { invalidated: true, lastAction: 'cycle' },
+                d: { invalidated: true, lastAction: 'cycle' },
+                e: { invalidated: true, lastAction: 'recalculate' },
+            },
+            processGraph(graph)
+        );
+    });
+
+    test('cycle type: ring', () => {
+        const graph = new Graph<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+        graph.addNode(d);
+        graph.addNode(e);
+
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(c, d, Graph.EDGE_HARD);
+        graph.addEdge(d, b, Graph.EDGE_HARD);
+
+        graph.addEdge(c, e, Graph.EDGE_HARD);
+
+        graph.retain(e);
+        graph.markNodeDirty(a);
+
+        assert.deepEqual(
+            {
+                a: { invalidated: true, lastAction: 'recalculate' },
+                b: { invalidated: true, lastAction: 'cycle' },
+                c: { invalidated: true, lastAction: 'cycle' },
+                d: { invalidated: true, lastAction: 'cycle' },
+                e: { invalidated: true, lastAction: 'recalculate' },
+            },
+            processGraph(graph)
+        );
+    });
+
+    test('cycle type: single loop', () => {
+        const graph = new Graph<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+        graph.addNode(d);
+
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(c, b, Graph.EDGE_HARD);
+
+        graph.addEdge(c, d, Graph.EDGE_HARD);
+
+        graph.retain(d);
+        graph.markNodeDirty(a);
+
+        assert.deepEqual(
+            {
+                a: { invalidated: true, lastAction: 'recalculate' },
+                b: { invalidated: true, lastAction: 'cycle' },
+                c: { invalidated: true, lastAction: 'cycle' },
+                d: { invalidated: true, lastAction: 'recalculate' },
+            },
+            processGraph(graph)
+        );
+    });
+
+    test('cycle type: joined double loop', () => {
+        const graph = new Graph<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+        graph.addNode(d);
+        graph.addNode(e);
+
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(c, b, Graph.EDGE_HARD);
+        graph.addEdge(c, d, Graph.EDGE_HARD);
+        graph.addEdge(d, c, Graph.EDGE_HARD);
+
+        graph.addEdge(d, e, Graph.EDGE_HARD);
+
+        graph.retain(e);
+        graph.markNodeDirty(a);
+
+        assert.deepEqual(
+            {
+                a: { invalidated: true, lastAction: 'recalculate' },
+                b: { invalidated: true, lastAction: 'cycle' },
+                c: { invalidated: true, lastAction: 'cycle' },
+                d: { invalidated: true, lastAction: 'cycle' },
+                e: { invalidated: true, lastAction: 'recalculate' },
+            },
+            processGraph(graph)
+        );
+    });
+
+    test('cycle type: separate double loop', () => {
+        const graph = new Graph<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+        graph.addNode(d);
+        graph.addNode(e);
+        graph.addNode(f);
+
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(c, b, Graph.EDGE_HARD);
+
+        graph.addEdge(c, d, Graph.EDGE_HARD);
+
+        graph.addEdge(d, e, Graph.EDGE_HARD);
+        graph.addEdge(e, d, Graph.EDGE_HARD);
+
+        graph.addEdge(e, f, Graph.EDGE_HARD);
+
+        graph.retain(f);
+        graph.markNodeDirty(a);
+
+        assert.deepEqual(
+            {
+                a: { invalidated: true, lastAction: 'recalculate' },
+                b: { invalidated: true, lastAction: 'cycle' },
+                c: { invalidated: true, lastAction: 'cycle' },
+                d: { invalidated: true, lastAction: 'cycle' },
+                e: { invalidated: true, lastAction: 'cycle' },
+                f: { invalidated: true, lastAction: 'recalculate' },
+            },
+            processGraph(graph)
+        );
+    });
+
+    test('cycle type: self cycle', () => {
+        const graph = new Graph<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+
+        graph.addEdge(b, b, Graph.EDGE_HARD);
+
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+
+        graph.retain(c);
+        graph.markNodeDirty(a);
+
+        assert.deepEqual(
+            {
+                a: { invalidated: true, lastAction: 'recalculate' },
+                b: { invalidated: true, lastAction: 'cycle' },
+                c: { invalidated: true, lastAction: 'recalculate' },
+            },
+            processGraph(graph)
+        );
     });
 });
