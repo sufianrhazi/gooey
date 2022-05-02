@@ -220,6 +220,13 @@ function jsxNodeToVNode(
             domParent,
         };
     }
+    if (jsxNode instanceof Element) {
+        documentFragment.appendChild(jsxNode);
+        return {
+            domNode: jsxNode,
+            domParent,
+        };
+    }
     if (isCalculation(jsxNode)) {
         return makeCalculationVNode(
             jsxNode,
@@ -313,7 +320,7 @@ function renderElementToVNode(
                 documentFragment
             );
         default:
-            log.assertExhausted(renderElement);
+            log.assertExhausted(renderElement, 'Unexpected renderElement type');
     }
 }
 

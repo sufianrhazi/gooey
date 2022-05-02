@@ -1376,20 +1376,51 @@ suite('foreign elements', () => {
                 testRoot.children[0].children[0].children[0] instanceof
                     MathMLElement
             );
+            assert.isTruthy(
+                testRoot.children[0].children[0].children[1] instanceof
+                    MathMLElement
+            );
         });
 
         test('mathml elements do not work outside math element', () => {
             mount(
                 testRoot,
                 <div>
-                    <math>
+                    <div>
                         <mi>a</mi>
                         <mn>2</mn>
-                    </math>
+                    </div>
                 </div>
+            );
+            assert.isTruthy(testRoot.children[0] instanceof HTMLDivElement);
+            assert.isTruthy(
+                testRoot.children[0].children[0] instanceof HTMLDivElement
+            );
+            assert.isTruthy(
+                testRoot.children[0].children[0].children[0] instanceof
+                    MathMLElement
+            );
+            assert.isTruthy(
+                testRoot.children[0].children[0].children[1] instanceof
+                    MathMLElement
             );
         });
     }
+});
+
+suite('host elements', () => {
+    test('normal element can be used within jsx', () => {
+        const hostElement = document.createElement('div');
+        hostElement.textContent = 'host element';
+        hostElement.id = 'host';
+        hostElement.setAttribute('data-host', 'yes');
+        mount(testRoot, <div id="outer">{hostElement}</div>);
+        assert.is('host element', testRoot.textContent);
+        assert.is(
+            'yes',
+            testRoot.querySelector('#host')?.getAttribute('data-host')
+        );
+    });
 });
 
 suite('createContext', () => {

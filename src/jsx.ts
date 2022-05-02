@@ -14,6 +14,7 @@ export type JSXNode =
     | undefined
     | symbol
     | Function
+    | Element
     | RenderedElement<any, any, any>
     | Calculation<JSXNode>
     | Collection<JSXNode>
