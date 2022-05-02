@@ -271,7 +271,7 @@ export class Graph<Type extends object> {
      * topological sort of the subgraph that contains all retained nodes.
      *
      * Note: Because we are starting at retained nodes, which should be "end"
-     * bestination nodes, we build a topological sort of the _reverse graph_.
+     * destination nodes, we build a topological sort of the _reverse graph_.
      * Due to the nature of Tarjan's algorithm, the sort we build is
      * constructed in reverse order. It is also the case that the reverse of a
      * topological sort of the reverse graph is a valid topological sort of the
@@ -280,12 +280,13 @@ export class Graph<Type extends object> {
      * This means that we do not need to reverse the topological sort produced
      * by Tarjan's algorithm if we follow the reverse edges.
      *
-     * Note: handling of dynamic additions/deletions of edges in this algorithm is incredibly inefficient!
+     * Note: the handling of dynamic additions/deletions of edges in this
+     * algorithm is *incredibly* inefficient!
+     *
      * TODO: Implement the algorithm outlined in:
-     * - Title: Incremental Topological Sort and Cycle Detection in O(msqrt{n}) Expected Total Time
-     * - Authors: Aaron Bernstein and Shiri Chechik
-     * - Paper: https://aaronbernstein.cs.rutgers.edu/wp-content/uploads/sites/43/2018/12/Dynamic-Cycle-Detection.pdf
-     * - From: https://aaronbernstein.cs.rutgers.edu/publications/
+     * - Title: A Dynamic Topological Sort Algorithm for Directed Acyclic Graphs
+     * - Authors: David J. Pearce and Paul H.J. Kelly
+     * - Paper: https://whileydave.com/publications/pk07_jea/
      */
     private _toposortRetained() {
         type Vertex = {
