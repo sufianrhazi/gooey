@@ -16,6 +16,8 @@ export declare const DisposeKey: unique symbol;
 export declare const FlushKey: unique symbol;
 export declare const AddDeferredWorkKey: unique symbol;
 export declare const NotifyKey: unique symbol;
+export declare type IntrinsicNodeObserverNodeCallback = (node: Node, event: 'add' | 'remove') => void;
+export declare type IntrinsicNodeObserverElementCallback = (element: Element, event: 'add' | 'remove') => void;
 export declare type ProcessAction = 'recalculate' | 'cycle' | 'invalidate';
 /**
  * A ref object that can be passed to native elements.

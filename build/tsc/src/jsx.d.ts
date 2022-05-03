@@ -1,10 +1,8 @@
-import { Ref, Calculation, Collection, View, Context } from './types';
-export declare const NoChildren: unique symbol;
-export declare type NoChildren = typeof NoChildren;
+import { Ref, Calculation, Collection, View, Context, IntrinsicNodeObserverNodeCallback, IntrinsicNodeObserverElementCallback } from './types';
 /**
  * The core type that can be used as a child or root of a JSX expression
  */
-export declare type JSXNode = string | number | boolean | null | undefined | symbol | Function | RenderedElement<any, any, any> | Calculation<JSXNode> | Collection<JSXNode> | View<JSXNode>;
+export declare type JSXNode = string | number | boolean | null | undefined | symbol | Function | Element | RenderedElement<any, any, any> | Calculation<JSXNode> | Collection<JSXNode> | View<JSXNode> | JSXNode[];
 declare global {
     namespace JSX {
         /**
@@ -86,6 +84,11 @@ export declare type RenderedElement<TProps, TContext, TChildren extends JSXNode>
     type: 'component';
     component: Component<TProps>;
     props: TProps;
+    children: TChildren[];
+} | {
+    type: 'observer';
+    nodeCallback: IntrinsicNodeObserverNodeCallback | undefined;
+    elementCallback: IntrinsicNodeObserverElementCallback | undefined;
     children: TChildren[];
 };
 interface MissingFromTypescriptHTMLElementProperties {

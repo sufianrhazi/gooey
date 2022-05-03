@@ -1,8 +1,13 @@
-import { Context } from './types';
+import { Context, IntrinsicNodeObserverNodeCallback, IntrinsicNodeObserverElementCallback } from './types';
 import { Component, JSXNode, RenderedElement } from './jsx';
 export declare const Fragment: ({ children }: {
     children: JSXNode[];
 }) => JSXNode[];
+export declare const LifecycleObserver: (_props: {
+    nodeCallback?: IntrinsicNodeObserverNodeCallback | undefined;
+    elementCallback?: IntrinsicNodeObserverElementCallback | undefined;
+    children?: JSXNode | JSXNode[];
+}) => JSX.Element;
 export declare function createElement<TProps, TChildren extends JSXNode>(Constructor: string, props: TProps, ...children: TChildren[]): RenderedElement<TProps, unknown, TChildren>;
 export declare function createElement<TContext, TProps extends {
     value: TContext;

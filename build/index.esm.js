@@ -421,7 +421,7 @@ var _Graph = class {
     do {
       visitedAnyDirty = false;
       this._toposortRetained().forEach((component) => {
-        const isCycle = component.length > 1;
+        const isCycle = component.length > 1 || (this.graph[component[0].nodeId][component[0].nodeId] & _Graph.EDGE_HARD) === _Graph.EDGE_HARD;
         const nodeIds = new Set(component.map((vertex) => vertex.nodeId));
         nodeIds.forEach((nodeId) => {
           const wasCycle = !!this.knownCycles[nodeId];
@@ -977,7 +977,6 @@ function debugSubscribe(callback) {
 }
 
 // src/jsx.ts
-var NoChildren = Symbol("NoChildren");
 var UnusedSymbol = Symbol("unused");
 function attrBooleanToEmptyString(val) {
   if (!val)
@@ -1895,6 +1894,14 @@ function spliceVNode(immediateParent, childIndex, removeCount, newNodes, { runOn
 
 // src/view.ts
 var Fragment = ({ children }) => children;
+var emptyIntrinsicNodeObserverContext = {
+  nodeCallbacks: [],
+  elementCallbacks: []
+};
+var IntrinsicNodeObserverContext = createContext(emptyIntrinsicNodeObserverContext);
+var LifecycleObserver = (_props) => {
+  return null;
+};
 function createElement(Constructor, props, ...children) {
   if (typeof Constructor === "string") {
     return {
@@ -1909,6 +1916,14 @@ function createElement(Constructor, props, ...children) {
       type: "context",
       context: Constructor,
       props,
+      children
+    };
+  }
+  if (Constructor === LifecycleObserver) {
+    return {
+      type: "observer",
+      nodeCallback: props.nodeCallback || void 0,
+      elementCallback: props.elementCallback || void 0,
       children
     };
   }
@@ -1964,16 +1979,45 @@ function jsxNodeToVNode(jsxNode, domParent, parentOrdering, contextMap, document
   if (typeof jsxNode === "string") {
     const domNode = document.createTextNode(jsxNode);
     documentFragment.appendChild(domNode);
+    const observerCallback = makeObserverCallback(contextMap);
     return {
       domNode,
-      domParent
+      domParent,
+      onMount: [
+        () => {
+          observerCallback?.(domNode, "add");
+        }
+      ],
+      onUnmount: [
+        () => {
+          observerCallback?.(domNode, "remove");
+        }
+      ]
     };
   }
   if (typeof jsxNode === "number") {
     const domNode = document.createTextNode(jsxNode.toString());
     documentFragment.appendChild(domNode);
+    const observerCallback = makeObserverCallback(contextMap);
     return {
       domNode,
+      domParent,
+      onMount: [
+        () => {
+          observerCallback?.(domNode, "add");
+        }
+      ],
+      onUnmount: [
+        () => {
+          observerCallback?.(domNode, "remove");
+        }
+      ]
+    };
+  }
+  if (jsxNode instanceof Element) {
+    documentFragment.appendChild(jsxNode);
+    return {
+      domNode: jsxNode,
       domParent
     };
   }
@@ -2008,8 +2052,10 @@ function renderElementToVNode(renderElement, domParent, nodeOrdering, contextMap
       return makeContextVNode(renderElement.context, renderElement.props.value, renderElement.children, domParent, nodeOrdering, contextMap, documentFragment);
     case "component":
       return makeComponentVNode(renderElement.component, renderElement.props, renderElement.children, domParent, nodeOrdering, contextMap, documentFragment);
+    case "observer":
+      return makeObserverVNode(renderElement.nodeCallback, renderElement.elementCallback, renderElement.children, domParent, nodeOrdering, contextMap, documentFragment);
     default:
-      assertExhausted(renderElement);
+      assertExhausted(renderElement, "Unexpected renderElement type");
   }
 }
 var HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
@@ -2063,6 +2109,11 @@ function makeElementVNode(elementType, props, children, domParent, nodeOrdering,
     subContextMap = new Map(contextMap);
     subContextMap.set(XmlNamespaceContext, childElementXMLNamespace);
   }
+  const hostObserverContext = readContext(subContextMap, IntrinsicNodeObserverContext);
+  if (hostObserverContext !== emptyIntrinsicNodeObserverContext) {
+    subContextMap = new Map(contextMap);
+    subContextMap.set(IntrinsicNodeObserverContext, emptyIntrinsicNodeObserverContext);
+  }
   false;
   const element = document.createElementNS(elementXMLNamespace, elementType);
   const elementBoundEvents = {};
@@ -2096,6 +2147,7 @@ function makeElementVNode(elementType, props, children, domParent, nodeOrdering,
       }
     });
   }
+  const observerCallback = makeObserverCallback(contextMap);
   const elementNode = {
     domParent,
     domNode: element,
@@ -2104,11 +2156,13 @@ function makeElementVNode(elementType, props, children, domParent, nodeOrdering,
         if (refCallback) {
           refCallback(element);
         }
+        observerCallback?.(element, "add");
       }
     ],
     onUnmount: [
       () => {
         onReleaseActions.forEach((action) => action());
+        observerCallback?.(element, "remove");
         if (refCallback) {
           refCallback(void 0);
         }
@@ -2124,9 +2178,40 @@ function makeElementVNode(elementType, props, children, domParent, nodeOrdering,
   documentFragment.appendChild(element);
   return elementNode;
 }
+function readContext(contextMap, context) {
+  if (contextMap.has(context)) {
+    return contextMap.get(context);
+  }
+  return getContext(context);
+}
 function makeContextVNode(context, value, children, domParent, nodeOrdering, contextMap, documentFragment) {
   const subContextMap = new Map(contextMap);
   subContextMap.set(context, value);
+  const providerNode = {
+    domParent
+  };
+  if (children) {
+    providerNode.children = children.map((jsxChild) => jsxNodeToVNode(jsxChild, domParent, nodeOrdering, subContextMap, documentFragment));
+  }
+  return providerNode;
+}
+function makeObserverVNode(nodeCallback, elementCallback, children, domParent, nodeOrdering, contextMap, documentFragment) {
+  const intrinsicNodeContextValue = readContext(contextMap, IntrinsicNodeObserverContext);
+  let subContextMap = contextMap;
+  if (nodeCallback || elementCallback) {
+    const newContextValue = {
+      nodeCallbacks: intrinsicNodeContextValue.nodeCallbacks.slice(),
+      elementCallbacks: intrinsicNodeContextValue.elementCallbacks.slice()
+    };
+    if (nodeCallback) {
+      newContextValue.nodeCallbacks.push(nodeCallback);
+    }
+    if (elementCallback) {
+      newContextValue.elementCallbacks.push(elementCallback);
+    }
+    subContextMap = new Map(contextMap);
+    subContextMap.set(IntrinsicNodeObserverContext, newContextValue);
+  }
   const providerNode = {
     domParent
   };
@@ -2165,10 +2250,7 @@ function makeComponentVNode(Component2, props, children, domParent, nodeOrdering
         });
       },
       getContext: (context) => {
-        if (contextMap.has(context)) {
-          return contextMap.get(context);
-        }
-        return getContext(context);
+        return readContext(contextMap, context);
       }
     });
   });
@@ -2185,6 +2267,20 @@ function makeComponentVNode(Component2, props, children, domParent, nodeOrdering
     onUnmount
   };
   return componentNode;
+}
+function makeObserverCallback(contextMap) {
+  const intrinsicNodeObserverContext = readContext(contextMap, IntrinsicNodeObserverContext);
+  if (intrinsicNodeObserverContext === emptyIntrinsicNodeObserverContext) {
+    return null;
+  }
+  return (node, event) => {
+    intrinsicNodeObserverContext.nodeCallbacks.forEach((nodeCallback) => nodeCallback(node, event));
+    intrinsicNodeObserverContext.elementCallbacks.forEach((elementCallback) => {
+      if (node instanceof Element) {
+        elementCallback(node, event);
+      }
+    });
+  };
 }
 function makeCalculationVNode(calculation, domParent, parentNodeOrdering, contextMap, documentFragment) {
   const onUnmount = [];
@@ -2848,6 +2944,7 @@ var VERSION = true ? "0.6.2" : "development";
 export {
   Fragment,
   InvariantError,
+  LifecycleObserver,
   VERSION,
   calc,
   collection,
