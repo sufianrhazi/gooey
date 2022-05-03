@@ -8,9 +8,6 @@ import {
     IntrinsicNodeObserverElementCallback,
 } from './types';
 
-export const NoChildren = Symbol('NoChildren');
-export type NoChildren = typeof NoChildren;
-
 /**
  * The core type that can be used as a child or root of a JSX expression
  */
@@ -26,7 +23,8 @@ export type JSXNode =
     | RenderedElement<any, any, any>
     | Calculation<JSXNode>
     | Collection<JSXNode>
-    | View<JSXNode>;
+    | View<JSXNode>
+    | JSXNode[];
 
 declare global {
     // eslint-disable-next-line @typescript-eslint/no-namespace

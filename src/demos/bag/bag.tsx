@@ -35,7 +35,7 @@ setTimeout(() => {
 setLogLevel('debug');
 
 const App = () => {
-    const bag: Model<Record<string, string>> = model(
+    const bag = model<Record<string, string>>(
         {
             some: 'starter',
             text: 'here',

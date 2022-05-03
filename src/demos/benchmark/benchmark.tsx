@@ -42,6 +42,7 @@ function time<Func extends Function>(fn: Func): Func {
 const Button: Component<{
     id: string;
     onClick: (e: MouseEvent) => void;
+    children?: JSX.Element | JSX.Element[],
 }> = ({ id, onClick, children }) => (
     <button
         on:click={onClick}

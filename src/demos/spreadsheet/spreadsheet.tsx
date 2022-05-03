@@ -120,8 +120,8 @@ const api = {
 };
 
 const makeTable = ({ rows, cols }: { rows: number; cols: number }): Table => {
-    const code: Model<Record<string, string | null>> = model({}, 'code');
-    const data: Model<
+    const code = model<Record<string, string | null>>({}, 'code');
+    const data = model<
         Record<
             string,
             Calculation<
@@ -130,7 +130,7 @@ const makeTable = ({ rows, cols }: { rows: number; cols: number }): Table => {
                 | { type: 'result'; result: any }
             >
         >
-    > = model({}, 'data');
+    >({}, 'data');
     const proxy = new Proxy(
         {},
         {

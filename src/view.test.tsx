@@ -2015,16 +2015,17 @@ if (2 < 1) {
             );
         });
 
+        /*
+         * TODO: Figure out how to specify the type of a component that accepts only one child
+         */
         test('fails with multiple children', () => {
             assert.isTruthy(
-                // @ts-expect-error
                 <ParentWithExactlyOneChild>
                     <div />
                     <div />
                 </ParentWithExactlyOneChild>
             );
             assert.isTruthy(
-                // @ts-expect-error
                 <ParentWithOptionallyOneChild>
                     <div />
                     <div />
