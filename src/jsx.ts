@@ -1,4 +1,12 @@
-import { Ref, Calculation, Collection, View, Context } from './types';
+import {
+    Ref,
+    Calculation,
+    Collection,
+    View,
+    Context,
+    IntrinsicNodeObserverNodeCallback,
+    IntrinsicNodeObserverElementCallback,
+} from './types';
 
 export const NoChildren = Symbol('NoChildren');
 export type NoChildren = typeof NoChildren;
@@ -105,6 +113,12 @@ export type RenderedElement<TProps, TContext, TChildren extends JSXNode> =
           type: 'component';
           component: Component<TProps>;
           props: TProps;
+          children: TChildren[];
+      }
+    | {
+          type: 'observer';
+          nodeCallback: IntrinsicNodeObserverNodeCallback | undefined;
+          elementCallback: IntrinsicNodeObserverElementCallback | undefined;
           children: TChildren[];
       };
 

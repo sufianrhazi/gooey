@@ -25,6 +25,8 @@ import {
     TypeTag,
     createContext,
     getContext,
+    IntrinsicNodeObserverNodeCallback,
+    IntrinsicNodeObserverElementCallback,
 } from './types';
 import * as log from './log';
 import { uniqueid } from './util';
@@ -37,6 +39,24 @@ import {
 import { VNode, spliceVNode, callOnMount } from './vnode';
 
 export const Fragment = ({ children }: { children: JSXNode[] }) => children;
+
+const emptyIntrinsicNodeObserverContext = {
+    nodeCallbacks: [],
+    elementCallbacks: [],
+} as const;
+const IntrinsicNodeObserverContext = createContext<{
+    nodeCallbacks: readonly IntrinsicNodeObserverNodeCallback[];
+    elementCallbacks: readonly IntrinsicNodeObserverElementCallback[];
+}>(emptyIntrinsicNodeObserverContext);
+
+export const LifecycleObserver = (_props: {
+    nodeCallback?: IntrinsicNodeObserverNodeCallback | undefined;
+    elementCallback?: IntrinsicNodeObserverElementCallback | undefined;
+    children?: JSXNode | JSXNode[];
+}): JSX.Element => {
+    // Note: this function is never actually called; see createElement
+    return null;
+};
 
 // Intrinsic element
 export function createElement<TProps, TChildren extends JSXNode>(
@@ -117,6 +137,14 @@ export function createElement<TProps, TContext, TChildren extends JSXNode>(
             type: 'context',
             context: Constructor,
             props: props as unknown as { value: TContext },
+            children,
+        };
+    }
+    if (Constructor === LifecycleObserver) {
+        return {
+            type: 'observer',
+            nodeCallback: (props as any).nodeCallback || undefined,
+            elementCallback: (props as any).elementCallback || undefined,
             children,
         };
     }
@@ -207,17 +235,39 @@ function jsxNodeToVNode(
     if (typeof jsxNode === 'string') {
         const domNode = document.createTextNode(jsxNode);
         documentFragment.appendChild(domNode);
+        const observerCallback = makeObserverCallback(contextMap);
         return {
             domNode,
             domParent,
+            onMount: [
+                () => {
+                    observerCallback?.(domNode, 'add');
+                },
+            ],
+            onUnmount: [
+                () => {
+                    observerCallback?.(domNode, 'remove');
+                },
+            ],
         };
     }
     if (typeof jsxNode === 'number') {
         const domNode = document.createTextNode(jsxNode.toString());
         documentFragment.appendChild(domNode);
+        const observerCallback = makeObserverCallback(contextMap);
         return {
             domNode,
             domParent,
+            onMount: [
+                () => {
+                    observerCallback?.(domNode, 'add');
+                },
+            ],
+            onUnmount: [
+                () => {
+                    observerCallback?.(domNode, 'remove');
+                },
+            ],
         };
     }
     if (jsxNode instanceof Element) {
@@ -319,6 +369,16 @@ function renderElementToVNode(
                 contextMap,
                 documentFragment
             );
+        case 'observer':
+            return makeObserverVNode(
+                renderElement.nodeCallback,
+                renderElement.elementCallback,
+                renderElement.children,
+                domParent,
+                nodeOrdering,
+                contextMap,
+                documentFragment
+            );
         default:
             log.assertExhausted(renderElement, 'Unexpected renderElement type');
     }
@@ -392,6 +452,19 @@ function makeElementVNode(
         subContextMap = new Map(contextMap);
         subContextMap.set(XmlNamespaceContext, childElementXMLNamespace);
     }
+
+    const hostObserverContext = readContext(
+        subContextMap,
+        IntrinsicNodeObserverContext
+    );
+    if (hostObserverContext !== emptyIntrinsicNodeObserverContext) {
+        subContextMap = new Map(contextMap);
+        subContextMap.set(
+            IntrinsicNodeObserverContext,
+            emptyIntrinsicNodeObserverContext
+        );
+    }
+
     DEBUG &&
         log.debug('view makeElementVNode', {
             elementType,
@@ -448,6 +521,8 @@ function makeElementVNode(
         });
     }
 
+    const observerCallback = makeObserverCallback(contextMap);
+
     const elementNode: VNode = {
         domParent,
         domNode: element,
@@ -456,11 +531,13 @@ function makeElementVNode(
                 if (refCallback) {
                     refCallback(element);
                 }
+                observerCallback?.(element, 'add');
             },
         ],
         onUnmount: [
             () => {
                 onReleaseActions.forEach((action) => action());
+                observerCallback?.(element, 'remove');
                 if (refCallback) {
                     refCallback(undefined);
                 }
@@ -487,6 +564,16 @@ function makeElementVNode(
     return elementNode;
 }
 
+function readContext<TContext>(
+    contextMap: Map<Context<any>, any>,
+    context: Context<TContext>
+): TContext {
+    if (contextMap.has(context)) {
+        return contextMap.get(context);
+    }
+    return getContext(context);
+}
+
 function makeContextVNode<TContext>(
     context: Context<TContext>,
     value: TContext,
@@ -498,6 +585,55 @@ function makeContextVNode<TContext>(
 ): VNode {
     const subContextMap = new Map(contextMap);
     subContextMap.set(context, value);
+
+    const providerNode: VNode = {
+        domParent,
+    };
+
+    if (children) {
+        providerNode.children = children.map((jsxChild) =>
+            jsxNodeToVNode(
+                jsxChild,
+                domParent,
+                nodeOrdering,
+                subContextMap,
+                documentFragment
+            )
+        );
+    }
+
+    return providerNode;
+}
+
+function makeObserverVNode(
+    nodeCallback: IntrinsicNodeObserverNodeCallback | undefined,
+    elementCallback: IntrinsicNodeObserverElementCallback | undefined,
+    children: JSXNode[] | undefined,
+    domParent: VNode,
+    nodeOrdering: NodeOrdering,
+    contextMap: Map<Context<any>, any>,
+    documentFragment: DocumentFragment
+): VNode {
+    const intrinsicNodeContextValue = readContext(
+        contextMap,
+        IntrinsicNodeObserverContext
+    );
+    let subContextMap = contextMap;
+    if (nodeCallback || elementCallback) {
+        const newContextValue = {
+            nodeCallbacks: intrinsicNodeContextValue.nodeCallbacks.slice(),
+            elementCallbacks:
+                intrinsicNodeContextValue.elementCallbacks.slice(),
+        };
+        if (nodeCallback) {
+            newContextValue.nodeCallbacks.push(nodeCallback);
+        }
+        if (elementCallback) {
+            newContextValue.elementCallbacks.push(elementCallback);
+        }
+        subContextMap = new Map(contextMap);
+        subContextMap.set(IntrinsicNodeObserverContext, newContextValue);
+    }
 
     const providerNode: VNode = {
         domParent,
@@ -571,10 +707,7 @@ function makeComponentVNode<TProps>(
                     });
                 },
                 getContext: <TVal>(context: Context<TVal>): TVal => {
-                    if (contextMap.has(context)) {
-                        return contextMap.get(context);
-                    }
-                    return getContext(context);
+                    return readContext(contextMap, context);
                 },
             }
         );
@@ -601,6 +734,28 @@ function makeComponentVNode<TProps>(
     };
 
     return componentNode;
+}
+
+function makeObserverCallback(contextMap: Map<Context<any>, any>) {
+    const intrinsicNodeObserverContext = readContext(
+        contextMap,
+        IntrinsicNodeObserverContext
+    );
+    if (intrinsicNodeObserverContext === emptyIntrinsicNodeObserverContext) {
+        return null;
+    }
+    return (node: Node, event: 'add' | 'remove') => {
+        intrinsicNodeObserverContext.nodeCallbacks.forEach((nodeCallback) =>
+            nodeCallback(node, event)
+        );
+        intrinsicNodeObserverContext.elementCallbacks.forEach(
+            (elementCallback) => {
+                if (node instanceof Element) {
+                    elementCallback(node, event);
+                }
+            }
+        );
+    };
 }
 
 function makeCalculationVNode(

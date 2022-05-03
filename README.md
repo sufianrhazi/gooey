@@ -77,7 +77,7 @@ any other non-effect `Calculation`. If any of these dependencies change, the cal
 `flush`).
 
 When used within JSX, calculations are automatically re-rendered when their dependencies change. Calculations may be
-passed directly as JSX nodes, or as props to native elements. No special behavior is performed when passed as props to
+passed directly as JSX nodes, or as props to intrinsic elements. No special behavior is performed when passed as props to
 Components. 
 
 The `isEqual` function may be passed as an optimization. If a calculation's `isEqual` function returns `true`,
@@ -289,6 +289,8 @@ function mount(target: Element, jsx: JSXNode): () => void
 The `mount` function mounts the provided `jsx` at the provided `target` DOM node. It returns a function which unmounts
 the provided `jsx`.
 
+Note: for Gooey to behave correctly, the `target` element *must* be empty.
+
 
 ### ref()
 
@@ -297,8 +299,8 @@ type Ref<T> = { current: T | undefined };
 function ref<T>(val?: T): Ref<T>;
 ```
 
-The `ref` function produces ref objects which can be passed to native JSX elements. When mounted, the ref's `current`
-property is set to the reference of the native HTML element.
+The `ref` function produces ref objects which can be passed to intrinsic JSX elements. When mounted, the ref's `current`
+property is set to the reference of the intrinsic HTML element.
 
 Example:
 
@@ -322,13 +324,115 @@ mount(document.body, <CanvasText text="Hello, World!" />);
 ```
 
 
+### LifecycleObserver
+
+In some cases, it's desirable for components to be aware of the intrinsic elements (and text nodes) that they receive as
+children. Examples of use include components that need to perform actions when focus enters / leaves the intrinsic
+elements rendered as part of the component's children; or when components need to monitor the rendered size/position of
+intrinsic elements rendered by the JSX elements passed into the component as props.
+
+```typescript
+interface Props {
+  nodeCallback?: ((node: Node, event: 'add' | 'remove') => void) | undefined;
+  elementCallback?: ((element: Element, event: 'add' | 'remove') => void) | undefined;
+  children?: JSX.Element | JSX.Element[];
+}
+
+const LifecycleObserver: (props: {
+    nodeCallback?: IntrinsicNodeObserverNodeCallback | undefined;
+    elementCallback?: IntrinsicNodeObserverElementCallback | undefined;
+    children?: JSXNode | JSXNode[];
+}) => JSX.Element;
+```
+
+This API is best demonstrated with some examples. Here's a component that calls an onFocusEnter callback prop when focus
+enters any intrinsic elements within the component's children, and calls an onFocusLeave callback prop when focus leaves
+any intrinsic elements within the component's children.
+
+```typescript
+interface FocusListenerProps {
+    onFocusEnter: () => void;
+    onFocusLeave: () => void;
+    children?: JSX.Element[] | JSX.Element;
+}
+const FocusListener: Component<FocusListenerProps> = (
+    { onFocusEnter, onFocusLeave, children },
+    { onMount, onUnmount }
+) => {
+    const elements = new Set<Element>();
+
+    function onFocusIn(event: FocusEvent) {
+        for (const element of elements) {
+            if (
+                event.target instanceof Element &&
+                element.contains(event.target)
+            ) {
+                onFocusEnter();
+                return;
+            }
+        }
+    }
+
+    function onFocusOut(event: FocusEvent) {
+        for (const element of elements) {
+            if (
+                event.target instanceof Element &&
+                element.contains(event.target)
+            ) {
+                onFocusLeave();
+                return;
+            }
+        }
+    }
+
+    function addEventListeners(element: HTMLElement) {
+        element.addEventListener('focusin', onFocusIn);
+        element.addEventListener('focusout', onFocusOut);
+    }
+
+    function removeEventListeners(element: HTMLElement) {
+        element.removeEventListener('focusin', onFocusIn);
+        element.removeEventListener('focusout', onFocusOut);
+    }
+
+    return (
+        <LifecycleObserver
+            elementCallback={(element, event) => {
+                if (event === 'add' && element instanceof HTMLElement) {
+                    elements.add(element);
+                    addEventListeners(element);
+
+                    // If somehow the new element already has focus
+                    if (element.contains(document.activeElement)) {
+                        onFocusEnter();
+                    }
+                }
+                if (event === 'remove' && element instanceof HTMLElement) {
+                    elements.delete(element);
+                    removeEventListeners(element);
+
+                    // If somehow the new element currently has focus
+                    if (element.contains(document.activeElement)) {
+                        onFocusLeave();
+                    }
+                }
+            }}
+        >
+            {children}
+        </LifecycleObserver>
+    );
+};
+```
+
+Note: in React, one may be inclined to use `React.cloneElement` for this purpose. Gooey does not provide an equivalent
+to `React.cloneElement` and instead provides this API for the majority of use cases.
+
+
 ## Components
 
 ### The Component type
 
 ```typescript
-type PropsWithChildren<Props> = Props & { children?: JSXNode[] };
-
 type ComponentListeners = {
     onUnmount: (callback: OnUnmountCallback) => void;
     onMount: (callback: OnMountCallback) => void;
@@ -336,8 +440,8 @@ type ComponentListeners = {
     getContext: <ContextValue>(context: Context<ContextValue>) => ContextValue;
 };
 
-type Component<Props extends {}> = (
-    props: PropsWithChildren<Props>,
+type Component<TProps extends {}> = (
+    props: TProps,
     listeners: ComponentListeners
 ) => JSXNode;
 ```
@@ -510,11 +614,11 @@ a few subscription callbacks. These callbacks are:
 * `onMount(callback: () => void)`: called immediately after all of the DOM nodes rendered by the component have been
   been added to the DOM. 
 
-Native elements behave slightly differently:
+Intrinsic elements behave slightly differently:
 * The `className` prop is not used. Use `class` instead.
 * The `style` prop is not an object, it is a `string`.
 
-There currently is no `cloneElement` equivalent.
+There is no `cloneElement` equivalent; use LifecycleObserver instead.
 
 There is no `isValidElement` or `React.Children` equivalent.
 
@@ -522,17 +626,17 @@ Contexts returned by `createContext` are opaque values. There is no `MyContext.P
 read a context, a component must use its provided `getContext()` callback.
 
 The `ref` function is equivalent to `createRef()` / `useRef()` equivalent. Refs notably only have default behavior when
-placed on native JSX elements. On component functions, the `ref` property is not specially treated and may be used like
+placed on intrinsic JSX elements. On component functions, the `ref` property is not specially treated and may be used like
 any other property. If you want something akin to `useImperativeHandle`, give your component a `ref` prop and assign the
 interface to `ref.current` in either the component body or within its `onMount` handler.
 
 The `children` component prop is an array of JSX elements. There is no difference between a `Fragment` and an array: In
 fact, the definition of `Fragment` is: `({ children }) => children`.
 
-Events are native browser events, and use [the standardized DOM event type
-name](https://www.w3.org/TR/uievents/#event-types-list). For example, to listen to the `mousemove` event, pass
-a `on:mousemove={onMouseMove}` prop to an element. Events are bound directly to the element which you are placing an
-event handler on. This means [custom
+Events are intrinsic element browser events, and use [the standardized DOM event type
+name](https://www.w3.org/TR/uievents/#event-types-list). For example, to listen to the `mousemove` event, pass a
+`on:mousemove={onMouseMove}` prop to an element. Events are bound directly to the element which you are placing an event
+handler on. This means [custom
 events](https://developer.mozilla.org/en-US/docs/Web/Events/Creating_and_triggering_events) may be used safely. This
 also means that `focus` and `blur` events do not bubble. If you want to pay attention to focus entering/leaving a child,
 listen for [`focusin`](https://developer.mozilla.org/en-US/docs/Web/API/Element/focusin_event) and

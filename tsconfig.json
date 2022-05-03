@@ -29,9 +29,7 @@
     "strict": true
   },
   "include": [
-    "./src/**.ts",
-    "./src/**.tsx",
-    "./src/demos/**.ts",
-    "./src/demos/**.tsx"
+    "./src/**/*.ts",
+    "./src/**/*.tsx"
   ]
 }

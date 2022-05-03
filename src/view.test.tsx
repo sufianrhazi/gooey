@@ -9,6 +9,7 @@ import Gooey, {
     reset,
     createContext,
     subscribe,
+    LifecycleObserver,
 } from './index';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
 
@@ -771,6 +772,29 @@ suite('mount components', () => {
 
         unmount();
     });
+
+    test('ref called after mounted', () => {
+        let mountedEl: Element | null = null;
+        const unmount = mount(
+            testRoot,
+            <div>
+                <div
+                    ref={(el) => {
+                        if (el) {
+                            assert.isTruthy(testRoot.contains(el));
+                            mountedEl = el;
+                        } else {
+                            assert.isFalsy(testRoot.contains(mountedEl));
+                        }
+                    }}
+                >
+                    contents
+                </div>
+            </div>
+        );
+        unmount();
+        assert.assertionCount(2);
+    });
 });
 
 suite('mount arrays', () => {
@@ -1481,6 +1505,458 @@ suite('createContext', () => {
         assert.is(
             'CtxA=inner, CtxB=111',
             testRoot.querySelector('#inner-first')!.textContent
+        );
+    });
+});
+
+suite('LifecycleObserver component', () => {
+    test('with no children does nothing', () => {
+        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
+        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const unmount = mount(
+            testRoot,
+            <div>
+                <LifecycleObserver
+                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+                        nodes.push({ node, event })
+                    }
+                    elementCallback={(
+                        element: Element,
+                        event: 'add' | 'remove'
+                    ) => elements.push({ element, event })}
+                />
+            </div>
+        );
+        unmount();
+        assert.deepEqual([], nodes);
+        assert.deepEqual([], elements);
+    });
+
+    test('with single string child', () => {
+        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
+        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const unmount = mount(
+            testRoot,
+            <div>
+                <LifecycleObserver
+                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+                        nodes.push({ node, event })
+                    }
+                    elementCallback={(
+                        element: Element,
+                        event: 'add' | 'remove'
+                    ) => elements.push({ element, event })}
+                >
+                    Hello, world!
+                </LifecycleObserver>
+            </div>
+        );
+
+        assert.is(1, nodes.length);
+        assert.isTruthy(nodes[0].node instanceof Text);
+        assert.is('Hello, world!', (nodes[0].node as Text).data);
+        assert.is('add', nodes[0].event);
+
+        assert.deepEqual([], elements);
+
+        unmount();
+
+        assert.is(2, nodes.length);
+        assert.isTruthy(nodes[1].node instanceof Text);
+        assert.is(nodes[0].node, nodes[1].node);
+        assert.is('Hello, world!', (nodes[1].node as Text).data);
+        assert.is('remove', nodes[1].event);
+
+        assert.deepEqual([], elements);
+    });
+
+    test('with multiple string children', () => {
+        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
+        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const unmount = mount(
+            testRoot,
+            <div>
+                <LifecycleObserver
+                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+                        nodes.push({ node, event })
+                    }
+                    elementCallback={(
+                        element: Element,
+                        event: 'add' | 'remove'
+                    ) => elements.push({ element, event })}
+                >
+                    {'Hello,'} {'world!'}
+                </LifecycleObserver>
+            </div>
+        );
+
+        const strings = ['Hello,', ' ', 'world!'];
+
+        assert.is(3, nodes.length);
+        nodes.forEach((item, idx) => {
+            assert.isTruthy(item.node instanceof Text);
+            assert.is(strings[idx], (item.node as Text).data);
+            assert.is('add', item.event);
+        });
+
+        assert.deepEqual([], elements);
+
+        unmount();
+
+        assert.is(6, nodes.length);
+        nodes.slice(3).forEach((item, idx) => {
+            assert.isTruthy(item.node instanceof Text);
+            assert.is(strings[idx], (item.node as Text).data);
+            assert.is('remove', item.event);
+        });
+
+        assert.deepEqual([], elements);
+    });
+
+    test('with single element child', () => {
+        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
+        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const unmount = mount(
+            testRoot,
+            <div>
+                <LifecycleObserver
+                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+                        nodes.push({ node, event })
+                    }
+                    elementCallback={(
+                        element: Element,
+                        event: 'add' | 'remove'
+                    ) => elements.push({ element, event })}
+                >
+                    <div id="outer">
+                        <div id="inner-1" />
+                        <div id="inner-2" />
+                    </div>
+                </LifecycleObserver>
+            </div>
+        );
+
+        assert.is(1, elements.length);
+        assert.isTruthy(elements[0].element instanceof HTMLDivElement);
+        assert.is('outer', elements[0].element.id);
+        assert.is('add', elements[0].event);
+        assert.is(1, nodes.length);
+        assert.is(elements[0].element, nodes[0].node);
+        assert.is(elements[0].event, nodes[0].event);
+
+        unmount();
+
+        assert.is(2, elements.length);
+        assert.is(elements[0].element, elements[1].element);
+        assert.is('remove', elements[1].event);
+        assert.is(2, nodes.length);
+        assert.is(elements[1].element, nodes[1].node);
+        assert.is(elements[1].event, nodes[1].event);
+    });
+
+    test('with multiple element children', () => {
+        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
+        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const unmount = mount(
+            testRoot,
+            <div>
+                <LifecycleObserver
+                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+                        nodes.push({ node, event })
+                    }
+                    elementCallback={(
+                        element: Element,
+                        event: 'add' | 'remove'
+                    ) => elements.push({ element, event })}
+                >
+                    <div id="outer-1">
+                        <div id="inner-1" />
+                        <div id="inner-2" />
+                    </div>
+                    <div id="outer-2">
+                        <div id="inner-2" />
+                        <div id="inner-3" />
+                    </div>
+                    <div id="outer-3">
+                        <div id="inner-4" />
+                        <div id="inner-5" />
+                    </div>
+                </LifecycleObserver>
+            </div>
+        );
+
+        const ids = ['outer-1', 'outer-2', 'outer-3'];
+
+        assert.is(3, elements.length);
+        assert.is(3, nodes.length);
+        elements.forEach((item, idx) => {
+            assert.isTruthy(item.element instanceof HTMLDivElement);
+            assert.is(ids[idx], item.element.id);
+            assert.is('add', item.event);
+
+            assert.is(nodes[idx].node, item.element);
+            assert.is(nodes[idx].event, item.event);
+        });
+
+        unmount();
+
+        assert.is(6, elements.length);
+        assert.is(6, nodes.length);
+        elements.slice(3).forEach((item, idx) => {
+            assert.isTruthy(item.element instanceof HTMLDivElement);
+            assert.is(ids[idx], item.element.id);
+            assert.is('remove', item.event);
+
+            assert.is(nodes[idx + 3].node, item.element);
+            assert.is(nodes[idx + 3].event, item.event);
+        });
+    });
+
+    test('with multiple mixed children', () => {
+        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
+        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const unmount = mount(
+            testRoot,
+            <div>
+                <LifecycleObserver
+                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+                        nodes.push({ node, event })
+                    }
+                    elementCallback={(
+                        element: Element,
+                        event: 'add' | 'remove'
+                    ) => elements.push({ element, event })}
+                >
+                    <div id="outer-1">
+                        <div id="inner-1" />
+                        <div id="inner-2" />
+                    </div>
+                    Middle text
+                    <div id="outer-2">
+                        <div id="inner-3" />
+                        <div id="inner-4" />
+                    </div>
+                </LifecycleObserver>
+            </div>
+        );
+
+        assert.is(2, elements.length);
+        assert.isTruthy(elements[0].element instanceof HTMLDivElement);
+        assert.is('outer-1', elements[0].element.id);
+        assert.is('add', elements[0].event);
+        assert.isTruthy(elements[1].element instanceof HTMLDivElement);
+        assert.is('outer-2', elements[1].element.id);
+        assert.is('add', elements[1].event);
+
+        assert.is(3, nodes.length);
+        assert.isTruthy(nodes[0].node instanceof HTMLDivElement);
+        assert.is('outer-1', (nodes[0].node as Element).id);
+        assert.is('add', nodes[0].event);
+        assert.isTruthy(nodes[1].node instanceof Text);
+        assert.is('Middle text', (nodes[1].node as Text).data);
+        assert.is('add', nodes[1].event);
+        assert.isTruthy(nodes[2].node instanceof HTMLDivElement);
+        assert.is('outer-2', (nodes[2].node as Element).id);
+        assert.is('add', nodes[2].event);
+
+        unmount();
+
+        assert.is(4, elements.length);
+        assert.isTruthy(elements[2].element instanceof HTMLDivElement);
+        assert.is('outer-1', elements[2].element.id);
+        assert.is('remove', elements[2].event);
+        assert.isTruthy(elements[3].element instanceof HTMLDivElement);
+        assert.is('outer-2', elements[3].element.id);
+        assert.is('remove', elements[3].event);
+
+        assert.is(6, nodes.length);
+        assert.isTruthy(nodes[3].node instanceof HTMLDivElement);
+        assert.is('outer-1', (nodes[3].node as Element).id);
+        assert.is('remove', nodes[3].event);
+        assert.isTruthy(nodes[4].node instanceof Text);
+        assert.is('Middle text', (nodes[4].node as Text).data);
+        assert.is('remove', nodes[4].event);
+        assert.isTruthy(nodes[5].node instanceof HTMLDivElement);
+        assert.is('outer-2', (nodes[5].node as Element).id);
+        assert.is('remove', nodes[5].event);
+    });
+
+    test('with dynamic children', () => {
+        const state = model({
+            type: 'text',
+        });
+        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
+        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const unmount = mount(
+            testRoot,
+            <div>
+                <LifecycleObserver
+                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+                        nodes.push({ node, event })
+                    }
+                    elementCallback={(
+                        element: Element,
+                        event: 'add' | 'remove'
+                    ) => elements.push({ element, event })}
+                >
+                    {calc(() => {
+                        switch (state.type) {
+                            case 'text':
+                                return 'dynamic text';
+                            case 'element':
+                                return <div id="dynamic-el" />;
+                            default:
+                                return null;
+                        }
+                    })}
+                </LifecycleObserver>
+            </div>
+        );
+
+        assert.is(0, elements.length);
+        assert.is(1, nodes.length);
+        assert.isTruthy(nodes[0].node instanceof Text);
+        assert.is('dynamic text', (nodes[0].node as Text).data);
+        assert.is('add', nodes[0].event);
+
+        state.type = 'element';
+        flush();
+
+        assert.is(1, elements.length);
+        assert.isTruthy(elements[0].element instanceof HTMLDivElement);
+        assert.is('dynamic-el', elements[0].element.id);
+        assert.is('add', elements[0].event);
+
+        assert.is(3, nodes.length);
+        assert.isTruthy(nodes[1].node instanceof Text);
+        assert.is('dynamic text', (nodes[1].node as Text).data);
+        assert.is('remove', nodes[1].event);
+        assert.isTruthy(nodes[2].node instanceof HTMLDivElement);
+        assert.is('dynamic-el', (nodes[2].node as Element).id);
+        assert.is('add', nodes[2].event);
+
+        state.type = 'nothing';
+        flush();
+
+        assert.is(2, elements.length);
+        assert.isTruthy(elements[1].element instanceof HTMLDivElement);
+        assert.is('dynamic-el', elements[1].element.id);
+        assert.is('remove', elements[1].event);
+
+        assert.is(4, nodes.length);
+        assert.isTruthy(nodes[3].node instanceof HTMLDivElement);
+        assert.is('dynamic-el', (nodes[3].node as Element).id);
+        assert.is('remove', nodes[3].event);
+
+        state.type = 'element';
+        flush();
+
+        assert.is(3, elements.length);
+        assert.isTruthy(elements[2].element instanceof HTMLDivElement);
+        assert.is('dynamic-el', elements[2].element.id);
+        assert.is('add', elements[2].event);
+
+        assert.is(5, nodes.length);
+        assert.isTruthy(nodes[4].node instanceof HTMLDivElement);
+        assert.is('dynamic-el', (nodes[4].node as Element).id);
+        assert.is('add', nodes[4].event);
+
+        unmount();
+
+        assert.is(4, elements.length);
+        assert.isTruthy(elements[3].element instanceof HTMLDivElement);
+        assert.is('dynamic-el', elements[3].element.id);
+        assert.is('remove', elements[3].event);
+
+        assert.is(6, nodes.length);
+        assert.isTruthy(nodes[5].node instanceof HTMLDivElement);
+        assert.is('dynamic-el', (nodes[5].node as Element).id);
+        assert.is('remove', nodes[5].event);
+    });
+
+    test('with collection children', () => {
+        const items = collection(['one', 'two', 'three']);
+        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
+        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const unmount = mount(
+            testRoot,
+            <div>
+                <LifecycleObserver
+                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+                        nodes.push({ node, event })
+                    }
+                    elementCallback={(
+                        element: Element,
+                        event: 'add' | 'remove'
+                    ) => elements.push({ element, event })}
+                >
+                    {items.mapView((item) => (
+                        <div id={item}>{item}</div>
+                    ))}
+                </LifecycleObserver>
+            </div>
+        );
+
+        assert.deepEqual(
+            ['one:add', 'two:add', 'three:add'],
+            elements.map(
+                (item) =>
+                    `${(item.element as Element).textContent}:${item.event}`
+            )
+        );
+
+        items.push('four');
+        flush();
+
+        assert.deepEqual(
+            ['one:add', 'two:add', 'three:add', 'four:add'],
+            elements.map(
+                (item) =>
+                    `${(item.element as Element).textContent}:${item.event}`
+            )
+        );
+
+        items.shift();
+        flush();
+
+        assert.deepEqual(
+            ['one:add', 'two:add', 'three:add', 'four:add', 'one:remove'],
+            elements.map(
+                (item) =>
+                    `${(item.element as Element).textContent}:${item.event}`
+            )
+        );
+
+        items.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+        flush();
+
+        // Note: no changes triggered, despite sort order changing
+        assert.deepEqual(
+            ['one:add', 'two:add', 'three:add', 'four:add', 'one:remove'],
+            elements.map(
+                (item) =>
+                    `${(item.element as Element).textContent}:${item.event}`
+            )
+        );
+
+        unmount();
+
+        assert.deepEqual(
+            [
+                'one:add',
+                'two:add',
+                'three:add',
+                'four:add',
+                'one:remove',
+                // Note: removed in newly sorted (alphabetical) document order
+                'four:remove',
+                'three:remove',
+                'two:remove',
+            ],
+            elements.map(
+                (item) =>
+                    `${(item.element as Element).textContent}:${item.event}`
+            )
         );
     });
 });

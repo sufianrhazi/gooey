@@ -22,6 +22,15 @@ export const FlushKey = Symbol('flush');
 export const AddDeferredWorkKey = Symbol('addDeferredWork');
 export const NotifyKey = Symbol('notify');
 
+export type IntrinsicNodeObserverNodeCallback = (
+    node: Node,
+    event: 'add' | 'remove'
+) => void;
+export type IntrinsicNodeObserverElementCallback = (
+    element: Element,
+    event: 'add' | 'remove'
+) => void;
+
 export type ProcessAction = 'recalculate' | 'cycle' | 'invalidate';
 
 /**

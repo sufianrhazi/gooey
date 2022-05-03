@@ -1,7 +1,7 @@
 export { getLogLevel, setLogLevel } from './log';
 export type { LogLevel } from './log';
 import { createElement } from './view';
-export { Fragment, mount } from './view';
+export { LifecycleObserver, Fragment, mount } from './view';
 export type { Component } from './jsx';
 export { model } from './model';
 export { collection } from './collection';
