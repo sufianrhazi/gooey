@@ -24,6 +24,7 @@ export class Graph<Type extends object> {
 
     private retained: Record<string, true>;
     private dirtyNodes: Record<string, true>;
+    private recentDirtyNodes: undefined | string[];
     private knownCycles: Record<string, boolean>;
 
     /**
@@ -71,6 +72,8 @@ export class Graph<Type extends object> {
         this.reverseGraph = {};
 
         this.dirtyNodes = {};
+        this.recentDirtyNodes = undefined;
+
         this.knownCycles = {};
     }
 
@@ -93,7 +96,30 @@ export class Graph<Type extends object> {
     }
 
     markNodeDirty(node: Type): void {
-        this.dirtyNodes[this.getId(node)] = true;
+        this.markNodeDirtyInner(this.getId(node));
+    }
+
+    private markNodeDirtyInner(nodeId: string): void {
+        this.dirtyNodes[nodeId] = true;
+        if (this.recentDirtyNodes) this.recentDirtyNodes.push(nodeId);
+    }
+
+    private markNodeClean(node: Type): void {
+        this.markNodeCleanInner(this.getId(node));
+    }
+
+    private markNodeCleanInner(nodeId: string): void {
+        delete this.dirtyNodes[nodeId];
+    }
+
+    private isNodeDirty(nodeId: string) {
+        return !!this.dirtyNodes[nodeId];
+    }
+
+    getUnorderedDirtyNodes() {
+        return Object.keys(this.dirtyNodes).filter(
+            (nodeId) => !!this.dirtyNodes[nodeId]
+        );
     }
 
     hasDirtyNodes(): boolean {
@@ -208,7 +234,7 @@ export class Graph<Type extends object> {
         this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]] =
             undefined;
         delete this.topologicalIndex[nodeId];
-        delete this.dirtyNodes[nodeId];
+        this.markNodeCleanInner(nodeId);
         delete this.retained[nodeId];
         delete this.knownCycles[nodeId];
     }
@@ -544,9 +570,9 @@ export class Graph<Type extends object> {
                     }
                 }
             }
-            if (DEBUG) {
+            if (DEBUG && costEstimate > 0) {
                 log.debug(
-                    `Cost estimate of processing ${this.pendingEdges.length} edges: ${costEstimate}`
+                    `Cost estimate of processing ${this.pendingEdges.length} edges: ${costEstimate}/${this.topologicallyOrderedNodes.length}; overThreshold=${isCostOverThreshold}`
                 );
             }
             if (isCostOverThreshold) {
@@ -621,42 +647,62 @@ export class Graph<Type extends object> {
         // Step one: batch process pending edges
         processPendingEdges();
 
-        // Step two: start processing in order
-        let firstIndex = this.topologicallyOrderedNodes.length;
-        Object.keys(this.dirtyNodes).forEach((nodeId) => {
-            firstIndex = Math.min(firstIndex, this.topologicalIndex[nodeId]);
-        });
-
+        // Step two: start processing dirty nodes in order
         for (
-            let index = firstIndex;
+            let index = 0;
             index < this.topologicallyOrderedNodes.length;
             ++index
         ) {
             const node = this.topologicallyOrderedNodes[index];
-            if (!node) {
+            if (!node) continue;
+            const nodeId = this.getId(node);
+            if (!this.dirtyNodes[nodeId]) {
                 continue;
             }
-            const nodeId = this.getId(node);
-            if (this.dirtyNodes[nodeId] && reachesRetained(nodeId)) {
-                const shouldPropagate = callback(node, 'recalculate');
-                if (shouldPropagate) {
-                    this.getDependenciesInner(nodeId, Graph.EDGE_HARD).forEach(
-                        (toId) => {
-                            this.dirtyNodes[toId] = true;
-                        }
-                    );
-                }
-                delete this.dirtyNodes[nodeId];
+            if (!reachesRetained(nodeId)) {
+                continue;
+            }
 
-                // By virtue of recalculating the node, we may have grown/changed dependencies!
-                reordered = false;
-                const minLowerBound = processPendingEdges();
-                if (reordered) {
-                    // If we have reordered things, we need to flush our retained cache and start from the lower bound
-                    // of the affected region
-                    reachesRetainedCache = {};
-                    index = minLowerBound - 1;
-                    continue;
+            this.recentDirtyNodes = [];
+            const shouldPropagate = callback(node, 'recalculate');
+
+            // Hold onto the dirty nodes we have obtained via side effect
+            let newDirtyNodes = this.recentDirtyNodes;
+            this.recentDirtyNodes = undefined;
+
+            if (shouldPropagate) {
+                // No need to hold onto these in newDirtyNodes as they are
+                // guaranteed to be **after** the current index
+                this.getDependenciesInner(nodeId, Graph.EDGE_HARD).forEach(
+                    (toId) => {
+                        this.markNodeDirtyInner(toId);
+                    }
+                );
+            }
+            this.markNodeCleanInner(nodeId);
+
+            // By virtue of recalculating the node, we may have grown/changed dependencies!
+            reordered = false;
+            processPendingEdges();
+            if (reordered) {
+                // If we've reordered, we need to flush the retained cache
+                reachesRetainedCache = {};
+                // If we've reordered, all bets are off with respect to which nodes are next
+                newDirtyNodes = this.getUnorderedDirtyNodes();
+            }
+
+            if (newDirtyNodes.length > 0) {
+                // If any dirty nodes have changed, jump to the earliest dirty node
+                let minDirtyOrd = this.topologicallyOrderedNodes.length;
+                newDirtyNodes.forEach((dirtyNodeId) => {
+                    minDirtyOrd = Math.min(
+                        minDirtyOrd,
+                        this.topologicalIndex[dirtyNodeId]
+                    );
+                });
+                const currentOrd = this.topologicalIndex[nodeId];
+                if (minDirtyOrd < currentOrd) {
+                    index = minDirtyOrd - 1;
                 }
             }
         }
@@ -677,11 +723,11 @@ export class Graph<Type extends object> {
                 }
             );
         };
-        Object.keys(this.dirtyNodes).forEach((nodeId) => {
+        this.getUnorderedDirtyNodes().forEach((nodeId) => {
             if (!flushed[nodeId]) {
                 transitiveFlush(nodeId);
             }
-            delete this.dirtyNodes[nodeId];
+            this.markNodeCleanInner(nodeId);
         });
 
         // And... we're done!
@@ -730,7 +776,7 @@ export class Graph<Type extends object> {
                     shape: this.retained[nodeId] ? 'box' : 'ellipse',
                     label: nodeAttributes[nodeId].label,
                     penwidth: nodeAttributes[nodeId].penwidth,
-                    fillcolor: this.dirtyNodes[nodeId] ? '#FFDDDD' : '#DDDDDD',
+                    fillcolor: this.isNodeDirty(nodeId) ? '#FFDDDD' : '#DDDDDD',
                 };
                 lines.push(
                     `  item_${nodeId} [${Object.entries(props)

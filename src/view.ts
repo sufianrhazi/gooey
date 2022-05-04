@@ -337,7 +337,6 @@ function renderElementToVNode(
     contextMap: Map<Context<any>, any>,
     documentFragment: DocumentFragment
 ) {
-    DEBUG && log.debug('view renderElementToVNode', renderElement);
     switch (renderElement.type) {
         case 'intrinsic':
             return makeElementVNode(
@@ -465,13 +464,6 @@ function makeElementVNode(
         );
     }
 
-    DEBUG &&
-        log.debug('view makeElementVNode', {
-            elementType,
-            elementXMLNamespace,
-            props,
-            children,
-        });
     const element = document.createElementNS(elementXMLNamespace, elementType);
     const elementBoundEvents: Record<string, (ev: Event) => void> = {};
 
@@ -663,8 +655,6 @@ function makeComponentVNode<TProps>(
     contextMap: Map<Context<any>, any>,
     documentFragment: DocumentFragment
 ): VNode {
-    DEBUG &&
-        log.debug('view makeComponentVNode', { Component, props, children });
     const onUnmount: Function[] = [];
     const onMount: Function[] = [];
 

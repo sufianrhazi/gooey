@@ -1,18 +1,8 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
 import { collection } from './collection';
-import {
-    flush,
-    calc,
-    effect,
-    retain,
-    release,
-    reset,
-    subscribe,
-    debug,
-} from './calc';
+import { flush, calc, effect, retain, release, reset, subscribe } from './calc';
 import { Calculation } from './types';
-import { setLogLevel } from './log';
 
 beforeEach(() => {
     subscribe();
@@ -34,7 +24,6 @@ suite('calc', () => {
     });
 
     test('reruns when model dependency changes', () => {
-        setLogLevel('debug');
         const calls: string[] = [];
         const dependency = model({
             value: 1,
@@ -86,6 +75,8 @@ suite('calc', () => {
         });
         let calls: string[] = [];
         //
+        //    value
+        //      |
         //    root
         //   /    \
         // left  right
@@ -111,6 +102,7 @@ suite('calc', () => {
         retain(bottom);
 
         const result = bottom();
+        assert.is(5, result);
 
         assert.deepEqual(['bottom', 'left', 'root', 'right'], calls);
         dependency.value = 2;
@@ -119,6 +111,8 @@ suite('calc', () => {
         flush();
 
         const result2 = bottom();
+        assert.is(7, result2);
+
         assert.is(0, calls.indexOf('root'));
 
         // order of left / right is implementation-dependent
@@ -130,8 +124,6 @@ suite('calc', () => {
 
         assert.is('root', calls[0]);
         assert.is('bottom', calls[3]);
-        assert.is(5, result);
-        assert.is(7, result2);
         release(bottom);
     });
 
