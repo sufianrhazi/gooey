@@ -421,6 +421,7 @@ export function addManualDep(fromNode: GraphNode, toNode: GraphNode) {
     globalDependencyGraph.addNode(fromNode);
     globalDependencyGraph.addNode(toNode);
     globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_HARD);
+    scheduleFlush();
     DEBUG &&
         log.debug(
             'New manual dependency',
@@ -440,6 +441,7 @@ export function disposeNode(node: GraphNode) {
 
 export function addOrderingDep(fromNode: GraphNode, toNode: GraphNode) {
     globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_SOFT);
+    scheduleFlush();
     DEBUG &&
         log.debug(
             'New manual ordering dependency',
@@ -587,10 +589,10 @@ export function flush() {
         return shouldPropagate;
     });
 
-    if (globalDependencyGraph.hasDirtyNodes()) {
-        DEBUG && log.debug('Graph contained dirty nodes post-flush');
-        scheduleFlush();
-    }
+    log.assert(
+        !globalDependencyGraph.hasDirtyNodes(),
+        'Graph contained dirty nodes post-flush'
+    );
 
     DEBUG && debugSubscription && debugSubscription(debug(), `2: after visit`);
 
@@ -610,9 +612,7 @@ export function retain(item: GraphNode) {
                     item
                 )} retained; refcount ${refcount} -> ${newRefcount}`
             );
-        if (!globalDependencyGraph.hasNode(item)) {
-            globalDependencyGraph.addNode(item);
-        }
+        globalDependencyGraph.addNode(item);
         globalDependencyGraph.retain(item);
     } else {
         DEBUG &&

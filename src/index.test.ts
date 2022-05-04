@@ -228,12 +228,10 @@ suite('behavior', () => {
         todoList.items.push(model2);
         todoList.items.unshift(model3);
         gooey.flush();
-        assert.deepEqual(renders, [
-            'list',
-            'item:model3',
-            'item:model2',
-            'list',
-        ]);
+        assert.deepEqual(
+            ['list', 'item:model3', 'item:model2', 'list'],
+            renders
+        );
         assert.is(
             app(),
             'Shopping:\n[ ] cookies\n[ ] apples\n[ ] bananas\n[ ] milk'

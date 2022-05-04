@@ -22,77 +22,78 @@ export class Graph<Type extends object> {
     static EDGE_HARD = 0b10 as const;
     private static EDGE_ANY = 0b11 as const;
 
-    private nextId: number;
-    private nodesSet: Record<string, Type>;
     private retained: Record<string, true>;
     private dirtyNodes: Record<string, true>;
     private knownCycles: Record<string, boolean>;
+
+    /**
+     * Edges that have been added but not yet ordered
+     */
+    private pendingEdges: (
+        | {
+              fromId: string;
+              toId: string;
+              type: 'add';
+              kind: 0b01 | 0b10;
+          }
+        | {
+              fromId: string;
+              toId: string;
+              type: 'remove';
+              kind: 0b01 | 0b10 | 0b11;
+          }
+    )[];
+
+    /**
+     * A mapping of nodeId to index in topological order
+     */
+    private topologicalIndex: Record<string, number>;
+    /**
+     * The list of vertices maintained in topological order
+     */
+    private topologicallyOrderedNodes: (Type | undefined)[];
+    /**
+     * A mapping of nodeId to whether or not the node is visited while reordering
+     * Note: this is internal state to the process() function but global to reduce object memory thrash
+     */
+    private reorderingVisitedState: Record<string, boolean> = {};
 
     private graph: Record<string, Record<string, number>>;
     private reverseGraph: Record<string, Record<string, number>>;
 
     constructor() {
-        this.nextId = 1;
-        this.nodesSet = {};
+        this.topologicalIndex = {};
+        this.topologicallyOrderedNodes = [];
+        this.pendingEdges = [];
+
         this.retained = {};
         this.graph = {};
         this.reverseGraph = {};
+
         this.dirtyNodes = {};
         this.knownCycles = {};
     }
 
     private getId(node: Type): string {
-        return (node as any).$__id;
+        return (node as any).$__id.toString();
+    }
+
+    private hasNodeInner(nodeId: string) {
+        return this.topologicalIndex[nodeId] !== undefined;
     }
 
     addNode(node: Type): boolean {
         const nodeId = this.getId(node);
-        if (this.nodesSet[nodeId]) return false;
+        if (this.hasNodeInner(nodeId)) return false;
         this.graph[nodeId] = {};
         this.reverseGraph[nodeId] = {};
-        this.nodesSet[nodeId] = node;
+        this.topologicalIndex[nodeId] = this.topologicallyOrderedNodes.length;
+        this.topologicallyOrderedNodes.push(node);
         return true;
-    }
-
-    hasNode(node: Type): boolean {
-        return !!this.nodesSet[this.getId(node)];
     }
 
     markNodeDirty(node: Type): void {
         this.dirtyNodes[this.getId(node)] = true;
-    }
-
-    private getRecursiveDependenciesInner(nodeId: string): {
-        otherNodeIds: Record<string, 1 | 2 | undefined>;
-        otherNodes: Type[];
-        isCycle: boolean;
-    } {
-        const otherNodeIds: Record<string, 1 | 2 | undefined> = {};
-        const otherNodes: Type[] = [];
-        let foundCycle = false;
-        const visit = (visitId: string) => {
-            if (otherNodeIds[visitId] === 2) foundCycle = true;
-            if (otherNodeIds[visitId]) return;
-            if (visitId !== nodeId) otherNodes.push(this.nodesSet[visitId]);
-            otherNodeIds[visitId] = 2;
-            this.getDependenciesInner(visitId, Graph.EDGE_ANY).forEach(
-                (toId) => {
-                    visit(toId);
-                }
-            );
-            otherNodeIds[visitId] = 1;
-        };
-
-        visit(nodeId);
-        return { otherNodeIds, otherNodes, isCycle: foundCycle };
-    }
-
-    getRecursiveDependencies(node: Type): Type[] {
-        const nodeId = this.getId(node);
-        const { otherNodes, isCycle } =
-            this.getRecursiveDependenciesInner(nodeId);
-        log.assert(!isCycle, 'getRecursiveDependencies found a cycle');
-        return otherNodes;
     }
 
     hasDirtyNodes(): boolean {
@@ -114,13 +115,26 @@ export class Graph<Type extends object> {
         kind: 0b01 | 0b10
     ): void {
         log.assert(
-            !!this.nodesSet[fromId],
+            this.hasNodeInner(fromId),
             'cannot add edge from node that does not exist'
         );
         log.assert(
-            !!this.nodesSet[toId],
+            this.hasNodeInner(toId),
             'cannot add edge to node that does not exist'
         );
+        this.pendingEdges.push({
+            fromId,
+            toId,
+            kind,
+            type: 'add',
+        });
+    }
+
+    private performAddEdgeInner(
+        fromId: string,
+        toId: string,
+        kind: 0b01 | 0b10
+    ) {
         this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) | kind;
         this.reverseGraph[toId][fromId] =
             (this.reverseGraph[toId][fromId] || 0) | kind;
@@ -141,13 +155,26 @@ export class Graph<Type extends object> {
         kind: 0b01 | 0b10 | 0b11
     ) {
         log.assert(
-            !!this.nodesSet[fromId],
+            this.hasNodeInner(fromId),
             'cannot remove edge from node that does not exist'
         );
         log.assert(
-            !!this.nodesSet[toId],
+            this.hasNodeInner(toId),
             'cannot remove edge to node that does not exist'
         );
+        this.pendingEdges.push({
+            fromId,
+            toId,
+            kind,
+            type: 'remove',
+        });
+    }
+
+    private performRemoveEdgeInner(
+        fromId: string,
+        toId: string,
+        kind: 0b01 | 0b10 | 0b11
+    ) {
         this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) & ~kind;
         this.reverseGraph[toId][fromId] =
             (this.reverseGraph[toId][fromId] || 0) & ~kind;
@@ -159,11 +186,13 @@ export class Graph<Type extends object> {
     }
 
     private removeNodeInner(nodeId: string) {
+        // Note: this can be performed without reordering topological ordering,
+        // since node and edge removal does not change the topological order.
         log.assert(
             !this.retained[nodeId],
             'attempted to remove a retained node'
         ); // Is this right?
-        const toIds = this.getDependenciesInner(nodeId);
+        const toIds = this.getDependenciesInner(nodeId, Graph.EDGE_ANY);
         const fromIds = this.getReverseDependenciesInner(nodeId);
 
         // delete fromId -> nodeId for fromId in fromIds
@@ -176,7 +205,9 @@ export class Graph<Type extends object> {
             this.reverseGraph[toId][nodeId] = 0;
             this.graph[nodeId][toId] = 0;
         });
-        delete this.nodesSet[nodeId];
+        this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]] =
+            undefined;
+        delete this.topologicalIndex[nodeId];
         delete this.dirtyNodes[nodeId];
         delete this.retained[nodeId];
         delete this.knownCycles[nodeId];
@@ -232,12 +263,16 @@ export class Graph<Type extends object> {
      */
     private getDependenciesInner(
         nodeId: string,
-        edgeType: 0b01 | 0b10 | 0b11 = Graph.EDGE_ANY
+        edgeType: 0b01 | 0b10 | 0b11
     ): string[] {
         if (!this.graph[nodeId]) return [];
-        return Object.keys(this.graph[nodeId]).filter(
-            (toId) => (this.graph[nodeId][toId] || 0) & edgeType
-        );
+        const dependencies: string[] = [];
+        Object.keys(this.graph[nodeId]).forEach((toId) => {
+            if ((this.graph[nodeId][toId] || 0) & edgeType) {
+                dependencies.push(toId);
+            }
+        });
+        return dependencies;
     }
 
     /**
@@ -248,9 +283,13 @@ export class Graph<Type extends object> {
         edgeType: 0b01 | 0b10 | 0b11 = Graph.EDGE_ANY
     ): string[] {
         if (!this.reverseGraph[nodeId]) return [];
-        return Object.keys(this.reverseGraph[nodeId]).filter(
-            (fromId) => (this.reverseGraph[nodeId][fromId] || 0) & edgeType
-        );
+        const dependencies: string[] = [];
+        Object.keys(this.reverseGraph[nodeId]).forEach((fromId) => {
+            if ((this.reverseGraph[nodeId][fromId] || 0) & edgeType) {
+                dependencies.push(fromId);
+            }
+        });
+        return dependencies;
     }
 
     /**
@@ -262,366 +301,228 @@ export class Graph<Type extends object> {
     ): Type[] {
         const nodeId = this.getId(fromNode);
         return this.getDependenciesInner(nodeId, edgeType).map(
-            (toId) => this.nodesSet[toId]
+            (toId) =>
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                this.topologicallyOrderedNodes[this.topologicalIndex[toId]]!
         );
     }
 
-    /**
-     * This uses Tarjan's strongly connected components algorithm to build the
-     * topological sort of the subgraph that contains all retained nodes.
-     *
-     * Note: Because we are starting at retained nodes, which should be "end"
-     * destination nodes, we build a topological sort of the _reverse graph_.
-     * Due to the nature of Tarjan's algorithm, the sort we build is
-     * constructed in reverse order. It is also the case that the reverse of a
-     * topological sort of the reverse graph is a valid topological sort of the
-     * forward graph.
-     *
-     * This means that we do not need to reverse the topological sort produced
-     * by Tarjan's algorithm if we follow the reverse edges.
-     *
-     * Note: the handling of dynamic additions/deletions of edges in this
-     * algorithm is *incredibly* inefficient!
-     *
-     * TODO: Implement the algorithm outlined in:
-     * - Title: A Dynamic Topological Sort Algorithm for Directed Acyclic Graphs
-     * - Authors: David J. Pearce and Paul H.J. Kelly
-     * - Paper: https://whileydave.com/publications/pk07_jea/
-     */
-    private _toposortRetained() {
-        type Vertex = {
-            nodeId: string;
-            index?: number;
-            lowlink?: number;
-            onStack?: boolean;
-        };
-        let index = 0;
-        const nodeVertex: Record<string, Vertex> = {};
-        const stack: Vertex[] = [];
-        const reverseTopoSort: Vertex[][] = [];
-
-        const strongconnect = (vertex: Vertex) => {
-            vertex.index = index;
-            vertex.lowlink = index;
-            index = index + 1;
-            stack.push(vertex);
-            vertex.onStack = true;
-
-            // Consider successors of v
-            this.getReverseDependenciesInner(vertex.nodeId).forEach((toId) => {
-                if (!nodeVertex[toId]) {
-                    nodeVertex[toId] = {
-                        nodeId: toId,
-                    };
-                }
-                const toVertex = nodeVertex[toId];
-                if (toVertex.index === undefined) {
-                    // Successor toVertex has not yet been visited; recurse on it
-                    strongconnect(toVertex);
-                    vertex.lowlink = Math.min(
-                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                        vertex.lowlink!,
-                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                        toVertex.lowlink!
-                    );
-                } else if (toVertex.onStack) {
-                    // Successor toVertex is in stack S and hence in the current SCC
-                    // If toVertex is not on stack, then (vertex, toVertex) is an edge pointing to an SCC already found and must be ignored
-                    // Note: The next line may look odd - but is correct.
-                    // It says toVertex.index not toVertex.lowlink; that is deliberate and from the original paper
-                    vertex.lowlink = Math.min(
-                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                        vertex.lowlink!,
-                        toVertex.index
-                    );
-                }
-            });
-
-            // If vertex is a root node, pop the stack and generate an SCC
-            if (vertex.lowlink === vertex.index) {
-                // start a new strongly connected component
-                const component: Vertex[] = [];
-                for (;;) {
-                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                    const toVertex = stack.pop()!;
-                    toVertex.onStack = false;
-                    // add toVertex to current strongly connected component
-                    component.push(toVertex);
-                    if (toVertex === vertex) {
-                        break;
-                    }
-                }
-                // output the current strongly connected component
-                reverseTopoSort.push(component);
-            }
-        };
-
-        Object.keys(this.retained).forEach((nodeId) => {
-            if (this.retained[nodeId] && !nodeVertex[nodeId]) {
-                nodeVertex[nodeId] = {
-                    nodeId,
-                };
-                strongconnect(nodeVertex[nodeId]);
-            }
-        });
-
-        // Note: Because we traversed the reverse graph, the reverse
-        // topological sort is a valid forward topological sort of the forward
-        // graph.
-        return reverseTopoSort;
-    }
-
-    private _toposort(fromNodeIds: string[]) {
-        type Vertex = {
-            nodeId: string;
-            index?: number;
-            lowlink?: number;
-            onStack?: boolean;
-            reachesRetained?: boolean;
-        };
-        let index = 0;
-        const nodeVertex: Record<string, Vertex> = {};
-        const stack: Vertex[] = [];
-        const reverseTopoSort: Vertex[][] = [];
-
-        const strongconnect = (vertex: Vertex) => {
-            vertex.index = index;
-            vertex.lowlink = index;
-            index = index + 1;
-            stack.push(vertex);
-            vertex.onStack = true;
-
-            // Consider successors of v
-            this.getDependenciesInner(vertex.nodeId).forEach((toId) => {
-                if (!nodeVertex[toId]) {
-                    nodeVertex[toId] = {
-                        nodeId: toId,
-                        reachesRetained: !!this.retained[toId],
-                    };
-                }
-                const toVertex = nodeVertex[toId];
-                if (toVertex.index === undefined) {
-                    // Successor toVertex has not yet been visited; recurse on it
-                    strongconnect(toVertex);
-                    vertex.lowlink = Math.min(
-                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                        vertex.lowlink!,
-                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                        toVertex.lowlink!
-                    );
-                } else if (toVertex.onStack) {
-                    // Successor toVertex is in stack S and hence in the current SCC
-                    // If toVertex is not on stack, then (vertex, toVertex) is an edge pointing to an SCC already found and must be ignored
-                    // Note: The next line may look odd - but is correct.
-                    // It says toVertex.index not toVertex.lowlink; that is deliberate and from the original paper
-                    vertex.lowlink = Math.min(
-                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                        vertex.lowlink!,
-                        toVertex.index
-                    );
-                }
-                if (toVertex.reachesRetained) {
-                    vertex.reachesRetained = true;
-                }
-            });
-
-            // If vertex is a root node, pop the stack and generate an SCC
-            if (vertex.lowlink === vertex.index) {
-                // start a new strongly connected component
-                const component: Vertex[] = [];
-                for (;;) {
-                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                    const toVertex = stack.pop()!;
-                    toVertex.onStack = false;
-                    // add toVertex to current strongly connected component
-                    component.push(toVertex);
-                    if (toVertex === vertex) {
-                        break;
-                    }
-                }
-                // output the current strongly connected component
-                reverseTopoSort.push(component);
-            }
-        };
-
-        fromNodeIds.forEach((nodeId) => {
-            if (!nodeVertex[nodeId]) {
-                nodeVertex[nodeId] = {
-                    nodeId,
-                    reachesRetained: !!this.retained[nodeId],
-                };
-                strongconnect(nodeVertex[nodeId]);
-            }
-        });
-
-        return reverseTopoSort.reverse();
-    }
-
-    /**
-     * Process the graph, visiting strongly connected nodes topologically that have a data dependency on a retained
-     * node.
-     *
-     * This uses Tarjan's strongly connected component algorithm to both segment strongly connected nodes and
-     * topologically sort them.
-     */
     /*
      * Core Processing Algorithm
      * =========================
      *
-     * First, soft-flush all dirty nodes in case recalculating a node grows a dependency on a dirty node.
-     * This prevents basic forms of stale reads.
+     * In topological order, recalculate all of the dirty nodes that reach
+     * retained nodes; propagating dirtiness if propagation is requested.
      *
-     * Until we perform the rest of the algorithm without visiting a dirty node, repeat:
-     * - Visit all strongly connected components in topological order reachable from retained nodes.
-     * - For each component:
-     *   - If it is a cycle (length > 1), flush + mark dirty all nodes that are not known to already be in a cycle, and record the node is known to be in a cycle
-     *   - If it is not cycle (length = 1), flush + mark dirty all nodes that are not known to already be in a cycle, and clear the record that the node is not to be known to be in a cycle
-     *   - Process the node if it is dirty, propagating dirtiness (if specified) to all hard edges that is not in the component
-     *     - When a node becomes dirty, flush the node
-     *   - After visiting all nodes in the component, mark all nodes in the component as not dirty
+     * For all remaining dirty nodes (which do not reach retained nodes), flush
+     * them & all their reachable nodes.
      *
-     * For all remaining dirty nodes:
-     * - Recursively flush the node and its hard dependencies, (keeping track of those visited so we only visit a node at most one time)
+     * If a strongly connected component is identified, it should be treated as a single unit:
+     * - If any node is dirtied or flushed; all nodes are
      *
-     * This should handle all tricky edge cases, and in most cases flush the graph with either 2 or 3 topological sorts.
-     *
-     *
-     * ## Edge cases to handle:
-     *
-     * Edge case 1: It's possible that a dirty node grows a dependency on a cached node that has a dependency on a dirty node.
-     * In this case, when processing is complete, if we topologically order all nodes reachable from retained nodes, a dirty node will be discovered.
-     * To account for this, we loop until visiting all newly topologically ordered strongly connected components are not dirty.
-     *
-     * Edge case 2: It's possible that a cycle is detected (a strongly connected component with more than 1 node)
-     * We keep track of known cycle nodes. To handle cycles correctly, we need to: identify when a node newly becomes part of a cycle and identify when a node is no longer part of a cycle.
-     * The graph keeps track of known cycle nodes.
-     *
-     * In case of a component of length > 1 for each node, we (in this specific order):
-     * 1. for all of the nodes that are not known to be in a cycle:
-     *   a. flush the node
-     *   b. mark the node as dirty
-     *   c. set the node to be known to be in a cycle
-     * 2. process _all_ of the dirty nodes in the cycle, propagating dirtiness **only to nodes not in the cycle**
-     * This handles the case for identifying when a node becomes part of a cycle.
-     *
-     * In case of a component of length = 1 where the node is known to be in a cycle, we (in this specific order):
-     * 1. flush the node
-     * 2. mark the node as dirty
-     * 3. set the node to not be known to be in a cycle
-     * 4. process the node, propagating dirtiness if needed
-     * This handles the case for identifying when a node becomes part of a cycle.
-     *
-     *
-     * ## In pseudocode
-     *
-     * for node in dirty_nodes:
-     *   soft_flush(node)
-     * do:
-     *   visited_dirty := false
-     *   to_process := tarjan_connected(retained)
-     *   for component in to_process:
-     *     is_cycle := len(component) > 1
-     *     if is_cycle:
-     *       for node in component:
-     *         if not is_known_cycle(node):
-     *           soft_flush(node)
-     *           set_dirty(node)
-     *           set_known_cycle(node)
-     *     elif is_known_cycle(component[0]):
-     *       soft_flush(component[0])
-     *       set_dirty(component[0])
-     *       clear_known_cycle(component[0])
-     *     for node in component:
-     *       if is_dirty(node):
-     *         should_propagate := callback(node, is_cycle ? 'cycle' : 'recalculate')
-     *         if should_propagate:
-     *           for to_node in hard_edges(node):
-     *             if to_node not in component:
-     *               set_dirty(to_node)
-     *               soft_flush(to_node)
-     *         visited_dirty := true
-     *     for node in component:
-     *       clear_dirty(node)
-     * while visited_dirty
+     * Topological order is maintained by the PK algorithm, outlined in:
+     * - David J. Pearce and Paul H. J. Kelly. 2007. A dynamic topological sort algorithm for directed acyclic graphs. ACM J. Exp. Algorithmics 11 (2006), 1.7–es.
+     *   https://doi.org/10.1145/1187436.1210590
+     * - Available from https://whileydave.com/publications/pk07_jea/
      */
     process(callback: (node: Type, action: ProcessAction) => boolean): void {
-        // Preemptively flush all of the dirty nodes to prevent direct stale accesses
-        Object.keys(this.dirtyNodes).forEach((nodeId) => {
-            if (this.dirtyNodes[nodeId]) {
-                callback(this.nodesSet[nodeId], 'invalidate');
-            }
-        });
+        const forwardSet = new Set<string>();
+        const reverseSet = new Set<string>();
 
-        let visitedAnyDirty = false;
-        do {
-            visitedAnyDirty = false;
-            this._toposortRetained().forEach((component) => {
-                const isCycle =
-                    component.length > 1 ||
-                    (this.graph[component[0].nodeId][component[0].nodeId] &
-                        Graph.EDGE_HARD) ===
-                        Graph.EDGE_HARD;
-                const nodeIds = new Set(
-                    component.map((vertex) => vertex.nodeId)
-                );
+        // Affected region (lower bound, upper bound)
+        let lowerBound = 0;
+        let upperBound = 0;
+        let reordered = false;
 
-                // If the nodes in the component have either become part of a
-                // cycle or been removed from a cycle, flush and dirty the node
-                // so it is processed
-                nodeIds.forEach((nodeId) => {
-                    const wasCycle = !!this.knownCycles[nodeId];
-                    if (wasCycle !== isCycle) {
-                        callback(this.nodesSet[nodeId], 'invalidate');
-                        this.dirtyNodes[nodeId] = true;
-                        this.knownCycles[nodeId] = isCycle;
+        const dfsF = (nodeId: string) => {
+            this.reorderingVisitedState[nodeId] = true;
+            forwardSet.add(nodeId);
+            this.getDependenciesInner(nodeId, Graph.EDGE_ANY).forEach(
+                (toId) => {
+                    if (this.topologicalIndex[toId] === upperBound) {
+                        // We have identified a new cycle!
+                        // Break out of this algorithm, mark the nodes in a cycle as part of a strongly connected component; and retry
+                        throw new Error('What the hell to do here?');
+                        // cycle!
                     }
-                });
-
-                // Process and propagate dirty nodes, omitting those in the
-                // current component
-                nodeIds.forEach((nodeId) => {
-                    if (this.dirtyNodes[nodeId]) {
-                        const shouldPropagate = callback(
-                            this.nodesSet[nodeId],
-                            isCycle ? 'cycle' : 'recalculate'
-                        );
-                        if (shouldPropagate) {
-                            this.getDependenciesInner(
-                                nodeId,
-                                Graph.EDGE_HARD
-                            ).forEach((toId) => {
-                                if (!nodeIds.has(toId)) {
-                                    this.dirtyNodes[toId] = true;
-                                    callback(this.nodesSet[toId], 'invalidate');
-                                }
-                            });
-                        }
-                        visitedAnyDirty = true;
-                        delete this.dirtyNodes[nodeId];
+                    // Only visit nodes that are in affected region
+                    if (
+                        !this.reorderingVisitedState[toId] &&
+                        this.topologicalIndex[toId] < upperBound
+                    ) {
+                        dfsF(toId);
                     }
-                });
+                }
+            );
+        };
+
+        const dfsB = (nodeId: string) => {
+            this.reorderingVisitedState[nodeId] = true;
+            reverseSet.add(nodeId);
+            this.getReverseDependenciesInner(nodeId, Graph.EDGE_ANY).forEach(
+                (fromId) => {
+                    // Only visit nodes that are in affected region
+                    if (
+                        !this.reorderingVisitedState[fromId] &&
+                        lowerBound < this.topologicalIndex[fromId]
+                    ) {
+                        dfsB(fromId);
+                    }
+                }
+            );
+        };
+
+        const reorder = () => {
+            const sortedReverseSet = Array.from(reverseSet);
+            sortedReverseSet.sort(
+                (a, b) => this.topologicalIndex[a] - this.topologicalIndex[b]
+            );
+            const sortedForwardSet = Array.from(forwardSet);
+            sortedForwardSet.sort(
+                (a, b) => this.topologicalIndex[a] - this.topologicalIndex[b]
+            );
+            const correctOrderNodeIds = [
+                ...sortedReverseSet,
+                ...sortedForwardSet,
+            ];
+            const affectedIndexes = correctOrderNodeIds
+                .map((nodeId) => this.topologicalIndex[nodeId])
+                .sort((a, b) => a - b);
+            const correctNodes = correctOrderNodeIds.map(
+                (nodeId) =>
+                    this.topologicallyOrderedNodes[
+                        this.topologicalIndex[nodeId]
+                    ]
+            );
+            affectedIndexes.forEach((affectedIndex, i) => {
+                this.reorderingVisitedState[correctOrderNodeIds[i]] = false;
+                this.topologicallyOrderedNodes[affectedIndex] = correctNodes[i];
+                this.topologicalIndex[correctOrderNodeIds[i]] = affectedIndex;
             });
-        } while (visitedAnyDirty);
 
-        // Flush all remaining stray dirty nodes (and unfortunately their transitive dependencies) --
-        // these do not reach retained nodes, but need to be flushed so future reads are not stale
-        const visited: Record<string, boolean> = {};
-        const flushTransitive = (nodeId: string) => {
-            if (visited[nodeId]) return;
-            visited[nodeId] = true;
-            callback(this.nodesSet[nodeId], 'invalidate');
+            forwardSet.clear();
+            reverseSet.clear();
+        };
+
+        const addEdge = (fromId: string, toId: string) => {
+            lowerBound = this.topologicalIndex[toId];
+            upperBound = this.topologicalIndex[fromId];
+            if (lowerBound < upperBound) {
+                dfsF(toId);
+                dfsB(fromId);
+                reorder();
+                reordered = true;
+            }
+        };
+
+        const processPendingEdges = () => {
+            let minLowerBound: number | null = null;
+            this.pendingEdges.forEach((pendingEdge) => {
+                if (pendingEdge.type === 'remove') {
+                    this.performRemoveEdgeInner(
+                        pendingEdge.fromId,
+                        pendingEdge.toId,
+                        pendingEdge.kind
+                    );
+                } else if (pendingEdge.type === 'add') {
+                    this.performAddEdgeInner(
+                        pendingEdge.fromId,
+                        pendingEdge.toId,
+                        pendingEdge.kind
+                    );
+                    addEdge(pendingEdge.fromId, pendingEdge.toId);
+                    minLowerBound =
+                        minLowerBound === null
+                            ? lowerBound
+                            : Math.min(minLowerBound, lowerBound);
+                }
+            });
+            this.pendingEdges = [];
+            return minLowerBound;
+        };
+
+        let reachesRetainedCache: Record<string, boolean> = {};
+        const reachesRetained = (nodeId: string) => {
+            const visited: Record<string, boolean> = {};
+            const visit = (id: string): boolean => {
+                if (this.retained[id]) {
+                    reachesRetainedCache[id] = true;
+                }
+                if (reachesRetainedCache[id]) {
+                    return true;
+                }
+                if (visited[id]) return false;
+                visited[id] = true;
+                return this.getDependenciesInner(id, Graph.EDGE_ANY).some(
+                    (toId) => visit(toId)
+                );
+            };
+            return visit(nodeId);
+        };
+
+        // Step one: batch process pending edges
+        processPendingEdges();
+
+        // Step two: start processing in order
+        for (
+            let index = 0;
+            index < this.topologicallyOrderedNodes.length;
+            ++index
+        ) {
+            const node = this.topologicallyOrderedNodes[index];
+            if (!node) {
+                continue;
+            }
+            const nodeId = this.getId(node);
+            if (this.dirtyNodes[nodeId] && reachesRetained(nodeId)) {
+                callback(node, 'invalidate');
+                const shouldPropagate = callback(node, 'recalculate');
+                if (shouldPropagate) {
+                    this.getDependenciesInner(nodeId, Graph.EDGE_HARD).forEach(
+                        (toId) => {
+                            this.dirtyNodes[toId] = true;
+                        }
+                    );
+                }
+                delete this.dirtyNodes[nodeId];
+
+                // By virtue of recalculating the node, we may have grown/changed dependencies!
+                reordered = false;
+                const minLowerBound = processPendingEdges();
+                if (reordered) {
+                    // If we have reordered things, we need to flush our retained cache and start from the lower bound
+                    // of the affected region
+                    reachesRetainedCache = {};
+                    index = minLowerBound - 1;
+                    continue;
+                }
+            }
+        }
+
+        // Step three: flush all remaining dirty nodes and their reachable nodes
+        const flushed: Record<string, boolean> = {};
+        const transitiveFlush = (nodeId: string) => {
+            const node =
+                this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]];
+            log.assert(node, 'transitiveFlush consistency error');
+            callback(node, 'invalidate');
+            flushed[nodeId] = true;
             this.getDependenciesInner(nodeId, Graph.EDGE_HARD).forEach(
                 (toId) => {
-                    flushTransitive(toId);
+                    if (!flushed[toId]) {
+                        transitiveFlush(toId);
+                    }
                 }
             );
         };
         Object.keys(this.dirtyNodes).forEach((nodeId) => {
-            if (this.dirtyNodes[nodeId]) {
-                flushTransitive(nodeId);
-                delete this.dirtyNodes[nodeId];
+            if (!flushed[nodeId]) {
+                transitiveFlush(nodeId);
             }
+            delete this.dirtyNodes[nodeId];
         });
+
+        // And... we're done!
     }
 
     /**
@@ -639,9 +540,7 @@ export class Graph<Type extends object> {
             'node [style="filled", fillcolor="#DDDDDD"];',
         ];
 
-        const nodeIds = Object.keys(this.nodesSet).filter(
-            (nodeId) => !!this.nodesSet[nodeId]
-        );
+        const nodeIds = Object.keys(this.topologicalIndex);
         const nodeAttributes: Record<
             string,
             { label: string; subgraph: object | undefined; penwidth: string }
@@ -649,7 +548,7 @@ export class Graph<Type extends object> {
         nodeIds.forEach((nodeId) => {
             nodeAttributes[nodeId] = getAttributes(
                 nodeId,
-                this.nodesSet[nodeId]
+                this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]]!
             );
         });
         const groupedNodes = groupBy(nodeIds, (nodeId) => {

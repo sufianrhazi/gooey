@@ -112,7 +112,7 @@ export type CollectionEvent<T> =
       };
 
 export type TrackedData<TTypeTag, TEvent> = {
-    $__id: string;
+    $__id: number;
     [TypeTag]: 'data';
     [DataTypeTag]: TTypeTag;
     [FlushKey]: () => boolean;
@@ -182,14 +182,14 @@ export interface View<T>
         ReadonlyArray<T> {}
 
 export interface Subscription {
-    $__id: string;
+    $__id: number;
     [TypeTag]: 'subscription';
     item: any;
     [FlushKey]: () => boolean;
 }
 
 export interface NodeOrdering {
-    $__id: string;
+    $__id: number;
     [TypeTag]: 'nodeOrdering';
 }
 
@@ -227,7 +227,7 @@ export function isContext(val: any): val is Context<any> {
  */
 export interface Calculation<Result> {
     (): Result;
-    $__id: string;
+    $__id: number;
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
     dispose: () => void;
@@ -238,7 +238,7 @@ export interface Calculation<Result> {
 }
 
 export interface ModelField {
-    $__id: string;
+    $__id: number;
     model: {
         [DataTypeTag]: any;
     };
@@ -286,4 +286,4 @@ export function isNodeOrdering(thing: any): thing is NodeOrdering {
     return !!(thing && thing[TypeTag] === 'nodeOrdering');
 }
 
-export type GraphNode = { $__id: string };
+export type GraphNode = { $__id: number };

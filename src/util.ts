@@ -2,8 +2,8 @@
 export const noop = () => {};
 
 export const uniqueid = (() => {
-    let id = 0;
-    return () => (id++).toString();
+    let id = 1;
+    return () => id++;
 })();
 
 export const sleep = (ms: number) =>
