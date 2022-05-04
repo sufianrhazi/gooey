@@ -562,6 +562,7 @@ export function flush() {
                 break;
             case 'recalculate':
                 if (isCalculation(item)) {
+                    item[CalculationInvalidateTag]();
                     shouldPropagate = item[CalculationRecalculateTag]();
                 } else if (
                     isCollection(item) ||

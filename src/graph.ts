@@ -311,11 +311,10 @@ export class Graph<Type extends object> {
      * Core Processing Algorithm
      * =========================
      *
-     * In topological order, recalculate all of the dirty nodes that reach
-     * retained nodes; propagating dirtiness if propagation is requested.
+     * In topological order, recalculate all of the dirty nodes that reach retained nodes; propagating dirtiness if
+     * propagation is requested.
      *
-     * For all remaining dirty nodes (which do not reach retained nodes), flush
-     * them & all their reachable nodes.
+     * For all remaining dirty nodes (which do not reach retained nodes), flush them & all their reachable nodes.
      *
      * If a strongly connected component is identified, it should be treated as a single unit:
      * - If any node is dirtied or flushed; all nodes are
@@ -324,6 +323,12 @@ export class Graph<Type extends object> {
      * - David J. Pearce and Paul H. J. Kelly. 2007. A dynamic topological sort algorithm for directed acyclic graphs. ACM J. Exp. Algorithmics 11 (2006), 1.7–es.
      *   https://doi.org/10.1145/1187436.1210590
      * - Available from https://whileydave.com/publications/pk07_jea/
+     *
+     * If cost estimate of maintaining the topological order exceeds a certain amount, we use Tarjan's strongly
+     * connected components algorithm to perform the topological reordering of the entire graph.
+     *
+     * TODO: As a performance optimization, consider implementing "A Batch Algorithm for Maintaining a Topological
+     * Order" instead of falling back to Tarjan.
      */
     process(callback: (node: Type, action: ProcessAction) => boolean): void {
         const forwardSet = new Set<string>();
@@ -415,7 +420,160 @@ export class Graph<Type extends object> {
             }
         };
 
+        const bulkReorder = () => {
+            type Vertex = {
+                nodeId: string;
+                index?: number;
+                lowlink?: number;
+                onStack?: boolean;
+            };
+            let index = 0;
+            const nodeVertex: Record<string, Vertex> = {};
+            const stack: Vertex[] = [];
+            const reverseTopoSort: Vertex[][] = [];
+
+            const strongconnect = (vertex: Vertex) => {
+                vertex.index = index;
+                vertex.lowlink = index;
+                index = index + 1;
+                stack.push(vertex);
+                vertex.onStack = true;
+
+                // Consider successors of v
+                this.getDependenciesInner(
+                    vertex.nodeId,
+                    Graph.EDGE_ANY
+                ).forEach((toId) => {
+                    if (!nodeVertex[toId]) {
+                        nodeVertex[toId] = {
+                            nodeId: toId,
+                        };
+                    }
+                    const toVertex = nodeVertex[toId];
+                    if (toVertex.index === undefined) {
+                        // Successor toVertex has not yet been visited; recurse on it
+                        strongconnect(toVertex);
+                        vertex.lowlink = Math.min(
+                            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                            vertex.lowlink!,
+                            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                            toVertex.lowlink!
+                        );
+                    } else if (toVertex.onStack) {
+                        // Successor toVertex is in stack S and hence in the current SCC
+                        // If toVertex is not on stack, then (vertex, toVertex) is an edge pointing to an SCC already found and must be ignored
+                        // Note: The next line may look odd - but is correct.
+                        // It says toVertex.index not toVertex.lowlink; that is deliberate and from the original paper
+                        vertex.lowlink = Math.min(
+                            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                            vertex.lowlink!,
+                            toVertex.index
+                        );
+                    }
+                });
+
+                // If vertex is a root node, pop the stack and generate an SCC
+                if (vertex.lowlink === vertex.index) {
+                    // start a new strongly connected component
+                    const component: Vertex[] = [];
+                    for (;;) {
+                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                        const toVertex = stack.pop()!;
+                        toVertex.onStack = false;
+                        // add toVertex to current strongly connected component
+                        component.push(toVertex);
+                        if (toVertex === vertex) {
+                            break;
+                        }
+                    }
+                    // output the current strongly connected component
+                    reverseTopoSort.push(component);
+                }
+            };
+
+            Object.keys(this.topologicalIndex).forEach((nodeId) => {
+                if (!nodeVertex[nodeId]) {
+                    nodeVertex[nodeId] = {
+                        nodeId,
+                    };
+                    strongconnect(nodeVertex[nodeId]);
+                }
+            });
+
+            let finalIndex = 0;
+            const newTopologicalIndex: Record<string, number> = {};
+            const newTopologicallyOrderedNodes: (Type | undefined)[] = [];
+
+            for (let i = reverseTopoSort.length - 1; i >= 0; --i) {
+                const component = reverseTopoSort[i];
+                //let isCycle = component.length > 0;
+                component.forEach((vertex) => {
+                    newTopologicalIndex[vertex.nodeId] = finalIndex;
+                    //isCycle = isCycle || !!this.graph[vertex.nodeId][vertex.nodeId];
+                    // TODO: do something with isCycle
+                    newTopologicallyOrderedNodes.push(
+                        this.topologicallyOrderedNodes[
+                            this.topologicalIndex[vertex.nodeId]
+                        ]
+                    );
+                    finalIndex += 1;
+                });
+            }
+
+            this.topologicalIndex = newTopologicalIndex;
+            this.topologicallyOrderedNodes = newTopologicallyOrderedNodes;
+        };
+
         const processPendingEdges = () => {
+            let isCostOverThreshold = false;
+            let costEstimate = 0;
+            const costThreshold = Math.max(
+                1024,
+                this.topologicallyOrderedNodes.length * 2 // TODO: pick a more informed number
+            );
+            for (const pendingEdge of this.pendingEdges) {
+                if (pendingEdge.type === 'add') {
+                    const fromIndex = this.topologicalIndex[pendingEdge.fromId];
+                    const toIndex = this.topologicalIndex[pendingEdge.toId];
+                    if (toIndex < fromIndex) {
+                        costEstimate += fromIndex - toIndex;
+                        if (costEstimate > costThreshold) {
+                            isCostOverThreshold = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (DEBUG) {
+                log.debug(
+                    `Cost estimate of processing ${this.pendingEdges.length} edges: ${costEstimate}`
+                );
+            }
+            if (isCostOverThreshold) {
+                // Instead of paying the cost of incrementally managing
+                // topological sort, do an old fashioned topological resort.
+                // Pro: faster
+                // Con: if performed while in the processing loop, we need to restart processing from the beginning
+                this.pendingEdges.forEach((pendingEdge) => {
+                    if (pendingEdge.type === 'remove') {
+                        this.performRemoveEdgeInner(
+                            pendingEdge.fromId,
+                            pendingEdge.toId,
+                            pendingEdge.kind
+                        );
+                    } else if (pendingEdge.type === 'add') {
+                        this.performAddEdgeInner(
+                            pendingEdge.fromId,
+                            pendingEdge.toId,
+                            pendingEdge.kind
+                        );
+                    }
+                });
+                this.pendingEdges = [];
+                bulkReorder();
+                reordered = true;
+                return 0;
+            }
             let minLowerBound: number | null = null;
             this.pendingEdges.forEach((pendingEdge) => {
                 if (pendingEdge.type === 'remove') {
@@ -438,7 +596,7 @@ export class Graph<Type extends object> {
                 }
             });
             this.pendingEdges = [];
-            return minLowerBound;
+            return minLowerBound || 0;
         };
 
         let reachesRetainedCache: Record<string, boolean> = {};
@@ -464,8 +622,13 @@ export class Graph<Type extends object> {
         processPendingEdges();
 
         // Step two: start processing in order
+        let firstIndex = this.topologicallyOrderedNodes.length;
+        Object.keys(this.dirtyNodes).forEach((nodeId) => {
+            firstIndex = Math.min(firstIndex, this.topologicalIndex[nodeId]);
+        });
+
         for (
-            let index = 0;
+            let index = firstIndex;
             index < this.topologicallyOrderedNodes.length;
             ++index
         ) {
@@ -475,7 +638,6 @@ export class Graph<Type extends object> {
             }
             const nodeId = this.getId(node);
             if (this.dirtyNodes[nodeId] && reachesRetained(nodeId)) {
-                callback(node, 'invalidate');
                 const shouldPropagate = callback(node, 'recalculate');
                 if (shouldPropagate) {
                     this.getDependenciesInner(nodeId, Graph.EDGE_HARD).forEach(

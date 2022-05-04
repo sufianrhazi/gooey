@@ -157,12 +157,12 @@ suite('Graph', () => {
 
                 assert.deepEqual(
                     {
-                        a: ['invalidate', 'recalculate'],
-                        b: ['invalidate', 'recalculate'],
-                        c: ['invalidate', 'recalculate'],
-                        d: ['invalidate', 'recalculate'],
-                        e: ['invalidate', 'recalculate'],
-                        f: ['invalidate', 'recalculate'],
+                        a: ['recalculate'],
+                        b: ['recalculate'],
+                        c: ['recalculate'],
+                        d: ['recalculate'],
+                        e: ['recalculate'],
+                        f: ['recalculate'],
                         // unretained nodes that become dirtied are flushed, but not recalculated
                         g: ['invalidate'],
                         h: ['invalidate'],
@@ -183,13 +183,7 @@ suite('Graph', () => {
                 });
 
                 // we only visit A nodes
-                assert.deepEqual(
-                    [
-                        { item: a, action: 'invalidate' },
-                        { item: a, action: 'recalculate' },
-                    ],
-                    items
-                );
+                assert.deepEqual([{ item: a, action: 'recalculate' }], items);
             });
 
             test('given c -> e; d -> e, and visiting c returns true but visiting d returns false, we still visit e and all dependencies', () => {
@@ -344,7 +338,7 @@ suite('Graph', () => {
                     return true;
                 });
 
-                assert.arrayEqualsUnsorted([a, b, c, d, e], invalidated);
+                assert.arrayEqualsUnsorted([], invalidated);
                 assert.arrayEqualsUnsorted([a, b, c, d, e], recalculated);
             });
 
