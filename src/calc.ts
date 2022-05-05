@@ -1,6 +1,7 @@
 import {
     Calculation,
     CalculationRecalculateTag,
+    CalculationRecalculateCycleTag,
     CalculationInvalidateTag,
     CalculationSetCycleTag,
     CalculationTypeTag,
@@ -158,8 +159,9 @@ function makeCalculation<Ret>(
         [CalculationTypeTag]: isEffect
             ? ('effect' as const)
             : ('calculation' as const),
-        [CalculationSetCycleTag]: calculationSetError,
+        [CalculationSetCycleTag]: calculationSetCycle,
         [CalculationRecalculateTag]: calculationRecalculate,
+        [CalculationRecalculateCycleTag]: calculationRecalculateCycle,
         [CalculationInvalidateTag]: calculationInvalidate,
         onError: calculationOnError,
         dispose: calculationDispose,
@@ -192,6 +194,10 @@ function makeCalculation<Ret>(
                         calcRecord.deps
                     );
                     const isCycle = e instanceof CycleAbortError;
+                    if (isCycle) {
+                        // Let the graph know that we are part of a cycle
+                        globalDependencyGraph.markNodeCycle(calculation);
+                    }
                     state = isCycle
                         ? CalculationState.STATE_CYCLE
                         : CalculationState.STATE_ERROR;
@@ -241,6 +247,10 @@ function makeCalculation<Ret>(
                     result = {
                         result: errorHandler('cycle'),
                     };
+
+                    // Let the graph know that we are part of a cycle
+                    globalDependencyGraph.markNodeCycle(calculation);
+
                     // If we have an error handler and we call ourselves,
                     // only return a value if we are the outermost tracked
                     // call. Otherwise, we need to propagate the error to the
@@ -287,12 +297,6 @@ function makeCalculation<Ret>(
             case CalculationState.STATE_FLUSHED:
                 return;
             case CalculationState.STATE_CYCLE:
-                DEBUG &&
-                    log.debug(
-                        'Invalidating node in a cycle',
-                        debugNameFor(calculation)
-                    );
-                globalDependencyGraph.removeIncoming(calculation);
                 state = CalculationState.STATE_FLUSHED;
                 break;
             case CalculationState.STATE_CACHED:
@@ -307,7 +311,7 @@ function makeCalculation<Ret>(
         }
     }
 
-    function calculationSetError() {
+    function calculationSetCycle() {
         log.assert(!isDisposed, 'calculation already disposed');
         switch (state) {
             case CalculationState.STATE_TRACKING:
@@ -374,6 +378,40 @@ function makeCalculation<Ret>(
                 throw new InvariantError(
                     'Cannot recalculate calculation in cycle state without flushing'
                 );
+            default:
+                log.assertExhausted(state, 'Unexpected calculation state');
+        }
+    }
+
+    function calculationRecalculateCycle() {
+        log.assert(!isDisposed, 'calculation already disposed');
+        switch (state) {
+            case CalculationState.STATE_TRACKING:
+                throw new InvariantError(
+                    'Cannot recalculate calculation while it is being calculated'
+                );
+                break;
+            case CalculationState.STATE_FLUSHED:
+            case CalculationState.STATE_ERROR:
+            case CalculationState.STATE_CACHED: {
+                const priorResult = result;
+                try {
+                    calculationBody();
+                } catch (e) {
+                    // Completely ignore, at this point `result` should hold the correct value
+                }
+                if (
+                    priorResult &&
+                    result &&
+                    isEqual(priorResult.result, result.result)
+                ) {
+                    result = priorResult;
+                    return false;
+                }
+                return true;
+            }
+            case CalculationState.STATE_CYCLE:
+                return calculationSetCycle();
             default:
                 log.assertExhausted(state, 'Unexpected calculation state');
         }
@@ -558,6 +596,17 @@ export function flush() {
             case 'invalidate':
                 if (isCalculation(item)) {
                     item[CalculationInvalidateTag]();
+                }
+                break;
+            case 'recalculate-cycle':
+                if (isCalculation(item)) {
+                    shouldPropagate = item[CalculationRecalculateCycleTag]();
+                } else if (
+                    isCollection(item) ||
+                    isModel(item) ||
+                    isSubscription(item)
+                ) {
+                    shouldPropagate = item[FlushKey]();
                 }
                 break;
             case 'recalculate':

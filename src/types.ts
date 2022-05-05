@@ -11,6 +11,9 @@ export const ContextGetterTag = Symbol('contextGetter');
 export const DataTypeTag = Symbol('dataTypeTag');
 export const CalculationTypeTag = Symbol('calculationType');
 export const CalculationRecalculateTag = Symbol('calculationRecalculate');
+export const CalculationRecalculateCycleTag = Symbol(
+    'calculationRecalculateCycle'
+);
 export const CalculationInvalidateTag = Symbol('calculationInvalidate');
 export const CalculationSetCycleTag = Symbol('calculationSetCycle');
 
@@ -31,7 +34,11 @@ export type IntrinsicNodeObserverElementCallback = (
     event: 'add' | 'remove'
 ) => void;
 
-export type ProcessAction = 'recalculate' | 'cycle' | 'invalidate';
+export type ProcessAction =
+    | 'recalculate'
+    | 'recalculate-cycle'
+    | 'cycle'
+    | 'invalidate';
 
 /**
  * A ref object that can be passed to native elements.
@@ -234,6 +241,7 @@ export interface Calculation<Result> {
     onError: (handler: (errorType: 'cycle' | 'error') => Result) => this;
     [CalculationSetCycleTag]: () => boolean;
     [CalculationRecalculateTag]: () => boolean;
+    [CalculationRecalculateCycleTag]: () => boolean;
     [CalculationInvalidateTag]: () => void;
 }
 

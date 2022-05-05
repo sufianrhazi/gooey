@@ -1,5 +1,4 @@
 import { Graph } from './graph';
-import { ProcessAction } from './types';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
 
 suite('Graph', () => {
@@ -389,7 +388,6 @@ suite('Graph', () => {
 });
 
 suite('Graph Cycles', () => {
-    return;
     const a = { name: 'a', $__id: 0 };
     const b = { name: 'b', $__id: 1 };
     const c = { name: 'c', $__id: 2 };
@@ -402,29 +400,13 @@ suite('Graph Cycles', () => {
     }
 
     function processGraph(graph: Graph<TNode>) {
-        const actionsPerNode: Record<
-            string,
-            { invalidated: boolean; lastAction: string | null }
-        > = {};
+        const actionsPerNode: Record<string, string[]> = {};
 
         graph.process((node, action) => {
             if (!actionsPerNode[node.name]) {
-                actionsPerNode[node.name] = {
-                    invalidated: false,
-                    lastAction: null,
-                };
+                actionsPerNode[node.name] = [];
             }
-            if (action === 'invalidate') {
-                actionsPerNode[node.name].invalidated = true;
-                actionsPerNode[node.name].lastAction = null;
-            } else {
-                assert.is(
-                    null,
-                    actionsPerNode[node.name].lastAction,
-                    `node ${node.name} told to ${action} without being invalidated`
-                );
-                actionsPerNode[node.name].lastAction = action;
-            }
+            actionsPerNode[node.name].push(action);
             return true;
         });
 
@@ -449,11 +431,205 @@ suite('Graph Cycles', () => {
 
         assert.deepEqual(
             {
-                a: { invalidated: true, lastAction: 'recalculate' },
-                b: { invalidated: true, lastAction: 'cycle' },
-                c: { invalidated: true, lastAction: 'cycle' },
-                d: { invalidated: true, lastAction: 'cycle' },
-                e: { invalidated: true, lastAction: 'recalculate' },
+                a: ['recalculate'],
+                b: ['invalidate', 'cycle'],
+                c: ['invalidate', 'cycle'],
+                d: ['invalidate', 'cycle'],
+                e: ['recalculate'],
+            },
+            processGraph(graph)
+        );
+    });
+
+    test('cycles that are dirtied are notified via recalculate-cycle', () => {
+        const graph = new Graph<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+        graph.addNode(d);
+        graph.addNode(e);
+
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(c, d, Graph.EDGE_HARD);
+        graph.addEdge(d, b, Graph.EDGE_HARD);
+        graph.addEdge(c, e, Graph.EDGE_HARD);
+        graph.retain(e);
+        graph.markNodeDirty(a);
+
+        assert.deepEqual(
+            {
+                a: ['recalculate'],
+                b: ['invalidate', 'cycle'],
+                c: ['invalidate', 'cycle'],
+                d: ['invalidate', 'cycle'],
+                e: ['recalculate'],
+            },
+            processGraph(graph)
+        );
+
+        graph.markNodeDirty(a);
+        assert.deepEqual(
+            {
+                a: ['recalculate'],
+                b: ['invalidate', 'recalculate-cycle'],
+                c: ['invalidate', 'recalculate-cycle'],
+                d: ['invalidate', 'recalculate-cycle'],
+                e: ['recalculate'],
+            },
+            processGraph(graph)
+        );
+    });
+
+    test('cycles that are preemptively marked as cycle are notified via recalculate-cycle', () => {
+        const graph = new Graph<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+        graph.addNode(d);
+        graph.addNode(e);
+
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(c, d, Graph.EDGE_HARD);
+        graph.addEdge(d, b, Graph.EDGE_HARD);
+        graph.addEdge(c, e, Graph.EDGE_HARD);
+        graph.retain(e);
+        graph.markNodeDirty(a);
+
+        graph.markNodeCycle(b);
+        graph.markNodeCycle(c);
+        graph.markNodeCycle(d);
+
+        assert.deepEqual(
+            {
+                a: ['recalculate'],
+                b: ['invalidate', 'recalculate-cycle'],
+                c: ['invalidate', 'recalculate-cycle'],
+                d: ['invalidate', 'recalculate-cycle'],
+                e: ['recalculate'],
+            },
+            processGraph(graph)
+        );
+    });
+
+    test('cycles that are broken are notified as normal', () => {
+        const graph = new Graph<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+        graph.addNode(d);
+        graph.addNode(e);
+
+        // Before:
+        //    a
+        //    |
+        // +->b
+        // |  |
+        // |  c -> [e]
+        // |  |
+        // +--d
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(c, d, Graph.EDGE_HARD);
+        graph.addEdge(d, b, Graph.EDGE_HARD);
+        graph.addEdge(c, e, Graph.EDGE_HARD);
+        graph.retain(e);
+        graph.markNodeDirty(a);
+
+        assert.deepEqual(
+            {
+                a: ['recalculate'],
+                b: ['invalidate', 'cycle'],
+                c: ['invalidate', 'cycle'],
+                d: ['invalidate', 'cycle'],
+                e: ['recalculate'],
+            },
+            processGraph(graph)
+        );
+
+        // After:
+        //    a
+        //    |
+        //    b
+        //    |
+        //    c -> [e]
+        //    |
+        //    d
+        graph.removeEdge(d, b, Graph.EDGE_HARD);
+        graph.markNodeDirty(a);
+
+        assert.deepEqual(
+            {
+                a: ['recalculate'],
+                b: ['recalculate'],
+                c: ['recalculate'],
+                d: ['invalidate'], // invalidated and not recalculated since it is no longer retained
+                e: ['recalculate'],
+            },
+            processGraph(graph)
+        );
+    });
+
+    test('cycles that are reduced in size are notified as normal', () => {
+        const graph = new Graph<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+        graph.addNode(d);
+        graph.addNode(e);
+        graph.addNode(f);
+
+        // Before:
+        //    a
+        //    |
+        // +->b
+        // |  |
+        // +--c -> [e]
+        // |  |
+        // +--d -> [f]
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(c, b, Graph.EDGE_HARD);
+        graph.addEdge(c, d, Graph.EDGE_HARD);
+        graph.addEdge(c, e, Graph.EDGE_HARD);
+        graph.addEdge(d, b, Graph.EDGE_HARD);
+        graph.addEdge(d, f, Graph.EDGE_HARD);
+        graph.retain(e);
+        graph.retain(f);
+        graph.markNodeDirty(a);
+
+        assert.deepEqual(
+            {
+                a: ['recalculate'],
+                b: ['invalidate', 'cycle'],
+                c: ['invalidate', 'cycle'],
+                d: ['invalidate', 'cycle'],
+                e: ['recalculate'],
+                f: ['recalculate'],
+            },
+            processGraph(graph)
+        );
+
+        // After:
+        //    a
+        //    |
+        // +->b
+        // |  |
+        // +--c -> [e]
+        //    |
+        //    d -> [f]
+        graph.removeEdge(d, b, Graph.EDGE_HARD);
+        graph.markNodeDirty(a);
+
+        assert.deepEqual(
+            {
+                a: ['recalculate'],
+                b: ['invalidate', 'recalculate-cycle'], // recalculate-cycle as it has already been notified
+                c: ['invalidate', 'recalculate-cycle'], // recalculate-cycle as it has already been notified
+                d: ['recalculate'],
+                e: ['recalculate'],
+                f: ['recalculate'],
             },
             processGraph(graph)
         );
@@ -480,11 +656,11 @@ suite('Graph Cycles', () => {
 
         assert.deepEqual(
             {
-                a: { invalidated: true, lastAction: 'recalculate' },
-                b: { invalidated: true, lastAction: 'cycle' },
-                c: { invalidated: true, lastAction: 'cycle' },
-                d: { invalidated: true, lastAction: 'cycle' },
-                e: { invalidated: true, lastAction: 'recalculate' },
+                a: ['recalculate'],
+                b: ['invalidate', 'cycle'],
+                c: ['invalidate', 'cycle'],
+                d: ['invalidate', 'cycle'],
+                e: ['recalculate'],
             },
             processGraph(graph)
         );
@@ -506,13 +682,12 @@ suite('Graph Cycles', () => {
 
         graph.retain(d);
         graph.markNodeDirty(a);
-
         assert.deepEqual(
             {
-                a: { invalidated: true, lastAction: 'recalculate' },
-                b: { invalidated: true, lastAction: 'cycle' },
-                c: { invalidated: true, lastAction: 'cycle' },
-                d: { invalidated: true, lastAction: 'recalculate' },
+                a: ['recalculate'],
+                b: ['invalidate', 'cycle'],
+                c: ['invalidate', 'cycle'],
+                d: ['recalculate'],
             },
             processGraph(graph)
         );
@@ -525,26 +700,102 @@ suite('Graph Cycles', () => {
         graph.addNode(c);
         graph.addNode(d);
         graph.addNode(e);
+        graph.addNode(f);
 
+        // Edges added (in specific order)
+        //
+        // Setup (no cycles yet)
+        // - a -> b
+        // - b -> c -> d
+        // - b -> e -> d
+        // - d -> f
         graph.addEdge(a, b, Graph.EDGE_HARD);
 
         graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.addEdge(c, b, Graph.EDGE_HARD);
         graph.addEdge(c, d, Graph.EDGE_HARD);
-        graph.addEdge(d, c, Graph.EDGE_HARD);
 
-        graph.addEdge(d, e, Graph.EDGE_HARD);
+        graph.addEdge(b, e, Graph.EDGE_HARD);
+        graph.addEdge(e, d, Graph.EDGE_HARD);
 
-        graph.retain(e);
+        graph.addEdge(d, f, Graph.EDGE_HARD);
+
+        graph.retain(f);
         graph.markNodeDirty(a);
 
         assert.deepEqual(
             {
-                a: { invalidated: true, lastAction: 'recalculate' },
-                b: { invalidated: true, lastAction: 'cycle' },
-                c: { invalidated: true, lastAction: 'cycle' },
-                d: { invalidated: true, lastAction: 'cycle' },
-                e: { invalidated: true, lastAction: 'recalculate' },
+                a: ['recalculate'],
+                b: ['recalculate'],
+                c: ['recalculate'],
+                d: ['recalculate'],
+                e: ['recalculate'],
+                f: ['recalculate'],
+            },
+            processGraph(graph)
+        );
+
+        // Introduce edge which contains two separate cycles
+        // - d -> b
+        // Now we have:
+        // - b -> c -> d (-> b)
+        // - b -> e -> d (-> b)
+        // Strongly connected component:
+        // - { b,c,d,e }
+        graph.addEdge(d, b, Graph.EDGE_HARD);
+        graph.markNodeDirty(a);
+
+        assert.deepEqual(
+            {
+                a: ['recalculate'],
+                b: ['invalidate', 'cycle'],
+                c: ['invalidate', 'cycle'],
+                d: ['invalidate', 'cycle'],
+                e: ['invalidate', 'cycle'],
+                f: ['recalculate'],
+            },
+            processGraph(graph)
+        );
+    });
+
+    test('cycle type: joined double loop without preflush', () => {
+        const graph = new Graph<TNode>();
+        graph.addNode(a);
+        graph.addNode(b);
+        graph.addNode(c);
+        graph.addNode(d);
+        graph.addNode(e);
+        graph.addNode(f);
+
+        // Graph:
+        //      a
+        //      |
+        //      b <-+
+        //     / \  |
+        //    c   e |
+        //     \ /  |
+        //      d --+
+        //      |
+        //      f
+
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(b, e, Graph.EDGE_HARD);
+        graph.addEdge(c, d, Graph.EDGE_HARD);
+        graph.addEdge(d, b, Graph.EDGE_HARD);
+        graph.addEdge(d, f, Graph.EDGE_HARD);
+        graph.addEdge(e, d, Graph.EDGE_HARD);
+
+        graph.markNodeDirty(a);
+        graph.retain(f);
+
+        assert.deepEqual(
+            {
+                a: ['recalculate'],
+                b: ['invalidate', 'cycle'],
+                c: ['invalidate', 'cycle'],
+                d: ['invalidate', 'cycle'],
+                e: ['invalidate', 'cycle'],
+                f: ['recalculate'],
             },
             processGraph(graph)
         );
@@ -576,12 +827,12 @@ suite('Graph Cycles', () => {
 
         assert.deepEqual(
             {
-                a: { invalidated: true, lastAction: 'recalculate' },
-                b: { invalidated: true, lastAction: 'cycle' },
-                c: { invalidated: true, lastAction: 'cycle' },
-                d: { invalidated: true, lastAction: 'cycle' },
-                e: { invalidated: true, lastAction: 'cycle' },
-                f: { invalidated: true, lastAction: 'recalculate' },
+                a: ['recalculate'],
+                b: ['invalidate', 'cycle'],
+                c: ['invalidate', 'cycle'],
+                d: ['invalidate', 'cycle'],
+                e: ['invalidate', 'cycle'],
+                f: ['recalculate'],
             },
             processGraph(graph)
         );
@@ -604,9 +855,9 @@ suite('Graph Cycles', () => {
 
         assert.deepEqual(
             {
-                a: { invalidated: true, lastAction: 'recalculate' },
-                b: { invalidated: true, lastAction: 'cycle' },
-                c: { invalidated: true, lastAction: 'recalculate' },
+                a: ['recalculate'],
+                b: ['invalidate', 'cycle'],
+                c: ['recalculate'],
             },
             processGraph(graph)
         );

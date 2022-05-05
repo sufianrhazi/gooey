@@ -1,6 +1,64 @@
 import * as log from './log';
 import type { ProcessAction } from './types';
 import { groupBy } from './util';
+import { tarjanStronglyConnected } from './tarjan';
+
+const VISITED_NO_CYCLE = 1 as const;
+const VISITED_CYCLE = 2 as const;
+
+type EdgeList = [fromId: string, toId: string, edgeKind: number][];
+type EdgeMap = Record<string, Record<string, number>>;
+
+function edgeMapToEdgeList(graph: EdgeMap): EdgeList {
+    const edgeList: EdgeList = [];
+    Object.entries(graph).forEach(([fromId, toIds]) => {
+        Object.entries(toIds).forEach(([toId, edgeKind]) => {
+            if (edgeKind > 0) {
+                edgeList.push([fromId, toId, edgeKind]);
+            }
+        });
+    });
+    return edgeList;
+}
+
+function edgeListToEdgeMap(edgeList: EdgeList): EdgeMap {
+    const graph: EdgeMap = {};
+    edgeList.forEach(([fromId, toId, edgeKind]) => {
+        if (edgeKind > 0) {
+            if (!graph[fromId]) graph[fromId] = {};
+            graph[fromId][toId] = edgeKind;
+        }
+    });
+    return graph;
+}
+
+enum PendingOperationType {
+    NODE_ADD,
+    NODE_DELETE,
+    EDGE_ADD,
+    EDGE_DELETE,
+}
+type PendingOperation<Type extends object> =
+    | {
+          type: typeof PendingOperationType.NODE_ADD;
+          node: Type;
+      }
+    | {
+          type: typeof PendingOperationType.NODE_DELETE;
+          nodeId: string;
+      }
+    | {
+          type: typeof PendingOperationType.EDGE_ADD;
+          fromId: string;
+          toId: string;
+          kind: 0b01 | 0b10;
+      }
+    | {
+          type: typeof PendingOperationType.EDGE_DELETE;
+          fromId: string;
+          toId: string;
+          kind: 0b01 | 0b10 | 0b11;
+      };
 
 /**
  * A directed graph
@@ -25,14 +83,23 @@ export class Graph<Type extends object> {
     private retained: Record<string, true>;
     private dirtyNodes: Record<string, true>;
     private recentDirtyNodes: undefined | string[];
-    private knownCycles: Record<string, boolean>;
+    private informedCycles: Map<string, boolean>;
+    private knownCycles: Map<
+        string,
+        {
+            connectedComponentEdges: Record<string, Record<string, number>>;
+            connectedComponentNodes: Set<string>;
+            isInformed: boolean;
+            initiallyDirty: boolean;
+        }
+    >;
+    private minCycleBrokenIndex: null | number;
 
     /**
      * The subgraph that has been added but not yet ordered
      */
-    private pendingGraph: Map<string, Record<string, number>>;
-    private pendingReverseGraph: Map<string, Record<string, number>>;
-    private pendingNodes: Map<string, Type>;
+    private pendingOperations: PendingOperation<Type>[];
+    private pendingNodes: Record<string, boolean>;
 
     /**
      * A mapping of nodeId to index in topological order
@@ -46,18 +113,17 @@ export class Graph<Type extends object> {
      * A mapping of nodeId to whether or not the node is visited while reordering
      * Note: this is internal state to the process() function but global to reduce object memory thrash
      */
-    private reorderingVisitedState: Record<string, boolean> = {};
+    private reorderingVisitedState: Map<string, boolean>;
 
-    private graph: Record<string, Record<string, number>>;
-    private reverseGraph: Record<string, Record<string, number>>;
+    private graph: EdgeMap;
+    private reverseGraph: EdgeMap;
 
     constructor() {
         this.topologicalIndex = {};
         this.topologicallyOrderedNodes = [];
 
-        this.pendingGraph = new Map();
-        this.pendingReverseGraph = new Map();
-        this.pendingNodes = new Map();
+        this.pendingOperations = [];
+        this.pendingNodes = {};
 
         this.retained = {};
         this.graph = {};
@@ -66,7 +132,10 @@ export class Graph<Type extends object> {
         this.dirtyNodes = {};
         this.recentDirtyNodes = undefined;
 
-        this.knownCycles = {};
+        this.knownCycles = new Map();
+        this.informedCycles = new Map();
+        this.reorderingVisitedState = new Map();
+        this.minCycleBrokenIndex = null;
     }
 
     private getId(node: Type): string {
@@ -76,16 +145,18 @@ export class Graph<Type extends object> {
     private hasNodeInner(nodeId: string) {
         return (
             this.topologicalIndex[nodeId] !== undefined ||
-            this.pendingNodes.has(nodeId)
+            this.pendingNodes[nodeId]
         );
     }
 
     addNode(node: Type): boolean {
         const nodeId = this.getId(node);
         if (this.hasNodeInner(nodeId)) return false;
-        this.pendingGraph.set(nodeId, {});
-        this.pendingReverseGraph.set(nodeId, {});
-        this.pendingNodes.set(nodeId, node);
+        this.pendingOperations.push({
+            type: PendingOperationType.NODE_ADD,
+            node,
+        });
+        this.pendingNodes[nodeId] = true;
         return true;
     }
 
@@ -97,8 +168,26 @@ export class Graph<Type extends object> {
         return true;
     }
 
+    markNodeCycle(node: Type): void {
+        const nodeId = this.getId(node);
+        const cycleInfo = this.knownCycles.get(nodeId);
+        if (cycleInfo) {
+            cycleInfo.isInformed = true;
+        } else {
+            this.informedCycles.set(this.getId(node), true);
+        }
+    }
+
     markNodeDirty(node: Type): void {
-        this.markNodeDirtyInner(this.getId(node));
+        const nodeId = this.getId(node);
+        const cycleInfo = this.knownCycles.get(nodeId);
+        if (cycleInfo) {
+            cycleInfo.connectedComponentNodes.forEach((cycleId) => {
+                this.markNodeDirtyInner(cycleId);
+            });
+        } else {
+            this.markNodeDirtyInner(this.getId(node));
+        }
     }
 
     private markNodeDirtyInner(nodeId: string): void {
@@ -106,12 +195,9 @@ export class Graph<Type extends object> {
         if (this.recentDirtyNodes) this.recentDirtyNodes.push(nodeId);
     }
 
-    private markNodeClean(node: Type): void {
-        this.markNodeCleanInner(this.getId(node));
-    }
-
     private markNodeCleanInner(nodeId: string): void {
         delete this.dirtyNodes[nodeId];
+        this.informedCycles.set(nodeId, false);
     }
 
     private isNodeDirty(nodeId: string) {
@@ -150,19 +236,12 @@ export class Graph<Type extends object> {
             this.hasNodeInner(toId),
             'cannot add edge to node that does not exist'
         );
-        let fwdEdges = this.pendingGraph.get(fromId);
-        if (!fwdEdges) {
-            fwdEdges = {};
-            this.pendingGraph.set(fromId, fwdEdges);
-        }
-        fwdEdges[toId] = (fwdEdges[toId] || 0) | kind;
-
-        let revEdges = this.pendingReverseGraph.get(toId);
-        if (!revEdges) {
-            revEdges = {};
-            this.pendingReverseGraph.set(fromId, revEdges);
-        }
-        revEdges[fromId] = (fwdEdges[fromId] || 0) | kind;
+        this.pendingOperations.push({
+            type: PendingOperationType.EDGE_ADD,
+            fromId,
+            toId,
+            kind,
+        });
     }
 
     private performAddEdgeInner(
@@ -198,20 +277,116 @@ export class Graph<Type extends object> {
             'cannot remove edge to node that does not exist'
         );
 
-        // Note: we remove from **both** the pending graph and the real graph
-        // This is possible because removing edges DOES NOT change the topological ordering of a graph
-        const fwdEdges = this.pendingGraph.get(fromId);
-        if (fwdEdges) {
-            fwdEdges[toId] = (fwdEdges[toId] || 0) & ~kind;
-        }
-        this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) & ~kind;
+        this.pendingOperations.push({
+            type: PendingOperationType.EDGE_DELETE,
+            fromId,
+            toId,
+            kind,
+        });
+    }
 
-        const revEdges = this.pendingReverseGraph.get(toId);
-        if (revEdges) {
-            revEdges[fromId] = (revEdges[fromId] || 0) & ~kind;
-        }
+    private performRemoveEdgeInner(
+        fromId: string,
+        toId: string,
+        kind: 0b01 | 0b10 | 0b11
+    ) {
+        this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) & ~kind;
         this.reverseGraph[toId][fromId] =
             (this.reverseGraph[toId][fromId] || 0) & ~kind;
+        const cycleInfo = this.knownCycles.get(fromId);
+        if (cycleInfo && cycleInfo.connectedComponentEdges[fromId]?.[toId]) {
+            cycleInfo.connectedComponentEdges[fromId][toId] =
+                cycleInfo.connectedComponentEdges[fromId][toId] & ~kind;
+
+            // Note: we are getting the topological ordering + components for **all** of the nodes reachable from these
+            // components. This is a conservative guess, which uses the assumption that the presence of cycles can cause
+            // incorrect orderings with the Pearce Kelly algorithm and we need to repair them.
+            //
+            // TODO: determine if we could only look at _just_ cycleInfo.connectedComponentEdges instead of this.graph
+            const newComponents = tarjanStronglyConnected(
+                this.graph,
+                Array.from(cycleInfo.connectedComponentNodes)
+            );
+
+            // The edge deletion broke the cycle into multiple components
+            const edgeList: EdgeList = edgeMapToEdgeList(
+                cycleInfo.connectedComponentEdges
+            );
+            const affectedIndexes: number[] = [];
+            const topologicallyCorrectNodes: {
+                nodeId: string;
+                node: Type | undefined;
+            }[] = [];
+            newComponents.forEach((component) => {
+                // Obtain the current indexes and topologically correct ordering of the entire component
+                component.forEach((nodeId) => {
+                    const nodeIndex = this.topologicalIndex[nodeId];
+                    affectedIndexes.push(nodeIndex);
+                    topologicallyCorrectNodes.push({
+                        nodeId,
+                        node: this.topologicallyOrderedNodes[nodeIndex],
+                    });
+                });
+
+                // Update all the knownCycles data structures to reflect the new reality, and collect the correct ordering
+                const componentIntersection = new Set(
+                    [...component].filter((nodeId) =>
+                        cycleInfo.connectedComponentNodes.has(nodeId)
+                    )
+                );
+                const isCycle = componentIntersection.size > 1;
+                if (isCycle) {
+                    const reducedConnectedComponentEdges = edgeListToEdgeMap(
+                        edgeList.filter(
+                            ([fromId, toId, _edgeKind]) =>
+                                componentIntersection.has(fromId) &&
+                                componentIntersection.has(toId)
+                        )
+                    );
+                    componentIntersection.forEach((nodeId) => {
+                        this.knownCycles.set(nodeId, {
+                            connectedComponentEdges:
+                                reducedConnectedComponentEdges,
+                            connectedComponentNodes: componentIntersection,
+                            isInformed:
+                                !!this.knownCycles.get(nodeId)?.isInformed,
+                            initiallyDirty:
+                                !!this.knownCycles.get(nodeId)?.initiallyDirty,
+                        });
+                    });
+                } else {
+                    componentIntersection.forEach((nodeId) => {
+                        this.knownCycles.delete(nodeId);
+                        this.markNodeDirtyInner(nodeId);
+                    });
+                }
+            });
+
+            // If the current indexes are already in topological order, no need to resort
+            let needsResort = false;
+            for (let i = 1; i < affectedIndexes.length; ++i) {
+                if (affectedIndexes[i - 1] >= affectedIndexes[i]) {
+                    needsResort = true;
+                    break;
+                }
+            }
+            if (needsResort) {
+                affectedIndexes.sort((a, b) => a - b);
+                for (let i = 0; i < affectedIndexes.length; ++i) {
+                    const entry = topologicallyCorrectNodes[i];
+                    this.topologicalIndex[entry.nodeId] = affectedIndexes[i];
+                    this.topologicallyOrderedNodes[affectedIndexes[i]] =
+                        entry.node;
+                }
+                this.minCycleBrokenIndex =
+                    this.minCycleBrokenIndex === null
+                        ? affectedIndexes[0]
+                        : Math.min(
+                              this.minCycleBrokenIndex,
+                              affectedIndexes[0]
+                          );
+            }
+        }
     }
 
     removeNode(node: Type) {
@@ -220,6 +395,14 @@ export class Graph<Type extends object> {
     }
 
     private removeNodeInner(nodeId: string) {
+        this.pendingOperations.push({
+            type: PendingOperationType.NODE_DELETE,
+            nodeId: nodeId,
+        });
+        this.pendingNodes[nodeId] = false;
+    }
+
+    private performRemoveNodeInner(nodeId: string) {
         // Note: this can be performed without reordering topological ordering,
         // since node and edge removal does not change the topological order.
         log.assert(
@@ -229,55 +412,16 @@ export class Graph<Type extends object> {
         const toIds = this.getDependenciesInner(nodeId, Graph.EDGE_ANY);
         const fromIds = this.getReverseDependenciesInner(nodeId);
 
-        const pendingFwdEdges = this.pendingGraph.get(nodeId) || {};
-        const pendingRevEdges = this.pendingReverseGraph.get(nodeId) || {};
-
         // delete fromId -> nodeId for fromId in fromIds
         fromIds.forEach((fromId) => {
             this.graph[fromId][nodeId] = 0;
-            const fromFwd = this.pendingGraph.get(fromId);
-            if (fromFwd) {
-                fromFwd[nodeId] = 0;
-            }
             this.reverseGraph[nodeId][fromId] = 0;
-            const fromRev = this.pendingReverseGraph.get(nodeId);
-            if (fromRev) {
-                fromRev[fromId] = 0;
-            }
-        });
-        Object.keys(pendingRevEdges).forEach((fromId) => {
-            const fromFwd = this.pendingGraph.get(fromId);
-            if (fromFwd) {
-                fromFwd[nodeId] = 0;
-            }
-            const fromRev = this.pendingReverseGraph.get(nodeId);
-            if (fromRev) {
-                fromRev[fromId] = 0;
-            }
         });
 
         // delete nodeId -> toId for toId in toIds
         toIds.forEach((toId) => {
             this.reverseGraph[toId][nodeId] = 0;
-            const toRev = this.pendingReverseGraph.get(toId);
-            if (toRev) {
-                toRev[nodeId] = 0;
-            }
             this.graph[nodeId][toId] = 0;
-            const toFwd = this.pendingGraph.get(nodeId);
-            if (toFwd) {
-                toFwd[toId] = 0;
-            }
-        });
-        Object.keys(pendingFwdEdges).forEach((toId) => {
-            const toRev = this.pendingReverseGraph.get(toId);
-            if (toRev) {
-                toRev[nodeId] = 0;
-            }
-            const toFwd = this.pendingGraph.get(nodeId);
-            if (toFwd) {
-                toFwd[toId] = 0;
-            }
         });
 
         this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]] =
@@ -285,10 +429,11 @@ export class Graph<Type extends object> {
         delete this.topologicalIndex[nodeId];
         this.markNodeCleanInner(nodeId);
         delete this.retained[nodeId];
-        delete this.knownCycles[nodeId];
-        this.pendingGraph.delete(nodeId);
-        this.pendingReverseGraph.delete(nodeId);
-        this.pendingNodes.delete(nodeId);
+        const cycleInfo = this.knownCycles.get(nodeId);
+        if (cycleInfo) {
+            // TODO: do we need to "fix" the existing cycles? Yes, yes we do
+            throw new Error('Not yet implemented');
+        }
     }
 
     retain(node: Type) {
@@ -413,43 +558,103 @@ export class Graph<Type extends object> {
         let lowerBound = 0;
         let upperBound = 0;
         let reordered = false;
+        const connectedComponentNodes = new Set<string>();
+        const connectedComponentEdges: Record<
+            string,
+            Record<string, number>
+        > = {};
 
-        const dfsF = (nodeId: string) => {
-            this.reorderingVisitedState[nodeId] = true;
+        const dfsF = (nodeId: string): boolean => {
+            this.reorderingVisitedState.set(nodeId, false);
             forwardSet.add(nodeId);
-            this.getDependenciesInner(nodeId, Graph.EDGE_ANY).forEach(
+            return this.getDependenciesInner(nodeId, Graph.EDGE_ANY).some(
                 (toId) => {
                     if (this.topologicalIndex[toId] === upperBound) {
-                        // We have identified a new cycle!
-                        // Break out of this algorithm, mark the nodes in a cycle as part of a strongly connected component; and retry
-                        throw new Error('What the hell to do here?');
-                        // cycle!
+                        return true; // We have identified a new cycle!
                     }
                     // Only visit nodes that are in affected region
+                    //
+                    // **or** nodes that are part of a strongly connected component
+                    // Note: this consequent is a diversion from the Pearce-Kelly algorithm to account for cycles which we treat as a single strongly connected component,
+                    // in the presence of adding an edge to a cycle, the bounds must extend to the min/max bound of all nodes within the strongly connected component
                     if (
-                        !this.reorderingVisitedState[toId] &&
-                        this.topologicalIndex[toId] < upperBound
+                        !this.reorderingVisitedState.has(toId) &&
+                        (this.topologicalIndex[toId] < upperBound ||
+                            this.knownCycles.has(toId))
                     ) {
-                        dfsF(toId);
+                        if (dfsF(toId)) return true;
                     }
+                    return false;
                 }
             );
         };
 
         const dfsB = (nodeId: string) => {
-            this.reorderingVisitedState[nodeId] = true;
+            this.reorderingVisitedState.set(nodeId, true);
             reverseSet.add(nodeId);
             this.getReverseDependenciesInner(nodeId, Graph.EDGE_ANY).forEach(
                 (fromId) => {
                     // Only visit nodes that are in affected region
+                    //
+                    // **or** nodes that are part of a strongly connected component
+                    // Note: this consequent is a diversion from the Pearce-Kelly algorithm to account for cycles which we treat as a single strongly connected component,
+                    // in the presence of adding an edge to a cycle, the bounds must extend to the min/max bound of all nodes within the strongly connected component
                     if (
-                        !this.reorderingVisitedState[fromId] &&
-                        lowerBound < this.topologicalIndex[fromId]
+                        !this.reorderingVisitedState.has(fromId) &&
+                        (lowerBound < this.topologicalIndex[fromId] ||
+                            this.knownCycles.has(fromId))
                     ) {
                         dfsB(fromId);
                     }
                 }
             );
+        };
+
+        const stronglyConnectedVisited: Map<string, number> = new Map();
+        const dfsStronglyConnected = (nodeId: string): boolean => {
+            stronglyConnectedVisited.set(nodeId, VISITED_NO_CYCLE);
+            forwardSet.add(nodeId);
+            let reachesCycle = false;
+            this.getDependenciesInner(nodeId, Graph.EDGE_ANY).forEach(
+                (toId) => {
+                    if (this.topologicalIndex[toId] === upperBound) {
+                        // We identified the cycle
+                        // Add the current node to the connected component
+                        stronglyConnectedVisited.set(nodeId, VISITED_CYCLE);
+                        connectedComponentNodes.add(nodeId);
+                        stronglyConnectedVisited.set(toId, VISITED_CYCLE);
+                        connectedComponentNodes.add(toId);
+                        if (!connectedComponentEdges[nodeId]) {
+                            connectedComponentEdges[nodeId] = {};
+                        }
+                        connectedComponentEdges[nodeId][toId] =
+                            this.graph[nodeId][toId];
+                        reachesCycle = true;
+                        return;
+                    }
+                    let partOfComponent = false;
+
+                    if (!stronglyConnectedVisited.has(toId)) {
+                        partOfComponent = dfsStronglyConnected(toId);
+                    }
+                    if (stronglyConnectedVisited.get(toId) === VISITED_CYCLE) {
+                        partOfComponent = true;
+                    }
+                    if (partOfComponent) {
+                        reachesCycle = true;
+                        // We have identified a new cycle!
+                        // This node is part of a connected component
+                        stronglyConnectedVisited.set(nodeId, VISITED_CYCLE);
+                        connectedComponentNodes.add(nodeId);
+                        if (!connectedComponentEdges[nodeId]) {
+                            connectedComponentEdges[nodeId] = {};
+                        }
+                        connectedComponentEdges[nodeId][toId] =
+                            this.graph[nodeId][toId];
+                    }
+                }
+            );
+            return reachesCycle;
         };
 
         const reorder = () => {
@@ -475,23 +680,74 @@ export class Graph<Type extends object> {
                     ]
             );
             affectedIndexes.forEach((affectedIndex, i) => {
-                this.reorderingVisitedState[correctOrderNodeIds[i]] = false;
                 this.topologicallyOrderedNodes[affectedIndex] = correctNodes[i];
                 this.topologicalIndex[correctOrderNodeIds[i]] = affectedIndex;
             });
-
-            forwardSet.clear();
-            reverseSet.clear();
         };
 
         const addEdge = (fromId: string, toId: string) => {
-            lowerBound = this.topologicalIndex[toId];
-            upperBound = this.topologicalIndex[fromId];
+            // Note: this is a diversion from the Pearce-Kelly algorithm to account for cycles which we treat as a single strongly connected component,
+            // in the presence of adding an edge to a cycle, the bounds must extend to the min/max bound of all nodes within the strongly connected component
+            const toCycleInfo = this.knownCycles.get(toId);
+            if (toCycleInfo) {
+                lowerBound = this.topologicallyOrderedNodes.length;
+                toCycleInfo.connectedComponentNodes.forEach((toCycleId) => {
+                    lowerBound = Math.min(
+                        lowerBound,
+                        this.topologicalIndex[toCycleId]
+                    );
+                });
+            } else {
+                lowerBound = this.topologicalIndex[toId];
+            }
+
+            const fromCycleInfo = this.knownCycles.get(fromId);
+            if (fromCycleInfo) {
+                upperBound = 0;
+                fromCycleInfo.connectedComponentNodes.forEach((fromCycleId) => {
+                    upperBound = Math.max(
+                        upperBound,
+                        this.topologicalIndex[fromCycleId]
+                    );
+                });
+            } else {
+                upperBound = this.topologicalIndex[fromId];
+            }
+
             if (lowerBound < upperBound) {
-                dfsF(toId);
-                dfsB(fromId);
-                reorder();
-                reordered = true;
+                const isCycle = dfsF(toId);
+                if (isCycle) {
+                    stronglyConnectedVisited.clear();
+                    dfsStronglyConnected(toId);
+                    if (!connectedComponentEdges[fromId]) {
+                        connectedComponentEdges[fromId] = {};
+                    }
+                    connectedComponentEdges[fromId][toId] =
+                        this.graph[fromId][toId];
+                    connectedComponentNodes.forEach((nodeId) => {
+                        const cycleInfo = this.knownCycles.get(nodeId);
+
+                        const isInformed: boolean =
+                            !!cycleInfo?.isInformed ||
+                            !!this.informedCycles.get(nodeId);
+
+                        const initiallyDirty = !!this.dirtyNodes[nodeId];
+
+                        this.knownCycles.set(nodeId, {
+                            connectedComponentEdges,
+                            connectedComponentNodes,
+                            isInformed,
+                            initiallyDirty,
+                        });
+                    });
+                } else {
+                    dfsB(fromId);
+                    reorder();
+                    reordered = true;
+                }
+                forwardSet.clear();
+                reverseSet.clear();
+                this.reorderingVisitedState.clear();
             }
         };
 
@@ -499,7 +755,61 @@ export class Graph<Type extends object> {
             let minLowerBound: number | null = null;
 
             //
-            // pre-sort pending nodes
+            // First construct a graph of *just* the edge additions to the graph and the final set of nodes being added
+            //
+            const nodesToAdd: Record<string, Type> = {};
+            const pendingGraph: EdgeMap = {};
+            const filteredPendingOperations = this.pendingOperations.filter(
+                (pendingOperation) => {
+                    switch (pendingOperation.type) {
+                        case PendingOperationType.NODE_ADD:
+                            nodesToAdd[this.getId(pendingOperation.node)] =
+                                pendingOperation.node;
+                            // We are handling node additions here in a specific order
+                            return false;
+                        case PendingOperationType.NODE_DELETE:
+                            if (nodesToAdd[pendingOperation.nodeId]) {
+                                delete nodesToAdd[pendingOperation.nodeId];
+                                return false;
+                            }
+                            // Deletions of nodes not added in this batch is handled below
+                            return true;
+                        case PendingOperationType.EDGE_ADD:
+                            if (!pendingGraph[pendingOperation.fromId]) {
+                                pendingGraph[pendingOperation.fromId] = {};
+                            }
+                            pendingGraph[pendingOperation.fromId][
+                                pendingOperation.toId
+                            ] =
+                                (pendingGraph[pendingOperation.fromId][
+                                    pendingOperation.toId
+                                ] || 0) | pendingOperation.kind;
+                            // All edge manipulations occur below
+                            return true;
+                        case PendingOperationType.EDGE_DELETE:
+                            if (!pendingGraph[pendingOperation.fromId]) {
+                                pendingGraph[pendingOperation.fromId] = {};
+                            }
+                            pendingGraph[pendingOperation.fromId][
+                                pendingOperation.toId
+                            ] =
+                                (pendingGraph[pendingOperation.fromId][
+                                    pendingOperation.toId
+                                ] || 0) & ~pendingOperation.kind;
+                            // All edge manipulations occur below
+                            return true;
+                        default:
+                            log.assertExhausted(
+                                pendingOperation,
+                                'unexpected pending operation'
+                            );
+                    }
+                }
+            );
+            this.pendingOperations = [];
+
+            //
+            // Pre-sort the final set of nodes to be added
             //
             const visited: Record<string, boolean> = {};
             const pendingNodeIdIndex: Record<string, number> = {};
@@ -508,7 +818,7 @@ export class Graph<Type extends object> {
             const assignIndex = (nodeId: string): void => {
                 if (visited[nodeId]) return;
                 visited[nodeId] = true;
-                const toEdges = this.pendingGraph.get(nodeId) || {};
+                const toEdges = pendingGraph[nodeId] || {};
                 Object.keys(toEdges).forEach((toId) => {
                     if (toEdges[toId] > 0) {
                         // If we have EDGE_*, the edge was not removed immediately after add
@@ -523,7 +833,7 @@ export class Graph<Type extends object> {
             // for every (a -> b), index b < index a; unless there is a cycle (ignoring edges that close a cycle)
             // This is a (partial) reverse topological sort
             const pendingNodeIds: string[] = [];
-            this.pendingNodes.forEach((_node, nodeId) => {
+            Object.keys(nodesToAdd).forEach((nodeId) => {
                 assignIndex(nodeId);
                 pendingNodeIds.push(nodeId);
             });
@@ -534,41 +844,53 @@ export class Graph<Type extends object> {
                 (a, b) => pendingNodeIdIndex[b] - pendingNodeIdIndex[a]
             );
 
-            // Add the nodes in this partial order. This ensures that as we add
-            // new edges for new nodes, we do not need to resort them.
+            //
+            // Add the final set of added nodes in this partial order.
+            // This ensures that as we add new edges for new nodes, we do not need to resort them.
             pendingNodeIds.forEach((nodeId) => {
-                const node = this.pendingNodes.get(nodeId);
+                const node = nodesToAdd[nodeId];
                 if (node) {
                     this.performAddNodeInner(node, nodeId);
                 }
             });
 
             //
-            // Add edges (unlike node order, the order here does not matter as all nodes have been added)
+            // Process the remaining pending operations normally
             //
-            this.pendingGraph.forEach((edges, fromId) => {
-                const toIds = Object.keys(edges);
-                toIds.forEach((toId) => {
-                    if (edges[toId] > 0) {
+            filteredPendingOperations.forEach((pendingOperation) => {
+                switch (pendingOperation.type) {
+                    case PendingOperationType.NODE_ADD:
+                        log.assert(false, 'Incorrectly adding nodes twice');
+                        break;
+                    case PendingOperationType.NODE_DELETE:
+                        this.performRemoveNodeInner(pendingOperation.nodeId);
+                        break;
+                    case PendingOperationType.EDGE_ADD:
                         this.performAddEdgeInner(
-                            fromId,
-                            toId,
-                            edges[toId] as 1 | 2
+                            pendingOperation.fromId,
+                            pendingOperation.toId,
+                            pendingOperation.kind
                         );
-
-                        addEdge(fromId, toId);
+                        addEdge(pendingOperation.fromId, pendingOperation.toId);
                         minLowerBound =
                             minLowerBound === null
                                 ? lowerBound
                                 : Math.min(minLowerBound, lowerBound);
-                    }
-                });
+                        break;
+                    case PendingOperationType.EDGE_DELETE:
+                        this.performRemoveEdgeInner(
+                            pendingOperation.fromId,
+                            pendingOperation.toId,
+                            pendingOperation.kind
+                        );
+                        break;
+                    default:
+                        log.assertExhausted(
+                            pendingOperation,
+                            'unexpected pending operation'
+                        );
+                }
             });
-
-            // Clean up pending items
-            this.pendingNodes.clear();
-            this.pendingGraph.clear();
-            this.pendingReverseGraph.clear();
 
             return minLowerBound || 0;
         };
@@ -602,7 +924,9 @@ export class Graph<Type extends object> {
             ++index
         ) {
             const node = this.topologicallyOrderedNodes[index];
-            if (!node) continue;
+            if (!node) {
+                continue;
+            }
             const nodeId = this.getId(node);
             if (!this.dirtyNodes[nodeId]) {
                 continue;
@@ -611,45 +935,229 @@ export class Graph<Type extends object> {
                 continue;
             }
 
-            this.recentDirtyNodes = [];
-            const shouldPropagate = callback(node, 'recalculate');
+            let done = false;
+            const dirtyNodesUnknownPosition = new Set<string>();
+            this.minCycleBrokenIndex = null;
 
-            // Hold onto the dirty nodes we have obtained via side effect
-            let newDirtyNodes = this.recentDirtyNodes;
-            this.recentDirtyNodes = undefined;
+            /** The set of node ids that have been processed and we will mark as clean after propagation */
+            const processedNodeIds = new Set<string>();
 
-            if (shouldPropagate) {
-                // No need to hold onto these in newDirtyNodes as they are
-                // guaranteed to be **after** the current index
-                this.getDependenciesInner(nodeId, Graph.EDGE_HARD).forEach(
-                    (toId) => {
-                        this.markNodeDirtyInner(toId);
+            while (!done) {
+                const cycleUnconfirmedNodes = new Set<string>();
+                this.recentDirtyNodes = [];
+                const cycleInfo = this.knownCycles.get(nodeId);
+                if (cycleInfo) {
+                    // If the node is known to be a cycle, we must treat **all** of
+                    // the nodes in the strongly connected component as one.
+                    //
+                    // That is to say, we:
+                    // - invalidate all nodes first (even if they are not dirty)
+                    // - notify each they are a cycle (even if they are not dirty)
+                    // - if any should propagate, they all propagate -- and we mark dependencies of _all_ of the nodes as dirty -- is this correct?
+                    // - mark _all_ of the nodes in the strongly connected component as not dirty (since we just processed them)
+                    let anyPropagate = false;
+                    cycleInfo.connectedComponentNodes.forEach((cycleId) => {
+                        const cycleNode =
+                            this.topologicallyOrderedNodes[
+                                this.topologicalIndex[cycleId]
+                            ];
+                        if (cycleNode) {
+                            callback(cycleNode, 'invalidate');
+                        }
+                    });
+                    cycleInfo.connectedComponentNodes.forEach((cycleId) => {
+                        const cycleNode =
+                            this.topologicallyOrderedNodes[
+                                this.topologicalIndex[cycleId]
+                            ];
+                        const currentCycleInfo = this.knownCycles.get(cycleId);
+                        log.assert(
+                            currentCycleInfo,
+                            'missing cycleInfo for node in strongly connected component'
+                        );
+                        let action:
+                            | 'cycle'
+                            | 'recalculate-cycle'
+                            | 'recalculate';
+                        if (
+                            !currentCycleInfo.isInformed &&
+                            currentCycleInfo.initiallyDirty
+                        ) {
+                            action = 'recalculate';
+                            currentCycleInfo.initiallyDirty = false;
+                            cycleUnconfirmedNodes.add(cycleId);
+                        } else if (currentCycleInfo.isInformed) {
+                            action = 'recalculate-cycle';
+                        } else {
+                            action = 'cycle';
+                            currentCycleInfo.isInformed = true;
+                        }
+                        if (cycleNode && callback(cycleNode, action)) {
+                            anyPropagate = true;
+                        }
+                    });
+
+                    // Hold onto the dirty nodes we have obtained via side effect
+                    this.recentDirtyNodes.forEach((nodeId) =>
+                        dirtyNodesUnknownPosition.add(nodeId)
+                    );
+                    this.recentDirtyNodes = undefined;
+
+                    // If any of the nodes in the cycle propagated, then _all_ should propagate
+                    if (anyPropagate) {
+                        cycleInfo.connectedComponentNodes.forEach((cycleId) => {
+                            this.getDependenciesInner(
+                                cycleId,
+                                Graph.EDGE_HARD
+                            ).forEach((toId) => {
+                                if (
+                                    !cycleInfo.connectedComponentNodes.has(toId)
+                                ) {
+                                    const toCycleInfo =
+                                        this.knownCycles.get(toId);
+                                    if (toCycleInfo) {
+                                        toCycleInfo.connectedComponentNodes.forEach(
+                                            (toCycleId) => {
+                                                this.markNodeDirtyInner(
+                                                    toCycleId
+                                                );
+                                            }
+                                        );
+                                    } else {
+                                        this.markNodeDirtyInner(toId);
+                                    }
+                                }
+                            });
+                        });
                     }
-                );
-            }
-            this.markNodeCleanInner(nodeId);
 
-            // By virtue of recalculating the node, we may have grown/changed dependencies!
-            reordered = false;
-            processPendingEdges();
-            if (reordered) {
-                // If we've reordered, we need to flush the retained cache
-                reachesRetainedCache = {};
-                // If we've reordered, all bets are off with respect to which nodes are next
-                newDirtyNodes = this.getUnorderedDirtyNodes();
+                    cycleInfo.connectedComponentNodes.forEach((cycleId) => {
+                        processedNodeIds.add(cycleId);
+                    });
+                } else {
+                    const hasSelfEdge = (this.graph[nodeId]?.[nodeId] ?? 0) > 0;
+                    if (hasSelfEdge) {
+                        callback(node, 'invalidate');
+                    }
+                    const shouldPropagate = callback(
+                        node,
+                        hasSelfEdge ? 'cycle' : 'recalculate'
+                    );
+
+                    // Hold onto the dirty nodes we have obtained via side effect
+                    this.recentDirtyNodes.forEach((nodeId) =>
+                        dirtyNodesUnknownPosition.add(nodeId)
+                    );
+                    this.recentDirtyNodes = undefined;
+
+                    if (shouldPropagate) {
+                        // No need to hold onto these in dirtyNodesUnknownPosition as they are
+                        // guaranteed to be **after** the current index
+                        this.getDependenciesInner(
+                            nodeId,
+                            Graph.EDGE_HARD
+                        ).forEach((toId) => {
+                            const toCycleInfo = this.knownCycles.get(toId);
+                            if (toCycleInfo) {
+                                toCycleInfo.connectedComponentNodes.forEach(
+                                    (toCycleId) => {
+                                        this.markNodeDirtyInner(toCycleId);
+                                    }
+                                );
+                            } else {
+                                this.markNodeDirtyInner(toId);
+                            }
+                        });
+                    }
+                    processedNodeIds.add(nodeId);
+                }
+
+                // By virtue of recalculating the node, we may have grown/changed dependencies!
+                reordered = false;
+                processPendingEdges();
+
+                // If a node _believed_ to be a cycle was dirtied prior to becoming identified as part of the cycle, we
+                // proactively 'recalculated' it. At this point if these nodes are _still_ part of a cycle, we should
+                // call the 'cycle' event on it to allow it to correctly handle its error handling.
+                cycleUnconfirmedNodes.forEach((cycleId) => {
+                    const cycleNode =
+                        this.topologicallyOrderedNodes[
+                            this.topologicalIndex[cycleId]
+                        ];
+                    const newCycleInfo = this.knownCycles.get(cycleId);
+                    if (cycleNode && newCycleInfo) {
+                        const shouldPropagate = callback(cycleNode, 'cycle');
+                        newCycleInfo.isInformed = true;
+                        if (shouldPropagate) {
+                            // TODO: lift this into a shared ffs
+                            this.getDependenciesInner(
+                                cycleId,
+                                Graph.EDGE_HARD
+                            ).forEach((toId) => {
+                                const toCycleInfo = this.knownCycles.get(toId);
+                                if (toCycleInfo) {
+                                    toCycleInfo.connectedComponentNodes.forEach(
+                                        (toCycleId) => {
+                                            this.markNodeDirtyInner(toCycleId);
+                                        }
+                                    );
+                                } else {
+                                    this.markNodeDirtyInner(toId);
+                                }
+                            });
+                        }
+                    }
+                });
+
+                // At this time, we've dirtied all dependencies; and now can mark the processed nodes as clean.
+                // This must happen after dirtying all dependencies to prevent a feedback loop in case of a cycle.
+                processedNodeIds.forEach((nodeId) => {
+                    this.markNodeCleanInner(nodeId);
+                });
+
+                if (reordered || this.minCycleBrokenIndex !== null) {
+                    // If we've reordered, we need to flush the retained cache
+                    reachesRetainedCache = {};
+                    // If we've reordered, all bets are off with respect to which nodes are next
+                    this.getUnorderedDirtyNodes().forEach((nodeId) =>
+                        dirtyNodesUnknownPosition.add(nodeId)
+                    );
+                }
+
+                // By virtue of recalculating the node, the node may have become a cycle, or no longer become a cycle.
+                // In either case, we need to retry.
+                const newCycleInfo = this.knownCycles.get(nodeId);
+                if (newCycleInfo && !cycleInfo) {
+                    done = false;
+                } else if (!newCycleInfo && cycleInfo) {
+                    done = false;
+                } else {
+                    done = true;
+                }
             }
 
-            if (newDirtyNodes.length > 0) {
-                // If any dirty nodes have changed, jump to the earliest dirty node
+            if (
+                dirtyNodesUnknownPosition.size > 0 ||
+                this.minCycleBrokenIndex !== null
+            ) {
+                // If any dirty nodes have changed or we have broken a cycle, jump to the earliest of either the dirty
+                // node or the minimum broken cycle index
                 let minDirtyOrd = this.topologicallyOrderedNodes.length;
-                newDirtyNodes.forEach((dirtyNodeId) => {
+                dirtyNodesUnknownPosition.forEach((dirtyNodeId) => {
                     minDirtyOrd = Math.min(
                         minDirtyOrd,
                         this.topologicalIndex[dirtyNodeId]
                     );
                 });
-                const currentOrd = this.topologicalIndex[nodeId];
-                if (minDirtyOrd < currentOrd) {
+
+                if (this.minCycleBrokenIndex !== null) {
+                    minDirtyOrd = Math.min(
+                        this.minCycleBrokenIndex,
+                        minDirtyOrd
+                    );
+                }
+
+                if (minDirtyOrd <= index) {
                     index = minDirtyOrd - 1;
                 }
             }
