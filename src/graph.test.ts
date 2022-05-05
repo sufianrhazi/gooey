@@ -33,7 +33,7 @@ suite('Graph', () => {
         );
     });
 
-    test('getDependencies gets dependencies', () => {
+    test('_test_getDependencies gets dependencies', () => {
         const graph = new Graph<TNode>();
         graph.addNode(a);
         graph.addNode(b);
@@ -47,11 +47,11 @@ suite('Graph', () => {
 
         graph.process(() => false); // flush pending dependencies
 
-        assert.arrayIs([b], graph.getDependencies(a));
-        assert.arrayIs([c, d], graph.getDependencies(b));
-        assert.arrayIs([d], graph.getDependencies(c));
-        assert.arrayIs([], graph.getDependencies(d));
-        assert.arrayIs([], graph.getDependencies(e));
+        assert.arrayIs([b], graph._test_getDependencies(a));
+        assert.arrayIs([c, d], graph._test_getDependencies(b));
+        assert.arrayIs([d], graph._test_getDependencies(c));
+        assert.arrayIs([], graph._test_getDependencies(d));
+        assert.arrayIs([], graph._test_getDependencies(e));
     });
 
     suite('complex graph', () => {
@@ -248,7 +248,7 @@ suite('Graph', () => {
                 }
 
                 function visit(root: TNode) {
-                    graph.getDependencies(root).forEach((dependency) => {
+                    graph._test_getDependencies(root).forEach((dependency) => {
                         assertBefore(root, dependency);
                         visit(dependency);
                     });
@@ -372,7 +372,7 @@ suite('Graph', () => {
                 }
 
                 function visit(root: TNode) {
-                    graph.getDependencies(root).forEach((dependency) => {
+                    graph._test_getDependencies(root).forEach((dependency) => {
                         // Note: 'g' is not visited
                         if (dependency.name !== 'g') {
                             assertBefore(root, dependency);

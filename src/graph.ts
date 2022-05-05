@@ -28,22 +28,11 @@ export class Graph<Type extends object> {
     private knownCycles: Record<string, boolean>;
 
     /**
-     * Edges that have been added but not yet ordered
+     * The subgraph that has been added but not yet ordered
      */
-    private pendingEdges: (
-        | {
-              fromId: string;
-              toId: string;
-              type: 'add';
-              kind: 0b01 | 0b10;
-          }
-        | {
-              fromId: string;
-              toId: string;
-              type: 'remove';
-              kind: 0b01 | 0b10 | 0b11;
-          }
-    )[];
+    private pendingGraph: Map<string, Record<string, number>>;
+    private pendingReverseGraph: Map<string, Record<string, number>>;
+    private pendingNodes: Map<string, Type>;
 
     /**
      * A mapping of nodeId to index in topological order
@@ -65,7 +54,10 @@ export class Graph<Type extends object> {
     constructor() {
         this.topologicalIndex = {};
         this.topologicallyOrderedNodes = [];
-        this.pendingEdges = [];
+
+        this.pendingGraph = new Map();
+        this.pendingReverseGraph = new Map();
+        this.pendingNodes = new Map();
 
         this.retained = {};
         this.graph = {};
@@ -82,12 +74,22 @@ export class Graph<Type extends object> {
     }
 
     private hasNodeInner(nodeId: string) {
-        return this.topologicalIndex[nodeId] !== undefined;
+        return (
+            this.topologicalIndex[nodeId] !== undefined ||
+            this.pendingNodes.has(nodeId)
+        );
     }
 
     addNode(node: Type): boolean {
         const nodeId = this.getId(node);
         if (this.hasNodeInner(nodeId)) return false;
+        this.pendingGraph.set(nodeId, {});
+        this.pendingReverseGraph.set(nodeId, {});
+        this.pendingNodes.set(nodeId, node);
+        return true;
+    }
+
+    private performAddNodeInner(node: Type, nodeId: string) {
         this.graph[nodeId] = {};
         this.reverseGraph[nodeId] = {};
         this.topologicalIndex[nodeId] = this.topologicallyOrderedNodes.length;
@@ -148,12 +150,19 @@ export class Graph<Type extends object> {
             this.hasNodeInner(toId),
             'cannot add edge to node that does not exist'
         );
-        this.pendingEdges.push({
-            fromId,
-            toId,
-            kind,
-            type: 'add',
-        });
+        let fwdEdges = this.pendingGraph.get(fromId);
+        if (!fwdEdges) {
+            fwdEdges = {};
+            this.pendingGraph.set(fromId, fwdEdges);
+        }
+        fwdEdges[toId] = (fwdEdges[toId] || 0) | kind;
+
+        let revEdges = this.pendingReverseGraph.get(toId);
+        if (!revEdges) {
+            revEdges = {};
+            this.pendingReverseGraph.set(fromId, revEdges);
+        }
+        revEdges[fromId] = (fwdEdges[fromId] || 0) | kind;
     }
 
     private performAddEdgeInner(
@@ -188,20 +197,19 @@ export class Graph<Type extends object> {
             this.hasNodeInner(toId),
             'cannot remove edge to node that does not exist'
         );
-        this.pendingEdges.push({
-            fromId,
-            toId,
-            kind,
-            type: 'remove',
-        });
-    }
 
-    private performRemoveEdgeInner(
-        fromId: string,
-        toId: string,
-        kind: 0b01 | 0b10 | 0b11
-    ) {
+        // Note: we remove from **both** the pending graph and the real graph
+        // This is possible because removing edges DOES NOT change the topological ordering of a graph
+        const fwdEdges = this.pendingGraph.get(fromId);
+        if (fwdEdges) {
+            fwdEdges[toId] = (fwdEdges[toId] || 0) & ~kind;
+        }
         this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) & ~kind;
+
+        const revEdges = this.pendingReverseGraph.get(toId);
+        if (revEdges) {
+            revEdges[fromId] = (revEdges[fromId] || 0) & ~kind;
+        }
         this.reverseGraph[toId][fromId] =
             (this.reverseGraph[toId][fromId] || 0) & ~kind;
     }
@@ -221,22 +229,66 @@ export class Graph<Type extends object> {
         const toIds = this.getDependenciesInner(nodeId, Graph.EDGE_ANY);
         const fromIds = this.getReverseDependenciesInner(nodeId);
 
+        const pendingFwdEdges = this.pendingGraph.get(nodeId) || {};
+        const pendingRevEdges = this.pendingReverseGraph.get(nodeId) || {};
+
         // delete fromId -> nodeId for fromId in fromIds
         fromIds.forEach((fromId) => {
             this.graph[fromId][nodeId] = 0;
+            const fromFwd = this.pendingGraph.get(fromId);
+            if (fromFwd) {
+                fromFwd[nodeId] = 0;
+            }
             this.reverseGraph[nodeId][fromId] = 0;
+            const fromRev = this.pendingReverseGraph.get(nodeId);
+            if (fromRev) {
+                fromRev[fromId] = 0;
+            }
         });
+        Object.keys(pendingRevEdges).forEach((fromId) => {
+            const fromFwd = this.pendingGraph.get(fromId);
+            if (fromFwd) {
+                fromFwd[nodeId] = 0;
+            }
+            const fromRev = this.pendingReverseGraph.get(nodeId);
+            if (fromRev) {
+                fromRev[fromId] = 0;
+            }
+        });
+
         // delete nodeId -> toId for toId in toIds
         toIds.forEach((toId) => {
             this.reverseGraph[toId][nodeId] = 0;
+            const toRev = this.pendingReverseGraph.get(toId);
+            if (toRev) {
+                toRev[nodeId] = 0;
+            }
             this.graph[nodeId][toId] = 0;
+            const toFwd = this.pendingGraph.get(nodeId);
+            if (toFwd) {
+                toFwd[toId] = 0;
+            }
         });
+        Object.keys(pendingFwdEdges).forEach((toId) => {
+            const toRev = this.pendingReverseGraph.get(toId);
+            if (toRev) {
+                toRev[nodeId] = 0;
+            }
+            const toFwd = this.pendingGraph.get(nodeId);
+            if (toFwd) {
+                toFwd[toId] = 0;
+            }
+        });
+
         this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]] =
             undefined;
         delete this.topologicalIndex[nodeId];
         this.markNodeCleanInner(nodeId);
         delete this.retained[nodeId];
         delete this.knownCycles[nodeId];
+        this.pendingGraph.delete(nodeId);
+        this.pendingReverseGraph.delete(nodeId);
+        this.pendingNodes.delete(nodeId);
     }
 
     retain(node: Type) {
@@ -321,7 +373,7 @@ export class Graph<Type extends object> {
     /**
      * Get list of things need to be updated, when fromNode has changed?
      */
-    getDependencies(
+    _test_getDependencies(
         fromNode: Type,
         edgeType: 0b01 | 0b10 | 0b11 = Graph.EDGE_ANY
     ): Type[] {
@@ -445,27 +497,79 @@ export class Graph<Type extends object> {
 
         const processPendingEdges = () => {
             let minLowerBound: number | null = null;
-            this.pendingEdges.forEach((pendingEdge) => {
-                if (pendingEdge.type === 'remove') {
-                    this.performRemoveEdgeInner(
-                        pendingEdge.fromId,
-                        pendingEdge.toId,
-                        pendingEdge.kind
-                    );
-                } else if (pendingEdge.type === 'add') {
-                    this.performAddEdgeInner(
-                        pendingEdge.fromId,
-                        pendingEdge.toId,
-                        pendingEdge.kind
-                    );
-                    addEdge(pendingEdge.fromId, pendingEdge.toId);
-                    minLowerBound =
-                        minLowerBound === null
-                            ? lowerBound
-                            : Math.min(minLowerBound, lowerBound);
+
+            //
+            // pre-sort pending nodes
+            //
+            const visited: Record<string, boolean> = {};
+            const pendingNodeIdIndex: Record<string, number> = {};
+            let assignedIndex = 0;
+
+            const assignIndex = (nodeId: string): void => {
+                if (visited[nodeId]) return;
+                visited[nodeId] = true;
+                const toEdges = this.pendingGraph.get(nodeId) || {};
+                Object.keys(toEdges).forEach((toId) => {
+                    if (toEdges[toId] > 0) {
+                        // If we have EDGE_*, the edge was not removed immediately after add
+                        assignIndex(toId);
+                    }
+                });
+                pendingNodeIdIndex[nodeId] = assignedIndex;
+                assignedIndex += 1;
+            };
+
+            // visit the pending graph, assigning indexes such that:
+            // for every (a -> b), index b < index a; unless there is a cycle (ignoring edges that close a cycle)
+            // This is a (partial) reverse topological sort
+            const pendingNodeIds: string[] = [];
+            this.pendingNodes.forEach((_node, nodeId) => {
+                assignIndex(nodeId);
+                pendingNodeIds.push(nodeId);
+            });
+
+            // Sort the pending nodes by the index (reversed) so they are in
+            // (partial) topological order
+            pendingNodeIds.sort(
+                (a, b) => pendingNodeIdIndex[b] - pendingNodeIdIndex[a]
+            );
+
+            // Add the nodes in this partial order. This ensures that as we add
+            // new edges for new nodes, we do not need to resort them.
+            pendingNodeIds.forEach((nodeId) => {
+                const node = this.pendingNodes.get(nodeId);
+                if (node) {
+                    this.performAddNodeInner(node, nodeId);
                 }
             });
-            this.pendingEdges = [];
+
+            //
+            // Add edges (unlike node order, the order here does not matter as all nodes have been added)
+            //
+            this.pendingGraph.forEach((edges, fromId) => {
+                const toIds = Object.keys(edges);
+                toIds.forEach((toId) => {
+                    if (edges[toId] > 0) {
+                        this.performAddEdgeInner(
+                            fromId,
+                            toId,
+                            edges[toId] as 1 | 2
+                        );
+
+                        addEdge(fromId, toId);
+                        minLowerBound =
+                            minLowerBound === null
+                                ? lowerBound
+                                : Math.min(minLowerBound, lowerBound);
+                    }
+                });
+            });
+
+            // Clean up pending items
+            this.pendingNodes.clear();
+            this.pendingGraph.clear();
+            this.pendingReverseGraph.clear();
+
             return minLowerBound || 0;
         };
 
@@ -592,16 +696,20 @@ export class Graph<Type extends object> {
             'node [style="filled", fillcolor="#DDDDDD"];',
         ];
 
-        const nodeIds = Object.keys(this.topologicalIndex);
+        const nodeIds = Object.keys(this.topologicalIndex).filter(
+            (nodeId) =>
+                !!this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]]
+        );
         const nodeAttributes: Record<
             string,
             { label: string; subgraph: object | undefined; penwidth: string }
         > = {};
         nodeIds.forEach((nodeId) => {
-            nodeAttributes[nodeId] = getAttributes(
-                nodeId,
-                this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]]!
-            );
+            const node =
+                this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]];
+            if (node) {
+                nodeAttributes[nodeId] = getAttributes(nodeId, node);
+            }
         });
         const groupedNodes = groupBy(nodeIds, (nodeId) => {
             return [nodeAttributes[nodeId].subgraph, nodeId];
@@ -618,8 +726,8 @@ export class Graph<Type extends object> {
             nodeIds.forEach((nodeId) => {
                 const props: Record<string, string> = {
                     shape: this.retained[nodeId] ? 'box' : 'ellipse',
-                    label: nodeAttributes[nodeId].label,
-                    penwidth: nodeAttributes[nodeId].penwidth,
+                    label: nodeAttributes[nodeId]?.label,
+                    penwidth: nodeAttributes[nodeId]?.penwidth,
                     fillcolor: this.isNodeDirty(nodeId) ? '#FFDDDD' : '#DDDDDD',
                 };
                 lines.push(
