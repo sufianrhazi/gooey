@@ -1,5 +1,5 @@
 export declare const noop: () => void;
-export declare const uniqueid: () => string;
+export declare const uniqueid: () => number;
 export declare const sleep: (ms: number) => Promise<void>;
 export declare function makePromise<T>(): {
     promise: Promise<T>;

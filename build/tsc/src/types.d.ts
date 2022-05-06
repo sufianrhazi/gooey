@@ -7,6 +7,7 @@ export declare const ContextGetterTag: unique symbol;
 export declare const DataTypeTag: unique symbol;
 export declare const CalculationTypeTag: unique symbol;
 export declare const CalculationRecalculateTag: unique symbol;
+export declare const CalculationRecalculateCycleTag: unique symbol;
 export declare const CalculationInvalidateTag: unique symbol;
 export declare const CalculationSetCycleTag: unique symbol;
 export declare const ObserveKey: unique symbol;
@@ -18,7 +19,7 @@ export declare const AddDeferredWorkKey: unique symbol;
 export declare const NotifyKey: unique symbol;
 export declare type IntrinsicNodeObserverNodeCallback = (node: Node, event: 'add' | 'remove') => void;
 export declare type IntrinsicNodeObserverElementCallback = (element: Element, event: 'add' | 'remove') => void;
-export declare type ProcessAction = 'recalculate' | 'cycle' | 'invalidate';
+export declare type ProcessAction = 'recalculate' | 'recalculate-cycle' | 'cycle' | 'invalidate';
 /**
  * A ref object that can be passed to native elements.
  */
@@ -74,7 +75,7 @@ export declare type CollectionEvent<T> = {
     indexes: readonly number[];
 };
 export declare type TrackedData<TTypeTag, TEvent> = {
-    $__id: string;
+    $__id: number;
     [TypeTag]: 'data';
     [DataTypeTag]: TTypeTag;
     [FlushKey]: () => boolean;
@@ -118,13 +119,13 @@ interface ViewMethods<T> {
 export interface View<T> extends TrackedData<'collection', CollectionEvent<T>>, ViewMethods<T>, ReadonlyArray<T> {
 }
 export interface Subscription {
-    $__id: string;
+    $__id: number;
     [TypeTag]: 'subscription';
     item: any;
     [FlushKey]: () => boolean;
 }
 export interface NodeOrdering {
-    $__id: string;
+    $__id: number;
     [TypeTag]: 'nodeOrdering';
 }
 /**
@@ -143,17 +144,18 @@ export declare function isContext(val: any): val is Context<any>;
  */
 export interface Calculation<Result> {
     (): Result;
-    $__id: string;
+    $__id: number;
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
     dispose: () => void;
     onError: (handler: (errorType: 'cycle' | 'error') => Result) => this;
     [CalculationSetCycleTag]: () => boolean;
     [CalculationRecalculateTag]: () => boolean;
+    [CalculationRecalculateCycleTag]: () => boolean;
     [CalculationInvalidateTag]: () => void;
 }
 export interface ModelField {
-    $__id: string;
+    $__id: number;
     model: {
         [DataTypeTag]: any;
     };
@@ -167,7 +169,7 @@ export declare function isEffect(thing: Calculation<unknown>): boolean;
 export declare function isSubscription(thing: any): thing is Subscription;
 export declare function isNodeOrdering(thing: any): thing is NodeOrdering;
 export declare type GraphNode = {
-    $__id: string;
+    $__id: number;
 };
 export {};
 //# sourceMappingURL=types.d.ts.map

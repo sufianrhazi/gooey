@@ -18,33 +18,59 @@ export declare class Graph<Type extends object> {
     static EDGE_SOFT: 1;
     static EDGE_HARD: 2;
     private static EDGE_ANY;
-    private nextId;
-    private nodesSet;
     private retained;
     private dirtyNodes;
+    private recentDirtyNodes;
+    private informedCycles;
     private knownCycles;
+    private minCycleBrokenIndex;
+    /**
+     * The subgraph that has been added but not yet ordered
+     */
+    private pendingOperations;
+    private pendingNodes;
+    /**
+     * A mapping of nodeId to index in topological order
+     */
+    private topologicalIndex;
+    /**
+     * The list of vertices maintained in topological order
+     */
+    private topologicallyOrderedNodes;
+    /**
+     * A mapping of nodeId to whether or not the node is visited while reordering
+     * Note: this is internal state to the process() function but global to reduce object memory thrash
+     */
+    private reorderingVisitedState;
     private graph;
     private reverseGraph;
     constructor();
     private getId;
+    private hasNodeInner;
     addNode(node: Type): boolean;
-    hasNode(node: Type): boolean;
+    private performAddNodeInner;
+    markNodeCycle(node: Type): void;
     markNodeDirty(node: Type): void;
-    private getRecursiveDependenciesInner;
-    getRecursiveDependencies(node: Type): Type[];
+    private markNodeDirtyInner;
+    private markNodeCleanInner;
+    private isNodeDirty;
+    getUnorderedDirtyNodes(): string[];
     hasDirtyNodes(): boolean;
     /**
      * Indicate that toNode needs to be updated if fromNode has changed
      */
     addEdge(fromNode: Type, toNode: Type, kind: 0b01 | 0b10): void;
     private addEdgeInner;
+    private performAddEdgeInner;
     /**
      * Returns true if edge is removed
      */
     removeEdge(fromNode: Type, toNode: Type, kind: 0b01 | 0b10 | 0b11): void;
     private removeEdgeInner;
+    private performRemoveEdgeInner;
     removeNode(node: Type): void;
     private removeNodeInner;
+    private performRemoveNodeInner;
     retain(node: Type): void;
     release(node: Type): void;
     replaceIncoming(node: Type, newIncomingNodes: Type[]): void;
@@ -60,38 +86,7 @@ export declare class Graph<Type extends object> {
     /**
      * Get list of things need to be updated, when fromNode has changed?
      */
-    getDependencies(fromNode: Type, edgeType?: 0b01 | 0b10 | 0b11): Type[];
-    /**
-     * This uses Tarjan's strongly connected components algorithm to build the
-     * topological sort of the subgraph that contains all retained nodes.
-     *
-     * Note: Because we are starting at retained nodes, which should be "end"
-     * destination nodes, we build a topological sort of the _reverse graph_.
-     * Due to the nature of Tarjan's algorithm, the sort we build is
-     * constructed in reverse order. It is also the case that the reverse of a
-     * topological sort of the reverse graph is a valid topological sort of the
-     * forward graph.
-     *
-     * This means that we do not need to reverse the topological sort produced
-     * by Tarjan's algorithm if we follow the reverse edges.
-     *
-     * Note: the handling of dynamic additions/deletions of edges in this
-     * algorithm is *incredibly* inefficient!
-     *
-     * TODO: Implement the algorithm outlined in:
-     * - Title: A Dynamic Topological Sort Algorithm for Directed Acyclic Graphs
-     * - Authors: David J. Pearce and Paul H.J. Kelly
-     * - Paper: https://whileydave.com/publications/pk07_jea/
-     */
-    private _toposortRetained;
-    private _toposort;
-    /**
-     * Process the graph, visiting strongly connected nodes topologically that have a data dependency on a retained
-     * node.
-     *
-     * This uses Tarjan's strongly connected component algorithm to both segment strongly connected nodes and
-     * topologically sort them.
-     */
+    _test_getDependencies(fromNode: Type, edgeType?: 0b01 | 0b10 | 0b11): Type[];
     process(callback: (node: Type, action: ProcessAction) => boolean): void;
     /**
      * Generate a dot file structure of the graph

@@ -67,6 +67,7 @@ var ContextGetterTag = Symbol("contextGetter");
 var DataTypeTag = Symbol("dataTypeTag");
 var CalculationTypeTag = Symbol("calculationType");
 var CalculationRecalculateTag = Symbol("calculationRecalculate");
+var CalculationRecalculateCycleTag = Symbol("calculationRecalculateCycle");
 var CalculationInvalidateTag = Symbol("calculationInvalidate");
 var CalculationSetCycleTag = Symbol("calculationSetCycle");
 var ObserveKey = Symbol("observe");
@@ -185,8 +186,8 @@ function assertExhausted(context, ...items) {
 var noop = () => {
 };
 var uniqueid = (() => {
-  let id = 0;
-  return () => (id++).toString();
+  let id = 1;
+  return () => id++;
 })();
 function groupBy(items, grouper) {
   const grouped = /* @__PURE__ */ new Map();
@@ -208,67 +209,178 @@ function strictEqual(a, b) {
   return a === b;
 }
 
+// src/tarjan.ts
+function tarjanStronglyConnected(graph, fromNodes) {
+  let index = 0;
+  const nodeVertex = {};
+  const stack = [];
+  const reverseTopoSort = [];
+  function getDepenencies(nodeId) {
+    const dependencies = [];
+    Object.keys(graph[nodeId] || {}).forEach((toId) => {
+      if (graph[nodeId][toId]) {
+        dependencies.push(toId);
+      }
+    });
+    return dependencies;
+  }
+  const strongconnect = (vertex) => {
+    vertex.index = index;
+    vertex.lowlink = index;
+    index = index + 1;
+    stack.push(vertex);
+    vertex.onStack = true;
+    getDepenencies(vertex.nodeId).forEach((toId) => {
+      if (!nodeVertex[toId]) {
+        nodeVertex[toId] = {
+          nodeId: toId
+        };
+      }
+      const toVertex = nodeVertex[toId];
+      if (toVertex.index === void 0) {
+        strongconnect(toVertex);
+        vertex.lowlink = Math.min(vertex.lowlink, toVertex.lowlink);
+      } else if (toVertex.onStack) {
+        vertex.lowlink = Math.min(vertex.lowlink, toVertex.index);
+      }
+    });
+    if (vertex.lowlink === vertex.index) {
+      const component = [];
+      for (; ; ) {
+        const toVertex = stack.pop();
+        toVertex.onStack = false;
+        component.push(toVertex);
+        if (toVertex === vertex) {
+          break;
+        }
+      }
+      reverseTopoSort.push(component);
+    }
+  };
+  fromNodes.forEach((nodeId) => {
+    if (!nodeVertex[nodeId]) {
+      nodeVertex[nodeId] = {
+        nodeId
+      };
+      strongconnect(nodeVertex[nodeId]);
+    }
+  });
+  reverseTopoSort.reverse();
+  return reverseTopoSort.map((component) => new Set(component.map((vertex) => vertex.nodeId)));
+}
+
 // src/graph.ts
+var VISITED_NO_CYCLE = 1;
+var VISITED_CYCLE = 2;
+function edgeMapToEdgeList(graph) {
+  const edgeList = [];
+  Object.entries(graph).forEach(([fromId, toIds]) => {
+    Object.entries(toIds).forEach(([toId, edgeKind]) => {
+      if (edgeKind > 0) {
+        edgeList.push([fromId, toId, edgeKind]);
+      }
+    });
+  });
+  return edgeList;
+}
+function edgeListToEdgeMap(edgeList) {
+  const graph = {};
+  edgeList.forEach(([fromId, toId, edgeKind]) => {
+    if (edgeKind > 0) {
+      if (!graph[fromId])
+        graph[fromId] = {};
+      graph[fromId][toId] = edgeKind;
+    }
+  });
+  return graph;
+}
 var _Graph = class {
   constructor() {
-    __publicField(this, "nextId");
-    __publicField(this, "nodesSet");
     __publicField(this, "retained");
     __publicField(this, "dirtyNodes");
+    __publicField(this, "recentDirtyNodes");
+    __publicField(this, "informedCycles");
     __publicField(this, "knownCycles");
+    __publicField(this, "minCycleBrokenIndex");
+    __publicField(this, "pendingOperations");
+    __publicField(this, "pendingNodes");
+    __publicField(this, "topologicalIndex");
+    __publicField(this, "topologicallyOrderedNodes");
+    __publicField(this, "reorderingVisitedState");
     __publicField(this, "graph");
     __publicField(this, "reverseGraph");
-    this.nextId = 1;
-    this.nodesSet = {};
+    this.topologicalIndex = {};
+    this.topologicallyOrderedNodes = [];
+    this.pendingOperations = [];
+    this.pendingNodes = {};
     this.retained = {};
     this.graph = {};
     this.reverseGraph = {};
     this.dirtyNodes = {};
-    this.knownCycles = {};
+    this.recentDirtyNodes = void 0;
+    this.knownCycles = /* @__PURE__ */ new Map();
+    this.informedCycles = /* @__PURE__ */ new Map();
+    this.reorderingVisitedState = /* @__PURE__ */ new Map();
+    this.minCycleBrokenIndex = null;
   }
   getId(node) {
-    return node.$__id;
+    return node.$__id.toString();
+  }
+  hasNodeInner(nodeId) {
+    return this.topologicalIndex[nodeId] !== void 0 || this.pendingNodes[nodeId];
   }
   addNode(node) {
     const nodeId = this.getId(node);
-    if (this.nodesSet[nodeId])
+    if (this.hasNodeInner(nodeId))
       return false;
-    this.graph[nodeId] = {};
-    this.reverseGraph[nodeId] = {};
-    this.nodesSet[nodeId] = node;
+    this.pendingOperations.push({
+      type: 0 /* NODE_ADD */,
+      node
+    });
+    this.pendingNodes[nodeId] = true;
     return true;
   }
-  hasNode(node) {
-    return !!this.nodesSet[this.getId(node)];
+  performAddNodeInner(node, nodeId) {
+    this.graph[nodeId] = {};
+    this.reverseGraph[nodeId] = {};
+    this.topologicalIndex[nodeId] = this.topologicallyOrderedNodes.length;
+    this.topologicallyOrderedNodes.push(node);
+    return true;
+  }
+  markNodeCycle(node) {
+    const nodeId = this.getId(node);
+    const cycleInfo = this.knownCycles.get(nodeId);
+    if (cycleInfo) {
+      cycleInfo.isInformed = true;
+    } else {
+      this.informedCycles.set(this.getId(node), true);
+    }
   }
   markNodeDirty(node) {
-    this.dirtyNodes[this.getId(node)] = true;
-  }
-  getRecursiveDependenciesInner(nodeId) {
-    const otherNodeIds = {};
-    const otherNodes = [];
-    let foundCycle = false;
-    const visit = (visitId) => {
-      if (otherNodeIds[visitId] === 2)
-        foundCycle = true;
-      if (otherNodeIds[visitId])
-        return;
-      if (visitId !== nodeId)
-        otherNodes.push(this.nodesSet[visitId]);
-      otherNodeIds[visitId] = 2;
-      this.getDependenciesInner(visitId, _Graph.EDGE_ANY).forEach((toId) => {
-        visit(toId);
-      });
-      otherNodeIds[visitId] = 1;
-    };
-    visit(nodeId);
-    return { otherNodeIds, otherNodes, isCycle: foundCycle };
-  }
-  getRecursiveDependencies(node) {
     const nodeId = this.getId(node);
-    const { otherNodes, isCycle } = this.getRecursiveDependenciesInner(nodeId);
-    assert(!isCycle, "getRecursiveDependencies found a cycle");
-    return otherNodes;
+    const cycleInfo = this.knownCycles.get(nodeId);
+    if (cycleInfo) {
+      cycleInfo.connectedComponentNodes.forEach((cycleId) => {
+        this.markNodeDirtyInner(cycleId);
+      });
+    } else {
+      this.markNodeDirtyInner(this.getId(node));
+    }
+  }
+  markNodeDirtyInner(nodeId) {
+    this.dirtyNodes[nodeId] = true;
+    if (this.recentDirtyNodes)
+      this.recentDirtyNodes.push(nodeId);
+  }
+  markNodeCleanInner(nodeId) {
+    delete this.dirtyNodes[nodeId];
+    this.informedCycles.set(nodeId, false);
+  }
+  isNodeDirty(nodeId) {
+    return !!this.dirtyNodes[nodeId];
+  }
+  getUnorderedDirtyNodes() {
+    return Object.keys(this.dirtyNodes).filter((nodeId) => !!this.dirtyNodes[nodeId]);
   }
   hasDirtyNodes() {
     return Object.keys(this.dirtyNodes).length > 0;
@@ -279,8 +391,16 @@ var _Graph = class {
     this.addEdgeInner(fromId, toId, kind);
   }
   addEdgeInner(fromId, toId, kind) {
-    assert(!!this.nodesSet[fromId], "cannot add edge from node that does not exist");
-    assert(!!this.nodesSet[toId], "cannot add edge to node that does not exist");
+    assert(this.hasNodeInner(fromId), "cannot add edge from node that does not exist");
+    assert(this.hasNodeInner(toId), "cannot add edge to node that does not exist");
+    this.pendingOperations.push({
+      type: 2 /* EDGE_ADD */,
+      fromId,
+      toId,
+      kind
+    });
+  }
+  performAddEdgeInner(fromId, toId, kind) {
     this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) | kind;
     this.reverseGraph[toId][fromId] = (this.reverseGraph[toId][fromId] || 0) | kind;
   }
@@ -290,18 +410,85 @@ var _Graph = class {
     this.removeEdgeInner(fromId, toId, kind);
   }
   removeEdgeInner(fromId, toId, kind) {
-    assert(!!this.nodesSet[fromId], "cannot remove edge from node that does not exist");
-    assert(!!this.nodesSet[toId], "cannot remove edge to node that does not exist");
+    assert(this.hasNodeInner(fromId), "cannot remove edge from node that does not exist");
+    assert(this.hasNodeInner(toId), "cannot remove edge to node that does not exist");
+    this.pendingOperations.push({
+      type: 3 /* EDGE_DELETE */,
+      fromId,
+      toId,
+      kind
+    });
+  }
+  performRemoveEdgeInner(fromId, toId, kind) {
     this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) & ~kind;
     this.reverseGraph[toId][fromId] = (this.reverseGraph[toId][fromId] || 0) & ~kind;
+    const cycleInfo = this.knownCycles.get(fromId);
+    if (cycleInfo && cycleInfo.connectedComponentEdges[fromId]?.[toId]) {
+      cycleInfo.connectedComponentEdges[fromId][toId] = cycleInfo.connectedComponentEdges[fromId][toId] & ~kind;
+      const newComponents = tarjanStronglyConnected(this.graph, Array.from(cycleInfo.connectedComponentNodes));
+      const edgeList = edgeMapToEdgeList(cycleInfo.connectedComponentEdges);
+      const affectedIndexes = [];
+      const topologicallyCorrectNodes = [];
+      newComponents.forEach((component) => {
+        component.forEach((nodeId) => {
+          const nodeIndex = this.topologicalIndex[nodeId];
+          affectedIndexes.push(nodeIndex);
+          topologicallyCorrectNodes.push({
+            nodeId,
+            node: this.topologicallyOrderedNodes[nodeIndex]
+          });
+        });
+        const componentIntersection = new Set([...component].filter((nodeId) => cycleInfo.connectedComponentNodes.has(nodeId)));
+        const isCycle = componentIntersection.size > 1;
+        if (isCycle) {
+          const reducedConnectedComponentEdges = edgeListToEdgeMap(edgeList.filter(([fromId2, toId2, _edgeKind]) => componentIntersection.has(fromId2) && componentIntersection.has(toId2)));
+          componentIntersection.forEach((nodeId) => {
+            this.knownCycles.set(nodeId, {
+              connectedComponentEdges: reducedConnectedComponentEdges,
+              connectedComponentNodes: componentIntersection,
+              isInformed: !!this.knownCycles.get(nodeId)?.isInformed,
+              initiallyDirty: !!this.knownCycles.get(nodeId)?.initiallyDirty
+            });
+          });
+        } else {
+          componentIntersection.forEach((nodeId) => {
+            this.knownCycles.delete(nodeId);
+            this.markNodeDirtyInner(nodeId);
+          });
+        }
+      });
+      let needsResort = false;
+      for (let i = 1; i < affectedIndexes.length; ++i) {
+        if (affectedIndexes[i - 1] >= affectedIndexes[i]) {
+          needsResort = true;
+          break;
+        }
+      }
+      if (needsResort) {
+        affectedIndexes.sort((a, b) => a - b);
+        for (let i = 0; i < affectedIndexes.length; ++i) {
+          const entry = topologicallyCorrectNodes[i];
+          this.topologicalIndex[entry.nodeId] = affectedIndexes[i];
+          this.topologicallyOrderedNodes[affectedIndexes[i]] = entry.node;
+        }
+        this.minCycleBrokenIndex = this.minCycleBrokenIndex === null ? affectedIndexes[0] : Math.min(this.minCycleBrokenIndex, affectedIndexes[0]);
+      }
+    }
   }
   removeNode(node) {
     const nodeId = this.getId(node);
     this.removeNodeInner(nodeId);
   }
   removeNodeInner(nodeId) {
+    this.pendingOperations.push({
+      type: 1 /* NODE_DELETE */,
+      nodeId
+    });
+    this.pendingNodes[nodeId] = false;
+  }
+  performRemoveNodeInner(nodeId) {
     assert(!this.retained[nodeId], "attempted to remove a retained node");
-    const toIds = this.getDependenciesInner(nodeId);
+    const toIds = this.getDependenciesInner(nodeId, _Graph.EDGE_ANY);
     const fromIds = this.getReverseDependenciesInner(nodeId);
     fromIds.forEach((fromId) => {
       this.graph[fromId][nodeId] = 0;
@@ -311,10 +498,14 @@ var _Graph = class {
       this.reverseGraph[toId][nodeId] = 0;
       this.graph[nodeId][toId] = 0;
     });
-    delete this.nodesSet[nodeId];
-    delete this.dirtyNodes[nodeId];
+    this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]] = void 0;
+    delete this.topologicalIndex[nodeId];
+    this.markNodeCleanInner(nodeId);
     delete this.retained[nodeId];
-    delete this.knownCycles[nodeId];
+    const cycleInfo = this.knownCycles.get(nodeId);
+    if (cycleInfo) {
+      throw new Error("Not yet implemented");
+    }
   }
   retain(node) {
     const nodeId = this.getId(node);
@@ -350,173 +541,423 @@ var _Graph = class {
       this.removeEdgeInner(fromId, toId, _Graph.EDGE_HARD);
     });
   }
-  getDependenciesInner(nodeId, edgeType = _Graph.EDGE_ANY) {
+  getDependenciesInner(nodeId, edgeType) {
     if (!this.graph[nodeId])
       return [];
-    return Object.keys(this.graph[nodeId]).filter((toId) => (this.graph[nodeId][toId] || 0) & edgeType);
+    const dependencies = [];
+    Object.keys(this.graph[nodeId]).forEach((toId) => {
+      if ((this.graph[nodeId][toId] || 0) & edgeType) {
+        dependencies.push(toId);
+      }
+    });
+    return dependencies;
   }
   getReverseDependenciesInner(nodeId, edgeType = _Graph.EDGE_ANY) {
     if (!this.reverseGraph[nodeId])
       return [];
-    return Object.keys(this.reverseGraph[nodeId]).filter((fromId) => (this.reverseGraph[nodeId][fromId] || 0) & edgeType);
+    const dependencies = [];
+    Object.keys(this.reverseGraph[nodeId]).forEach((fromId) => {
+      if ((this.reverseGraph[nodeId][fromId] || 0) & edgeType) {
+        dependencies.push(fromId);
+      }
+    });
+    return dependencies;
   }
-  getDependencies(fromNode, edgeType = _Graph.EDGE_ANY) {
+  _test_getDependencies(fromNode, edgeType = _Graph.EDGE_ANY) {
     const nodeId = this.getId(fromNode);
-    return this.getDependenciesInner(nodeId, edgeType).map((toId) => this.nodesSet[toId]);
-  }
-  _toposortRetained() {
-    let index = 0;
-    const nodeVertex = {};
-    const stack = [];
-    const reverseTopoSort = [];
-    const strongconnect = (vertex) => {
-      vertex.index = index;
-      vertex.lowlink = index;
-      index = index + 1;
-      stack.push(vertex);
-      vertex.onStack = true;
-      this.getReverseDependenciesInner(vertex.nodeId).forEach((toId) => {
-        if (!nodeVertex[toId]) {
-          nodeVertex[toId] = {
-            nodeId: toId
-          };
-        }
-        const toVertex = nodeVertex[toId];
-        if (toVertex.index === void 0) {
-          strongconnect(toVertex);
-          vertex.lowlink = Math.min(vertex.lowlink, toVertex.lowlink);
-        } else if (toVertex.onStack) {
-          vertex.lowlink = Math.min(vertex.lowlink, toVertex.index);
-        }
-      });
-      if (vertex.lowlink === vertex.index) {
-        const component = [];
-        for (; ; ) {
-          const toVertex = stack.pop();
-          toVertex.onStack = false;
-          component.push(toVertex);
-          if (toVertex === vertex) {
-            break;
-          }
-        }
-        reverseTopoSort.push(component);
-      }
-    };
-    Object.keys(this.retained).forEach((nodeId) => {
-      if (this.retained[nodeId] && !nodeVertex[nodeId]) {
-        nodeVertex[nodeId] = {
-          nodeId
-        };
-        strongconnect(nodeVertex[nodeId]);
-      }
-    });
-    return reverseTopoSort;
-  }
-  _toposort(fromNodeIds) {
-    let index = 0;
-    const nodeVertex = {};
-    const stack = [];
-    const reverseTopoSort = [];
-    const strongconnect = (vertex) => {
-      vertex.index = index;
-      vertex.lowlink = index;
-      index = index + 1;
-      stack.push(vertex);
-      vertex.onStack = true;
-      this.getDependenciesInner(vertex.nodeId).forEach((toId) => {
-        if (!nodeVertex[toId]) {
-          nodeVertex[toId] = {
-            nodeId: toId,
-            reachesRetained: !!this.retained[toId]
-          };
-        }
-        const toVertex = nodeVertex[toId];
-        if (toVertex.index === void 0) {
-          strongconnect(toVertex);
-          vertex.lowlink = Math.min(vertex.lowlink, toVertex.lowlink);
-        } else if (toVertex.onStack) {
-          vertex.lowlink = Math.min(vertex.lowlink, toVertex.index);
-        }
-        if (toVertex.reachesRetained) {
-          vertex.reachesRetained = true;
-        }
-      });
-      if (vertex.lowlink === vertex.index) {
-        const component = [];
-        for (; ; ) {
-          const toVertex = stack.pop();
-          toVertex.onStack = false;
-          component.push(toVertex);
-          if (toVertex === vertex) {
-            break;
-          }
-        }
-        reverseTopoSort.push(component);
-      }
-    };
-    fromNodeIds.forEach((nodeId) => {
-      if (!nodeVertex[nodeId]) {
-        nodeVertex[nodeId] = {
-          nodeId,
-          reachesRetained: !!this.retained[nodeId]
-        };
-        strongconnect(nodeVertex[nodeId]);
-      }
-    });
-    return reverseTopoSort.reverse();
+    return this.getDependenciesInner(nodeId, edgeType).map((toId) => this.topologicallyOrderedNodes[this.topologicalIndex[toId]]);
   }
   process(callback) {
-    Object.keys(this.dirtyNodes).forEach((nodeId) => {
-      if (this.dirtyNodes[nodeId]) {
-        callback(this.nodesSet[nodeId], "invalidate");
+    const forwardSet = /* @__PURE__ */ new Set();
+    const reverseSet = /* @__PURE__ */ new Set();
+    let lowerBound = 0;
+    let upperBound = 0;
+    let reordered = false;
+    const connectedComponentNodes = /* @__PURE__ */ new Set();
+    const connectedComponentEdges = {};
+    const dfsF = (nodeId) => {
+      this.reorderingVisitedState.set(nodeId, false);
+      forwardSet.add(nodeId);
+      return this.getDependenciesInner(nodeId, _Graph.EDGE_ANY).some((toId) => {
+        if (this.topologicalIndex[toId] === upperBound) {
+          return true;
+        }
+        if (!this.reorderingVisitedState.has(toId) && (this.topologicalIndex[toId] < upperBound || this.knownCycles.has(toId))) {
+          if (dfsF(toId))
+            return true;
+        }
+        return false;
+      });
+    };
+    const dfsB = (nodeId) => {
+      this.reorderingVisitedState.set(nodeId, true);
+      reverseSet.add(nodeId);
+      this.getReverseDependenciesInner(nodeId, _Graph.EDGE_ANY).forEach((fromId) => {
+        if (!this.reorderingVisitedState.has(fromId) && (lowerBound < this.topologicalIndex[fromId] || this.knownCycles.has(fromId))) {
+          dfsB(fromId);
+        }
+      });
+    };
+    const stronglyConnectedVisited = /* @__PURE__ */ new Map();
+    const dfsStronglyConnected = (nodeId) => {
+      stronglyConnectedVisited.set(nodeId, VISITED_NO_CYCLE);
+      forwardSet.add(nodeId);
+      let reachesCycle = false;
+      this.getDependenciesInner(nodeId, _Graph.EDGE_ANY).forEach((toId) => {
+        if (this.topologicalIndex[toId] === upperBound) {
+          stronglyConnectedVisited.set(nodeId, VISITED_CYCLE);
+          connectedComponentNodes.add(nodeId);
+          stronglyConnectedVisited.set(toId, VISITED_CYCLE);
+          connectedComponentNodes.add(toId);
+          if (!connectedComponentEdges[nodeId]) {
+            connectedComponentEdges[nodeId] = {};
+          }
+          connectedComponentEdges[nodeId][toId] = this.graph[nodeId][toId];
+          reachesCycle = true;
+          return;
+        }
+        let partOfComponent = false;
+        if (!stronglyConnectedVisited.has(toId)) {
+          partOfComponent = dfsStronglyConnected(toId);
+        }
+        if (stronglyConnectedVisited.get(toId) === VISITED_CYCLE) {
+          partOfComponent = true;
+        }
+        if (partOfComponent) {
+          reachesCycle = true;
+          stronglyConnectedVisited.set(nodeId, VISITED_CYCLE);
+          connectedComponentNodes.add(nodeId);
+          if (!connectedComponentEdges[nodeId]) {
+            connectedComponentEdges[nodeId] = {};
+          }
+          connectedComponentEdges[nodeId][toId] = this.graph[nodeId][toId];
+        }
+      });
+      return reachesCycle;
+    };
+    const reorder = () => {
+      const sortedReverseSet = Array.from(reverseSet);
+      sortedReverseSet.sort((a, b) => this.topologicalIndex[a] - this.topologicalIndex[b]);
+      const sortedForwardSet = Array.from(forwardSet);
+      sortedForwardSet.sort((a, b) => this.topologicalIndex[a] - this.topologicalIndex[b]);
+      const correctOrderNodeIds = [
+        ...sortedReverseSet,
+        ...sortedForwardSet
+      ];
+      const affectedIndexes = correctOrderNodeIds.map((nodeId) => this.topologicalIndex[nodeId]).sort((a, b) => a - b);
+      const correctNodes = correctOrderNodeIds.map((nodeId) => this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]]);
+      affectedIndexes.forEach((affectedIndex, i) => {
+        this.topologicallyOrderedNodes[affectedIndex] = correctNodes[i];
+        this.topologicalIndex[correctOrderNodeIds[i]] = affectedIndex;
+      });
+    };
+    const addEdge = (fromId, toId) => {
+      const toCycleInfo = this.knownCycles.get(toId);
+      if (toCycleInfo) {
+        lowerBound = this.topologicallyOrderedNodes.length;
+        toCycleInfo.connectedComponentNodes.forEach((toCycleId) => {
+          lowerBound = Math.min(lowerBound, this.topologicalIndex[toCycleId]);
+        });
+      } else {
+        lowerBound = this.topologicalIndex[toId];
       }
-    });
-    let visitedAnyDirty = false;
-    do {
-      visitedAnyDirty = false;
-      this._toposortRetained().forEach((component) => {
-        const isCycle = component.length > 1 || (this.graph[component[0].nodeId][component[0].nodeId] & _Graph.EDGE_HARD) === _Graph.EDGE_HARD;
-        const nodeIds = new Set(component.map((vertex) => vertex.nodeId));
-        nodeIds.forEach((nodeId) => {
-          const wasCycle = !!this.knownCycles[nodeId];
-          if (wasCycle !== isCycle) {
-            callback(this.nodesSet[nodeId], "invalidate");
-            this.dirtyNodes[nodeId] = true;
-            this.knownCycles[nodeId] = isCycle;
+      const fromCycleInfo = this.knownCycles.get(fromId);
+      if (fromCycleInfo) {
+        upperBound = 0;
+        fromCycleInfo.connectedComponentNodes.forEach((fromCycleId) => {
+          upperBound = Math.max(upperBound, this.topologicalIndex[fromCycleId]);
+        });
+      } else {
+        upperBound = this.topologicalIndex[fromId];
+      }
+      if (lowerBound < upperBound) {
+        const isCycle = dfsF(toId);
+        if (isCycle) {
+          stronglyConnectedVisited.clear();
+          dfsStronglyConnected(toId);
+          if (!connectedComponentEdges[fromId]) {
+            connectedComponentEdges[fromId] = {};
+          }
+          connectedComponentEdges[fromId][toId] = this.graph[fromId][toId];
+          connectedComponentNodes.forEach((nodeId) => {
+            const cycleInfo = this.knownCycles.get(nodeId);
+            const isInformed = !!cycleInfo?.isInformed || !!this.informedCycles.get(nodeId);
+            const initiallyDirty = !!this.dirtyNodes[nodeId];
+            this.knownCycles.set(nodeId, {
+              connectedComponentEdges,
+              connectedComponentNodes,
+              isInformed,
+              initiallyDirty
+            });
+          });
+        } else {
+          dfsB(fromId);
+          reorder();
+          reordered = true;
+        }
+        forwardSet.clear();
+        reverseSet.clear();
+        this.reorderingVisitedState.clear();
+      }
+    };
+    const processPendingEdges = () => {
+      let minLowerBound = null;
+      const nodesToAdd = {};
+      const pendingGraph = {};
+      const filteredPendingOperations = this.pendingOperations.filter((pendingOperation) => {
+        switch (pendingOperation.type) {
+          case 0 /* NODE_ADD */:
+            nodesToAdd[this.getId(pendingOperation.node)] = pendingOperation.node;
+            return false;
+          case 1 /* NODE_DELETE */:
+            if (nodesToAdd[pendingOperation.nodeId]) {
+              delete nodesToAdd[pendingOperation.nodeId];
+              return false;
+            }
+            return true;
+          case 2 /* EDGE_ADD */:
+            if (!pendingGraph[pendingOperation.fromId]) {
+              pendingGraph[pendingOperation.fromId] = {};
+            }
+            pendingGraph[pendingOperation.fromId][pendingOperation.toId] = (pendingGraph[pendingOperation.fromId][pendingOperation.toId] || 0) | pendingOperation.kind;
+            return true;
+          case 3 /* EDGE_DELETE */:
+            if (!pendingGraph[pendingOperation.fromId]) {
+              pendingGraph[pendingOperation.fromId] = {};
+            }
+            pendingGraph[pendingOperation.fromId][pendingOperation.toId] = (pendingGraph[pendingOperation.fromId][pendingOperation.toId] || 0) & ~pendingOperation.kind;
+            return true;
+          default:
+            assertExhausted(pendingOperation, "unexpected pending operation");
+        }
+      });
+      this.pendingOperations = [];
+      const visited = {};
+      const pendingNodeIdIndex = {};
+      let assignedIndex = 0;
+      const assignIndex = (nodeId) => {
+        if (visited[nodeId])
+          return;
+        visited[nodeId] = true;
+        const toEdges = pendingGraph[nodeId] || {};
+        Object.keys(toEdges).forEach((toId) => {
+          if (toEdges[toId] > 0) {
+            assignIndex(toId);
           }
         });
-        nodeIds.forEach((nodeId) => {
-          if (this.dirtyNodes[nodeId]) {
-            const shouldPropagate = callback(this.nodesSet[nodeId], isCycle ? "cycle" : "recalculate");
+        pendingNodeIdIndex[nodeId] = assignedIndex;
+        assignedIndex += 1;
+      };
+      const pendingNodeIds = [];
+      Object.keys(nodesToAdd).forEach((nodeId) => {
+        assignIndex(nodeId);
+        pendingNodeIds.push(nodeId);
+      });
+      pendingNodeIds.sort((a, b) => pendingNodeIdIndex[b] - pendingNodeIdIndex[a]);
+      pendingNodeIds.forEach((nodeId) => {
+        const node = nodesToAdd[nodeId];
+        if (node) {
+          this.performAddNodeInner(node, nodeId);
+        }
+      });
+      filteredPendingOperations.forEach((pendingOperation) => {
+        switch (pendingOperation.type) {
+          case 0 /* NODE_ADD */:
+            assert(false, "Incorrectly adding nodes twice");
+            break;
+          case 1 /* NODE_DELETE */:
+            this.performRemoveNodeInner(pendingOperation.nodeId);
+            break;
+          case 2 /* EDGE_ADD */:
+            this.performAddEdgeInner(pendingOperation.fromId, pendingOperation.toId, pendingOperation.kind);
+            addEdge(pendingOperation.fromId, pendingOperation.toId);
+            minLowerBound = minLowerBound === null ? lowerBound : Math.min(minLowerBound, lowerBound);
+            break;
+          case 3 /* EDGE_DELETE */:
+            this.performRemoveEdgeInner(pendingOperation.fromId, pendingOperation.toId, pendingOperation.kind);
+            break;
+          default:
+            assertExhausted(pendingOperation, "unexpected pending operation");
+        }
+      });
+      return minLowerBound || 0;
+    };
+    let reachesRetainedCache = {};
+    const reachesRetained = (nodeId) => {
+      const visited = {};
+      const visit = (id) => {
+        if (this.retained[id]) {
+          reachesRetainedCache[id] = true;
+        }
+        if (reachesRetainedCache[id]) {
+          return true;
+        }
+        if (visited[id])
+          return false;
+        visited[id] = true;
+        return this.getDependenciesInner(id, _Graph.EDGE_ANY).some((toId) => visit(toId));
+      };
+      return visit(nodeId);
+    };
+    processPendingEdges();
+    for (let index = 0; index < this.topologicallyOrderedNodes.length; ++index) {
+      const node = this.topologicallyOrderedNodes[index];
+      if (!node) {
+        continue;
+      }
+      const nodeId = this.getId(node);
+      if (!this.dirtyNodes[nodeId]) {
+        continue;
+      }
+      if (!reachesRetained(nodeId)) {
+        continue;
+      }
+      let done = false;
+      const dirtyNodesUnknownPosition = /* @__PURE__ */ new Set();
+      this.minCycleBrokenIndex = null;
+      const processedNodeIds = /* @__PURE__ */ new Set();
+      while (!done) {
+        const cycleUnconfirmedNodes = /* @__PURE__ */ new Set();
+        this.recentDirtyNodes = [];
+        const cycleInfo = this.knownCycles.get(nodeId);
+        if (cycleInfo) {
+          let anyPropagate = false;
+          cycleInfo.connectedComponentNodes.forEach((cycleId) => {
+            const cycleNode = this.topologicallyOrderedNodes[this.topologicalIndex[cycleId]];
+            if (cycleNode) {
+              callback(cycleNode, "invalidate");
+            }
+          });
+          cycleInfo.connectedComponentNodes.forEach((cycleId) => {
+            const cycleNode = this.topologicallyOrderedNodes[this.topologicalIndex[cycleId]];
+            const currentCycleInfo = this.knownCycles.get(cycleId);
+            assert(currentCycleInfo, "missing cycleInfo for node in strongly connected component");
+            let action;
+            if (!currentCycleInfo.isInformed && currentCycleInfo.initiallyDirty) {
+              action = "recalculate";
+              currentCycleInfo.initiallyDirty = false;
+              cycleUnconfirmedNodes.add(cycleId);
+            } else if (currentCycleInfo.isInformed) {
+              action = "recalculate-cycle";
+            } else {
+              action = "cycle";
+              currentCycleInfo.isInformed = true;
+            }
+            if (cycleNode && callback(cycleNode, action)) {
+              anyPropagate = true;
+            }
+          });
+          this.recentDirtyNodes.forEach((nodeId2) => dirtyNodesUnknownPosition.add(nodeId2));
+          this.recentDirtyNodes = void 0;
+          if (anyPropagate) {
+            cycleInfo.connectedComponentNodes.forEach((cycleId) => {
+              this.getDependenciesInner(cycleId, _Graph.EDGE_HARD).forEach((toId) => {
+                if (!cycleInfo.connectedComponentNodes.has(toId)) {
+                  const toCycleInfo = this.knownCycles.get(toId);
+                  if (toCycleInfo) {
+                    toCycleInfo.connectedComponentNodes.forEach((toCycleId) => {
+                      this.markNodeDirtyInner(toCycleId);
+                    });
+                  } else {
+                    this.markNodeDirtyInner(toId);
+                  }
+                }
+              });
+            });
+          }
+          cycleInfo.connectedComponentNodes.forEach((cycleId) => {
+            processedNodeIds.add(cycleId);
+          });
+        } else {
+          const hasSelfEdge = (this.graph[nodeId]?.[nodeId] ?? 0) > 0;
+          if (hasSelfEdge) {
+            callback(node, "invalidate");
+          }
+          const shouldPropagate = callback(node, hasSelfEdge ? "cycle" : "recalculate");
+          this.recentDirtyNodes.forEach((nodeId2) => dirtyNodesUnknownPosition.add(nodeId2));
+          this.recentDirtyNodes = void 0;
+          if (shouldPropagate) {
+            this.getDependenciesInner(nodeId, _Graph.EDGE_HARD).forEach((toId) => {
+              const toCycleInfo = this.knownCycles.get(toId);
+              if (toCycleInfo) {
+                toCycleInfo.connectedComponentNodes.forEach((toCycleId) => {
+                  this.markNodeDirtyInner(toCycleId);
+                });
+              } else {
+                this.markNodeDirtyInner(toId);
+              }
+            });
+          }
+          processedNodeIds.add(nodeId);
+        }
+        reordered = false;
+        processPendingEdges();
+        cycleUnconfirmedNodes.forEach((cycleId) => {
+          const cycleNode = this.topologicallyOrderedNodes[this.topologicalIndex[cycleId]];
+          const newCycleInfo2 = this.knownCycles.get(cycleId);
+          if (cycleNode && newCycleInfo2) {
+            const shouldPropagate = callback(cycleNode, "cycle");
+            newCycleInfo2.isInformed = true;
             if (shouldPropagate) {
-              this.getDependenciesInner(nodeId, _Graph.EDGE_HARD).forEach((toId) => {
-                if (!nodeIds.has(toId)) {
-                  this.dirtyNodes[toId] = true;
-                  callback(this.nodesSet[toId], "invalidate");
+              this.getDependenciesInner(cycleId, _Graph.EDGE_HARD).forEach((toId) => {
+                const toCycleInfo = this.knownCycles.get(toId);
+                if (toCycleInfo) {
+                  toCycleInfo.connectedComponentNodes.forEach((toCycleId) => {
+                    this.markNodeDirtyInner(toCycleId);
+                  });
+                } else {
+                  this.markNodeDirtyInner(toId);
                 }
               });
             }
-            visitedAnyDirty = true;
-            delete this.dirtyNodes[nodeId];
           }
         });
-      });
-    } while (visitedAnyDirty);
-    const visited = {};
-    const flushTransitive = (nodeId) => {
-      if (visited[nodeId])
-        return;
-      visited[nodeId] = true;
-      callback(this.nodesSet[nodeId], "invalidate");
+        processedNodeIds.forEach((nodeId2) => {
+          this.markNodeCleanInner(nodeId2);
+        });
+        if (reordered || this.minCycleBrokenIndex !== null) {
+          reachesRetainedCache = {};
+          this.getUnorderedDirtyNodes().forEach((nodeId2) => dirtyNodesUnknownPosition.add(nodeId2));
+        }
+        const newCycleInfo = this.knownCycles.get(nodeId);
+        if (newCycleInfo && !cycleInfo) {
+          done = false;
+        } else if (!newCycleInfo && cycleInfo) {
+          done = false;
+        } else {
+          done = true;
+        }
+      }
+      if (dirtyNodesUnknownPosition.size > 0 || this.minCycleBrokenIndex !== null) {
+        let minDirtyOrd = this.topologicallyOrderedNodes.length;
+        dirtyNodesUnknownPosition.forEach((dirtyNodeId) => {
+          minDirtyOrd = Math.min(minDirtyOrd, this.topologicalIndex[dirtyNodeId]);
+        });
+        if (this.minCycleBrokenIndex !== null) {
+          minDirtyOrd = Math.min(this.minCycleBrokenIndex, minDirtyOrd);
+        }
+        if (minDirtyOrd <= index) {
+          index = minDirtyOrd - 1;
+        }
+      }
+    }
+    const flushed = {};
+    const transitiveFlush = (nodeId) => {
+      const node = this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]];
+      assert(node, "transitiveFlush consistency error");
+      callback(node, "invalidate");
+      flushed[nodeId] = true;
       this.getDependenciesInner(nodeId, _Graph.EDGE_HARD).forEach((toId) => {
-        flushTransitive(toId);
+        if (!flushed[toId]) {
+          transitiveFlush(toId);
+        }
       });
     };
-    Object.keys(this.dirtyNodes).forEach((nodeId) => {
-      if (this.dirtyNodes[nodeId]) {
-        flushTransitive(nodeId);
-        delete this.dirtyNodes[nodeId];
+    this.getUnorderedDirtyNodes().forEach((nodeId) => {
+      if (!flushed[nodeId]) {
+        transitiveFlush(nodeId);
       }
+      this.markNodeCleanInner(nodeId);
     });
   }
   graphviz(getAttributes) {
@@ -524,10 +965,13 @@ var _Graph = class {
       "digraph debug {",
       'node [style="filled", fillcolor="#DDDDDD"];'
     ];
-    const nodeIds = Object.keys(this.nodesSet).filter((nodeId) => !!this.nodesSet[nodeId]);
+    const nodeIds = Object.keys(this.topologicalIndex).filter((nodeId) => !!this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]]);
     const nodeAttributes = {};
     nodeIds.forEach((nodeId) => {
-      nodeAttributes[nodeId] = getAttributes(nodeId, this.nodesSet[nodeId]);
+      const node = this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]];
+      if (node) {
+        nodeAttributes[nodeId] = getAttributes(nodeId, node);
+      }
     });
     const groupedNodes = groupBy(nodeIds, (nodeId) => {
       return [nodeAttributes[nodeId].subgraph, nodeId];
@@ -539,9 +983,9 @@ var _Graph = class {
       nodeIds2.forEach((nodeId) => {
         const props = {
           shape: this.retained[nodeId] ? "box" : "ellipse",
-          label: nodeAttributes[nodeId].label,
-          penwidth: nodeAttributes[nodeId].penwidth,
-          fillcolor: this.dirtyNodes[nodeId] ? "#FFDDDD" : "#DDDDDD"
+          label: nodeAttributes[nodeId]?.label,
+          penwidth: nodeAttributes[nodeId]?.penwidth,
+          fillcolor: this.isNodeDirty(nodeId) ? "#FFDDDD" : "#DDDDDD"
         };
         lines.push(`  item_${nodeId} [${Object.entries(props).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(",")}];`);
       });
@@ -679,8 +1123,9 @@ function makeCalculation(calculationFunc, isEqual, isEffect2) {
     $__id: uniqueid(),
     [TypeTag]: "calculation",
     [CalculationTypeTag]: isEffect2 ? "effect" : "calculation",
-    [CalculationSetCycleTag]: calculationSetError,
+    [CalculationSetCycleTag]: calculationSetCycle,
     [CalculationRecalculateTag]: calculationRecalculate,
+    [CalculationRecalculateCycleTag]: calculationRecalculateCycle,
     [CalculationInvalidateTag]: calculationInvalidate,
     onError: calculationOnError,
     dispose: calculationDispose
@@ -703,6 +1148,9 @@ function makeCalculation(calculationFunc, isEqual, isEffect2) {
           assert(calcRecord2?.calc === calculation, "calculation stack inconsistency");
           globalDependencyGraph.replaceIncoming(calculation, calcRecord2.deps);
           const isCycle = e instanceof CycleAbortError;
+          if (isCycle) {
+            globalDependencyGraph.markNodeCycle(calculation);
+          }
           state = isCycle ? 3 /* STATE_CYCLE */ : 4 /* STATE_ERROR */;
           if (errorHandler) {
             result = {
@@ -731,6 +1179,7 @@ function makeCalculation(calculationFunc, isEqual, isEffect2) {
           result = {
             result: errorHandler("cycle")
           };
+          globalDependencyGraph.markNodeCycle(calculation);
           if (activeCalculations.length === 0) {
             return result.result;
           }
@@ -764,8 +1213,6 @@ function makeCalculation(calculationFunc, isEqual, isEffect2) {
       case 0 /* STATE_FLUSHED */:
         return;
       case 3 /* STATE_CYCLE */:
-        debug("Invalidating node in a cycle", debugNameFor(calculation));
-        globalDependencyGraph.removeIncoming(calculation);
         state = 0 /* STATE_FLUSHED */;
         break;
       case 2 /* STATE_CACHED */:
@@ -778,7 +1225,7 @@ function makeCalculation(calculationFunc, isEqual, isEffect2) {
         assertExhausted(state, "Unexpected calculation state");
     }
   }
-  function calculationSetError() {
+  function calculationSetCycle() {
     assert(!isDisposed, "calculation already disposed");
     switch (state) {
       case 1 /* STATE_TRACKING */:
@@ -837,6 +1284,32 @@ function makeCalculation(calculationFunc, isEqual, isEffect2) {
         assertExhausted(state, "Unexpected calculation state");
     }
   }
+  function calculationRecalculateCycle() {
+    assert(!isDisposed, "calculation already disposed");
+    switch (state) {
+      case 1 /* STATE_TRACKING */:
+        throw new InvariantError("Cannot recalculate calculation while it is being calculated");
+        break;
+      case 0 /* STATE_FLUSHED */:
+      case 4 /* STATE_ERROR */:
+      case 2 /* STATE_CACHED */: {
+        const priorResult = result;
+        try {
+          calculationBody();
+        } catch (e) {
+        }
+        if (priorResult && result && isEqual(priorResult.result, result.result)) {
+          result = priorResult;
+          return false;
+        }
+        return true;
+      }
+      case 3 /* STATE_CYCLE */:
+        return calculationSetCycle();
+      default:
+        assertExhausted(state, "Unexpected calculation state");
+    }
+  }
   function calculationOnError(handler) {
     assert(!isDisposed, "calculation already disposed");
     errorHandler = handler;
@@ -862,6 +1335,7 @@ function addManualDep(fromNode, toNode) {
   globalDependencyGraph.addNode(fromNode);
   globalDependencyGraph.addNode(toNode);
   globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_HARD);
+  scheduleFlush();
   debug("New manual dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
 }
 function registerNode(node) {
@@ -872,6 +1346,7 @@ function disposeNode(node) {
 }
 function addOrderingDep(fromNode, toNode) {
   globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_SOFT);
+  scheduleFlush();
   debug("New manual ordering dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
 }
 function removeManualDep(fromNode, toNode) {
@@ -941,8 +1416,16 @@ function flush() {
           item[CalculationInvalidateTag]();
         }
         break;
+      case "recalculate-cycle":
+        if (isCalculation(item)) {
+          shouldPropagate = item[CalculationRecalculateCycleTag]();
+        } else if (isCollection(item) || isModel(item) || isSubscription(item)) {
+          shouldPropagate = item[FlushKey]();
+        }
+        break;
       case "recalculate":
         if (isCalculation(item)) {
+          item[CalculationInvalidateTag]();
           shouldPropagate = item[CalculationRecalculateTag]();
         } else if (isCollection(item) || isModel(item) || isSubscription(item)) {
           shouldPropagate = item[FlushKey]();
@@ -957,10 +1440,7 @@ function flush() {
     }
     return shouldPropagate;
   });
-  if (globalDependencyGraph.hasDirtyNodes()) {
-    debug("Graph contained dirty nodes post-flush");
-    scheduleFlush();
-  }
+  assert(!globalDependencyGraph.hasDirtyNodes(), "Graph contained dirty nodes post-flush");
   debugSubscription && debugSubscription(debug2(), `2: after visit`);
   resolveFlushPromise();
 }
@@ -969,9 +1449,7 @@ function retain(item) {
   const newRefcount = refcount + 1;
   if (refcount === 0) {
     debug(`retain ${debugNameFor(item)} retained; refcount ${refcount} -> ${newRefcount}`);
-    if (!globalDependencyGraph.hasNode(item)) {
-      globalDependencyGraph.addNode(item);
-    }
+    globalDependencyGraph.addNode(item);
     globalDependencyGraph.retain(item);
   } else {
     debug(`retain ${debugNameFor(item)} incremented; refcount ${refcount} -> ${newRefcount}`);
@@ -2098,7 +2576,6 @@ function jsxNodeToVNode(jsxNode, domParent, parentOrdering, contextMap, document
   return renderElementToVNode(jsxNode, domParent, parentOrdering, contextMap, documentFragment);
 }
 function renderElementToVNode(renderElement, domParent, nodeOrdering, contextMap, documentFragment) {
-  debug("view renderElementToVNode", renderElement);
   switch (renderElement.type) {
     case "intrinsic":
       return makeElementVNode(renderElement.element, renderElement.props, renderElement.children, domParent, nodeOrdering, contextMap, documentFragment);
@@ -2168,12 +2645,6 @@ function makeElementVNode(elementType, props, children, domParent, nodeOrdering,
     subContextMap = new Map(contextMap);
     subContextMap.set(IntrinsicNodeObserverContext, emptyIntrinsicNodeObserverContext);
   }
-  debug("view makeElementVNode", {
-    elementType,
-    elementXMLNamespace,
-    props,
-    children
-  });
   const element = document.createElementNS(elementXMLNamespace, elementType);
   const elementBoundEvents = {};
   const onReleaseActions = [];
@@ -2280,7 +2751,6 @@ function makeObserverVNode(nodeCallback, elementCallback, children, domParent, n
   return providerNode;
 }
 function makeComponentVNode(Component2, props, children, domParent, nodeOrdering, contextMap, documentFragment) {
-  debug("view makeComponentVNode", { Component: Component2, props, children });
   const onUnmount = [];
   const onMount = [];
   let jsxNode;
@@ -2999,6 +3469,6 @@ model.dispose = function dispose2(m) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.6.2" : "development";
+var VERSION = true ? "0.6.3" : "development";
 module.exports = __toCommonJS(src_exports);
 //# sourceMappingURL=index.debug.cjs.js.map
