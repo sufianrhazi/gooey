@@ -143,11 +143,6 @@ function setLogLevel(logLevel) {
   invariant(() => logLevel in levels, logLevel);
   currentLevel = levels[logLevel];
 }
-function debug(...items) {
-  if (currentLevel >= levels.debug) {
-    console.log(...items);
-  }
-}
 function warn(...items) {
   if (currentLevel >= levels.warn) {
     console.warn(...items);
@@ -1019,7 +1014,7 @@ function clearNames() {
   nameMap = /* @__PURE__ */ new WeakMap();
 }
 function debugNameFor(item) {
-  if (false) {
+  if (true) {
     return "";
   }
   const id = item.$__id;
@@ -1044,7 +1039,7 @@ function debugNameFor(item) {
   return `${id}:unknown`;
 }
 function name(item, name2) {
-  if (false)
+  if (true)
     return item;
   nameMap.set(item, name2);
   return item;
@@ -1217,7 +1212,7 @@ function makeCalculation(calculationFunc, isEqual, isEffect2) {
         break;
       case 2 /* STATE_CACHED */:
       case 4 /* STATE_ERROR */: {
-        debug("Invalidating node", debugNameFor(calculation));
+        false;
         state = 0 /* STATE_FLUSHED */;
         break;
       }
@@ -1329,14 +1324,14 @@ function addDepToCurrentCalculation(item) {
     return;
   const dependentCalculation = activeCalculations[activeCalculations.length - 1];
   dependentCalculation.deps.push(item);
-  debug("New global dependency", debugNameFor(item), "->", dependentCalculation.calc ? debugNameFor(dependentCalculation.calc) : "<untracked>");
+  false;
 }
 function addManualDep(fromNode, toNode) {
   globalDependencyGraph.addNode(fromNode);
   globalDependencyGraph.addNode(toNode);
   globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_HARD);
   scheduleFlush();
-  debug("New manual dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
+  false;
 }
 function registerNode(node) {
   globalDependencyGraph.addNode(node);
@@ -1347,18 +1342,18 @@ function disposeNode(node) {
 function addOrderingDep(fromNode, toNode) {
   globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_SOFT);
   scheduleFlush();
-  debug("New manual ordering dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
+  false;
 }
 function removeManualDep(fromNode, toNode) {
   globalDependencyGraph.removeEdge(fromNode, toNode, Graph.EDGE_HARD);
-  debug("Removed manual dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
+  false;
 }
 function removeOrderingDep(fromNode, toNode) {
   globalDependencyGraph.removeEdge(fromNode, toNode, Graph.EDGE_SOFT);
-  debug("Removed manual ordering dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
+  false;
 }
 function markDirty(item) {
-  debug("Dirtying", debugNameFor(item));
+  false;
   globalDependencyGraph.addNode(item);
   globalDependencyGraph.markNodeDirty(item);
   scheduleFlush();
@@ -1400,7 +1395,7 @@ function flush() {
     return;
   }
   needsFlush = false;
-  debugSubscription && debugSubscription(debug2(), "0: flush start");
+  false;
   globalDependencyGraph.process((item, action) => {
     let shouldPropagate = true;
     switch (action) {
@@ -1434,25 +1429,25 @@ function flush() {
       default:
         assertExhausted(action);
     }
-    if (true) {
+    if (false) {
       debug(`process:${action}`, debugNameFor(item), `shouldPropagate=${shouldPropagate}`);
       debugSubscription && debugSubscription(debug2(item), `process:${action}:shouldPropagate=${shouldPropagate}`);
     }
     return shouldPropagate;
   });
   assert(!globalDependencyGraph.hasDirtyNodes(), "Graph contained dirty nodes post-flush");
-  debugSubscription && debugSubscription(debug2(), `2: after visit`);
+  false;
   resolveFlushPromise();
 }
 function retain(item) {
   const refcount = refcountMap[item.$__id] ?? 0;
   const newRefcount = refcount + 1;
   if (refcount === 0) {
-    debug(`retain ${debugNameFor(item)} retained; refcount ${refcount} -> ${newRefcount}`);
+    false;
     globalDependencyGraph.addNode(item);
     globalDependencyGraph.retain(item);
   } else {
-    debug(`retain ${debugNameFor(item)} incremented; refcount ${refcount} -> ${newRefcount}`);
+    false;
   }
   refcountMap[item.$__id] = newRefcount;
 }
@@ -1463,10 +1458,10 @@ function release(item) {
     error(`release called on unretained item ${debugNameFor(item)}`, item);
   }
   if (newRefcount < 1) {
-    debug(`release ${debugNameFor(item)} released; refcount ${refcount} -> ${newRefcount}`);
+    false;
     globalDependencyGraph.release(item);
   } else {
-    debug(`release ${debugNameFor(item)} decremented; refcount ${refcount} -> ${newRefcount}`);
+    false;
   }
   refcountMap[item.$__id] = newRefcount;
 }
@@ -2819,7 +2814,7 @@ function makeCalculationVNode(calculation, domParent, parentNodeOrdering, contex
     children: calculationNodeChildren,
     onUnmount
   };
-  const calculationNodeOrdering = makeNodeOrdering(true ? `viewcalc:${debugNameFor(calculation) ?? "node"}:order` : "viewcalc:order");
+  const calculationNodeOrdering = makeNodeOrdering(false ? `viewcalc:${debugNameFor(calculation) ?? "node"}:order` : "viewcalc:order");
   registerNode(calculationNodeOrdering);
   let firstRun = true;
   const resultEffect = effect(() => {
@@ -2853,7 +2848,7 @@ function makeCollectionVNode(collection2, domParent, parentNodeOrdering, context
     children: collectionNodeChildren,
     onUnmount
   };
-  const collectionNodeOrdering = makeNodeOrdering(true ? `viewcoll:${debugNameFor(collection2) ?? "node"}:order` : "viewcoll:order");
+  const collectionNodeOrdering = makeNodeOrdering(false ? `viewcoll:${debugNameFor(collection2) ?? "node"}:order` : "viewcoll:order");
   registerNode(collectionNodeOrdering);
   addOrderingDep(collectionNodeOrdering, parentNodeOrdering);
   onUnmount.push(() => {
@@ -3469,6 +3464,6 @@ model.dispose = function dispose2(m) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.6.3" : "development";
+var VERSION = true ? "0.6.4" : "development";
 module.exports = __toCommonJS(src_exports);
-//# sourceMappingURL=index.debug.cjs.js.map
+//# sourceMappingURL=index.cjs.map

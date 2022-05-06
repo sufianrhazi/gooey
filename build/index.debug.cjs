@@ -1,9 +1,58 @@
 var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
+var __markAsModule = (target) => __defProp(target, "__esModule", { value: true });
+var __export = (target, all) => {
+  for (var name2 in all)
+    __defProp(target, name2, { get: all[name2], enumerable: true });
+};
+var __reExport = (target, module2, copyDefault, desc) => {
+  if (module2 && typeof module2 === "object" || typeof module2 === "function") {
+    for (let key of __getOwnPropNames(module2))
+      if (!__hasOwnProp.call(target, key) && (copyDefault || key !== "default"))
+        __defProp(target, key, { get: () => module2[key], enumerable: !(desc = __getOwnPropDesc(module2, key)) || desc.enumerable });
+  }
+  return target;
+};
+var __toCommonJS = /* @__PURE__ */ ((cache) => {
+  return (module2, temp) => {
+    return cache && cache.get(module2) || (temp = __reExport(__markAsModule({}), module2, 1), cache && cache.set(module2, temp), temp);
+  };
+})(typeof WeakMap !== "undefined" ? /* @__PURE__ */ new WeakMap() : 0);
 var __publicField = (obj, key, value) => {
   __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
   return value;
 };
+
+// src/index.ts
+var src_exports = {};
+__export(src_exports, {
+  Fragment: () => Fragment,
+  InvariantError: () => InvariantError,
+  LifecycleObserver: () => LifecycleObserver,
+  VERSION: () => VERSION,
+  calc: () => calc,
+  collection: () => collection,
+  createContext: () => createContext,
+  debug: () => debug2,
+  debugState: () => debugState,
+  debugSubscribe: () => debugSubscribe,
+  default: () => src_default,
+  effect: () => effect,
+  flush: () => flush,
+  getLogLevel: () => getLogLevel,
+  model: () => model,
+  mount: () => mount,
+  nextFlush: () => nextFlush,
+  ref: () => ref,
+  release: () => release,
+  reset: () => reset,
+  retain: () => retain,
+  setLogLevel: () => setLogLevel,
+  subscribe: () => subscribe
+});
 
 // src/types.ts
 var InvariantError = class extends Error {
@@ -93,6 +142,11 @@ function getLogLevel() {
 function setLogLevel(logLevel) {
   invariant(() => logLevel in levels, logLevel);
   currentLevel = levels[logLevel];
+}
+function debug(...items) {
+  if (currentLevel >= levels.debug) {
+    console.log(...items);
+  }
 }
 function warn(...items) {
   if (currentLevel >= levels.warn) {
@@ -965,7 +1019,7 @@ function clearNames() {
   nameMap = /* @__PURE__ */ new WeakMap();
 }
 function debugNameFor(item) {
-  if (true) {
+  if (false) {
     return "";
   }
   const id = item.$__id;
@@ -990,7 +1044,7 @@ function debugNameFor(item) {
   return `${id}:unknown`;
 }
 function name(item, name2) {
-  if (true)
+  if (false)
     return item;
   nameMap.set(item, name2);
   return item;
@@ -1163,7 +1217,7 @@ function makeCalculation(calculationFunc, isEqual, isEffect2) {
         break;
       case 2 /* STATE_CACHED */:
       case 4 /* STATE_ERROR */: {
-        false;
+        debug("Invalidating node", debugNameFor(calculation));
         state = 0 /* STATE_FLUSHED */;
         break;
       }
@@ -1275,14 +1329,14 @@ function addDepToCurrentCalculation(item) {
     return;
   const dependentCalculation = activeCalculations[activeCalculations.length - 1];
   dependentCalculation.deps.push(item);
-  false;
+  debug("New global dependency", debugNameFor(item), "->", dependentCalculation.calc ? debugNameFor(dependentCalculation.calc) : "<untracked>");
 }
 function addManualDep(fromNode, toNode) {
   globalDependencyGraph.addNode(fromNode);
   globalDependencyGraph.addNode(toNode);
   globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_HARD);
   scheduleFlush();
-  false;
+  debug("New manual dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
 }
 function registerNode(node) {
   globalDependencyGraph.addNode(node);
@@ -1293,18 +1347,18 @@ function disposeNode(node) {
 function addOrderingDep(fromNode, toNode) {
   globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_SOFT);
   scheduleFlush();
-  false;
+  debug("New manual ordering dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
 }
 function removeManualDep(fromNode, toNode) {
   globalDependencyGraph.removeEdge(fromNode, toNode, Graph.EDGE_HARD);
-  false;
+  debug("Removed manual dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
 }
 function removeOrderingDep(fromNode, toNode) {
   globalDependencyGraph.removeEdge(fromNode, toNode, Graph.EDGE_SOFT);
-  false;
+  debug("Removed manual ordering dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
 }
 function markDirty(item) {
-  false;
+  debug("Dirtying", debugNameFor(item));
   globalDependencyGraph.addNode(item);
   globalDependencyGraph.markNodeDirty(item);
   scheduleFlush();
@@ -1346,7 +1400,7 @@ function flush() {
     return;
   }
   needsFlush = false;
-  false;
+  debugSubscription && debugSubscription(debug2(), "0: flush start");
   globalDependencyGraph.process((item, action) => {
     let shouldPropagate = true;
     switch (action) {
@@ -1380,25 +1434,25 @@ function flush() {
       default:
         assertExhausted(action);
     }
-    if (false) {
+    if (true) {
       debug(`process:${action}`, debugNameFor(item), `shouldPropagate=${shouldPropagate}`);
       debugSubscription && debugSubscription(debug2(item), `process:${action}:shouldPropagate=${shouldPropagate}`);
     }
     return shouldPropagate;
   });
   assert(!globalDependencyGraph.hasDirtyNodes(), "Graph contained dirty nodes post-flush");
-  false;
+  debugSubscription && debugSubscription(debug2(), `2: after visit`);
   resolveFlushPromise();
 }
 function retain(item) {
   const refcount = refcountMap[item.$__id] ?? 0;
   const newRefcount = refcount + 1;
   if (refcount === 0) {
-    false;
+    debug(`retain ${debugNameFor(item)} retained; refcount ${refcount} -> ${newRefcount}`);
     globalDependencyGraph.addNode(item);
     globalDependencyGraph.retain(item);
   } else {
-    false;
+    debug(`retain ${debugNameFor(item)} incremented; refcount ${refcount} -> ${newRefcount}`);
   }
   refcountMap[item.$__id] = newRefcount;
 }
@@ -1409,10 +1463,10 @@ function release(item) {
     error(`release called on unretained item ${debugNameFor(item)}`, item);
   }
   if (newRefcount < 1) {
-    false;
+    debug(`release ${debugNameFor(item)} released; refcount ${refcount} -> ${newRefcount}`);
     globalDependencyGraph.release(item);
   } else {
-    false;
+    debug(`release ${debugNameFor(item)} decremented; refcount ${refcount} -> ${newRefcount}`);
   }
   refcountMap[item.$__id] = newRefcount;
 }
@@ -2765,7 +2819,7 @@ function makeCalculationVNode(calculation, domParent, parentNodeOrdering, contex
     children: calculationNodeChildren,
     onUnmount
   };
-  const calculationNodeOrdering = makeNodeOrdering(false ? `viewcalc:${debugNameFor(calculation) ?? "node"}:order` : "viewcalc:order");
+  const calculationNodeOrdering = makeNodeOrdering(true ? `viewcalc:${debugNameFor(calculation) ?? "node"}:order` : "viewcalc:order");
   registerNode(calculationNodeOrdering);
   let firstRun = true;
   const resultEffect = effect(() => {
@@ -2799,7 +2853,7 @@ function makeCollectionVNode(collection2, domParent, parentNodeOrdering, context
     children: collectionNodeChildren,
     onUnmount
   };
-  const collectionNodeOrdering = makeNodeOrdering(false ? `viewcoll:${debugNameFor(collection2) ?? "node"}:order` : "viewcoll:order");
+  const collectionNodeOrdering = makeNodeOrdering(true ? `viewcoll:${debugNameFor(collection2) ?? "node"}:order` : "viewcoll:order");
   registerNode(collectionNodeOrdering);
   addOrderingDep(collectionNodeOrdering, parentNodeOrdering);
   onUnmount.push(() => {
@@ -3415,30 +3469,6 @@ model.dispose = function dispose2(m) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.6.3" : "development";
-export {
-  Fragment,
-  InvariantError,
-  LifecycleObserver,
-  VERSION,
-  calc,
-  collection,
-  createContext,
-  debug2 as debug,
-  debugState,
-  debugSubscribe,
-  src_default as default,
-  effect,
-  flush,
-  getLogLevel,
-  model,
-  mount,
-  nextFlush,
-  ref,
-  release,
-  reset,
-  retain,
-  setLogLevel,
-  subscribe
-};
-//# sourceMappingURL=index.esm.js.map
+var VERSION = true ? "0.6.4" : "development";
+module.exports = __toCommonJS(src_exports);
+//# sourceMappingURL=index.debug.cjs.map

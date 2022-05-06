@@ -3420,7 +3420,7 @@ model.dispose = function dispose2(m) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.6.3" : "development";
+var VERSION = true ? "0.6.4" : "development";
 export {
   Fragment,
   InvariantError,
@@ -3446,4 +3446,4 @@ export {
   setLogLevel,
   subscribe
 };
-//# sourceMappingURL=index.debug.esm.js.map
+//# sourceMappingURL=index.debug.mjs.map
