@@ -3415,7 +3415,7 @@ model.dispose = function dispose2(m) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.6.5" : "development";
+var VERSION = true ? "0.6.6" : "development";
 export {
   Fragment,
   InvariantError,
