@@ -2,6 +2,7 @@ Next up:
 [ ] Understand the virtualized list re-render performance better: why so freakishly slow?
 
 Unprioritized:
+[ ] Build demonstration UI for the 7 GUIs: https://eugenkiss.github.io/7guis/
 [ ] Model: We have model.keys, do we need model.values and model.entries?
 [ ] Model: Ergonomics/efficiency around derived models? Or is calc(() => model({ val: derived.val })) good enough?
 [ ] Collection: Make .flatMapView recalculate automatically if feasible (will also apply to .filterView and .mapView)
