@@ -23,11 +23,11 @@ rm -rf build/
 echo_info "Building types from tsc..."
 node_modules/.bin/tsc -p .
 echo_info "Bundling esm..."
-node_modules/.bin/esbuild src/index.ts --define:DEBUG=false --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=esm --outfile=build/index.esm.js
-node_modules/.bin/esbuild src/index.ts --define:DEBUG=true --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=esm --outfile=build/index.debug.esm.js
+node_modules/.bin/esbuild src/index.ts --define:DEBUG=false --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=esm --outfile=build/index.mjs
+node_modules/.bin/esbuild src/index.ts --define:DEBUG=true --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=esm --outfile=build/index.debug.mjs
 echo_info "Bundling cjs..."
-node_modules/.bin/esbuild src/index.ts --define:DEBUG=false --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=cjs --outfile=build/index.cjs.js
-node_modules/.bin/esbuild src/index.ts --define:DEBUG=true --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=cjs --outfile=build/index.debug.cjs.js
+node_modules/.bin/esbuild src/index.ts --define:DEBUG=false --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=cjs --outfile=build/index.cjs
+node_modules/.bin/esbuild src/index.ts --define:DEBUG=true --define:LIB_VERSION="${VERSION}" --sourcemap --bundle --target=es2020 --format=cjs --outfile=build/index.debug.cjs
 git add .
 
 echo_warn "Running tests + performance tests to confirm..."
