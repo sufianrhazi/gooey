@@ -4,8 +4,7 @@ import {
     Collection,
     View,
     Context,
-    IntrinsicNodeObserverNodeCallback,
-    IntrinsicNodeObserverElementCallback,
+    NodeOrdering,
 } from './types';
 
 /**
@@ -17,10 +16,11 @@ export type JSXNode =
     | boolean
     | null
     | undefined
+    | bigint
     | symbol
     | Function
     | Element
-    | RenderedElement<any, any, any>
+    | RenderNode
     | Calculation<JSXNode>
     | Collection<JSXNode>
     | View<JSXNode>
@@ -48,7 +48,7 @@ type OnUnmountCallback = () => void;
 type OnMountCallback = () => void;
 type EffectCallback = () => void;
 
-type ComponentListeners = {
+export type ComponentListeners = {
     onUnmount: (callback: OnUnmountCallback) => void;
     onMount: (callback: OnMountCallback) => void;
     onEffect: (callback: EffectCallback) => void;
@@ -67,58 +67,175 @@ export type Component<TProps extends {}> = (
     listeners: ComponentListeners
 ) => JSXNode;
 
+const RenderNodeTag = Symbol('renderNodeTag');
+
+export type RenderEvent =
+    | {
+          type: 'splice';
+          index: number;
+          count: number;
+          nodes: (Text | Element)[];
+      }
+    | {
+          type: 'move';
+          fromIndex: number;
+          count: number;
+          toIndex: number;
+      }
+    | {
+          type: 'sort';
+          fromIndex: number;
+          /** Note: indexes are absolute, not relative from fromIndex */
+          indexes: number[];
+      };
+
+// Next up:
+// - Probably: add a test to verify elements can be _moved_ (gasp) without being recreated; this may totally fuck with Context? But maybe not? Mutable renderContext? :shrug:
+// const MyComponent = ({ children }) => {
+//     const state = model({ left: false });
+//     return <div><div id="left">{calc(() => state.left ? children : null)}</div><div id="right">{calc(() => state.left ? null : children)}</div></div>;
+// }
+// - Probably: add a bunch of tests to see what happens when a rendered node is unmounted and re-mounted without being re-createElemented (i.e. hide children and then show children)
+
+export type RenderEventHandler = (event: RenderEvent) => void;
+
+export type RenderContext = {
+    nodeOrdering: NodeOrdering;
+    contextMap: Map<Context<any>, any>;
+};
+
+/**
+ * The RenderNode lifecycle
+ * ========================
+ *
+ * - Each RenderNode is created exactly once (via .start()), where it calls its event handler to add any "permanent" DOM
+ *   nodes to the parent. It is not mounted at this point.
+ * - Each RenderNode may mounted via:
+ *   - .attach():
+ *     - call child .onBeforeMount()
+ *     - call the event handler to add any detached DOM nodes
+ *     - call child .onAfterMount()
+ *   - .detach()
+ *     - call child .onBeforeUnmount()
+ *     - call the event handler to detach any DOM nodes to the parent
+ *     - call child .onBeforeUnmount()
+ * - It is possible for a RenderNode to be .start()ed and then .stop()ped without being .attach()ed or .detach()ed
+ * - It is possible for a RenderNode to be .attach()ed and .detach()ed multiple times
+ * - After .stop() is called, the RenderNode is inert and will not be interacted with again; it should release any
+ *   resources which would cause it to be retained
+ * - Note (1): If a node controls the lifecycle of another child node (like a calculation nodes, etc...) decides that a
+ *   child node should be discarded and the controlling node is mounted, it MUST call .detachSelf() on that node (which
+ *   calls the onBeforeDetach() and onAfterDetach() methods for the subtree) first prior to calling .stop()
+ *   That is to say: every RenderNode should assume they are in the detached state when .stop() is called.
+ *
+ *
+ * ───┐
+ *    │- .start()
+ *    │
+ *    ▼
+ * ┌─────┐
+ * │alive├───────────────────────┐
+ * └──┬──┘                       │
+ *    │- .stop()                 │- attachSelf()
+ *    │                          │
+ *    │                          ▼
+ *    │                     ┌────────┐
+ *    │         ┌───────────┤attached├────────────┐
+ *    │         │           └────────┘            │
+ *    ▼         │- Note (1)      ▲                │
+ * ┌─────┐      │- .stop()       │                │
+ * │     │◄─────┘                │- .attachSelf() │- .detachSelf()
+ * │inert│                       │                │
+ * │     │◄─────┐                │                │
+ * └──┬──┘      │- .stop()  ┌────┴───┐            │
+ *    │         └───────────┤detached│◄───────────┘
+ * ◄──┘                     └────────┘
+ */
+export type RenderNodeLifecycle = {
+    /**
+     * Called exactly once to destroy any retained resources
+     */
+    stop: () => void;
+
+    /**
+     * Called when the RenderNode should temporarily add itself
+     * If the node does not manage any nodes, it should delegate to its child(ren)
+     */
+    attachSelf: () => void;
+
+    /**
+     * Called when the RenderNode should temporarily remove itself
+     * If the node does not manage any nodes, it should delegate to its child(ren)
+     */
+    detachSelf: () => void;
+
+    /**
+     * Called immediately before the RenderNode is attached
+     */
+    onBeforeAttach: () => void;
+
+    /**
+     * Called immediately after the RenderNode is attached
+     */
+    onAfterAttach: () => void;
+
+    /**
+     * Called immediately before the RenderNode is detached
+     */
+    onBeforeDetach: () => void;
+
+    /**
+     * Called immediately after the RenderNode is detached
+     */
+    onAfterDetach: () => void;
+};
+
+export type RenderNode = {
+    [RenderNodeTag]: true;
+    type: RenderNodeType;
+    start: (
+        handler: RenderEventHandler,
+        context: RenderContext,
+        isAttached: boolean
+    ) => RenderNodeLifecycle;
+};
+
+export function isRenderNode(obj: any): obj is RenderNode {
+    return obj && obj[RenderNodeTag] === true;
+}
+
+export enum RenderNodeType {
+    empty,
+    text,
+    foreignElement,
+    calculation,
+    intrinsicElement,
+    array,
+    component,
+    context,
+    lifecycleObserver,
+    collection,
+}
+
+export function makeRenderNode(
+    type: RenderNodeType,
+    start: (
+        handler: RenderEventHandler,
+        context: RenderContext,
+        isAttached: boolean
+    ) => RenderNodeLifecycle
+): RenderNode {
+    return {
+        [RenderNodeTag]: true,
+        type,
+        start,
+    };
+}
+
 /**
  * The type returned by createElement
  */
-export type RenderedElement<TProps, TContext, TChildren extends JSXNode> =
-    | {
-          type: 'intrinsic';
-          element: string;
-          props: TProps;
-          children: TChildren[];
-      }
-    | {
-          type: 'context';
-          context: Context<TContext>;
-          props: { value: TContext };
-          children: TChildren[];
-      }
-    | {
-          type: 'component';
-          component: Component<TProps & { children: TChildren }>;
-          props: TProps;
-          children: TChildren[];
-      }
-    | {
-          type: 'component';
-          component: Component<TProps & { children?: TChildren }>;
-          props: TProps;
-          children: TChildren[];
-      }
-    | {
-          type: 'component';
-          component: Component<TProps & { children: TChildren[] }>;
-          props: TProps;
-          children: TChildren[];
-      }
-    | {
-          type: 'component';
-          component: Component<TProps & { children?: TChildren[] }>;
-          props: TProps;
-          children: TChildren[];
-      }
-    | {
-          type: 'component';
-          component: Component<TProps>;
-          props: TProps;
-          children: TChildren[];
-      }
-    | {
-          type: 'observer';
-          nodeCallback: IntrinsicNodeObserverNodeCallback | undefined;
-          elementCallback: IntrinsicNodeObserverElementCallback | undefined;
-          children: TChildren[];
-      };
+export type RenderedElement = Text | Element | RenderNode;
 
 /*
  * Interfaces adopted from HTML Living Standard Last Updated 30 November 2021: https://html.spec.whatwg.org/

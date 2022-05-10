@@ -520,9 +520,19 @@ export function markDirty(item: GraphNode) {
 
 type Listener = () => void;
 let needsFlush = false;
+let isFlushing = false;
+const afterFlushCallbacks = new Set<() => void>();
 let flushPromise: Promise<void> = Promise.resolve();
 let resolveFlushPromise: () => void = noop;
 let subscribeListener: Listener = () => setTimeout(() => flush(), 0);
+
+export function afterFlush(callback: () => void) {
+    if (isFlushing) {
+        afterFlushCallbacks.add(callback);
+    } else {
+        callback();
+    }
+}
 
 export function nextFlush() {
     if (!needsFlush) return Promise.resolve();
@@ -578,6 +588,8 @@ export function flush() {
         return;
     }
     needsFlush = false;
+    log.assert(!isFlushing, 'Invariant: flush called recursively');
+    isFlushing = true;
 
     DEBUG && debugSubscription && debugSubscription(debug(), '0: flush start');
 
@@ -646,6 +658,10 @@ export function flush() {
 
     DEBUG && debugSubscription && debugSubscription(debug(), `2: after visit`);
 
+    afterFlushCallbacks.forEach((callback) => callback());
+    afterFlushCallbacks.clear();
+
+    isFlushing = false;
     resolveFlushPromise();
 }
 

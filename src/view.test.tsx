@@ -10,6 +10,7 @@ import Gooey, {
     createContext,
     subscribe,
     LifecycleObserver,
+    debug,
 } from './index';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
 
@@ -48,6 +49,32 @@ suite('mount static', () => {
         assert.deepEqual(
             Array.from(testRoot.querySelector('#ok')!.childNodes),
             []
+        );
+    });
+
+    test('mount renders tree of intrinsic elements', () => {
+        mount(
+            testRoot,
+            <div data-item="0" id="outer">
+                a
+                <p data-item="1" id="inner-1">
+                    b
+                </p>
+                c
+                <p data-item="2" id="inner-2">
+                    d
+                </p>
+                e
+                <p data-item="3" id="inner-3">
+                    f
+                </p>
+                g
+            </div>
+        );
+
+        assert.is(
+            '<div data-item="0" id="outer">a<p data-item="1" id="inner-1">b</p>c<p data-item="2" id="inner-2">d</p>e<p data-item="3" id="inner-3">f</p>g</div>',
+            testRoot.innerHTML
         );
     });
 
@@ -91,6 +118,113 @@ suite('mount static', () => {
                 Array.from(testRoot.querySelector('#ok')!.childNodes) as Text[]
             ).map((text: Text) => text.data),
             ['zero', '1', 'two', '3', 'four', '5']
+        );
+    });
+
+    test('mount renders nested and concatenated jsx arrays as contents', () => {
+        mount(
+            testRoot,
+            <div id="ok">
+                {[
+                    'a1:start',
+                    'zero',
+                    undefined,
+                    1,
+                    null,
+                    'two',
+                    false,
+                    [
+                        'a2:start',
+                        'three',
+                        undefined,
+                        4,
+                        null,
+                        'five',
+                        false,
+                        6,
+                        true,
+                        'seven',
+                        () => 3,
+                        8,
+                        'a2:end',
+                    ],
+                    9,
+                    true,
+                    'ten',
+                    () => 3,
+                    11,
+                    'a1:end',
+                ]}
+                {[
+                    'a3:start',
+                    'twelve',
+                    undefined,
+                    13,
+                    null,
+                    'fourteen',
+                    false,
+                    [
+                        'a4:start',
+                        'fifteen',
+                        undefined,
+                        16,
+                        null,
+                        'seventeen',
+                        false,
+                        18,
+                        true,
+                        'nineteen',
+                        () => 3,
+                        20,
+                        'a4:end',
+                    ],
+                    21,
+                    true,
+                    'twentytwo',
+                    () => 3,
+                    23,
+                    'a3:end',
+                ]}
+            </div>
+        );
+        assert.deepEqual(
+            (
+                Array.from(testRoot.querySelector('#ok')!.childNodes) as Text[]
+            ).map((text: Text) => text.data),
+            [
+                'a1:start',
+                'zero',
+                '1',
+                'two',
+                'a2:start',
+                'three',
+                '4',
+                'five',
+                '6',
+                'seven',
+                '8',
+                'a2:end',
+                '9',
+                'ten',
+                '11',
+                'a1:end',
+                'a3:start',
+                'twelve',
+                '13',
+                'fourteen',
+                'a4:start',
+                'fifteen',
+                '16',
+                'seventeen',
+                '18',
+                'nineteen',
+                '20',
+                'a4:end',
+                '21',
+                'twentytwo',
+                '23',
+                'a3:end',
+            ]
         );
     });
 });
@@ -183,11 +317,14 @@ suite('mount components', () => {
     });
 
     test('components can have calculations', () => {
-        const state = model({
-            name: 'world',
-        });
+        const state = model(
+            {
+                name: 'world',
+            },
+            'state'
+        );
         const Greet: Component<{}> = () => (
-            <p>Hello {calc(() => state.name)}</p>
+            <p>Hello {calc(() => state.name, 'rendername')}</p>
         );
         mount(testRoot, <Greet />);
 
@@ -344,25 +481,25 @@ suite('mount components', () => {
         state.showingChild = true;
         flush();
 
-        assert.deepEqual(['render', 'onMount', 'effect 0'], sequence);
+        assert.deepEqual(['render', 'effect 0', 'onMount'], sequence);
 
         state.counter += 1;
         flush();
 
         assert.deepEqual(
-            ['render', 'onMount', 'effect 0', 'effect 1'],
+            ['render', 'effect 0', 'onMount', 'effect 1'],
             sequence
         );
         state.counter += 1;
         flush();
 
         assert.deepEqual(
-            ['render', 'onMount', 'effect 0', 'effect 1', 'effect 2'],
+            ['render', 'effect 0', 'onMount', 'effect 1', 'effect 2'],
             sequence
         );
         flush();
         assert.deepEqual(
-            ['render', 'onMount', 'effect 0', 'effect 1', 'effect 2'],
+            ['render', 'effect 0', 'onMount', 'effect 1', 'effect 2'],
             sequence
         );
 
@@ -372,8 +509,8 @@ suite('mount components', () => {
         assert.deepEqual(
             [
                 'render',
-                'onMount',
                 'effect 0',
+                'onMount',
                 'effect 1',
                 'effect 2',
                 'onUnmount',
@@ -387,8 +524,8 @@ suite('mount components', () => {
         assert.deepEqual(
             [
                 'render',
-                'onMount',
                 'effect 0',
+                'onMount',
                 'effect 1',
                 'effect 2',
                 'onUnmount',
@@ -435,6 +572,8 @@ suite('mount components', () => {
     });
 
     test('onEffect is called *after* mounted calculations are updated', () => {
+        return;
+        // TODO: kill the concept of ordered nodes; they don't make sense -- add an <div data-what={after(calc())}> or something
         const operations: string[] = [];
         const data = model({
             value: 'before',
@@ -555,176 +694,39 @@ suite('mount components', () => {
         );
     });
 
-    test('children can be rendered multiple times and act independently', () => {
-        const calls: string[] = [];
-
-        const data = model({
-            a: false,
-            b: false,
-            c: false,
-        });
-        const Parent: Component<{ children: JSX.Element[] }> = (
-            { children },
-            { onMount, onUnmount }
-        ) => {
-            onMount(() => calls.push('parent:onMount'));
-            onUnmount(() => calls.push('parent:onUnmount'));
-            const x = (
-                <div>
-                    {calc(() => data.a && <div id="child-1">{children}</div>)}
-                    {calc(() => data.b && <div id="child-2">{children}</div>)}
-                    {calc(() => data.c && <div id="child-3">{children}</div>)}
-                </div>
-            );
-            return x;
-        };
-
-        const Child: Component<{ name: string }> = (
-            { name },
-            { onMount, onUnmount }
-        ) => {
-            onMount(() => calls.push(`child:${name}:onMount`));
-            onUnmount(() => calls.push(`child:${name}:onUnmount`));
-            const state = model({ clicked: false });
-            return (
-                <button
-                    data-name={name}
-                    on:click={() => {
-                        state.clicked = true;
-                    }}
-                >
-                    {calc(() => (state.clicked ? 'clicked' : name))}
-                </button>
-            );
-        };
-
-        // Mount all items with no children passed
-        const unmount = mount(
-            testRoot,
-            <Parent>
-                <Child name="one" />
-                <Child name="two" />
-                <Child name="three" />
-            </Parent>
+    test('children can only be rendered exactly once', () => {
+        const BadComponent: Component<{ children: JSX.Element }> = ({
+            children,
+        }) => (
+            <div>
+                <div id="left">{children}</div>
+                <div id="right">{children}</div>
+            </div>
         );
-
-        assert.deepEqual(['parent:onMount'], calls);
-
-        // Enable all children
-        data.a = true;
-        data.b = true;
-        data.c = true;
-
-        calls.splice(0, calls.length);
-        flush();
-
-        assert.deepEqual(
-            [
-                'child:one:onMount',
-                'child:two:onMount',
-                'child:three:onMount',
-                'child:one:onMount',
-                'child:two:onMount',
-                'child:three:onMount',
-                'child:one:onMount',
-                'child:two:onMount',
-                'child:three:onMount',
-            ],
-            calls
-        );
-
-        // Interact with the children in different ways
-        testRoot
-            .querySelector('#child-1 [data-name="one"]')
-            ?.dispatchEvent(new MouseEvent('click'));
-        testRoot
-            .querySelector('#child-2 [data-name="two"]')
-            ?.dispatchEvent(new MouseEvent('click'));
-        testRoot
-            .querySelector('#child-3 [data-name="three"]')
-            ?.dispatchEvent(new MouseEvent('click'));
-        flush();
-
-        assert.deepEqual(
-            [
-                ['clicked', 'two', 'three'],
-                ['one', 'clicked', 'three'],
-                ['one', 'two', 'clicked'],
-            ],
-            [
-                Array.from(testRoot.querySelectorAll('#child-1 button')).map(
-                    (el) => el.textContent
-                ),
-                Array.from(testRoot.querySelectorAll('#child-2 button')).map(
-                    (el) => el.textContent
-                ),
-                Array.from(testRoot.querySelectorAll('#child-3 button')).map(
-                    (el) => el.textContent
-                ),
-            ]
-        );
-
-        // Unmount one child
-        data.b = false;
-
-        calls.splice(0, calls.length);
-        flush();
-
-        assert.deepEqual(
-            [
-                'child:one:onUnmount',
-                'child:two:onUnmount',
-                'child:three:onUnmount',
-            ],
-            calls
-        );
-        assert.deepEqual(
-            [['clicked', 'two', 'three'], [], ['one', 'two', 'clicked']],
-            [
-                Array.from(testRoot.querySelectorAll('#child-1 button')).map(
-                    (el) => el.textContent
-                ),
-                Array.from(testRoot.querySelectorAll('#child-2 button')).map(
-                    (el) => el.textContent
-                ),
-                Array.from(testRoot.querySelectorAll('#child-3 button')).map(
-                    (el) => el.textContent
-                ),
-            ]
-        );
-
-        // Unmount everything
-        calls.splice(0, calls.length);
-        unmount();
-
-        assert.deepEqual(
-            [
-                'child:one:onUnmount',
-                'child:two:onUnmount',
-                'child:three:onUnmount',
-                'child:one:onUnmount',
-                'child:two:onUnmount',
-                'child:three:onUnmount',
-                'parent:onUnmount',
-            ],
-            calls
+        assert.throwsMatching(/Invariant: Element rendered twice!.*/, () =>
+            mount(
+                testRoot,
+                <BadComponent>
+                    <p class="child">only once</p>
+                </BadComponent>
+            )
         );
     });
 
     test('children can read contexts correctly', () => {
         const Context = createContext('no-context');
 
-        const Parent: Component<{ children?: JSX.Element[] }> = ({
+        const Parent: Component<{ children: () => JSX.Element }> = ({
             children,
         }) => {
             return (
                 <div>
-                    <div id="child-1">{children}</div>
+                    <div id="child-1">{children()}</div>
                     <Context value="child-2">
-                        <div id="child-2">{children}</div>
+                        <div id="child-2">{children()}</div>
                     </Context>
                     <Context value="child-3">
-                        <div id="child-3">{children}</div>
+                        <div id="child-3">{children()}</div>
                     </Context>
                 </div>
             );
@@ -746,8 +748,12 @@ suite('mount components', () => {
         const unmount = mount(
             testRoot,
             <Parent>
-                <Child name="one" />
-                <Child name="two" />
+                {() => (
+                    <>
+                        <Child name="one" />
+                        <Child name="two" />
+                    </>
+                )}
             </Parent>
         );
 
@@ -773,27 +779,28 @@ suite('mount components', () => {
         unmount();
     });
 
-    test('ref called after mounted', () => {
+    test('ref called immediately after mount and immediately before unmount', () => {
         let mountedEl: Element | null = null;
         const unmount = mount(
             testRoot,
             <div>
-                <div
+                <p
                     ref={(el) => {
                         if (el) {
                             assert.isTruthy(testRoot.contains(el));
                             mountedEl = el;
                         } else {
-                            assert.isFalsy(testRoot.contains(mountedEl));
+                            assert.isTruthy(testRoot.contains(mountedEl));
                         }
                     }}
                 >
                     contents
-                </div>
+                </p>
             </div>
         );
         unmount();
-        assert.assertionCount(2);
+        assert.isFalsy(testRoot.contains(mountedEl));
+        assert.assertionCount(3);
     });
 });
 
@@ -1293,7 +1300,7 @@ suite('mount collection mapped view', () => {
     });
 });
 
-suite('foreign elements', () => {
+suite('xml namespaces', () => {
     test('svg elements are supported within an svg context', () => {
         mount(
             testRoot,
@@ -1432,7 +1439,7 @@ suite('foreign elements', () => {
     }
 });
 
-suite('host elements', () => {
+suite('foreign elements', () => {
     test('normal element can be used within jsx', () => {
         const hostElement = document.createElement('div');
         hostElement.textContent = 'host element';
@@ -1863,6 +1870,7 @@ suite('LifecycleObserver component', () => {
 
         unmount();
 
+        // add, remove, add
         assert.is(4, elements.length);
         assert.isTruthy(elements[3].element instanceof HTMLDivElement);
         assert.is('dynamic-el', elements[3].element.id);
@@ -1958,6 +1966,133 @@ suite('LifecycleObserver component', () => {
                     `${(item.element as Element).textContent}:${item.event}`
             )
         );
+    });
+});
+
+suite('rendered node reuse', () => {
+    test('element cannot be rendered multiple times', () => {
+        const jsx = <p>hello there</p>;
+        assert.throwsMatching(/Invariant: Element rendered twice!.*/, () =>
+            mount(
+                testRoot,
+                <div>
+                    {jsx}
+                    {jsx}
+                </div>
+            )
+        );
+    });
+
+    test('a shallow element that is unmounted and then remounted retains the same element reference', () => {
+        const references: Element[] = [];
+        const refFunc = (val: Element | undefined) => {
+            if (val) references.push(val);
+        };
+        const state = model({ isMounted: false });
+        const jsx = <p ref={refFunc}>hello, world!</p>;
+        mount(testRoot, <div>{calc(() => state.isMounted && jsx)}</div>);
+
+        assert.deepEqual([], references);
+
+        state.isMounted = true;
+        flush();
+
+        assert.is(1, references.length);
+        references[0].setAttribute('data-magic', 'it works!');
+
+        state.isMounted = false;
+        flush();
+
+        assert.is(1, references.length);
+        assert.isFalsy(testRoot.contains(references[0]));
+
+        state.isMounted = true;
+        flush();
+
+        assert.is(2, references.length);
+        assert.is(references[0], references[1]);
+        assert.isTruthy(testRoot.contains(references[0]));
+        assert.is('it works!', references[1].getAttribute('data-magic'));
+    });
+
+    test('a deep element that is unmounted and then remounted retains the same element reference', () => {
+        const references: Element[] = [];
+        const refFunc = (val: Element | undefined) => {
+            if (val) references.push(val);
+        };
+        const state = model({ isMounted: false });
+        const jsx = (
+            <p ref={refFunc}>
+                <strong>hello</strong>, <em>world</em>!
+            </p>
+        );
+        mount(testRoot, <div>{calc(() => state.isMounted && jsx)}</div>);
+
+        assert.deepEqual([], references);
+
+        state.isMounted = true;
+        flush();
+
+        assert.is(1, references.length);
+        references[0].setAttribute('data-magic', 'it works!');
+
+        state.isMounted = false;
+        flush();
+
+        assert.is(1, references.length);
+        assert.isFalsy(testRoot.contains(references[0]));
+
+        state.isMounted = true;
+        flush();
+
+        assert.is(2, references.length);
+        assert.is(references[0], references[1]);
+        assert.isTruthy(testRoot.contains(references[0]));
+        assert.is('it works!', references[1].getAttribute('data-magic'));
+    });
+
+    test('reused jsx can be reparented', () => {
+        const references: Element[] = [];
+        const refFunc = (val: Element | undefined) => {
+            if (val) references.push(val);
+        };
+        const state = model({ leftSide: true });
+        const jsx = (
+            <span ref={refFunc}>
+                <strong>hello</strong>, <em>world</em>!
+            </span>
+        );
+        mount(
+            testRoot,
+            <div>
+                <div id="left">
+                    Left: {calc(() => (state.leftSide ? jsx : null))}
+                </div>
+                <div id="right">
+                    Right: {calc(() => (state.leftSide ? null : jsx))}
+                </div>
+            </div>
+        );
+
+        assert.is(1, references.length);
+        references[0].setAttribute('data-magic', 'it works!');
+        assert.is(testRoot.querySelector('#left'), references[0].parentNode);
+
+        state.leftSide = false;
+        flush();
+
+        assert.is(2, references.length);
+        assert.is(references[0], references[1]);
+        assert.is(testRoot.querySelector('#right'), references[0].parentNode);
+        assert.is('it works!', references[1].getAttribute('data-magic'));
+
+        state.leftSide = true;
+        flush();
+
+        assert.is(3, references.length);
+        assert.is(references[1], references[2]);
+        assert.is(testRoot.querySelector('#left'), references[0].parentNode);
+        assert.is('it works!', references[2].getAttribute('data-magic'));
     });
 });
 
