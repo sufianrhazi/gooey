@@ -2094,6 +2094,56 @@ suite('rendered node reuse', () => {
         assert.is(testRoot.querySelector('#left'), references[0].parentNode);
         assert.is('it works!', references[2].getAttribute('data-magic'));
     });
+
+    test('reused jsx can be reparented into a different mount point', () => {
+        const references: Element[] = [];
+        const refFunc = (val: Element | undefined) => {
+            if (val) references.push(val);
+        };
+        const state = model({ leftSide: true });
+        const jsx = (
+            <span ref={refFunc}>
+                <strong>hello</strong>, <em>world</em>!
+            </span>
+        );
+        const leftMount = document.createElement('div');
+        const rightMount = document.createElement('div');
+
+        testRoot.appendChild(leftMount);
+        testRoot.appendChild(rightMount);
+        mount(
+            leftMount,
+            <div id="left">
+                Left: {calc(() => (state.leftSide ? jsx : null))}
+            </div>
+        );
+        mount(
+            rightMount,
+            <div id="right">
+                Right: {calc(() => (state.leftSide ? null : jsx))}
+            </div>
+        );
+
+        assert.is(1, references.length);
+        references[0].setAttribute('data-magic', 'it works!');
+        assert.is(leftMount.querySelector('#left'), references[0].parentNode);
+
+        state.leftSide = false;
+        flush();
+
+        assert.is(2, references.length);
+        assert.is(references[0], references[1]);
+        assert.is(rightMount.querySelector('#right'), references[0].parentNode);
+        assert.is('it works!', references[1].getAttribute('data-magic'));
+
+        state.leftSide = true;
+        flush();
+
+        assert.is(3, references.length);
+        assert.is(references[1], references[2]);
+        assert.is(leftMount.querySelector('#left'), references[0].parentNode);
+        assert.is('it works!', references[2].getAttribute('data-magic'));
+    });
 });
 
 // Type tests
