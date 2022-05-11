@@ -10,7 +10,6 @@ import Gooey, {
     createContext,
     subscribe,
     LifecycleObserver,
-    debug,
 } from './index';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
 
