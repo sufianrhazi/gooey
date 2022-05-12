@@ -1079,6 +1079,103 @@ suite('mount collection mapped view', () => {
         assert.is(null, newSet[5].getAttribute('tagged'));
     });
 
+    test('collection can add items', () => {
+        const items = collection<string>([]);
+        mount(
+            testRoot,
+            <div>
+                {items.mapView((item) => (
+                    <span data-item>{item}</span>
+                ))}
+                {items.mapView((item) => (
+                    <span data-item>{item}</span>
+                ))}
+            </div>
+        );
+        assert.is('', testRoot.textContent);
+        items.push('foo');
+        flush();
+        assert.is('foofoo', testRoot.textContent);
+        items.push('bar');
+        flush();
+        assert.is('foobarfoobar', testRoot.textContent);
+        items.push('baz');
+        flush();
+        assert.is('foobarbazfoobarbaz', testRoot.textContent);
+    });
+
+    test('collection can remove items from start', () => {
+        const items = collection(['foo', 'bar', 'baz']);
+        mount(
+            testRoot,
+            <div>
+                {items.mapView((item) => (
+                    <span data-item>{item}</span>
+                ))}
+                {items.mapView((item) => (
+                    <span data-item>{item}</span>
+                ))}
+            </div>
+        );
+        assert.is('foobarbazfoobarbaz', testRoot.textContent);
+        items.pop();
+        flush();
+        assert.is('foobarfoobar', testRoot.textContent);
+        items.pop();
+        flush();
+        assert.is('foofoo', testRoot.textContent);
+        items.pop();
+        flush();
+        assert.is('', testRoot.textContent);
+    });
+
+    test('collection can remove items from middle', () => {
+        const items = collection(['foo', 'bar', 'baz', 'bum']);
+        mount(
+            testRoot,
+            <div>
+                {items.mapView((item) => (
+                    <span data-item>{item}</span>
+                ))}
+                {items.mapView((item) => (
+                    <span data-item>{item}</span>
+                ))}
+            </div>
+        );
+        assert.is('foobarbazbumfoobarbazbum', testRoot.textContent);
+        items.splice(1, 1);
+        flush();
+        assert.is('foobazbumfoobazbum', testRoot.textContent);
+        items.splice(1, 1);
+        flush();
+        assert.is('foobumfoobum', testRoot.textContent);
+    });
+
+    test('collection can remove items at end', () => {
+        const items = collection(['foo', 'bar', 'baz']);
+        mount(
+            testRoot,
+            <div>
+                {items.mapView((item) => (
+                    <span data-item>{item}</span>
+                ))}
+                {items.mapView((item) => (
+                    <span data-item>{item}</span>
+                ))}
+            </div>
+        );
+        assert.is('foobarbazfoobarbaz', testRoot.textContent);
+        items.shift();
+        flush();
+        assert.is('barbazbarbaz', testRoot.textContent);
+        items.shift();
+        flush();
+        assert.is('bazbaz', testRoot.textContent);
+        items.shift();
+        flush();
+        assert.is('', testRoot.textContent);
+    });
+
     test('unmodified collection mapView nodes keep references when swapped', () => {
         const items = collection([
             'zero',

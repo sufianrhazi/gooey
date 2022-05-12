@@ -114,6 +114,7 @@ function createTextRenderNode(text: string): RenderNode {
     let isMounted = false;
     return makeRenderNode(
         RenderNodeType.text,
+        DEBUG && { text },
         (callback, context, isAttached) => {
             const mountSelf = () => {
                 log.assert(
@@ -158,25 +159,28 @@ function createTextRenderNode(text: string): RenderNode {
     );
 }
 
+const emptyRenderNode = makeRenderNode(
+    RenderNodeType.empty,
+    DEBUG && {},
+    (callback, context, isAttached) => ({
+        attachSelf: noop,
+        detachSelf: noop,
+        onBeforeAttach: noop,
+        onAfterAttach: noop,
+        onBeforeDetach: noop,
+        onAfterDetach: noop,
+        stop: noop,
+    })
+);
 function createEmptyRenderNode(): RenderNode {
-    return makeRenderNode(
-        RenderNodeType.empty,
-        (callback, context, isAttached) => ({
-            attachSelf: noop,
-            detachSelf: noop,
-            onBeforeAttach: noop,
-            onAfterAttach: noop,
-            onBeforeDetach: noop,
-            onAfterDetach: noop,
-            stop: noop,
-        })
-    );
+    return emptyRenderNode;
 }
 
 function createForeignElementRenderNode(node: Element | Text): RenderNode {
     let isMounted = false;
     return makeRenderNode(
         RenderNodeType.foreignElement,
+        DEBUG && { node },
         (callback, context, isAttached) => {
             const mountSelf = () => {
                 log.assert(
@@ -224,6 +228,7 @@ function createCalculationRenderNode(
 ): RenderNode {
     return makeRenderNode(
         RenderNodeType.calculation,
+        DEBUG && { calculation },
         (callback, context, isAttached) => {
             let renderNode: RenderNode = createEmptyRenderNode();
             let renderNodeLifecycle: RenderNodeLifecycle = renderNode.start(
@@ -310,6 +315,7 @@ function createArrayRenderNode(children: readonly JSXNode[]): RenderNode {
     }
     return makeRenderNode(
         RenderNodeType.array,
+        DEBUG && { array: children },
         (callback, renderContext, isAttached) => {
             type ChildInfoRecord = {
                 renderNode: RenderNode;
@@ -379,7 +385,13 @@ function createArrayRenderNode(children: readonly JSXNode[]): RenderNode {
                     size: 0,
                 };
                 childInfo[childIndex].renderNodeLifecycle = childNode.start(
-                    (event) => childEventHandler(event, childIndex),
+                    (event) => {
+                        const realIndex = childInfo.findIndex(
+                            (i) => i.renderNode === childNode
+                        );
+                        log.assert(realIndex !== -1, 'event on removed child');
+                        childEventHandler(event, realIndex);
+                    },
                     renderContext,
                     isAttached
                 );
@@ -541,6 +553,7 @@ function createIntrinsicRenderNode<TProps>(
 
     return makeRenderNode(
         RenderNodeType.intrinsicElement,
+        DEBUG && { elementType, props, childrenRenderNode },
         (callback, context, isAttached) => {
             if (!renderNodeElement) {
                 const parentXmlNamespace = readContext(
@@ -812,8 +825,11 @@ function createComponentRenderNode(
     const createdCalculations: Calculation<any>[] = [];
     let isInitialized = false;
 
+    const childrenRenderNode = createArrayRenderNode(children);
+
     return makeRenderNode(
         RenderNodeType.component,
+        DEBUG && { Component, props, childrenRenderNode },
         (handler, renderContext, isAttached) => {
             if (!renderNode) {
                 const listeners: ComponentListeners = {
@@ -952,14 +968,15 @@ function createContextRenderNode<TContext>(
     value: TContext,
     children: RenderNode[]
 ) {
-    const childRenderNode = createArrayRenderNode(children);
+    const childrenRenderNode = createArrayRenderNode(children);
 
     return makeRenderNode(
         RenderNodeType.context,
+        DEBUG && { Context, value, childrenRenderNode },
         (handler, context, isAttached) => {
             const subContextMap = new Map(context.contextMap);
             subContextMap.set(Context, value);
-            return childRenderNode.start(
+            return childrenRenderNode.start(
                 handler,
                 {
                     ...context,
@@ -981,13 +998,14 @@ function createLifecycleObserverRenderNode(
     },
     children: RenderNode[]
 ) {
-    const childRenderNode = createArrayRenderNode(children);
+    const childrenRenderNode = createArrayRenderNode(children);
 
     return makeRenderNode(
         RenderNodeType.lifecycleObserver,
+        DEBUG && { nodeCallback, elementCallback, childrenRenderNode },
         (handler, context, isAttached) => {
             const childNodes: Node[] = [];
-            const childLifecycleHandler = childRenderNode.start(
+            const childLifecycleHandler = childrenRenderNode.start(
                 (event) => {
                     switch (event.type) {
                         case 'splice': {
@@ -1216,6 +1234,7 @@ function createCollectionRenderNode(
 ): RenderNode {
     return makeRenderNode(
         RenderNodeType.collection,
+        DEBUG && { collection },
         (callback, renderContext, isAttached) => {
             const collectionNodeOrdering = makeNodeOrdering(
                 DEBUG
@@ -1239,7 +1258,7 @@ function createCollectionRenderNode(
                 return insertionIndex;
             };
 
-            // TODO: consolidate duplication between createArrayRenderNode and createCollectionRenderNode
+            // TODO: consolidate duplication between createArrayRenderNode and createCollectionRenderNode and
             const childEventHandler = (
                 event: RenderEvent,
                 childIndex: number
@@ -1298,7 +1317,16 @@ function createCollectionRenderNode(
                         };
                         childInfo[childIndex].renderNodeLifecycle =
                             childNode.start(
-                                (event) => childEventHandler(event, childIndex),
+                                (event) => {
+                                    const realIndex = childInfo.findIndex(
+                                        (i) => i.renderNode === childNode
+                                    );
+                                    log.assert(
+                                        realIndex !== -1,
+                                        'event on removed child'
+                                    );
+                                    childEventHandler(event, realIndex);
+                                },
                                 renderContext, // TODO: I think the child renderContext needs to be set to have the nodeOrdering to be something else!
                                 isAttached
                             );
@@ -1332,11 +1360,22 @@ function createCollectionRenderNode(
                                     });
                                     childInfo[childIndex].renderNodeLifecycle =
                                         childNode.start(
-                                            (event) =>
+                                            (event) => {
+                                                const realIndex =
+                                                    childInfo.findIndex(
+                                                        (i) =>
+                                                            i.renderNode ===
+                                                            child
+                                                    );
+                                                log.assert(
+                                                    realIndex !== -1,
+                                                    'event on removed child'
+                                                );
                                                 childEventHandler(
                                                     event,
-                                                    childIndex
-                                                ),
+                                                    realIndex
+                                                );
+                                            },
                                             renderContext,
                                             isAttached
                                         );

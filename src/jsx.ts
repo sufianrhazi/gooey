@@ -192,7 +192,8 @@ export type RenderNodeLifecycle = {
 
 export type RenderNode = {
     [RenderNodeTag]: true;
-    type: RenderNodeType;
+    type: string | RenderNodeType;
+    metadata: any;
     start: (
         handler: RenderEventHandler,
         context: RenderContext,
@@ -219,6 +220,7 @@ export enum RenderNodeType {
 
 export function makeRenderNode(
     type: RenderNodeType,
+    metadata: {},
     start: (
         handler: RenderEventHandler,
         context: RenderContext,
@@ -227,7 +229,8 @@ export function makeRenderNode(
 ): RenderNode {
     return {
         [RenderNodeTag]: true,
-        type,
+        type: DEBUG ? RenderNodeType[type] : type,
+        metadata,
         start,
     };
 }
