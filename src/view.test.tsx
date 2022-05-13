@@ -2079,7 +2079,40 @@ suite('rendered node reuse', () => {
         );
     });
 
-    test('a shallow element that is unmounted and then remounted retains the same element reference', () => {
+    test('a shallow element that is unmounted and then remounted holds the same element reference if retained', () => {
+        const references: Element[] = [];
+        const refFunc = (val: Element | undefined) => {
+            if (val) references.push(val);
+        };
+        const state = model({ isMounted: false });
+        const jsx = <p ref={refFunc}>hello, world!</p>;
+        jsx.retain();
+        mount(testRoot, <div>{calc(() => state.isMounted && jsx)}</div>);
+
+        assert.deepEqual([], references);
+
+        state.isMounted = true;
+        flush();
+
+        assert.is(1, references.length);
+        references[0].setAttribute('data-magic', 'it works!');
+
+        state.isMounted = false;
+        flush();
+
+        assert.is(1, references.length);
+        assert.isFalsy(testRoot.contains(references[0]));
+
+        state.isMounted = true;
+        flush();
+
+        assert.is(2, references.length);
+        assert.is(references[0], references[1]);
+        assert.isTruthy(testRoot.contains(references[0]));
+        assert.is('it works!', references[1].getAttribute('data-magic'));
+    });
+
+    test('a shallow element that is unmounted and then remounted renders different element references if not retained', () => {
         const references: Element[] = [];
         const refFunc = (val: Element | undefined) => {
             if (val) references.push(val);
@@ -2106,22 +2139,26 @@ suite('rendered node reuse', () => {
         flush();
 
         assert.is(2, references.length);
-        assert.is(references[0], references[1]);
-        assert.isTruthy(testRoot.contains(references[0]));
-        assert.is('it works!', references[1].getAttribute('data-magic'));
+        assert.isNot(references[0], references[1]);
+        assert.isFalsy(testRoot.contains(references[0]));
+        assert.isTruthy(testRoot.contains(references[1]));
+        assert.isFalsy(references[1].hasAttribute('data-magic'));
     });
 
-    test('a deep element that is unmounted and then remounted retains the same element reference', () => {
+    test('a deep element that is unmounted and then remounted holds the same element reference if retained', () => {
         const references: Element[] = [];
         const refFunc = (val: Element | undefined) => {
             if (val) references.push(val);
         };
         const state = model({ isMounted: false });
         const jsx = (
-            <p ref={refFunc}>
-                <strong>hello</strong>, <em>world</em>!
-            </p>
+            <div id="outer">
+                <p ref={refFunc}>
+                    <strong>hello</strong>, <em>world</em>!
+                </p>
+            </div>
         );
+        jsx.retain();
         mount(testRoot, <div>{calc(() => state.isMounted && jsx)}</div>);
 
         assert.deepEqual([], references);
@@ -2147,6 +2184,45 @@ suite('rendered node reuse', () => {
         assert.is('it works!', references[1].getAttribute('data-magic'));
     });
 
+    test('a deep element that is unmounted and then remounted holds different element references if not retained', () => {
+        const references: Element[] = [];
+        const refFunc = (val: Element | undefined) => {
+            if (val) references.push(val);
+        };
+        const state = model({ isMounted: false });
+        const jsx = (
+            <div id="outer">
+                <p ref={refFunc}>
+                    <strong>hello</strong>, <em>world</em>!
+                </p>
+            </div>
+        );
+        mount(testRoot, <div>{calc(() => state.isMounted && jsx)}</div>);
+
+        assert.deepEqual([], references);
+
+        state.isMounted = true;
+        flush();
+
+        assert.is(1, references.length);
+        references[0].setAttribute('data-magic', 'it works!');
+
+        state.isMounted = false;
+        flush();
+
+        assert.is(1, references.length);
+        assert.isFalsy(testRoot.contains(references[0]));
+
+        state.isMounted = true;
+        flush();
+
+        assert.is(2, references.length);
+        assert.isNot(references[0], references[1]);
+        assert.isFalsy(testRoot.contains(references[0]));
+        assert.isFalsy(testRoot.contains(references[1]));
+        assert.isFalsy(references[1].hasAttribute('data-magic'));
+    });
+
     test('reused jsx can be reparented', () => {
         const references: Element[] = [];
         const refFunc = (val: Element | undefined) => {
@@ -2158,6 +2234,7 @@ suite('rendered node reuse', () => {
                 <strong>hello</strong>, <em>world</em>!
             </span>
         );
+        jsx.retain();
         mount(
             testRoot,
             <div>
@@ -2202,6 +2279,7 @@ suite('rendered node reuse', () => {
                 <strong>hello</strong>, <em>world</em>!
             </span>
         );
+        jsx.retain();
         const leftMount = document.createElement('div');
         const rightMount = document.createElement('div');
 
@@ -2239,6 +2317,41 @@ suite('rendered node reuse', () => {
         assert.is(references[1], references[2]);
         assert.is(leftMount.querySelector('#left'), references[0].parentNode);
         assert.is('it works!', references[2].getAttribute('data-magic'));
+    });
+
+    test('reused jsx can not be placed in two retained jsx nodes simultaneously, even if unmounted', () => {
+        const references: Element[] = [];
+        const refFunc = (val: Element | undefined) => {
+            if (val) references.push(val);
+        };
+        const jsx = (
+            <span ref={refFunc}>
+                <strong>hello</strong>, <em>world</em>!
+            </span>
+        );
+        const left = <div id="left">{jsx}</div>;
+        const right = <div id="right">{jsx}</div>;
+        left.retain();
+        assert.throwsMatching(/Invariant: Element attached twice!.*/, () => {
+            right.retain();
+        });
+    });
+
+    test('reused jsx can be placed in two jsx nodes simultaneously, if only one is retained', () => {
+        const references: Element[] = [];
+        const refFunc = (val: Element | undefined) => {
+            if (val) references.push(val);
+        };
+        const jsx = (
+            <span ref={refFunc}>
+                <strong>hello</strong>, <em>world</em>!
+            </span>
+        );
+        const left = <div id="left">{jsx}</div>;
+        const right = <div id="right">{jsx}</div>;
+        assert.throwsMatching(/Invariant: Element attached twice!.*/, () => {
+            right.retain();
+        });
     });
 });
 
