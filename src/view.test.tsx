@@ -2346,6 +2346,21 @@ if (2 < 1) {
                 </ParentWithNoChildren>
             );
         });
+
+        test('fails when passed one or more nodes', () => {
+            assert.isTruthy(
+                // @ts-expect-error
+                <ParentWithNoChildren>{'hi'}</ParentWithNoChildren>
+            );
+
+            assert.isTruthy(
+                // @ts-expect-error
+                <ParentWithNoChildren>
+                    {'hi'}
+                    {'hi'}
+                </ParentWithNoChildren>
+            );
+        });
     });
 
     suite('parent with one child', () => {
@@ -2374,20 +2389,61 @@ if (2 < 1) {
             );
         });
 
-        /*
-         * TODO: Figure out how to specify the type of a component that accepts only one child
-         */
         test('fails with multiple children', () => {
             assert.isTruthy(
+                // @ts-expect-error
                 <ParentWithExactlyOneChild>
                     <div />
                     <div />
                 </ParentWithExactlyOneChild>
             );
             assert.isTruthy(
+                // @ts-expect-error
                 <ParentWithOptionallyOneChild>
                     <div />
                     <div />
+                </ParentWithOptionallyOneChild>
+            );
+        });
+    });
+
+    suite('parent with one child node', () => {
+        const ParentWithExactlyOneChild: Component<{ children: JSX.Node }> =
+            () => <div />;
+        const ParentWithOptionallyOneChild: Component<{
+            children?: JSX.Node;
+        }> = () => <div />;
+
+        test('exact fails with no children', () => {
+            // @ts-expect-error
+            assert.isTruthy(<ParentWithExactlyOneChild />);
+            assert.isTruthy(<ParentWithOptionallyOneChild />);
+        });
+
+        test('typechecks with one child', () => {
+            assert.isTruthy(
+                <ParentWithExactlyOneChild>{'hi'}</ParentWithExactlyOneChild>
+            );
+            assert.isTruthy(
+                <ParentWithOptionallyOneChild>
+                    {'hi'}
+                </ParentWithOptionallyOneChild>
+            );
+        });
+
+        test('fails with multiple children', () => {
+            assert.isTruthy(
+                // TODO: ts-expect-error does not work here because JSX.Node is a recursive array of JSX.Node
+                <ParentWithExactlyOneChild>
+                    {'hi'}
+                    {'hi'}
+                </ParentWithExactlyOneChild>
+            );
+            assert.isTruthy(
+                // TODO: ts-expect-error does not work here because JSX.Node is a recursive array of JSX.Node
+                <ParentWithOptionallyOneChild>
+                    {'hi'}
+                    {'hi'}
                 </ParentWithOptionallyOneChild>
             );
         });
@@ -2441,6 +2497,54 @@ if (2 < 1) {
         }
     );
 
+    suite(
+        'parent with zero or 2+ children nodes (this is odd and a weird limitation of TypeScript & JSX)',
+        () => {
+            const ParentWithExactlyManyChild: Component<{
+                children: JSX.Node[];
+            }> = () => <div />;
+            const ParentWithOptionallyManyChild: Component<{
+                children?: JSX.Node[];
+            }> = () => <div />;
+
+            test('typechecks fails with no children', () => {
+                // @ts-expect-error
+                assert.isTruthy(<ParentWithExactlyManyChild />);
+                assert.isTruthy(<ParentWithOptionallyManyChild />);
+            });
+
+            test('fails with one child (this is odd!)', () => {
+                assert.isTruthy(
+                    // @ts-expect-error
+                    <ParentWithExactlyManyChild>
+                        {'hi'}
+                    </ParentWithExactlyManyChild>
+                );
+                assert.isTruthy(
+                    <ParentWithOptionallyManyChild>
+                        {/* @ts-expect-error */}
+                        {'hi'}
+                    </ParentWithOptionallyManyChild>
+                );
+            });
+
+            test('typechecks with multiple children', () => {
+                assert.isTruthy(
+                    <ParentWithExactlyManyChild>
+                        {'hi'}
+                        {'hi'}
+                    </ParentWithExactlyManyChild>
+                );
+                assert.isTruthy(
+                    <ParentWithOptionallyManyChild>
+                        {'hi'}
+                        {'hi'}
+                    </ParentWithOptionallyManyChild>
+                );
+            });
+        }
+    );
+
     suite('parent with any number of children', () => {
         const ParentWithOneOrMoreChildren: Component<{
             children: JSX.Element | JSX.Element[];
@@ -2479,6 +2583,49 @@ if (2 < 1) {
                 <ParentWithOptionallyAnyChildren>
                     <div />
                     <div />
+                </ParentWithOptionallyAnyChildren>
+            );
+        });
+    });
+
+    suite('parent with any number of child nodes', () => {
+        const ParentWithOneOrMoreChildren: Component<{
+            children: JSX.Node | JSX.Node[];
+        }> = () => <div />;
+        const ParentWithOptionallyAnyChildren: Component<{
+            children?: JSX.Node | JSX.Node[];
+        }> = () => <div />;
+
+        test('typechecks fails with no children', () => {
+            // @ts-expect-error
+            assert.isTruthy(<ParentWithOneOrMoreChildren />);
+            assert.isTruthy(<ParentWithOptionallyAnyChildren />);
+        });
+
+        test('typechecks with one child (this is odd!)', () => {
+            assert.isTruthy(
+                <ParentWithOneOrMoreChildren>
+                    {'hi'}
+                </ParentWithOneOrMoreChildren>
+            );
+            assert.isTruthy(
+                <ParentWithOptionallyAnyChildren>
+                    {'hi'}
+                </ParentWithOptionallyAnyChildren>
+            );
+        });
+
+        test('typechecks with multiple children', () => {
+            assert.isTruthy(
+                <ParentWithOneOrMoreChildren>
+                    {'hi'}
+                    {'hi'}
+                </ParentWithOneOrMoreChildren>
+            );
+            assert.isTruthy(
+                <ParentWithOptionallyAnyChildren>
+                    {'hi'}
+                    {'hi'}
                 </ParentWithOptionallyAnyChildren>
             );
         });
@@ -2608,7 +2755,52 @@ if (2 < 1) {
             return true;
         }
 
-        test('JSX.Element can receive basic types', () => {
+        test('JSX.Element can only receive rendered jsx', () => {
+            /* @ts-expect-error */
+            assert.isFalsy(receiveJSXElement('strings'));
+            /* @ts-expect-error */
+            assert.isFalsy(receiveJSXElement(123));
+            /* @ts-expect-error */
+            assert.isFalsy(receiveJSXElement(null));
+            /* @ts-expect-error */
+            assert.isFalsy(receiveJSXElement(undefined));
+            /* @ts-expect-error */
+            assert.isFalsy(receiveJSXElement(Symbol('hi')));
+            /* @ts-expect-error */
+            assert.isFalsy(receiveJSXElement((a: number, b: number) => a + b));
+            /* @ts-expect-error */
+            assert.isFalsy(receiveJSXElement(calc(() => 'strings')));
+            /* @ts-expect-error */
+            assert.isFalsy(receiveJSXElement(collection(['strings'])));
+            assert.isFalsy(
+                receiveJSXElement(
+                    /* @ts-expect-error */
+                    collection(['strings']).mapView((item) => item)
+                )
+            );
+            assert.isTruthy(receiveJSXElement(<p>exising jsx</p>));
+
+            function Component() {
+                return <p>cool</p>;
+            }
+            assert.isTruthy(receiveJSXElement(<Component />));
+
+            class MyClass {
+                render() {
+                    return <div>nope</div>;
+                }
+            }
+            /* @ts-expect-error */
+            assert.isFalsy(receiveJSXElement(<MyClass />));
+        });
+    });
+
+    suite('JSX.Node', () => {
+        function receiveJSXElement(jsxElement: JSX.Node) {
+            return true;
+        }
+
+        test('JSX.Node can receive any valid jsx node', () => {
             assert.isTruthy(receiveJSXElement('strings'));
             assert.isTruthy(receiveJSXElement(123));
             assert.isTruthy(receiveJSXElement(null));
@@ -2622,7 +2814,12 @@ if (2 < 1) {
             assert.isTruthy(receiveJSXElement(<Component />));
         });
 
-        test('JSX.Element can receive basic types wrapped in calculations', () => {
+        test('JSX.Node cannot receive arbitrary objects', () => {
+            /* @ts-expect-error */
+            assert.isFalsy(receiveJSXElement({ what: 'ok' }));
+        });
+
+        test('JSX.Node can receive basic types wrapped in calculations', () => {
             assert.isTruthy(receiveJSXElement(calc(() => 'strings')));
             assert.isTruthy(receiveJSXElement(calc(() => 123)));
             assert.isTruthy(receiveJSXElement(calc(() => null)));
@@ -2638,7 +2835,7 @@ if (2 < 1) {
             assert.isTruthy(receiveJSXElement(calc(() => <Component />)));
         });
 
-        test('JSX.Element can receive basic types wrapped in collections', () => {
+        test('JSX.Node can receive basic types wrapped in collections', () => {
             assert.isTruthy(receiveJSXElement(collection(['strings'])));
             assert.isTruthy(receiveJSXElement(collection([123])));
             assert.isTruthy(receiveJSXElement(collection([null])));
@@ -2656,7 +2853,7 @@ if (2 < 1) {
             assert.isTruthy(receiveJSXElement(collection([<Component />])));
         });
 
-        test('JSX.Element can receive basic types wrapped in views', () => {
+        test('JSX.Node can receive basic types wrapped in views', () => {
             assert.isTruthy(
                 receiveJSXElement(
                     collection(['strings']).mapView((item) => item)

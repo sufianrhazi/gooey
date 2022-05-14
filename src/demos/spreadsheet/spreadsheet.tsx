@@ -350,7 +350,7 @@ const Cell: Component<{
                 `cell:${col}:${row}:class`
             )}
         >
-            {calc(() => {
+            {calc<JSX.Node>(() => {
                 const data = table.data;
                 const result = data[positionToKey({ col, row })]();
                 if (result.type === 'error') {

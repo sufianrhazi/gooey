@@ -6,7 +6,7 @@ if (!app) throw new Error('app not found');
 const Result = ({ perfInfo }: { perfInfo: any[] }) => {
     const type = 'perf';
     const record = perfInfo.find((r) => r.type === type);
-    if (record === undefined) return 'Not found';
+    if (record === undefined) return <>Not found</>;
     const values = record.value;
     values.sort((a: number, b: number) => a - b);
     let total = 0;

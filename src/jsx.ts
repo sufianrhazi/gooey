@@ -31,17 +31,38 @@ declare global {
     // eslint-disable-next-line @typescript-eslint/no-namespace
     namespace JSX {
         /**
-         * The core type that can be used as a child or root of a JSX expression
+         * The core type produced by a JSX expression
          */
-        type Element = JSXNode;
+        type Element = RenderNode;
 
+        /**
+         * The core type allowable as a child node in a JSX expression
+         *
+         * Note: this is not used by TypeScript internally and exported for convenience so you may type a component like:
+         *
+         *   const TakesExactlyOneChild: Component<{ children: JSX.Node }> = ({ children }) => (<div>{children}</div>);
+         *
+         */
+        type Node = JSXNode;
+
+        /**
+         * The mapping of element name to intrinsic element path
+         */
         interface IntrinsicElements extends KnownElements {
             [unknownElement: string]: any;
         }
 
+        /**
+         * The object property of children
+         */
         interface ElementChildrenAttribute {
             children: {}; // specify children name to use
         }
+
+        /**
+         * Gooey does not support class components
+         */
+        type ElementClass = never;
     }
 }
 
@@ -66,7 +87,7 @@ const UnusedSymbol = Symbol('unused');
 export type Component<TProps extends {}> = (
     props: TProps & { [UnusedSymbol]?: boolean },
     listeners: ComponentListeners
-) => JSXNode;
+) => JSX.Element | null;
 
 const RenderNodeTag = Symbol('renderNodeTag');
 
@@ -2367,8 +2388,8 @@ type JSXElementInterfaceProps<TJSXType extends JSXElementInterface> = {
 };
 
 type JSXChildrenProps<HasChildren extends boolean> = HasChildren extends true
-    ? { children?: JSX.Element | JSX.Element[] }
-    : { children?: never }; // TODO: this is not correct, leads to confusing errors; figure out why the types are not working as expected here...
+    ? { children?: JSX.Node | JSX.Node[] }
+    : { children?: never };
 
 type WithCalculationsAndRef<
     TJSXType extends JSXElementInterface,

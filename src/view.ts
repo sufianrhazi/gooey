@@ -51,7 +51,7 @@ export const LifecycleObserver = (_props: {
     nodeCallback?: IntrinsicNodeObserverNodeCallback | undefined;
     elementCallback?: IntrinsicNodeObserverElementCallback | undefined;
     children?: JSXNode | JSXNode[];
-}): JSX.Element => {
+}): JSX.Element | null => {
     // Note: this function is never actually called; see createElement
     return null;
 };
