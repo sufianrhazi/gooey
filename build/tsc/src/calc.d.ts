@@ -40,6 +40,7 @@ export declare function removeManualDep(fromNode: GraphNode, toNode: GraphNode):
 export declare function removeOrderingDep(fromNode: GraphNode, toNode: GraphNode): void;
 export declare function markDirty(item: GraphNode): void;
 declare type Listener = () => void;
+export declare function afterFlush(callback: () => void): void;
 export declare function nextFlush(): Promise<void>;
 /**
  * Call provided callback when any pending calculations are created. Use to configure how/when the application flushes calculations.

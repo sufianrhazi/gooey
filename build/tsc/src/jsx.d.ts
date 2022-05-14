@@ -1,26 +1,45 @@
-import { Ref, Calculation, Collection, View, Context, IntrinsicNodeObserverNodeCallback, IntrinsicNodeObserverElementCallback } from './types';
+import { Ref, Calculation, Collection, View, Context, NodeOrdering } from './types';
 /**
  * The core type that can be used as a child or root of a JSX expression
  */
-export declare type JSXNode = string | number | boolean | null | undefined | symbol | Function | Element | RenderedElement<any, any, any> | Calculation<JSXNode> | Collection<JSXNode> | View<JSXNode> | JSXNode[];
+export declare type JSXNode = string | number | boolean | null | undefined | bigint | symbol | Function | Element | RenderNode | Calculation<JSXNode> | Collection<JSXNode> | View<JSXNode> | JSXNode[];
 declare global {
     namespace JSX {
         /**
-         * The core type that can be used as a child or root of a JSX expression
+         * The core type produced by a JSX expression
          */
-        type Element = JSXNode;
+        type Element = RenderNode;
+        /**
+         * The core type allowable as a child node in a JSX expression
+         *
+         * Note: this is not used by TypeScript internally and exported for convenience so you may type a component like:
+         *
+         *   const TakesExactlyOneChild: Component<{ children: JSX.Node }> = ({ children }) => (<div>{children}</div>);
+         *
+         */
+        type Node = JSXNode;
+        /**
+         * The mapping of element name to intrinsic element path
+         */
         interface IntrinsicElements extends KnownElements {
             [unknownElement: string]: any;
         }
+        /**
+         * The object property of children
+         */
         interface ElementChildrenAttribute {
             children: {};
         }
+        /**
+         * Gooey does not support class components
+         */
+        type ElementClass = never;
     }
 }
 declare type OnUnmountCallback = () => void;
 declare type OnMountCallback = () => void;
 declare type EffectCallback = () => void;
-declare type ComponentListeners = {
+export declare type ComponentListeners = {
     onUnmount: (callback: OnUnmountCallback) => void;
     onMount: (callback: OnMountCallback) => void;
     onEffect: (callback: EffectCallback) => void;
@@ -36,61 +55,120 @@ declare type ComponentListeners = {
 declare const UnusedSymbol: unique symbol;
 export declare type Component<TProps extends {}> = (props: TProps & {
     [UnusedSymbol]?: boolean;
-}, listeners: ComponentListeners) => JSXNode;
+}, listeners: ComponentListeners) => JSX.Element | null;
+declare const RenderNodeTag: unique symbol;
+export declare type RenderEvent = {
+    type: 'splice';
+    index: number;
+    count: number;
+    nodes: (Text | Element)[];
+} | {
+    type: 'move';
+    fromIndex: number;
+    count: number;
+    toIndex: number;
+} | {
+    type: 'sort';
+    fromIndex: number;
+    /** Note: indexes are absolute, not relative from fromIndex */
+    indexes: number[];
+};
+export declare type RenderEventHandler = (event: RenderEvent) => void;
+export declare type RenderContext = {
+    nodeOrdering: NodeOrdering;
+    contextMap: Map<Context<any>, any>;
+};
+/**
+ * The RenderNode lifecycle
+ * ========================
+ *
+ * - Each RenderNode starts in the "inert" state, which is initialized
+ *   via the call to the `init` function passed to `createRenderNode(type, metadata, init)`
+ * - When a RenderNode is .retain()ed, its refcount increases; if the refcount is initialized for the first time, it
+ *   creates/populates its persistent state data and becomes "alive" (ready to be attached)
+ * - Intrinsic nodes should create their corresponding DOM nodes in persistent state initialization
+ * - When a RenderNode is .release()d, causing its refcount to go to zero, it destroys its persistent state
+ *   initialization and is "inert"
+ * - It is possible for a RenderNode to transition between "alive" and "inert" multiple times.
+ * - When a RenderNode is .attach(handler, callback)ed, it is "attached" to its parent node. It cannot be attached to
+ *   multiple parent RenderNodes at the same time. When a node is "attached" it is not necessarily mounted to the DOM.
+ * - Attached state is *separate* from mounted state
+ *   - Immediately after a node is mounted, its .afterMount() should be called
+ *   - Immediately before a node is unmounted, its .beforeUnmount() should be called
+ *   - In either of these cases, a node should first call these methods on its children before performing actions.
+ * - When a node becomes "alive" it should call attach() on all of its child nodes; when a node becomes "inert" it should call detach() on all of its child nodes
+ *   - If a node is not mounted and gains responsibility for a child node, it should call childNode.attach()
+ *   - If a node is mounted and releases responsibility for a child node, it should call childNode.beforeUnmount() followed by childNode.detach()
+ *   - If a node is not mounted and releases responsibility for a child node, it should call childNode.detach()
+ * - When a root node is mounted via mount(rootDomNode, rootRenderNode) and then unmounted, the following sequence of calls is performed:
+ *   - On unmount = mount(rootDomNode, rootRenderNode):
+ *     - rootRenderNode.retain()
+ *     - rootRenderNode.attach(eventHandler, context)
+ *     - (any nodes spliced in via the eventHandler are added to rootDomNode)
+ *     - rootRenderNode.afterMount()
+ *   - On unmount();
+ *     - rootRenderNode.beforeUnmount()
+ *     - rootRenderNode.detach(eventHandler, context)
+ *     - rootRenderNode.release()
+ *
+ *
+ *                                   Throw Error
+ *                                 (double attach)
+ *                                        ▲
+ *                 attach()               │- attach()
+ *           ┌─────┐  |               ┌───┴────┐
+ *           │alive├─────────────────►│attached│
+ *           └────┬┘                  └───────┬┘
+ *            ▲   │- release()         ▲      │- detach()
+ *            │   │                    │      │
+ *            │   │                    │      │
+ *            │   │                    │      │
+ *            │   │                    │      │
+ *            │   │                    │      │
+ *            │   │                    │      │
+ *  retain() -│   ▼          attach() -│      ▼
+ *           ┌┴────┐                  ┌┴───────┐
+ *           │inert│◄─────────────────┤detached│
+ *           └─────┘             |    └────┬───┘
+ *              ▲            release()     │- detach()
+ *              │                          ▼
+ *              │                     Throw Error
+ *            start                 (double detach)
+ *
+ */
+interface RenderNodeLifecycle {
+    attach?: (handler: RenderEventHandler, context: RenderContext) => void;
+    detach?: (handler: RenderEventHandler, context: RenderContext) => void;
+    afterMount?: () => void;
+    beforeUnmount?: () => void;
+    destroy?: () => void;
+}
+export declare type RenderNode = {
+    [RenderNodeTag]: true;
+    type: string | RenderNodeType;
+    metadata: any;
+    retain: () => RenderNodeLifecycle;
+    release: () => void;
+    _lifecycle: null | RenderNodeLifecycle;
+};
+export declare function isRenderNode(obj: any): obj is RenderNode;
+export declare enum RenderNodeType {
+    empty = 0,
+    text = 1,
+    foreignElement = 2,
+    calculation = 3,
+    intrinsicElement = 4,
+    array = 5,
+    component = 6,
+    context = 7,
+    lifecycleObserver = 8,
+    collection = 9
+}
+export declare function makeRenderNode(type: RenderNodeType, metadata: {}, init: () => RenderNodeLifecycle): RenderNode;
 /**
  * The type returned by createElement
  */
-export declare type RenderedElement<TProps, TContext, TChildren extends JSXNode> = {
-    type: 'intrinsic';
-    element: string;
-    props: TProps;
-    children: TChildren[];
-} | {
-    type: 'context';
-    context: Context<TContext>;
-    props: {
-        value: TContext;
-    };
-    children: TChildren[];
-} | {
-    type: 'component';
-    component: Component<TProps & {
-        children: TChildren;
-    }>;
-    props: TProps;
-    children: TChildren[];
-} | {
-    type: 'component';
-    component: Component<TProps & {
-        children?: TChildren;
-    }>;
-    props: TProps;
-    children: TChildren[];
-} | {
-    type: 'component';
-    component: Component<TProps & {
-        children: TChildren[];
-    }>;
-    props: TProps;
-    children: TChildren[];
-} | {
-    type: 'component';
-    component: Component<TProps & {
-        children?: TChildren[];
-    }>;
-    props: TProps;
-    children: TChildren[];
-} | {
-    type: 'component';
-    component: Component<TProps>;
-    props: TProps;
-    children: TChildren[];
-} | {
-    type: 'observer';
-    nodeCallback: IntrinsicNodeObserverNodeCallback | undefined;
-    elementCallback: IntrinsicNodeObserverElementCallback | undefined;
-    children: TChildren[];
-};
+export declare type RenderedElement = Text | Element | RenderNode;
 interface MissingFromTypescriptHTMLElementProperties {
     ariaColIndexText?: string | undefined;
     ariaInvalid?: string | undefined;
@@ -940,7 +1018,7 @@ declare type JSXElementInterfaceProps<TJSXType extends JSXElementInterface> = {
     [Key in keyof TJSXType]: (Calculation<any> & (() => TJSXType[Key])) | TJSXType[Key];
 };
 declare type JSXChildrenProps<HasChildren extends boolean> = HasChildren extends true ? {
-    children?: JSX.Element | JSX.Element[];
+    children?: JSX.Node | JSX.Node[];
 } : {
     children?: never;
 };

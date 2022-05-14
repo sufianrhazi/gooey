@@ -1359,9 +1359,18 @@ function markDirty(item) {
   scheduleFlush();
 }
 var needsFlush = false;
+var isFlushing = false;
+var afterFlushCallbacks = /* @__PURE__ */ new Set();
 var flushPromise = Promise.resolve();
 var resolveFlushPromise = noop;
 var subscribeListener = () => setTimeout(() => flush(), 0);
+function afterFlush(callback) {
+  if (isFlushing) {
+    afterFlushCallbacks.add(callback);
+  } else {
+    callback();
+  }
+}
 function nextFlush() {
   if (!needsFlush)
     return Promise.resolve();
@@ -1395,6 +1404,8 @@ function flush() {
     return;
   }
   needsFlush = false;
+  assert(!isFlushing, "Invariant: flush called recursively");
+  isFlushing = true;
   false;
   globalDependencyGraph.process((item, action) => {
     let shouldPropagate = true;
@@ -1437,6 +1448,9 @@ function flush() {
   });
   assert(!globalDependencyGraph.hasDirtyNodes(), "Graph contained dirty nodes post-flush");
   false;
+  afterFlushCallbacks.forEach((callback) => callback());
+  afterFlushCallbacks.clear();
+  isFlushing = false;
   resolveFlushPromise();
 }
 function retain(item) {
@@ -1505,6 +1519,37 @@ function debugSubscribe(callback) {
 
 // src/jsx.ts
 var UnusedSymbol = Symbol("unused");
+var RenderNodeTag = Symbol("renderNodeTag");
+function isRenderNode(obj) {
+  return obj && obj[RenderNodeTag] === true;
+}
+function makeRenderNode(type, metadata, init) {
+  let refcount = 0;
+  const renderNode = {
+    [RenderNodeTag]: true,
+    type: false ? RenderNodeType[type] : type,
+    metadata,
+    retain() {
+      if (refcount === 0) {
+        assert(this._lifecycle === null, "refcount inconsistency on release");
+        this._lifecycle = init();
+      }
+      refcount += 1;
+      return this._lifecycle;
+    },
+    release() {
+      assert(refcount > 0, "refcount double release");
+      refcount -= 1;
+      if (refcount === 0) {
+        assert(this._lifecycle !== null, "refcount inconsistency on release");
+        this._lifecycle.destroy?.();
+        this._lifecycle = null;
+      }
+    },
+    _lifecycle: null
+  };
+  return renderNode;
+}
 function attrBooleanToEmptyString(val) {
   if (!val)
     return void 0;
@@ -2311,278 +2356,308 @@ function getElementTypeMapping(elementName, property) {
   return ElementTypeMapping[elementName]?.[property];
 }
 
-// src/vnode.ts
-function getShallowNodes(vNode) {
-  const nodes = [];
-  function visit(node) {
-    if (node.domNode) {
-      nodes.push(node.domNode);
-    } else {
-      node.children?.forEach((child) => visit(child));
-    }
-  }
-  visit(vNode);
-  return nodes;
-}
-function getDomParentChildIndex(domParent, immediateParent, childIndex) {
-  let realIndex = 0;
-  function visit(node) {
-    if (node.domNode) {
-      realIndex += 1;
-      return false;
-    } else {
-      return visitChildren(node);
-    }
-  }
-  function visitChildren(node) {
-    if (node.children) {
-      const visitIndex = node === immediateParent ? childIndex : node.children.length;
-      for (let i = 0; i < visitIndex; ++i) {
-        if (visit(node.children[i])) {
-          return true;
-        }
-      }
-    }
-    return node === immediateParent;
-  }
-  visitChildren(domParent);
-  return realIndex;
-}
-function callOnMount(node) {
-  node.children?.forEach((child) => callOnMount(child));
-  if (node.onMount) {
-    node.onMount.forEach((onMount) => {
-      try {
-        onMount();
-      } catch (e) {
-        exception(e, "VNode node raised exception in onMount", node);
-      }
-    });
-  }
-}
-function performUnmount(node, shallowDomNodes, runOnUnmount) {
-  if (shallowDomNodes && node.domNode) {
-    shallowDomNodes.push(node.domNode);
-  }
-  node.children?.forEach((child) => {
-    performUnmount(child, node.domNode ? void 0 : shallowDomNodes, runOnUnmount);
-  });
-  if (runOnUnmount && node.onUnmount) {
-    node.onUnmount.forEach((onUnmount) => {
-      try {
-        onUnmount();
-      } catch (e) {
-        exception(e, "VNode node raised exception in onUnmount", node);
-      }
-    });
-  }
-}
-function spliceVNode(immediateParent, childIndex, removeCount, newNodes, { runOnMount = true, runOnUnmount = true } = {}) {
-  assert(immediateParent.children, "attempted to splice a parent node with no children");
-  const domParent = immediateParent.domNode ? immediateParent : immediateParent.domParent;
-  if (childIndex > immediateParent.children.length) {
-    childIndex = immediateParent.children.length;
-  }
-  assert(domParent && domParent.domNode, "tried to replace a root tree slot with missing domParent");
-  const domParentNode = domParent.domNode;
-  const detachedVNodes = immediateParent.children.splice(childIndex, removeCount, ...newNodes);
-  const toRemove = [];
-  detachedVNodes.forEach((detachedVNode) => {
-    performUnmount(detachedVNode, toRemove, runOnUnmount);
-  });
-  if (domParentNode.childNodes.length === toRemove.length) {
-    domParentNode.replaceChildren();
-  } else {
-    toRemove.forEach((child) => domParentNode.removeChild(child));
-  }
-  if (newNodes.length > 0) {
-    const domIndex = getDomParentChildIndex(domParent, immediateParent, childIndex);
-    const referenceNode = domParentNode.childNodes[domIndex];
-    const fragment = document.createDocumentFragment();
-    for (let i = 0; i < newNodes.length; ++i) {
-      const newNode = newNodes[i];
-      newNode.domParent = domParent;
-      const nodesToAdd = getShallowNodes(newNode);
-      nodesToAdd.forEach((addNode) => {
-        fragment.appendChild(addNode);
-      });
-    }
-    domParentNode.insertBefore(fragment, referenceNode || null);
-    if (runOnMount) {
-      newNodes.forEach((newNode) => {
-        if (newNode) {
-          callOnMount(newNode);
-        }
-      });
-    }
-  }
-  return detachedVNodes;
-}
-
 // src/view.ts
 var Fragment = ({ children }) => children;
-var emptyIntrinsicNodeObserverContext = {
-  nodeCallbacks: [],
-  elementCallbacks: []
-};
-var IntrinsicNodeObserverContext = createContext(emptyIntrinsicNodeObserverContext);
 var LifecycleObserver = (_props) => {
   return null;
 };
-function createElement(Constructor, props, ...children) {
-  if (typeof Constructor === "string") {
-    return {
-      type: "intrinsic",
-      element: Constructor,
-      props,
-      children
-    };
+function getExpandedSortIndexes(indexes, childInfo) {
+  const nestedCurrentIndexes = [];
+  let n = 0;
+  for (let i = 0; i < childInfo.length; ++i) {
+    const arr = [];
+    for (let j = 0; j < childInfo[i].size; ++j) {
+      arr.push(n);
+      n += 1;
+    }
+    nestedCurrentIndexes.push(arr);
   }
-  if (isContext(Constructor)) {
-    return {
-      type: "context",
-      context: Constructor,
-      props,
-      children
-    };
+  const nestedSortedIndexes = [];
+  for (let i = 0; i < indexes.length; ++i) {
+    const newIndex = indexes[i];
+    nestedSortedIndexes.push(nestedCurrentIndexes[newIndex]);
   }
-  if (Constructor === LifecycleObserver) {
+  return Array().concat(...nestedSortedIndexes);
+}
+function isCalculationOfJsxNode(obj) {
+  return isCalculation(obj);
+}
+var emptyLifecycle = {};
+function createEmptyRenderNode() {
+  return makeRenderNode(0 /* empty */, false, () => emptyLifecycle);
+}
+function createTextRenderNode(text) {
+  let textNode = null;
+  let isAttached = false;
+  const type = 1 /* text */;
+  return makeRenderNode(type, false, () => {
+    textNode = document.createTextNode(text);
     return {
-      type: "observer",
-      nodeCallback: props.nodeCallback || void 0,
-      elementCallback: props.elementCallback || void 0,
-      children
+      attach: (handler, context) => {
+        assert(textNode, "operation on dead node");
+        assert(!isAttached, `Invariant: RenderNode ${type} double attached`);
+        isAttached = true;
+        handler({
+          type: "splice",
+          index: 0,
+          count: 0,
+          nodes: [textNode]
+        });
+      },
+      detach: (handler, context) => {
+        assert(isAttached, `Invariant: RenderNode ${type} double detached`);
+        isAttached = false;
+        handler({
+          type: "splice",
+          index: 0,
+          count: 1,
+          nodes: []
+        });
+      },
+      destroy: () => {
+        textNode = null;
+        isAttached = false;
+      }
     };
+  });
+}
+function createForeignElementRenderNode(node) {
+  const type = 2 /* foreignElement */;
+  let isAttached = false;
+  return makeRenderNode(type, false, () => {
+    return {
+      attach: (handler, context) => {
+        assert(!isAttached, `Invariant: RenderNode ${type} double attached`);
+        isAttached = true;
+        handler({
+          type: "splice",
+          index: 0,
+          count: 0,
+          nodes: [node]
+        });
+      },
+      detach: (handler, context) => {
+        assert(isAttached, `Invariant: RenderNode ${type} double detached`);
+        isAttached = false;
+        handler({
+          type: "splice",
+          index: 0,
+          count: 1,
+          nodes: []
+        });
+      },
+      destroy: () => {
+        isAttached = false;
+      }
+    };
+  });
+}
+function createCalculationRenderNode(calculation) {
+  const type = 3 /* calculation */;
+  let attachedState = null;
+  let isMounted = false;
+  return makeRenderNode(type, false, () => {
+    let child = null;
+    const maintenanceEffect = effect(() => {
+      const jsxNode = calculation();
+      const newChild = jsxNodeToRenderNode(jsxNode);
+      if (child === newChild)
+        return;
+      newChild.retain();
+      if (child) {
+        if (attachedState) {
+          if (isMounted) {
+            child._lifecycle?.beforeUnmount?.();
+          }
+          child._lifecycle?.detach?.(attachedState.handler, attachedState.context);
+        }
+        child.release();
+        child = null;
+      }
+      afterFlush(() => {
+        if (attachedState) {
+          newChild._lifecycle?.attach?.(attachedState.handler, attachedState.context);
+          if (isMounted) {
+            newChild._lifecycle?.afterMount?.();
+          }
+        }
+        child = newChild;
+      });
+    }, false ? `render:effect->${debugNameFor2(calculation)}` : "render:effect");
+    return {
+      attach: (handler, context) => {
+        assert(attachedState === null, `Invariant: RenderNode ${type} double attached`);
+        attachedState = { handler, context };
+        addOrderingDep(attachedState.context.nodeOrdering, maintenanceEffect);
+        retain(maintenanceEffect);
+        maintenanceEffect();
+      },
+      detach: (handler, context) => {
+        assert(attachedState !== null, `Invariant: RenderNode ${type} double detached`);
+        removeOrderingDep(attachedState.context.nodeOrdering, maintenanceEffect);
+        release(maintenanceEffect);
+        if (child) {
+          if (attachedState) {
+            child._lifecycle?.detach?.(attachedState.handler, attachedState.context);
+          }
+          child.release();
+          child = null;
+        }
+        attachedState = null;
+      },
+      afterMount: () => {
+        isMounted = true;
+        child?._lifecycle?.afterMount?.();
+      },
+      beforeUnmount: () => {
+        child?._lifecycle?.beforeUnmount?.();
+        isMounted = false;
+      },
+      destroy: () => {
+        child?.release();
+        child = null;
+        isMounted = false;
+        attachedState = null;
+      }
+    };
+  });
+}
+function createArrayRenderNode(children) {
+  if (children.length === 0) {
+    return createEmptyRenderNode();
   }
-  return {
-    type: "component",
-    component: Constructor,
-    props,
-    children
+  if (children.length === 1) {
+    return jsxNodeToRenderNode(children[0]);
+  }
+  const type = 5 /* array */;
+  const childRenderNodes = children.map((jsxNode) => jsxNodeToRenderNode(jsxNode));
+  let childInfo = [];
+  let attachedState = null;
+  let isMounted = false;
+  const childEventHandler = (event, childRenderNode) => {
+    assert(attachedState, "Array RenderNode got event when detached");
+    let insertionIndex = 0;
+    let infoRecord = null;
+    for (const info of childInfo) {
+      if (info.renderNode === childRenderNode) {
+        infoRecord = info;
+        break;
+      }
+      insertionIndex += info.size;
+    }
+    assert(infoRecord, "event on removed child");
+    switch (event.type) {
+      case "splice": {
+        attachedState.handler({
+          type: "splice",
+          index: event.index + insertionIndex,
+          count: event.count,
+          nodes: event.nodes
+        });
+        infoRecord.size = infoRecord.size - event.count + event.nodes.length;
+        break;
+      }
+      case "move": {
+        attachedState.handler({
+          type: "move",
+          fromIndex: event.fromIndex + insertionIndex,
+          count: event.count,
+          toIndex: event.toIndex + insertionIndex
+        });
+        break;
+      }
+      case "sort": {
+        attachedState.handler({
+          type: "sort",
+          fromIndex: insertionIndex + event.fromIndex,
+          indexes: event.indexes.map((index) => index + insertionIndex)
+        });
+        break;
+      }
+      default:
+        assertExhausted(event, "unexpected render event");
+    }
   };
-}
-createElement.Fragment = Fragment;
-function setAttributeValue(elementType, element, key, value, boundEvents) {
-  if (key.startsWith("on:") && typeof value === "function") {
-    const eventName = key.slice(3);
-    if (boundEvents[key]) {
-      element.removeEventListener(eventName, boundEvents[key]);
-    }
-    element.addEventListener(eventName, value);
-    boundEvents[key] = value;
-  } else {
-    const attributeNamespace = attributeNamespaceMap[key] || null;
-    const mapping = getElementTypeMapping(elementType, key);
-    if (mapping) {
-      if (mapping.makeAttrValue !== null) {
-        const attributeValue = mapping.makeAttrValue ? mapping.makeAttrValue(value) : value;
-        if (attributeValue === void 0 || attributeValue === null || attributeValue === false) {
-          element.removeAttribute(key);
-        } else if (attributeValue === true) {
-          element.setAttributeNS(attributeNamespace, key, "");
-        } else {
-          element.setAttributeNS(attributeNamespace, key, attributeValue);
+  return makeRenderNode(type, false, () => {
+    childInfo = childRenderNodes.map((renderNode, childIndex) => {
+      renderNode.retain();
+      return {
+        renderNode,
+        handler: (event) => {
+          childEventHandler(event, renderNode);
+        },
+        size: 0
+      };
+    });
+    return {
+      attach: (handler, context) => {
+        assert(attachedState === null, `Invariant: RenderNode ${type} double attached`);
+        attachedState = { handler, context };
+        for (const info of childInfo) {
+          info.renderNode._lifecycle?.attach?.(info.handler, context);
         }
+      },
+      detach: (handler, context) => {
+        assert(attachedState !== null, `Invariant: RenderNode ${type} double detached`);
+        for (const info of childInfo) {
+          info.renderNode._lifecycle?.detach?.(info.handler, context);
+        }
+        attachedState = null;
+      },
+      afterMount: () => {
+        isMounted = true;
+        for (const info of childInfo) {
+          if (isMounted) {
+            info.renderNode._lifecycle?.afterMount?.();
+          }
+        }
+      },
+      beforeUnmount: () => {
+        for (const info of childInfo) {
+          if (isMounted) {
+            info.renderNode._lifecycle?.beforeUnmount?.();
+          }
+        }
+        isMounted = false;
+      },
+      destroy: () => {
+        childRenderNodes.forEach((renderNode) => {
+          renderNode.release();
+        });
+        childInfo = [];
+        isMounted = false;
+        attachedState = null;
       }
-      if (mapping.idlName !== null) {
-        element[mapping.idlName ?? key] = mapping.makeIdlValue ? mapping.makeIdlValue(value) : value;
-      }
-    } else if (value === false || value === void 0 || value === null) {
-      element.removeAttributeNS(attributeNamespace, key);
-    } else if (value === true) {
-      element.setAttributeNS(attributeNamespace, key, "");
-    } else if (typeof value === "string" || typeof value === "number") {
-      element.setAttributeNS(attributeNamespace, key, value.toString());
-    }
-  }
+    };
+  });
 }
-function isCollectionView(thing) {
-  return isCollection(thing);
-}
-function jsxNodeToVNode(jsxNode, domParent, parentOrdering, contextMap, documentFragment) {
-  if (jsxNode === null || jsxNode === void 0 || jsxNode === false || jsxNode === true) {
-    return { domParent };
-  }
-  if (typeof jsxNode === "string") {
-    const domNode = document.createTextNode(jsxNode);
-    documentFragment.appendChild(domNode);
-    const observerCallback = makeObserverCallback(contextMap);
-    return {
-      domNode,
-      domParent,
-      onMount: [
-        () => {
-          observerCallback?.(domNode, "add");
-        }
-      ],
-      onUnmount: [
-        () => {
-          observerCallback?.(domNode, "remove");
-        }
-      ]
-    };
-  }
-  if (typeof jsxNode === "number") {
-    const domNode = document.createTextNode(jsxNode.toString());
-    documentFragment.appendChild(domNode);
-    const observerCallback = makeObserverCallback(contextMap);
-    return {
-      domNode,
-      domParent,
-      onMount: [
-        () => {
-          observerCallback?.(domNode, "add");
-        }
-      ],
-      onUnmount: [
-        () => {
-          observerCallback?.(domNode, "remove");
-        }
-      ]
-    };
-  }
-  if (jsxNode instanceof Element) {
-    documentFragment.appendChild(jsxNode);
-    return {
-      domNode: jsxNode,
-      domParent
-    };
-  }
-  if (isCalculation(jsxNode)) {
-    return makeCalculationVNode(jsxNode, domParent, parentOrdering, contextMap, documentFragment);
-  }
-  if (isCollectionView(jsxNode)) {
-    return makeCollectionVNode(jsxNode, domParent, parentOrdering, contextMap, documentFragment);
-  }
-  if (Array.isArray(jsxNode)) {
-    return {
-      domParent,
-      children: jsxNode.map((child) => jsxNodeToVNode(child, domParent, parentOrdering, contextMap, documentFragment))
-    };
-  }
-  if (typeof jsxNode === "function") {
-    warn("Attempted to render JSX node that was a function, not rendering anything");
-    return { domParent };
-  }
-  if (typeof jsxNode === "symbol") {
+function jsxNodeToRenderNode(child) {
+  if (typeof child === "string") {
+    return createTextRenderNode(child);
+  } else if (typeof child === "number" || typeof child === "bigint") {
+    return createTextRenderNode(child.toString());
+  } else if (typeof child === "boolean" || child === null || child === void 0) {
+    return createEmptyRenderNode();
+  } else if (child instanceof Element || child instanceof Text) {
+    return createForeignElementRenderNode(child);
+  } else if (isCalculationOfJsxNode(child)) {
+    return createCalculationRenderNode(child);
+  } else if (isCollection(child) || isCollectionView(child)) {
+    return createCollectionRenderNode(child);
+  } else if (Array.isArray(child)) {
+    return createArrayRenderNode(child);
+  } else if (isRenderNode(child)) {
+    return child;
+  } else if (typeof child === "symbol") {
     warn("Attempted to render JSX node that was a symbol, not rendering anything");
-    return { domParent };
+    return createEmptyRenderNode();
+  } else if (typeof child === "function") {
+    warn("Attempted to render JSX node that was a function, not rendering anything");
+    return createEmptyRenderNode();
+  } else {
+    assertExhausted(child, "Attempted to render unexpected value", child);
   }
-  return renderElementToVNode(jsxNode, domParent, parentOrdering, contextMap, documentFragment);
-}
-function renderElementToVNode(renderElement, domParent, nodeOrdering, contextMap, documentFragment) {
-  switch (renderElement.type) {
-    case "intrinsic":
-      return makeElementVNode(renderElement.element, renderElement.props, renderElement.children, domParent, nodeOrdering, contextMap, documentFragment);
-    case "context":
-      return makeContextVNode(renderElement.context, renderElement.props.value, renderElement.children, domParent, nodeOrdering, contextMap, documentFragment);
-    case "component":
-      return makeComponentVNode(renderElement.component, renderElement.props, renderElement.children, domParent, nodeOrdering, contextMap, documentFragment);
-    case "observer":
-      return makeObserverVNode(renderElement.nodeCallback, renderElement.elementCallback, renderElement.children, domParent, nodeOrdering, contextMap, documentFragment);
-    default:
-      assertExhausted(renderElement, "Unexpected renderElement type");
-  }
+  return createEmptyRenderNode();
 }
 var HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 var SVG_NAMESPACE = "http://www.w3.org/2000/svg";
@@ -2622,86 +2697,452 @@ var elementNamespaceTransitionMap = {
   }
 };
 var XmlNamespaceContext = createContext(HTML_NAMESPACE);
-function makeElementVNode(elementType, props, children, domParent, nodeOrdering, contextMap, documentFragment) {
-  let subContextMap = contextMap;
-  let elementXMLNamespace = contextMap.has(XmlNamespaceContext) ? contextMap.get(XmlNamespaceContext) : getContext(XmlNamespaceContext);
-  let childElementXMLNamespace = null;
-  const xmlNamespaceTransition = elementNamespaceTransitionMap[elementXMLNamespace]?.[elementType];
-  if (xmlNamespaceTransition) {
-    elementXMLNamespace = xmlNamespaceTransition.node;
-    childElementXMLNamespace = xmlNamespaceTransition.children;
-  }
-  if (childElementXMLNamespace != null) {
-    subContextMap = new Map(contextMap);
-    subContextMap.set(XmlNamespaceContext, childElementXMLNamespace);
-  }
-  const hostObserverContext = readContext(subContextMap, IntrinsicNodeObserverContext);
-  if (hostObserverContext !== emptyIntrinsicNodeObserverContext) {
-    subContextMap = new Map(contextMap);
-    subContextMap.set(IntrinsicNodeObserverContext, emptyIntrinsicNodeObserverContext);
-  }
-  const element = document.createElementNS(elementXMLNamespace, elementType);
+function createIntrinsicRenderNode(elementType, props, children) {
+  const type = 4 /* intrinsicElement */;
+  let renderNodeElement = null;
+  let xmlNamespaceTransition;
   const elementBoundEvents = {};
-  const onReleaseActions = [];
-  let refCallback = void 0;
-  if (props) {
-    Object.entries(props).forEach(([key, value]) => {
-      if (key === "ref") {
-        if (isRef(value)) {
-          value.current = element;
-          return;
-        }
-        if (typeof value === "function" && !isCalculation(value)) {
-          refCallback = value;
-          return;
-        }
-      }
-      if (isCalculation(value)) {
-        const boundEffect = effect(() => {
-          const computedValue = value();
-          setAttributeValue(elementType, element, key, computedValue, elementBoundEvents);
-        }, `viewattr:${key}`);
-        onReleaseActions.push(() => {
-          removeOrderingDep(boundEffect, nodeOrdering);
-          boundEffect.dispose();
-        });
-        addOrderingDep(boundEffect, nodeOrdering);
-        boundEffect();
-      } else {
-        setAttributeValue(elementType, element, key, value, elementBoundEvents);
-      }
-    });
-  }
-  const observerCallback = makeObserverCallback(contextMap);
-  const elementNode = {
-    domParent,
-    domNode: element,
-    onMount: [
-      () => {
-        if (refCallback) {
-          refCallback(element);
-        }
-        observerCallback?.(element, "add");
-      }
-    ],
-    onUnmount: [
-      () => {
-        onReleaseActions.forEach((action) => action());
-        observerCallback?.(element, "remove");
-        if (refCallback) {
-          refCallback(void 0);
-        }
-      }
-    ]
+  const onMountActions = /* @__PURE__ */ new Set();
+  const onUnmountActions = /* @__PURE__ */ new Set();
+  let nodeOrdering = null;
+  const initOrdering = () => {
+    if (!nodeOrdering) {
+      nodeOrdering = makeNodeOrdering("intrinsic:${elementType}:order");
+      registerNode(nodeOrdering);
+    }
   };
-  if (children && children.length > 0) {
-    const childDocumentFragment = document.createDocumentFragment();
-    const childVNodes = children.map((child) => jsxNodeToVNode(child, elementNode, nodeOrdering, subContextMap, childDocumentFragment));
-    elementNode.children = childVNodes;
-    element.appendChild(childDocumentFragment);
+  const boundEffects = [];
+  let isAttached = false;
+  let isMounted = false;
+  const childrenRenderNode = createArrayRenderNode(children);
+  const childEventHandler = (event) => {
+    assert(renderNodeElement, "IntrinsicRenderNode received child event prior to attaching");
+    const element = renderNodeElement;
+    switch (event.type) {
+      case "splice": {
+        for (let i = 0; i < event.count; ++i) {
+          const toRemove = element.childNodes[event.index];
+          element.removeChild(toRemove);
+        }
+        const referenceElement = element.childNodes[event.index];
+        event.nodes.forEach((node) => {
+          element.insertBefore(node, referenceElement);
+        });
+        break;
+      }
+      case "move": {
+        const removed = [];
+        for (let i = 0; i < event.count; ++i) {
+          const toRemove = element.childNodes[event.fromIndex];
+          removed.push(toRemove);
+          element.removeChild(toRemove);
+        }
+        const referenceNode = element.childNodes[event.toIndex];
+        removed.forEach((node) => {
+          element.insertBefore(node, referenceNode);
+        });
+        break;
+      }
+      case "sort": {
+        const toReorder = [];
+        for (const sortedIndex of event.indexes) {
+          toReorder.push(element.childNodes[sortedIndex]);
+        }
+        toReorder.forEach((node) => element.removeChild(node));
+        const referenceNode = element.childNodes[event.fromIndex];
+        for (const node of toReorder) {
+          element.insertBefore(node, referenceNode);
+        }
+        break;
+      }
+      default:
+        assertExhausted(event, "unexpected render event");
+    }
+  };
+  return makeRenderNode(type, false, () => {
+    const lifecycle = childrenRenderNode.retain();
+    return {
+      attach: (handler, context) => {
+        assert(!isAttached, `Invariant: RenderNode ${type} double attached`);
+        isAttached = true;
+        if (!renderNodeElement) {
+          const parentXmlNamespace = readContext(context.contextMap, XmlNamespaceContext);
+          xmlNamespaceTransition = elementNamespaceTransitionMap[parentXmlNamespace]?.[elementType];
+          const elementXMLNamespace = elementNamespaceTransitionMap[parentXmlNamespace]?.[elementType]?.node ?? readContext(context.contextMap, XmlNamespaceContext);
+          renderNodeElement = document.createElementNS(elementXMLNamespace, elementType);
+          const createdElement = renderNodeElement;
+          Object.entries(props || {}).forEach(([key, value]) => {
+            if (key === "ref") {
+              if (isRef(value)) {
+                value.current = createdElement;
+                return;
+              }
+              if (typeof value === "function" && !isCalculation(value)) {
+                onMountActions.add(() => value(createdElement));
+                onUnmountActions.add(() => value(void 0));
+                return;
+              }
+            }
+            if (isCalculation(value)) {
+              const boundEffect = effect(() => {
+                const computedValue = value();
+                setAttributeValue(elementType, createdElement, key, computedValue, elementBoundEvents);
+              }, `viewattr:${key}`);
+              boundEffects.push(boundEffect);
+              initOrdering();
+            } else {
+              setAttributeValue(elementType, createdElement, key, value, elementBoundEvents);
+            }
+          });
+          let subContext = context;
+          if (nodeOrdering) {
+            subContext = {
+              ...context,
+              nodeOrdering
+            };
+          }
+          if (xmlNamespaceTransition) {
+            const subContextMap = new Map(context.contextMap);
+            subContextMap.set(XmlNamespaceContext, xmlNamespaceTransition.children);
+            subContext = {
+              ...context,
+              contextMap: subContextMap
+            };
+          }
+          if (nodeOrdering) {
+            addOrderingDep(nodeOrdering, context.nodeOrdering);
+            for (const boundEffect of boundEffects) {
+              addOrderingDep(boundEffect, nodeOrdering);
+              boundEffect();
+            }
+          }
+          lifecycle.attach?.(childEventHandler, subContext);
+        }
+        handler({
+          type: "splice",
+          index: 0,
+          count: 0,
+          nodes: [renderNodeElement]
+        });
+        if (isMounted) {
+          lifecycle.afterMount?.();
+        }
+      },
+      detach: (handler, context) => {
+        assert(isAttached, `Invariant: RenderNode ${type} double detached`);
+        isAttached = false;
+        if (nodeOrdering) {
+          for (const boundEffect of boundEffects) {
+            removeOrderingDep(boundEffect, nodeOrdering);
+          }
+          removeOrderingDep(nodeOrdering, context.nodeOrdering);
+        }
+        handler({
+          type: "splice",
+          index: 0,
+          count: 1,
+          nodes: []
+        });
+      },
+      afterMount: () => {
+        isMounted = true;
+        lifecycle.afterMount?.();
+        onMountActions.forEach((action) => action());
+      },
+      beforeUnmount: () => {
+        lifecycle.beforeUnmount?.();
+        onUnmountActions.forEach((action) => action());
+        isMounted = false;
+      },
+      destroy: () => {
+        childrenRenderNode.release();
+        renderNodeElement = null;
+        onMountActions.clear();
+        onUnmountActions.clear();
+        isAttached = false;
+        isMounted = false;
+      }
+    };
+  });
+}
+function createComponentRenderNode(Component2, props, children) {
+  const type = 6 /* component */;
+  const mountHandlers = /* @__PURE__ */ new Set();
+  const unmountHandlers = /* @__PURE__ */ new Set();
+  const createdEffects = [];
+  const createdCalculations2 = [];
+  let isInitialized = false;
+  let componentRenderNode = null;
+  let isMounted = false;
+  return makeRenderNode(type, false, () => {
+    return {
+      attach: (handler, context) => {
+        if (!componentRenderNode) {
+          const listeners = {
+            onMount: (handler2) => {
+              assert(!isInitialized, "Component cannot call onMount after render");
+              mountHandlers.add(handler2);
+            },
+            onUnmount: (handler2) => {
+              assert(!isInitialized, "Component cannot call onUnmount after render");
+              unmountHandlers.add(handler2);
+            },
+            onEffect: (effectCallback, debugName) => {
+              assert(!isInitialized, "Component cannot call onEffect after render");
+              const effectCalc = effect(effectCallback, `componenteffect:${Component2.name}:${debugName ?? "?"}`);
+              createdEffects.push(effectCalc);
+            },
+            getContext: (targetContext) => {
+              return readContext(context.contextMap, targetContext);
+            }
+          };
+          const propsObj = props || {};
+          let propsWithChildren;
+          if (children.length === 0) {
+            propsWithChildren = propsObj;
+          } else if (children.length === 1) {
+            propsWithChildren = {
+              ...propsObj,
+              children: children[0]
+            };
+          } else {
+            propsWithChildren = { ...propsObj, children };
+          }
+          componentRenderNode = untracked(() => {
+            let jsxNode = null;
+            createdCalculations2.push(...trackCreatedCalculations(() => {
+              jsxNode = Component2(propsWithChildren, listeners);
+            }));
+            return jsxNodeToRenderNode(jsxNode);
+          });
+          isInitialized = true;
+          componentRenderNode.retain();
+        }
+        createdEffects.forEach((eff) => {
+          addOrderingDep(context.nodeOrdering, eff);
+          retain(eff);
+          eff();
+        });
+        createdCalculations2.forEach((calculation) => {
+          retain(calculation);
+          calculation();
+        });
+        componentRenderNode._lifecycle?.attach?.(handler, context);
+        if (isMounted) {
+          mountHandlers.forEach((handler2) => handler2());
+        }
+      },
+      detach: (handler, context) => {
+        componentRenderNode?._lifecycle?.detach?.(handler, context);
+        createdEffects.forEach((eff) => {
+          removeOrderingDep(context.nodeOrdering, eff);
+          release(eff);
+        });
+        createdCalculations2.forEach((calculation) => {
+          release(calculation);
+        });
+      },
+      afterMount: () => {
+        isMounted = true;
+        componentRenderNode?._lifecycle?.afterMount?.();
+        mountHandlers.forEach((handler) => handler());
+      },
+      beforeUnmount: () => {
+        componentRenderNode?._lifecycle?.beforeUnmount?.();
+        unmountHandlers.forEach((handler) => handler());
+        isMounted = false;
+      },
+      destroy: () => {
+        mountHandlers.clear();
+        unmountHandlers.clear();
+        createdEffects.splice(0, createdEffects.length);
+        createdCalculations2.splice(0, createdEffects.length);
+        isInitialized = false;
+        componentRenderNode?.release();
+        componentRenderNode = null;
+        isMounted = false;
+      }
+    };
+  });
+}
+function createContextRenderNode(Context2, value, children) {
+  const childrenRenderNode = createArrayRenderNode(children);
+  const type = 7 /* context */;
+  return makeRenderNode(type, false, () => {
+    const lifecycle = childrenRenderNode.retain();
+    let subContext = null;
+    return {
+      attach: (handler, context) => {
+        const contextMap = new Map(context.contextMap);
+        contextMap.set(Context2, value);
+        subContext = { ...context, contextMap };
+        childrenRenderNode._lifecycle?.attach?.(handler, subContext);
+      },
+      detach: (handler, context) => {
+        assert(subContext, `RenderNode ${type} detach without attach?`);
+        childrenRenderNode._lifecycle?.detach?.(handler, subContext);
+        subContext = null;
+      },
+      destroy: () => {
+        childrenRenderNode.release();
+      },
+      afterMount: lifecycle.afterMount,
+      beforeUnmount: lifecycle.beforeUnmount
+    };
+  });
+}
+function createLifecycleObserverRenderNode({
+  nodeCallback,
+  elementCallback
+}, children) {
+  const type = 8 /* lifecycleObserver */;
+  let attachedState = null;
+  const childrenRenderNode = createArrayRenderNode(children);
+  let isMounted = false;
+  return makeRenderNode(type, false, () => {
+    const lifecycle = childrenRenderNode.retain();
+    let childNodes = [];
+    const childLifecycleHandler = (event) => {
+      assert(attachedState, "LifecycleObserver RenderNode got event when detached");
+      switch (event.type) {
+        case "splice": {
+          const removed = childNodes.splice(event.index, event.count, ...event.nodes);
+          if (isMounted) {
+            removed.forEach((node) => {
+              nodeCallback?.(node, "remove");
+              if (node instanceof Element) {
+                elementCallback?.(node, "remove");
+              }
+            });
+          }
+          attachedState.handler(event);
+          if (isMounted) {
+            event.nodes.forEach((node) => {
+              nodeCallback?.(node, "add");
+              if (node instanceof Element) {
+                elementCallback?.(node, "add");
+              }
+            });
+          }
+          break;
+        }
+        case "move": {
+          const removed = childNodes.splice(event.fromIndex, event.count);
+          let adjustedToIndex;
+          if (event.toIndex > event.fromIndex + event.count) {
+            adjustedToIndex = event.toIndex - event.count;
+          } else if (event.toIndex > event.fromIndex) {
+            adjustedToIndex = event.fromIndex;
+          } else {
+            adjustedToIndex = event.toIndex;
+          }
+          childNodes.splice(adjustedToIndex, 0, ...removed);
+          attachedState.handler(event);
+          break;
+        }
+        case "sort": {
+          const sortedSlice = Array(event.indexes.length);
+          for (let i = 0; i < event.indexes.length; ++i) {
+            sortedSlice[i] = childNodes[event.indexes[i]];
+          }
+          childNodes.splice(event.fromIndex, event.indexes.length, ...sortedSlice);
+          attachedState.handler(event);
+          break;
+        }
+        default:
+          assertExhausted(event, "LifecycleObserver RenderNode got unexpected event");
+      }
+    };
+    return {
+      attach: (handler, context) => {
+        assert(attachedState === null, `Invariant: RenderNode ${type} double attached`);
+        attachedState = { handler, context };
+        lifecycle.attach?.(childLifecycleHandler, context);
+      },
+      detach: (handler, context) => {
+        assert(attachedState !== null, `Invariant: RenderNode ${type} double detached`);
+        lifecycle.detach?.(childLifecycleHandler, context);
+        assert(childNodes.length === 0, "LifecycleObserver had leftover nodes after detach");
+        attachedState = null;
+      },
+      afterMount: () => {
+        isMounted = true;
+        lifecycle.afterMount?.();
+        childNodes.forEach((node) => {
+          nodeCallback?.(node, "add");
+          if (node instanceof Element) {
+            elementCallback?.(node, "add");
+          }
+        });
+      },
+      beforeUnmount: () => {
+        lifecycle.beforeUnmount?.();
+        isMounted = false;
+        childNodes.forEach((node) => {
+          nodeCallback?.(node, "remove");
+          if (node instanceof Element) {
+            elementCallback?.(node, "remove");
+          }
+        });
+      },
+      destroy: () => {
+        childNodes = [];
+        attachedState = null;
+        childrenRenderNode.release();
+        isMounted = false;
+      }
+    };
+  });
+}
+function createElement(Constructor, props, ...children) {
+  if (typeof Constructor === "string") {
+    return createIntrinsicRenderNode(Constructor, props, children.map((child) => jsxNodeToRenderNode(child)));
   }
-  documentFragment.appendChild(element);
-  return elementNode;
+  if (isContext(Constructor)) {
+    return createContextRenderNode(Constructor, props.value, children.map((child) => jsxNodeToRenderNode(child)));
+  }
+  if (Constructor === LifecycleObserver) {
+    return createLifecycleObserverRenderNode(props, children.map((child) => jsxNodeToRenderNode(child)));
+  }
+  return createComponentRenderNode(Constructor, props, children);
+}
+createElement.Fragment = Fragment;
+function setAttributeValue(elementType, element, key, value, boundEvents) {
+  if (key.startsWith("on:") && typeof value === "function") {
+    const eventName = key.slice(3);
+    if (boundEvents[key]) {
+      element.removeEventListener(eventName, boundEvents[key]);
+    }
+    element.addEventListener(eventName, value);
+    boundEvents[key] = value;
+  } else {
+    const attributeNamespace = attributeNamespaceMap[key] || null;
+    const mapping = getElementTypeMapping(elementType, key);
+    if (mapping) {
+      if (mapping.makeAttrValue !== null) {
+        const attributeValue = mapping.makeAttrValue ? mapping.makeAttrValue(value) : value;
+        if (attributeValue === void 0 || attributeValue === null || attributeValue === false) {
+          element.removeAttribute(key);
+        } else if (attributeValue === true) {
+          element.setAttributeNS(attributeNamespace, key, "");
+        } else {
+          element.setAttributeNS(attributeNamespace, key, attributeValue);
+        }
+      }
+      if (mapping.idlName !== null) {
+        element[mapping.idlName ?? key] = mapping.makeIdlValue ? mapping.makeIdlValue(value) : value;
+      }
+    } else if (value === false || value === void 0 || value === null) {
+      element.removeAttributeNS(attributeNamespace, key);
+    } else if (value === true) {
+      element.setAttributeNS(attributeNamespace, key, "");
+    } else if (typeof value === "string" || typeof value === "number") {
+      element.setAttributeNS(attributeNamespace, key, value.toString());
+    }
+  }
+}
+function isCollectionView(thing) {
+  return isCollection(thing);
 }
 function readContext(contextMap, context) {
   if (contextMap.has(context)) {
@@ -2709,186 +3150,193 @@ function readContext(contextMap, context) {
   }
   return getContext(context);
 }
-function makeContextVNode(context, value, children, domParent, nodeOrdering, contextMap, documentFragment) {
-  const subContextMap = new Map(contextMap);
-  subContextMap.set(context, value);
-  const providerNode = {
-    domParent
-  };
-  if (children) {
-    providerNode.children = children.map((jsxChild) => jsxNodeToVNode(jsxChild, domParent, nodeOrdering, subContextMap, documentFragment));
-  }
-  return providerNode;
-}
-function makeObserverVNode(nodeCallback, elementCallback, children, domParent, nodeOrdering, contextMap, documentFragment) {
-  const intrinsicNodeContextValue = readContext(contextMap, IntrinsicNodeObserverContext);
-  let subContextMap = contextMap;
-  if (nodeCallback || elementCallback) {
-    const newContextValue = {
-      nodeCallbacks: intrinsicNodeContextValue.nodeCallbacks.slice(),
-      elementCallbacks: intrinsicNodeContextValue.elementCallbacks.slice()
+function createCollectionRenderNode(collection2) {
+  const type = 9 /* collection */;
+  let attachedState = null;
+  let isMounted = false;
+  return makeRenderNode(type, false, () => {
+    const collectionNodeOrdering = makeNodeOrdering(false ? `viewcoll:${debugNameFor2(collection2) ?? "node"}:order` : "viewcoll:order");
+    registerNode(collectionNodeOrdering);
+    let childInfo = [];
+    const childEventHandler = (event, childNode) => {
+      assert(attachedState, "Collection RenderNode got event when detached");
+      let insertionIndex = 0;
+      let infoRecord = null;
+      for (const info of childInfo) {
+        if (info.renderNode === childNode) {
+          infoRecord = info;
+          break;
+        }
+        insertionIndex += info.size;
+      }
+      assert(infoRecord, "Collection RenderNode got event for unknown node");
+      switch (event.type) {
+        case "splice": {
+          attachedState.handler({
+            type: "splice",
+            index: event.index + insertionIndex,
+            count: event.count,
+            nodes: event.nodes
+          });
+          infoRecord.size = infoRecord.size - event.count + event.nodes.length;
+          break;
+        }
+        case "move": {
+          attachedState.handler({
+            type: "move",
+            fromIndex: event.fromIndex + insertionIndex,
+            count: event.count,
+            toIndex: event.toIndex + insertionIndex
+          });
+          break;
+        }
+        case "sort": {
+          attachedState.handler({
+            type: "sort",
+            fromIndex: insertionIndex + event.fromIndex,
+            indexes: event.indexes.map((index) => index + insertionIndex)
+          });
+          break;
+        }
+        default:
+          assertExhausted(event, "unexpected render event");
+      }
     };
-    if (nodeCallback) {
-      newContextValue.nodeCallbacks.push(nodeCallback);
-    }
-    if (elementCallback) {
-      newContextValue.elementCallbacks.push(elementCallback);
-    }
-    subContextMap = new Map(contextMap);
-    subContextMap.set(IntrinsicNodeObserverContext, newContextValue);
-  }
-  const providerNode = {
-    domParent
-  };
-  if (children) {
-    providerNode.children = children.map((jsxChild) => jsxNodeToVNode(jsxChild, domParent, nodeOrdering, subContextMap, documentFragment));
-  }
-  return providerNode;
-}
-function makeComponentVNode(Component2, props, children, domParent, nodeOrdering, contextMap, documentFragment) {
-  const onUnmount = [];
-  const onMount = [];
-  let jsxNode;
-  const createdCalculations2 = trackCreatedCalculations(() => {
-    jsxNode = Component2(!children || children.length === 0 ? { ...props } : children.length === 1 ? { ...props, children: children[0] } : {
-      ...props,
-      children
-    }, {
-      onUnmount: (unmountCallback) => {
-        onUnmount.push(unmountCallback);
-      },
-      onMount: (mountCallback) => {
-        onMount.push(mountCallback);
-      },
-      onEffect: (effectCallback, debugName) => {
-        const effectCalc = effect(effectCallback, `componenteffect:${Component2.name}:${debugName ?? "?"}`);
-        onMount.push(() => {
-          retain(effectCalc);
-          addOrderingDep(nodeOrdering, effectCalc);
-          effectCalc();
-        });
-        onUnmount.push(() => {
-          removeOrderingDep(nodeOrdering, effectCalc);
-          release(effectCalc);
-          effectCalc.dispose();
-        });
-      },
-      getContext: (context) => {
-        return readContext(contextMap, context);
-      }
-    });
-  });
-  onUnmount.push(() => {
-    createdCalculations2.forEach((calculation) => {
-      calculation.dispose();
-    });
-  });
-  const childVNode = jsxNodeToVNode(jsxNode, domParent, nodeOrdering, contextMap, documentFragment);
-  const componentNode = {
-    domParent,
-    children: [childVNode],
-    onMount,
-    onUnmount
-  };
-  return componentNode;
-}
-function makeObserverCallback(contextMap) {
-  const intrinsicNodeObserverContext = readContext(contextMap, IntrinsicNodeObserverContext);
-  if (intrinsicNodeObserverContext === emptyIntrinsicNodeObserverContext) {
-    return null;
-  }
-  return (node, event) => {
-    intrinsicNodeObserverContext.nodeCallbacks.forEach((nodeCallback) => nodeCallback(node, event));
-    intrinsicNodeObserverContext.elementCallbacks.forEach((elementCallback) => {
-      if (node instanceof Element) {
-        elementCallback(node, event);
-      }
-    });
-  };
-}
-function makeCalculationVNode(calculation, domParent, parentNodeOrdering, contextMap, documentFragment) {
-  const onUnmount = [];
-  const calculationNodeChildren = [];
-  const calculationNode = {
-    domParent,
-    children: calculationNodeChildren,
-    onUnmount
-  };
-  const calculationNodeOrdering = makeNodeOrdering(false ? `viewcalc:${debugNameFor(calculation) ?? "node"}:order` : "viewcalc:order");
-  registerNode(calculationNodeOrdering);
-  let firstRun = true;
-  const resultEffect = effect(() => {
-    const renderElement = calculation();
-    const calculationChild = jsxNodeToVNode(renderElement, domParent, calculationNodeOrdering, contextMap, documentFragment);
-    if (firstRun) {
-      firstRun = false;
-      calculationNodeChildren.push(calculationChild);
-    } else {
-      untracked(() => {
-        spliceVNode(calculationNode, 0, calculationNodeChildren.length, [calculationChild]);
-      });
-    }
-  }, `viewcalc:${debugNameFor(calculation) ?? "node"}`);
-  addOrderingDep(calculationNodeOrdering, parentNodeOrdering);
-  addOrderingDep(resultEffect, calculationNodeOrdering);
-  onUnmount.push(() => {
-    removeOrderingDep(calculationNodeOrdering, parentNodeOrdering);
-    removeOrderingDep(resultEffect, calculationNodeOrdering);
-    resultEffect.dispose();
-    disposeNode(calculationNodeOrdering);
-  });
-  resultEffect();
-  return calculationNode;
-}
-function makeCollectionVNode(collection2, domParent, parentNodeOrdering, contextMap, documentFragment) {
-  const onUnmount = [];
-  const collectionNodeChildren = [];
-  const collectionNode = {
-    domParent,
-    children: collectionNodeChildren,
-    onUnmount
-  };
-  const collectionNodeOrdering = makeNodeOrdering(false ? `viewcoll:${debugNameFor(collection2) ?? "node"}:order` : "viewcoll:order");
-  registerNode(collectionNodeOrdering);
-  addOrderingDep(collectionNodeOrdering, parentNodeOrdering);
-  onUnmount.push(() => {
-    removeOrderingDep(collectionNodeOrdering, parentNodeOrdering);
-  });
-  untracked(() => {
-    collectionNode.children.push(...collection2.map((jsxChild) => jsxNodeToVNode(jsxChild, domParent, collectionNodeOrdering, contextMap, documentFragment)));
-  });
-  const unobserve = collection2[ObserveKey]((events) => {
-    events.forEach((event) => {
-      if (event.type === "splice") {
+    const subscriptionNode = collection2[GetSubscriptionNodeKey]();
+    registerNode(subscriptionNode);
+    let unobserve = null;
+    return {
+      attach: (handler, context) => {
+        assert(attachedState === null, `Invariant: RenderNode ${type} double attached`);
+        attachedState = { handler, context };
+        addOrderingDep(subscriptionNode, collectionNodeOrdering);
+        addOrderingDep(collectionNodeOrdering, context.nodeOrdering);
         untracked(() => {
-          const { count, index, items } = event;
-          const childNodes = items.map((jsxChild) => jsxNodeToVNode(jsxChild, domParent, collectionNodeOrdering, contextMap, documentFragment));
-          spliceVNode(collectionNode, index, count, childNodes);
+          childInfo = collection2.map((child, childIndex) => {
+            const childNode = jsxNodeToRenderNode(child);
+            return {
+              renderNode: childNode,
+              handler: (event) => childEventHandler(event, childNode),
+              size: 0
+            };
+          });
+          childInfo.forEach((infoRecord) => {
+            infoRecord.renderNode.retain();
+            infoRecord.renderNode._lifecycle?.attach?.(infoRecord.handler, context);
+            if (isMounted) {
+              infoRecord.renderNode._lifecycle?.afterMount?.();
+            }
+          });
         });
-      } else if (event.type === "move") {
-        const { fromIndex, fromCount, toIndex } = event;
-        const moved = spliceVNode(collectionNode, fromIndex, fromCount, [], { runOnUnmount: false });
-        spliceVNode(collectionNode, fromIndex < toIndex ? toIndex - fromCount : toIndex, 0, moved, { runOnMount: false });
-      } else if (event.type === "sort") {
-        const { indexes } = event;
-        const removedVNodes = spliceVNode(collectionNode, 0, indexes.length, [], { runOnUnmount: false });
-        const sortedVNodes = indexes.map((newIndex) => removedVNodes[newIndex]);
-        spliceVNode(collectionNode, 0, 0, sortedVNodes, {
-          runOnMount: false
+        unobserve = collection2[ObserveKey]((events) => {
+          events.forEach((event) => {
+            if (event.type === "splice") {
+              untracked(() => {
+                const { count, index, items } = event;
+                for (let i = index; i < index + count; ++i) {
+                  const infoRecord = childInfo[i];
+                  if (isMounted) {
+                    infoRecord.renderNode._lifecycle?.beforeUnmount?.();
+                  }
+                  infoRecord.renderNode._lifecycle?.detach?.(infoRecord.handler, context);
+                  infoRecord.renderNode.release();
+                }
+                const newInfo = items.map((child, itemIndex) => {
+                  const childNode = jsxNodeToRenderNode(child);
+                  return {
+                    renderNode: childNode,
+                    handler: (event2) => childEventHandler(event2, childNode),
+                    size: 0
+                  };
+                });
+                childInfo.splice(index, count, ...newInfo);
+                newInfo.forEach((infoRecord) => {
+                  infoRecord.renderNode.retain();
+                  infoRecord.renderNode._lifecycle?.attach?.(infoRecord.handler, context);
+                  if (isMounted) {
+                    infoRecord.renderNode._lifecycle?.afterMount?.();
+                  }
+                });
+              });
+            } else if (event.type === "move") {
+              const { fromIndex, fromCount, toIndex } = event;
+              let realFromIndex = 0;
+              for (let i = 0; i < fromIndex; ++i) {
+                realFromIndex += childInfo[i].size;
+              }
+              let size = 0;
+              for (let i = fromIndex; i < fromIndex + fromCount; ++i) {
+                size += childInfo[i].size;
+              }
+              const removed = childInfo.splice(fromIndex, fromCount);
+              let adjustedToIndex;
+              if (toIndex > fromIndex + fromCount) {
+                adjustedToIndex = toIndex - fromCount;
+              } else if (toIndex > fromIndex) {
+                adjustedToIndex = fromIndex;
+              } else {
+                adjustedToIndex = toIndex;
+              }
+              let realToIndex = 0;
+              for (let i = 0; i < adjustedToIndex; ++i) {
+                realToIndex += childInfo[i].size;
+              }
+              childInfo.splice(adjustedToIndex, 0, ...removed);
+              handler({
+                type: "move",
+                fromIndex: realFromIndex,
+                count: size,
+                toIndex: realToIndex
+              });
+            } else if (event.type === "sort") {
+              const { indexes } = event;
+              const realIndexes = getExpandedSortIndexes(indexes, childInfo);
+              const oldChildInfo = childInfo;
+              childInfo = Array(oldChildInfo.length);
+              for (let i = 0; i < indexes.length; ++i) {
+                childInfo[i] = oldChildInfo[indexes[i]];
+              }
+              handler({
+                type: "sort",
+                fromIndex: 0,
+                indexes: realIndexes
+              });
+            } else {
+              assertExhausted(event, "unhandled collection event");
+            }
+          });
         });
-      } else {
-        assertExhausted(event, "unhandled collection event");
+      },
+      detach: (handler, context) => {
+        assert(attachedState !== null, `Invariant: RenderNode ${type} double detached`);
+        removeOrderingDep(collectionNodeOrdering, context.nodeOrdering);
+        removeOrderingDep(subscriptionNode, collectionNodeOrdering);
+        unobserve?.();
+        childInfo.forEach((infoRecord) => {
+          if (isMounted) {
+            infoRecord.renderNode._lifecycle?.beforeUnmount?.();
+          }
+          infoRecord.renderNode._lifecycle?.detach?.(infoRecord.handler, context);
+          infoRecord.renderNode.release();
+        });
+        childInfo = [];
+        attachedState = null;
+      },
+      afterMount: () => {
+        isMounted = true;
+        childInfo.forEach((info) => info.renderNode._lifecycle?.afterMount?.());
+      },
+      beforeUnmount: () => {
+        childInfo.forEach((info) => info.renderNode._lifecycle?.beforeUnmount?.());
+        isMounted = false;
+      },
+      destroy: () => {
+        childInfo.forEach((info) => info.renderNode.release());
+        childInfo = [];
+        attachedState = null;
       }
-    });
+    };
   });
-  const subscriptionNode = collection2[GetSubscriptionNodeKey]();
-  registerNode(subscriptionNode);
-  addOrderingDep(subscriptionNode, collectionNodeOrdering);
-  onUnmount.push(unobserve);
-  onUnmount.push(() => {
-    removeOrderingDep(subscriptionNode, collectionNodeOrdering);
-  });
-  return collectionNode;
 }
 function makeNodeOrdering(debugName) {
   const nodeOrdering = {
@@ -2900,21 +3348,88 @@ function makeNodeOrdering(debugName) {
   return nodeOrdering;
 }
 function mount(parentElement, jsxNode) {
-  const contextMap = /* @__PURE__ */ new Map();
-  if (parentElement.namespaceURI === SVG_NAMESPACE || parentElement.namespaceURI === MATHML_NAMESPACE) {
-    contextMap.set(XmlNamespaceContext, parentElement.namespaceURI);
+  if (jsxNode instanceof Text || jsxNode instanceof Element) {
+    parentElement.appendChild(jsxNode);
+    return () => {
+      parentElement.removeChild(jsxNode);
+    };
   }
-  const nodeOrdering = makeNodeOrdering("mount");
+  let mountNode = document.createDocumentFragment();
+  let insertionIndex = 0;
+  const contextMap = /* @__PURE__ */ new Map();
+  const nodeOrdering = makeNodeOrdering("root:mount");
+  registerNode(nodeOrdering);
   retain(nodeOrdering);
-  const anchorNode = { domNode: parentElement };
-  const documentFragment = document.createDocumentFragment();
-  const rootNode = jsxNodeToVNode(jsxNode, anchorNode, nodeOrdering, contextMap, documentFragment);
-  anchorNode.children = [rootNode];
-  parentElement.appendChild(documentFragment);
-  callOnMount(anchorNode);
+  const nodes = /* @__PURE__ */ new Set();
+  const renderEventHandler = (event) => {
+    switch (event.type) {
+      case "splice": {
+        const modificationIndex = insertionIndex + event.index;
+        for (let i = 0; i < event.count; ++i) {
+          const toRemove = mountNode.childNodes[modificationIndex];
+          if (toRemove instanceof Text || toRemove instanceof Element) {
+            if (nodes.has(toRemove)) {
+              nodes.delete(toRemove);
+            } else {
+              warn("Root mount inconsistency error, removed a child it did not create", toRemove);
+            }
+          } else {
+            warn("Root mount removed unexpected node", toRemove);
+          }
+          mountNode.removeChild(toRemove);
+        }
+        const referenceElement = mountNode.childNodes[modificationIndex];
+        event.nodes.forEach((node, i) => {
+          mountNode.insertBefore(node, referenceElement);
+          nodes.add(node);
+        });
+        break;
+      }
+      case "move": {
+        const removed = [];
+        for (let i = 0; i < event.count; ++i) {
+          const toRemove = mountNode.childNodes[event.fromIndex];
+          removed.push(toRemove);
+          mountNode.removeChild(toRemove);
+        }
+        const referenceNode = mountNode.childNodes[event.toIndex];
+        removed.forEach((node) => {
+          mountNode.insertBefore(node, referenceNode);
+        });
+        break;
+      }
+      case "sort": {
+        const removed = [];
+        for (let i = event.fromIndex; i < event.indexes.length; ++i) {
+          const toRemove = mountNode.childNodes[event.fromIndex];
+          removed.push(toRemove);
+          mountNode.removeChild(toRemove);
+        }
+        const referenceNode = mountNode.childNodes[event.fromIndex];
+        event.indexes.forEach((newIndex) => {
+          mountNode.insertBefore(removed[newIndex], referenceNode);
+        });
+        break;
+      }
+      default:
+        assertExhausted(event, "unexpected render event");
+    }
+  };
+  const subContext = { contextMap, nodeOrdering };
+  const renderNode = jsxNodeToRenderNode(jsxNode);
+  const lifecycle = renderNode.retain();
+  lifecycle.attach?.(renderEventHandler, subContext);
+  insertionIndex = parentElement.childNodes.length;
+  parentElement.appendChild(mountNode);
+  mountNode = parentElement;
+  lifecycle.afterMount?.();
   return () => {
-    spliceVNode(anchorNode, 0, anchorNode.children?.length ?? 0, []);
-    release(nodeOrdering);
+    lifecycle.beforeUnmount?.();
+    lifecycle.detach?.(renderEventHandler, subContext);
+    renderNode.release();
+    if (nodes.size > 0) {
+      error("Internal consistency error: nodes remain after unmounting!", nodes);
+    }
   };
 }
 
