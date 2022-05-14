@@ -702,7 +702,7 @@ suite('mount components', () => {
                 <div id="right">{children}</div>
             </div>
         );
-        assert.throwsMatching(/Invariant: Element rendered twice!.*/, () =>
+        assert.throwsMatching(/Invariant: RenderNode \d+ double attached/, () =>
             mount(
                 testRoot,
                 <BadComponent>
@@ -2068,7 +2068,7 @@ suite('LifecycleObserver component', () => {
 suite('rendered node reuse', () => {
     test('element cannot be rendered multiple times', () => {
         const jsx = <p>hello there</p>;
-        assert.throwsMatching(/Invariant: Element rendered twice!.*/, () =>
+        assert.throwsMatching(/Invariant: RenderNode \d+ double attached/, () =>
             mount(
                 testRoot,
                 <div>
@@ -2219,7 +2219,7 @@ suite('rendered node reuse', () => {
         assert.is(2, references.length);
         assert.isNot(references[0], references[1]);
         assert.isFalsy(testRoot.contains(references[0]));
-        assert.isFalsy(testRoot.contains(references[1]));
+        assert.isTruthy(testRoot.contains(references[1]));
         assert.isFalsy(references[1].hasAttribute('data-magic'));
     });
 
@@ -2317,41 +2317,6 @@ suite('rendered node reuse', () => {
         assert.is(references[1], references[2]);
         assert.is(leftMount.querySelector('#left'), references[0].parentNode);
         assert.is('it works!', references[2].getAttribute('data-magic'));
-    });
-
-    test('reused jsx can not be placed in two retained jsx nodes simultaneously, even if unmounted', () => {
-        const references: Element[] = [];
-        const refFunc = (val: Element | undefined) => {
-            if (val) references.push(val);
-        };
-        const jsx = (
-            <span ref={refFunc}>
-                <strong>hello</strong>, <em>world</em>!
-            </span>
-        );
-        const left = <div id="left">{jsx}</div>;
-        const right = <div id="right">{jsx}</div>;
-        left.retain();
-        assert.throwsMatching(/Invariant: Element attached twice!.*/, () => {
-            right.retain();
-        });
-    });
-
-    test('reused jsx can be placed in two jsx nodes simultaneously, if only one is retained', () => {
-        const references: Element[] = [];
-        const refFunc = (val: Element | undefined) => {
-            if (val) references.push(val);
-        };
-        const jsx = (
-            <span ref={refFunc}>
-                <strong>hello</strong>, <em>world</em>!
-            </span>
-        );
-        const left = <div id="left">{jsx}</div>;
-        const right = <div id="right">{jsx}</div>;
-        assert.throwsMatching(/Invariant: Element attached twice!.*/, () => {
-            right.retain();
-        });
     });
 });
 

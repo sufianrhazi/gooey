@@ -6,6 +6,7 @@ import {
     Context,
     NodeOrdering,
 } from './types';
+import * as log from './log';
 
 /**
  * The core type that can be used as a child or root of a JSX expression
@@ -108,97 +109,77 @@ export type RenderContext = {
  * The RenderNode lifecycle
  * ========================
  *
- * - Each RenderNode is created exactly once (via .start()), where it calls its event handler to add any "permanent" DOM
- *   nodes to the parent. It is not mounted at this point.
- * - Each RenderNode may mounted via:
- *   - .attach():
- *     - call child .onBeforeMount()
- *     - call the event handler to add any detached DOM nodes
- *     - call child .onAfterMount()
- *   - .detach()
- *     - call child .onBeforeUnmount()
- *     - call the event handler to detach any DOM nodes to the parent
- *     - call child .onBeforeUnmount()
- * - It is possible for a RenderNode to be .start()ed and then .stop()ped without being .attach()ed or .detach()ed
- * - It is possible for a RenderNode to be .attach()ed and .detach()ed multiple times
- * - After .stop() is called, the RenderNode is inert and will not be interacted with again; it should release any
- *   resources which would cause it to be retained
- * - Note (1): If a node controls the lifecycle of another child node (like a calculation nodes, etc...) decides that a
- *   child node should be discarded and the controlling node is mounted, it MUST call .detachSelf() on that node (which
- *   calls the onBeforeDetach() and onAfterDetach() methods for the subtree) first prior to calling .stop()
- *   That is to say: every RenderNode should assume they are in the detached state when .stop() is called.
+ * - Each RenderNode starts in the "inert" state, which is initialized
+ *   via the call to the `init` function passed to `createRenderNode(type, metadata, init)`
+ * - When a RenderNode is .retain()ed, its refcount increases; if the refcount is initialized for the first time, it
+ *   creates/populates its persistent state data and becomes "alive" (ready to be attached)
+ * - Intrinsic nodes should create their corresponding DOM nodes in persistent state initialization
+ * - When a RenderNode is .release()d, causing its refcount to go to zero, it destroys its persistent state
+ *   initialization and is "inert"
+ * - It is possible for a RenderNode to transition between "alive" and "inert" multiple times.
+ * - When a RenderNode is .attach(handler, callback)ed, it is "attached" to its parent node. It cannot be attached to
+ *   multiple parent RenderNodes at the same time. When a node is "attached" it is not necessarily mounted to the DOM.
+ * - Attached state is *separate* from mounted state
+ *   - Immediately after a node is mounted, its .afterMount() should be called
+ *   - Immediately before a node is unmounted, its .beforeUnmount() should be called
+ *   - In either of these cases, a node should first call these methods on its children before performing actions.
+ * - When a node becomes "alive" it should call attach() on all of its child nodes; when a node becomes "inert" it should call detach() on all of its child nodes
+ *   - If a node is not mounted and gains responsibility for a child node, it should call childNode.attach()
+ *   - If a node is mounted and releases responsibility for a child node, it should call childNode.beforeUnmount() followed by childNode.detach()
+ *   - If a node is not mounted and releases responsibility for a child node, it should call childNode.detach()
+ * - When a root node is mounted via mount(rootDomNode, rootRenderNode) and then unmounted, the following sequence of calls is performed:
+ *   - On unmount = mount(rootDomNode, rootRenderNode):
+ *     - rootRenderNode.retain()
+ *     - rootRenderNode.attach(eventHandler, context)
+ *     - (any nodes spliced in via the eventHandler are added to rootDomNode)
+ *     - rootRenderNode.afterMount()
+ *   - On unmount();
+ *     - rootRenderNode.beforeUnmount()
+ *     - rootRenderNode.detach(eventHandler, context)
+ *     - rootRenderNode.release()
  *
  *
- * ───┐
- *    │- .start()
- *    │
- *    ▼
- * ┌─────┐
- * │alive├───────────────────────┐
- * └──┬──┘                       │
- *    │- .stop()                 │- attachSelf()
- *    │                          │
- *    │                          ▼
- *    │                     ┌────────┐
- *    │         ┌───────────┤attached├────────────┐
- *    │         │           └────────┘            │
- *    ▼         │- Note (1)      ▲                │
- * ┌─────┐      │- .stop()       │                │
- * │     │◄─────┘                │- .attachSelf() │- .detachSelf()
- * │inert│                       │                │
- * │     │◄─────┐                │                │
- * └──┬──┘      │- .stop()  ┌────┴───┐            │
- *    │         └───────────┤detached│◄───────────┘
- * ◄──┘                     └────────┘
+ *                                   Throw Error
+ *                                 (double attach)
+ *                                        ▲
+ *                 attach()               │- attach()
+ *           ┌─────┐  |               ┌───┴────┐
+ *           │alive├─────────────────►│attached│
+ *           └────┬┘                  └───────┬┘
+ *            ▲   │- release()         ▲      │- detach()
+ *            │   │                    │      │
+ *            │   │                    │      │
+ *            │   │                    │      │
+ *            │   │                    │      │
+ *            │   │                    │      │
+ *            │   │                    │      │
+ *  retain() -│   ▼          attach() -│      ▼
+ *           ┌┴────┐                  ┌┴───────┐
+ *           │inert│◄─────────────────┤detached│
+ *           └─────┘             |    └────┬───┘
+ *              ▲            release()     │- detach()
+ *              │                          ▼
+ *              │                     Throw Error
+ *            start                 (double detach)
+ *
  */
-export type RenderNodeLifecycle = {
-    /**
-     * Called exactly once to destroy any retained resources
-     */
-    stop: () => void;
 
-    /**
-     * Called when the RenderNode should temporarily add itself
-     * If the node does not manage any nodes, it should delegate to its child(ren)
-     */
-    attachSelf: () => void;
-
-    /**
-     * Called when the RenderNode should temporarily remove itself
-     * If the node does not manage any nodes, it should delegate to its child(ren)
-     */
-    detachSelf: () => void;
-
-    /**
-     * Called immediately before the RenderNode is attached
-     */
-    onBeforeAttach: () => void;
-
-    /**
-     * Called immediately after the RenderNode is attached
-     */
-    onAfterAttach: () => void;
-
-    /**
-     * Called immediately before the RenderNode is detached
-     */
-    onBeforeDetach: () => void;
-
-    /**
-     * Called immediately after the RenderNode is detached
-     */
-    onAfterDetach: () => void;
-};
+interface RenderNodeLifecycle {
+    attach?: (handler: RenderEventHandler, context: RenderContext) => void;
+    detach?: (handler: RenderEventHandler, context: RenderContext) => void;
+    afterMount?: () => void;
+    beforeUnmount?: () => void;
+    destroy?: () => void;
+}
 
 export type RenderNode = {
     [RenderNodeTag]: true;
     type: string | RenderNodeType;
     metadata: any;
-    start: (
-        handler: RenderEventHandler,
-        context: RenderContext,
-        isAttached: boolean
-    ) => RenderNodeLifecycle;
+    retain: () => RenderNodeLifecycle;
+    release: () => void;
+
+    _lifecycle: null | RenderNodeLifecycle;
 };
 
 export function isRenderNode(obj: any): obj is RenderNode {
@@ -221,18 +202,40 @@ export enum RenderNodeType {
 export function makeRenderNode(
     type: RenderNodeType,
     metadata: {},
-    start: (
-        handler: RenderEventHandler,
-        context: RenderContext,
-        isAttached: boolean
-    ) => RenderNodeLifecycle
+    init: () => RenderNodeLifecycle
 ): RenderNode {
-    return {
+    let refcount = 0;
+    const renderNode: RenderNode = {
         [RenderNodeTag]: true,
         type: DEBUG ? RenderNodeType[type] : type,
         metadata,
-        start,
+        retain() {
+            if (refcount === 0) {
+                log.assert(
+                    this._lifecycle === null,
+                    'refcount inconsistency on release'
+                );
+                this._lifecycle = init();
+            }
+            refcount += 1;
+            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- guaranteed to exist
+            return this._lifecycle!;
+        },
+        release() {
+            log.assert(refcount > 0, 'refcount double release');
+            refcount -= 1;
+            if (refcount === 0) {
+                log.assert(
+                    this._lifecycle !== null,
+                    'refcount inconsistency on release'
+                );
+                this._lifecycle.destroy?.();
+                this._lifecycle = null;
+            }
+        },
+        _lifecycle: null,
     };
+    return renderNode;
 }
 
 /**

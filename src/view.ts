@@ -6,7 +6,7 @@ import {
     addOrderingDep,
     removeOrderingDep,
     registerNode,
-    disposeNode,
+    disposeNode, // TODO: dispose nodes!
     trackCreatedCalculations,
     afterFlush,
 } from './calc';
@@ -29,7 +29,6 @@ import {
     IntrinsicNodeObserverNodeCallback,
     IntrinsicNodeObserverElementCallback,
 } from './types';
-import { noop } from './util';
 import * as log from './log';
 import { uniqueid } from './util';
 import {
@@ -37,9 +36,9 @@ import {
     ComponentListeners,
     JSXNode,
     RenderNode,
-    RenderNodeLifecycle,
     RenderEvent,
     RenderEventHandler,
+    RenderContext,
     RenderNodeType,
     makeRenderNode,
     isRenderNode,
@@ -109,201 +108,214 @@ function isCalculationOfJsxNode(obj: any): obj is Calculation<JSXNode> {
     return isCalculation(obj);
 }
 
-function createTextRenderNode(text: string): RenderNode {
-    const textNode = document.createTextNode(text);
-    let isMounted = false;
+const emptyLifecycle = {};
+function createEmptyRenderNode(): RenderNode {
     return makeRenderNode(
-        RenderNodeType.text,
-        DEBUG && { text },
-        (callback, context, isAttached) => {
-            const mountSelf = () => {
+        RenderNodeType.empty,
+        DEBUG && {},
+        () => emptyLifecycle
+    );
+}
+
+function createTextRenderNode(text: string): RenderNode {
+    let textNode: null | Text = null;
+    let isAttached = false;
+    const type = RenderNodeType.text;
+
+    return makeRenderNode(type, DEBUG && { text }, () => {
+        textNode = document.createTextNode(text);
+        return {
+            attach: (handler, context) => {
+                log.assert(textNode, 'operation on dead node');
                 log.assert(
-                    !isMounted,
-                    'Invariant: Text rendered twice! Did you write a component that renders children multiple times?'
+                    !isAttached,
+                    `Invariant: RenderNode ${type} double attached`
                 );
-                callback({
+                isAttached = true;
+                handler({
                     type: 'splice',
                     index: 0,
                     count: 0,
                     nodes: [textNode],
                 });
-                isMounted = true;
-            };
-            const unmountSelf = () => {
+            },
+            detach: (handler, context) => {
                 log.assert(
-                    isMounted,
-                    'Invariant: Text unmounted twice! Did you write a component that renders children multiple times?'
+                    isAttached,
+                    `Invariant: RenderNode ${type} double detached`
                 );
-                callback({
+                isAttached = false;
+                handler({
                     type: 'splice',
                     index: 0,
                     count: 1,
                     nodes: [],
                 });
-                isMounted = false;
-            };
-            mountSelf();
-
-            return {
-                attachSelf: mountSelf,
-                detachSelf: unmountSelf,
-                onBeforeAttach: noop,
-                onAfterAttach: noop,
-                onBeforeDetach: noop,
-                onAfterDetach: noop,
-                stop: () => {
-                    isMounted = false;
-                },
-            };
-        }
-    );
-}
-
-const emptyRenderNode = makeRenderNode(
-    RenderNodeType.empty,
-    DEBUG && {},
-    (callback, context, isAttached) => ({
-        attachSelf: noop,
-        detachSelf: noop,
-        onBeforeAttach: noop,
-        onAfterAttach: noop,
-        onBeforeDetach: noop,
-        onAfterDetach: noop,
-        stop: noop,
-    })
-);
-function createEmptyRenderNode(): RenderNode {
-    return emptyRenderNode;
+            },
+            destroy: () => {
+                textNode = null;
+                isAttached = false;
+            },
+        };
+    });
 }
 
 function createForeignElementRenderNode(node: Element | Text): RenderNode {
-    let isMounted = false;
-    return makeRenderNode(
-        RenderNodeType.foreignElement,
-        DEBUG && { node },
-        (callback, context, isAttached) => {
-            const mountSelf = () => {
+    const type = RenderNodeType.foreignElement;
+    let isAttached = false;
+    return makeRenderNode(type, DEBUG && { node }, () => {
+        return {
+            attach: (handler, context) => {
                 log.assert(
-                    !isMounted,
-                    'Invariant: Foreign element rendered twice! Did you write a component that renders children multiple times?'
+                    !isAttached,
+                    `Invariant: RenderNode ${type} double attached`
                 );
-                callback({
+                isAttached = true;
+                handler({
                     type: 'splice',
                     index: 0,
                     count: 0,
                     nodes: [node],
                 });
-                isMounted = true;
-            };
-            const unmountSelf = () => {
+            },
+            detach: (handler, context) => {
                 log.assert(
-                    isMounted,
-                    'Invariant: Foreign element unmounted twice! Did you write a component that renders children multiple times?'
+                    isAttached,
+                    `Invariant: RenderNode ${type} double detached`
                 );
-                callback({
+                isAttached = false;
+                handler({
                     type: 'splice',
                     index: 0,
                     count: 1,
                     nodes: [],
                 });
-                isMounted = false;
-            };
-            mountSelf();
-
-            return {
-                attachSelf: mountSelf,
-                detachSelf: unmountSelf,
-                onBeforeAttach: noop,
-                onAfterAttach: noop,
-                onBeforeDetach: noop,
-                onAfterDetach: noop,
-                stop: noop,
-            };
-        }
-    );
+            },
+            destroy: () => {
+                isAttached = false;
+            },
+        };
+    });
 }
 
 function createCalculationRenderNode(
     calculation: Calculation<JSXNode>
 ): RenderNode {
-    return makeRenderNode(
-        RenderNodeType.calculation,
-        DEBUG && { calculation },
-        (callback, context, isAttached) => {
-            let renderNode: RenderNode = createEmptyRenderNode();
-            let renderNodeLifecycle: RenderNodeLifecycle = renderNode.start(
-                callback,
-                context,
-                isAttached
-            );
+    const type = RenderNodeType.calculation;
+    let attachedState: null | {
+        handler: RenderEventHandler;
+        context: RenderContext;
+    } = null;
+    let isMounted = false;
+    return makeRenderNode(type, DEBUG && { calculation }, () => {
+        let child: null | RenderNode = null;
 
-            const maintenanceEffect = effect(() => {
+        const maintenanceEffect = effect(
+            () => {
                 const jsxNode = calculation();
 
-                // Destroy prior result
-                if (isAttached) {
-                    renderNodeLifecycle.detachSelf();
+                const newChild = jsxNodeToRenderNode(jsxNode);
+
+                // It's possible that the calculation has returned the same node; no need to detach/destroy/retain/remount
+                if (child === newChild) return;
+
+                // Hold onto the new child so it isn't destroyed/recreated if it is being moved
+                newChild.retain();
+
+                // Relinquish old child
+                if (child) {
+                    if (attachedState) {
+                        if (isMounted) {
+                            child._lifecycle?.beforeUnmount?.();
+                        }
+                        child._lifecycle?.detach?.(
+                            attachedState.handler,
+                            attachedState.context
+                        );
+                    }
+                    child.release();
+                    child = null;
                 }
-                renderNodeLifecycle.stop(); // oh shit! we could destroy something that is reused!
 
+                // Gain responsibility for new child after flush, so that it may be relinquished elsewhere
                 afterFlush(() => {
-                    // Initialize new result
-                    renderNode = jsxNodeToRenderNode(jsxNode);
-                    renderNodeLifecycle = renderNode.start(
-                        callback,
-                        context,
-                        isAttached
-                    );
+                    // Attach new child
+                    if (attachedState) {
+                        newChild._lifecycle?.attach?.(
+                            attachedState.handler,
+                            attachedState.context
+                        );
+                        if (isMounted) {
+                            newChild._lifecycle?.afterMount?.();
+                        }
+                    }
+                    child = newChild;
                 });
-            }, 'calceffect');
+            },
+            DEBUG
+                ? `render:effect->${debugNameFor(calculation)}`
+                : 'render:effect'
+        );
 
-            const connectEffect = () => {
-                addOrderingDep(context.nodeOrdering, maintenanceEffect);
+        return {
+            attach: (handler, context) => {
+                log.assert(
+                    attachedState === null,
+                    `Invariant: RenderNode ${type} double attached`
+                );
+                attachedState = { handler, context };
+
+                addOrderingDep(
+                    attachedState.context.nodeOrdering,
+                    maintenanceEffect
+                );
                 retain(maintenanceEffect);
                 maintenanceEffect();
-            };
-            const disconnectEffect = () => {
-                removeOrderingDep(context.nodeOrdering, maintenanceEffect);
+            },
+            detach: (handler, context) => {
+                log.assert(
+                    attachedState !== null,
+                    `Invariant: RenderNode ${type} double detached`
+                );
+
+                removeOrderingDep(
+                    attachedState.context.nodeOrdering,
+                    maintenanceEffect
+                );
                 release(maintenanceEffect);
-            };
+                // TODO: Do I need to do this? Probably
+                //   maintenanceEffect[CalculationInvalidateTag]();
 
-            if (isAttached) {
-                connectEffect();
-            }
+                // Detach prior result
+                if (child) {
+                    if (attachedState) {
+                        child._lifecycle?.detach?.(
+                            attachedState.handler,
+                            attachedState.context
+                        );
+                    }
+                    child.release();
+                    child = null;
+                }
 
-            return {
-                stop: () => {
-                    renderNodeLifecycle.stop();
-                },
-                onBeforeAttach: () => {
-                    connectEffect();
-                    renderNodeLifecycle.onBeforeAttach();
-                    isAttached = true;
-                },
-                attachSelf: () => {
-                    connectEffect();
-                    renderNodeLifecycle.attachSelf();
-                    isAttached = true;
-                },
-                onAfterAttach: () => {
-                    renderNodeLifecycle.onAfterAttach();
-                },
-                onBeforeDetach: () => {
-                    renderNodeLifecycle.onBeforeDetach();
-                },
-                detachSelf: () => {
-                    renderNodeLifecycle.detachSelf();
-                    isAttached = false;
-                    disconnectEffect();
-                },
-                onAfterDetach: () => {
-                    isAttached = false;
-                    renderNodeLifecycle.onAfterDetach();
-                    disconnectEffect();
-                },
-            };
-        }
-    );
+                attachedState = null;
+            },
+            afterMount: () => {
+                isMounted = true;
+                child?._lifecycle?.afterMount?.();
+            },
+            beforeUnmount: () => {
+                child?._lifecycle?.beforeUnmount?.();
+                isMounted = false;
+            },
+            destroy: () => {
+                child?.release();
+                child = null;
+                isMounted = false;
+                attachedState = null;
+            },
+        };
+    });
 }
 
 function createArrayRenderNode(children: readonly JSXNode[]): RenderNode {
@@ -313,130 +325,140 @@ function createArrayRenderNode(children: readonly JSXNode[]): RenderNode {
     if (children.length === 1) {
         return jsxNodeToRenderNode(children[0]);
     }
-    return makeRenderNode(
-        RenderNodeType.array,
-        DEBUG && { array: children },
-        (callback, renderContext, isAttached) => {
-            type ChildInfoRecord = {
-                renderNode: RenderNode;
-                renderNodeLifecycle: RenderNodeLifecycle | null;
-                size: number;
-            };
-            const childInfo: ChildInfoRecord[] = [];
 
-            const getInsertionIndex = (childIndex: number) => {
-                let insertionIndex = 0;
-                for (let i = 0; i < childIndex; ++i) {
-                    insertionIndex += childInfo[i].size;
-                }
-                return insertionIndex;
-            };
+    const type = RenderNodeType.array;
 
-            // TODO: consolidate duplication between createArrayRenderNode and createCollectionRenderNode
-            const childEventHandler = (
-                event: RenderEvent,
-                childIndex: number
-            ) => {
-                switch (event.type) {
-                    case 'splice': {
-                        const insertionIndex = getInsertionIndex(childIndex);
-                        callback({
-                            type: 'splice',
-                            index: event.index + insertionIndex,
-                            count: event.count,
-                            nodes: event.nodes,
-                        });
-                        childInfo[childIndex].size =
-                            childInfo[childIndex].size -
-                            event.count +
-                            event.nodes.length;
-                        break;
-                    }
-                    case 'move': {
-                        const insertionIndex = getInsertionIndex(childIndex);
-                        callback({
-                            type: 'move',
-                            fromIndex: event.fromIndex + insertionIndex,
-                            count: event.count,
-                            toIndex: event.toIndex + insertionIndex,
-                        });
-                        break;
-                    }
-                    case 'sort': {
-                        const insertionIndex = getInsertionIndex(childIndex);
-                        callback({
-                            type: 'sort',
-                            fromIndex: insertionIndex + event.fromIndex,
-                            indexes: event.indexes.map(
-                                (index) => index + insertionIndex
-                            ),
-                        });
-                        break;
-                    }
-                    default:
-                        log.assertExhausted(event, 'unexpected render event');
-                }
-            };
-            children.forEach((child, childIndex) => {
-                const childNode = jsxNodeToRenderNode(child);
-                childInfo[childIndex] = {
-                    renderNode: childNode,
-                    renderNodeLifecycle: null,
-                    size: 0,
-                };
-                childInfo[childIndex].renderNodeLifecycle = childNode.start(
-                    (event) => {
-                        const realIndex = childInfo.findIndex(
-                            (i) => i.renderNode === childNode
-                        );
-                        log.assert(realIndex !== -1, 'event on removed child');
-                        childEventHandler(event, realIndex);
-                    },
-                    renderContext,
-                    isAttached
-                );
-            });
+    type ChildInfoRecord = {
+        renderNode: RenderNode;
+        handler: RenderEventHandler;
+        size: number;
+    };
+
+    const childRenderNodes = children.map((jsxNode) =>
+        jsxNodeToRenderNode(jsxNode)
+    );
+
+    let childInfo: ChildInfoRecord[] = [];
+
+    let attachedState: null | {
+        handler: RenderEventHandler;
+        context: RenderContext;
+    } = null;
+    let isMounted = false;
+
+    const childEventHandler = (
+        event: RenderEvent,
+        childRenderNode: RenderNode
+    ) => {
+        log.assert(attachedState, 'Array RenderNode got event when detached');
+        let insertionIndex = 0;
+        let infoRecord: null | ChildInfoRecord = null;
+        for (const info of childInfo) {
+            if (info.renderNode === childRenderNode) {
+                infoRecord = info;
+                break;
+            }
+            insertionIndex += info.size;
+        }
+        log.assert(infoRecord, 'event on removed child');
+        switch (event.type) {
+            case 'splice': {
+                attachedState.handler({
+                    type: 'splice',
+                    index: event.index + insertionIndex,
+                    count: event.count,
+                    nodes: event.nodes,
+                });
+                infoRecord.size =
+                    infoRecord.size - event.count + event.nodes.length;
+                break;
+            }
+            case 'move': {
+                attachedState.handler({
+                    type: 'move',
+                    fromIndex: event.fromIndex + insertionIndex,
+                    count: event.count,
+                    toIndex: event.toIndex + insertionIndex,
+                });
+                break;
+            }
+            case 'sort': {
+                attachedState.handler({
+                    type: 'sort',
+                    fromIndex: insertionIndex + event.fromIndex,
+                    indexes: event.indexes.map(
+                        (index) => index + insertionIndex
+                    ),
+                });
+                break;
+            }
+            default:
+                log.assertExhausted(event, 'unexpected render event');
+        }
+    };
+
+    return makeRenderNode(type, DEBUG && { array: children }, () => {
+        childInfo = childRenderNodes.map((renderNode, childIndex) => {
+            renderNode.retain();
 
             return {
-                stop: () => {
-                    childInfo.forEach((info, childIndex) => {
-                        info.renderNodeLifecycle?.stop();
-                    });
-                    childInfo.splice(0, childInfo.length);
+                renderNode,
+                handler: (event: RenderEvent) => {
+                    childEventHandler(event, renderNode);
                 },
-                onBeforeAttach: () => {
-                    childInfo.forEach((info) =>
-                        info.renderNodeLifecycle?.onBeforeAttach()
-                    );
-                },
-                attachSelf: () => {
-                    childInfo.forEach((info) =>
-                        info.renderNodeLifecycle?.attachSelf()
-                    );
-                },
-                onAfterAttach: () => {
-                    childInfo.forEach((info) =>
-                        info.renderNodeLifecycle?.onAfterAttach()
-                    );
-                },
-                onBeforeDetach: () => {
-                    childInfo.forEach((info) =>
-                        info.renderNodeLifecycle?.onBeforeDetach()
-                    );
-                },
-                detachSelf: () => {
-                    childInfo.forEach((info) =>
-                        info.renderNodeLifecycle?.detachSelf()
-                    );
-                },
-                onAfterDetach: () => {
-                    childInfo.forEach((info) =>
-                        info.renderNodeLifecycle?.onAfterDetach()
-                    );
-                },
+                size: 0,
             };
-        }
-    );
+        });
+
+        return {
+            attach: (handler, context) => {
+                log.assert(
+                    attachedState === null,
+                    `Invariant: RenderNode ${type} double attached`
+                );
+                attachedState = { handler, context };
+
+                for (const info of childInfo) {
+                    info.renderNode._lifecycle?.attach?.(info.handler, context);
+                }
+            },
+            detach: (handler, context) => {
+                log.assert(
+                    attachedState !== null,
+                    `Invariant: RenderNode ${type} double detached`
+                );
+                for (const info of childInfo) {
+                    info.renderNode._lifecycle?.detach?.(info.handler, context);
+                }
+
+                attachedState = null;
+            },
+            afterMount: () => {
+                isMounted = true;
+                for (const info of childInfo) {
+                    if (isMounted) {
+                        info.renderNode._lifecycle?.afterMount?.();
+                    }
+                }
+            },
+            beforeUnmount: () => {
+                for (const info of childInfo) {
+                    if (isMounted) {
+                        info.renderNode._lifecycle?.beforeUnmount?.();
+                    }
+                }
+                isMounted = false;
+            },
+            destroy: () => {
+                childRenderNodes.forEach((renderNode) => {
+                    renderNode.release();
+                });
+                childInfo = [];
+                isMounted = false;
+                attachedState = null;
+            },
+        };
+    });
 }
 
 function jsxNodeToRenderNode(child: JSXNode): RenderNode {
@@ -529,7 +551,8 @@ function createIntrinsicRenderNode<TProps>(
     props: TProps,
     children: RenderNode[]
 ): RenderNode {
-    let renderNodeElement: Element | null = null;
+    const type = RenderNodeType.intrinsicElement;
+    let renderNodeElement: null | Element = null;
     let xmlNamespaceTransition:
         | {
               node: string;
@@ -547,265 +570,230 @@ function createIntrinsicRenderNode<TProps>(
         }
     };
     const boundEffects: Calculation<any>[] = [];
+
+    let isAttached = false;
     let isMounted = false;
 
     const childrenRenderNode = createArrayRenderNode(children);
 
+    const childEventHandler = (event: RenderEvent) => {
+        log.assert(
+            renderNodeElement,
+            'IntrinsicRenderNode received child event prior to attaching'
+        );
+        const element = renderNodeElement;
+        switch (event.type) {
+            case 'splice': {
+                for (let i = 0; i < event.count; ++i) {
+                    const toRemove = element.childNodes[event.index];
+                    element.removeChild(toRemove);
+                }
+                const referenceElement = element.childNodes[event.index];
+                event.nodes.forEach((node) => {
+                    element.insertBefore(node, referenceElement);
+                });
+                break;
+            }
+            case 'move': {
+                const removed: Node[] = [];
+                for (let i = 0; i < event.count; ++i) {
+                    const toRemove = element.childNodes[event.fromIndex];
+                    removed.push(toRemove);
+                    element.removeChild(toRemove);
+                }
+                const referenceNode = element.childNodes[event.toIndex];
+                removed.forEach((node) => {
+                    element.insertBefore(node, referenceNode);
+                });
+                break;
+            }
+            case 'sort': {
+                const toReorder: Node[] = [];
+                for (const sortedIndex of event.indexes) {
+                    toReorder.push(element.childNodes[sortedIndex]);
+                }
+                toReorder.forEach((node) => element.removeChild(node));
+                const referenceNode = element.childNodes[event.fromIndex];
+                for (const node of toReorder) {
+                    element.insertBefore(node, referenceNode);
+                }
+                break;
+            }
+            default:
+                log.assertExhausted(event, 'unexpected render event');
+        }
+    };
+
     return makeRenderNode(
-        RenderNodeType.intrinsicElement,
+        type,
         DEBUG && { elementType, props, childrenRenderNode },
-        (callback, context, isAttached) => {
-            if (!renderNodeElement) {
-                const parentXmlNamespace = readContext(
-                    context.contextMap,
-                    XmlNamespaceContext
-                );
-                xmlNamespaceTransition =
-                    elementNamespaceTransitionMap[parentXmlNamespace]?.[
-                        elementType
-                    ];
-                const elementXMLNamespace =
-                    elementNamespaceTransitionMap[parentXmlNamespace]?.[
-                        elementType
-                    ]?.node ??
-                    readContext(context.contextMap, XmlNamespaceContext);
-                renderNodeElement = document.createElementNS(
-                    elementXMLNamespace,
-                    elementType
-                );
-
-                const createdElement = renderNodeElement;
-
-                // Bind element properties
-                Object.entries(props || {}).forEach(([key, value]) => {
-                    if (key === 'ref') {
-                        if (isRef(value)) {
-                            value.current = createdElement;
-                            return;
-                        }
-                        if (
-                            typeof value === 'function' &&
-                            !isCalculation(value)
-                        ) {
-                            onMountActions.add(() => value(createdElement));
-                            onUnmountActions.add(() => value(undefined));
-                            return;
-                        }
-                    }
-                    if (isCalculation(value)) {
-                        const boundEffect = effect(() => {
-                            const computedValue = value();
-                            setAttributeValue(
-                                elementType,
-                                createdElement,
-                                key,
-                                computedValue,
-                                elementBoundEvents
-                            );
-                        }, `viewattr:${key}`);
-                        boundEffects.push(boundEffect);
-                        initOrdering();
-                    } else {
-                        setAttributeValue(
-                            elementType,
-                            createdElement,
-                            key,
-                            value,
-                            elementBoundEvents
-                        );
-                    }
-                });
-            }
-            const element = renderNodeElement;
-
-            const nodes = new Set<Text | Element>();
-
-            const childEventHandler = (event: RenderEvent) => {
-                switch (event.type) {
-                    case 'splice': {
-                        for (let i = 0; i < event.count; ++i) {
-                            const toRemove = element.childNodes[event.index];
-                            if (
-                                toRemove instanceof Text ||
-                                toRemove instanceof Element
-                            ) {
-                                if (nodes.has(toRemove)) {
-                                    nodes.delete(toRemove);
-                                } else {
-                                    log.warn(
-                                        'Root mount inconsistency error, removed a child it did not create',
-                                        toRemove
-                                    );
-                                }
-                            } else {
-                                log.warn(
-                                    'Root mount removed unexpected node',
-                                    toRemove
-                                );
-                            }
-                            element.removeChild(toRemove);
-                        }
-                        const referenceElement =
-                            element.childNodes[event.index];
-                        event.nodes.forEach((node) => {
-                            element.insertBefore(node, referenceElement);
-                            nodes.add(node);
-                        });
-                        break;
-                    }
-                    case 'move': {
-                        const removed: Node[] = [];
-                        for (let i = 0; i < event.count; ++i) {
-                            const toRemove =
-                                element.childNodes[event.fromIndex];
-                            removed.push(toRemove);
-                            element.removeChild(toRemove);
-                        }
-                        const referenceNode = element.childNodes[event.toIndex];
-                        removed.forEach((node) => {
-                            element.insertBefore(node, referenceNode);
-                        });
-                        break;
-                    }
-                    case 'sort': {
-                        const toReorder: Node[] = [];
-                        for (const sortedIndex of event.indexes) {
-                            toReorder.push(element.childNodes[sortedIndex]);
-                        }
-                        toReorder.forEach((node) => element.removeChild(node));
-                        const referenceNode =
-                            element.childNodes[event.fromIndex];
-                        for (const node of toReorder) {
-                            element.insertBefore(node, referenceNode);
-                        }
-                        break;
-                    }
-                    default:
-                        log.assertExhausted(event, 'unexpected render event');
-                }
-            };
-
-            let subContext = context;
-            if (nodeOrdering) {
-                subContext = {
-                    ...context,
-                    nodeOrdering,
-                };
-            }
-            if (xmlNamespaceTransition) {
-                const subContextMap = new Map(context.contextMap);
-                subContextMap.set(
-                    XmlNamespaceContext,
-                    xmlNamespaceTransition.children
-                );
-                subContext = {
-                    ...context,
-                    contextMap: subContextMap,
-                };
-            }
-
-            const connectEffects = () => {
-                if (nodeOrdering) {
-                    addOrderingDep(nodeOrdering, context.nodeOrdering);
-                    for (const boundEffect of boundEffects) {
-                        addOrderingDep(boundEffect, nodeOrdering);
-                        boundEffect();
-                    }
-                }
-            };
-
-            const disconnectEffects = () => {
-                if (nodeOrdering) {
-                    for (const boundEffect of boundEffects) {
-                        removeOrderingDep(boundEffect, nodeOrdering);
-                    }
-                    removeOrderingDep(nodeOrdering, context.nodeOrdering);
-                }
-            };
-
-            const mountSelf = () => {
-                log.assert(
-                    !isMounted,
-                    'Invariant: Element rendered twice! Did you write a component that renders children multiple times?'
-                );
-                callback({
-                    type: 'splice',
-                    index: 0,
-                    count: 0,
-                    nodes: [element],
-                });
-                isMounted = true;
-            };
-            const unmountSelf = () => {
-                log.assert(
-                    isMounted,
-                    'Invariant: Element unmounted twice! Did you write a component that renders children multiple times?'
-                );
-                callback({
-                    type: 'splice',
-                    index: 0,
-                    count: 1,
-                    nodes: [],
-                });
-                isMounted = false;
-            };
-
-            const callOnMount = () => {
-                onMountActions.forEach((action) => action());
-            };
-
-            const callOnUnmount = () => {
-                onUnmountActions.forEach((action) => action());
-            };
-
-            if (isAttached) {
-                connectEffects();
-            }
-            mountSelf();
-
-            const childrenLifecycle = childrenRenderNode.start(
-                childEventHandler,
-                subContext,
-                isAttached
-            );
-            if (isAttached) {
-                callOnMount();
-            }
+        () => {
+            const lifecycle = childrenRenderNode.retain();
 
             return {
-                stop: () => {
-                    childrenLifecycle.stop();
+                attach: (handler, context) => {
+                    log.assert(
+                        !isAttached,
+                        `Invariant: RenderNode ${type} double attached`
+                    );
+                    isAttached = true;
+
+                    // Note: we need to lazily create the element
+                    if (!renderNodeElement) {
+                        const parentXmlNamespace = readContext(
+                            context.contextMap,
+                            XmlNamespaceContext
+                        );
+                        xmlNamespaceTransition =
+                            elementNamespaceTransitionMap[parentXmlNamespace]?.[
+                                elementType
+                            ];
+                        const elementXMLNamespace =
+                            elementNamespaceTransitionMap[parentXmlNamespace]?.[
+                                elementType
+                            ]?.node ??
+                            readContext(
+                                context.contextMap,
+                                XmlNamespaceContext
+                            );
+                        renderNodeElement = document.createElementNS(
+                            elementXMLNamespace,
+                            elementType
+                        );
+
+                        const createdElement = renderNodeElement;
+
+                        // Bind element properties
+                        Object.entries(props || {}).forEach(([key, value]) => {
+                            if (key === 'ref') {
+                                if (isRef(value)) {
+                                    value.current = createdElement;
+                                    return;
+                                }
+                                if (
+                                    typeof value === 'function' &&
+                                    !isCalculation(value)
+                                ) {
+                                    onMountActions.add(() =>
+                                        value(createdElement)
+                                    );
+                                    onUnmountActions.add(() =>
+                                        value(undefined)
+                                    );
+                                    return;
+                                }
+                            }
+                            if (isCalculation(value)) {
+                                const boundEffect = effect(() => {
+                                    const computedValue = value();
+                                    setAttributeValue(
+                                        elementType,
+                                        createdElement,
+                                        key,
+                                        computedValue,
+                                        elementBoundEvents
+                                    );
+                                }, `viewattr:${key}`);
+                                boundEffects.push(boundEffect);
+                                initOrdering();
+                            } else {
+                                setAttributeValue(
+                                    elementType,
+                                    createdElement,
+                                    key,
+                                    value,
+                                    elementBoundEvents
+                                );
+                            }
+                        });
+
+                        let subContext = context;
+                        if (nodeOrdering) {
+                            subContext = {
+                                ...context,
+                                nodeOrdering,
+                            };
+                        }
+                        if (xmlNamespaceTransition) {
+                            const subContextMap = new Map(context.contextMap);
+                            subContextMap.set(
+                                XmlNamespaceContext,
+                                xmlNamespaceTransition.children
+                            );
+                            subContext = {
+                                ...context,
+                                contextMap: subContextMap,
+                            };
+                        }
+
+                        if (nodeOrdering) {
+                            addOrderingDep(nodeOrdering, context.nodeOrdering);
+                            for (const boundEffect of boundEffects) {
+                                addOrderingDep(boundEffect, nodeOrdering);
+                                boundEffect();
+                            }
+                        }
+
+                        // TODO: architectural flaw: we need some sort of "reparent" event to for contexts to work in the presence of node relocation
+                        // Currently, if an element is moved while being retained, it keeps the context that it had from where it was created.
+                        // Maybe this isn't that big of a problem?
+                        // Wait... do we need one? This needs to be revisited.... add some tests to suss out what should happen
+                        lifecycle.attach?.(childEventHandler, subContext);
+                    }
+
+                    handler({
+                        type: 'splice',
+                        index: 0,
+                        count: 0,
+                        nodes: [renderNodeElement],
+                    });
+
+                    if (isMounted) {
+                        lifecycle.afterMount?.();
+                    }
+                },
+                detach: (handler, context) => {
+                    log.assert(
+                        isAttached,
+                        `Invariant: RenderNode ${type} double detached`
+                    );
+                    isAttached = false;
+
+                    if (nodeOrdering) {
+                        for (const boundEffect of boundEffects) {
+                            removeOrderingDep(boundEffect, nodeOrdering);
+                        }
+                        removeOrderingDep(nodeOrdering, context.nodeOrdering);
+                    }
+
+                    handler({
+                        type: 'splice',
+                        index: 0,
+                        count: 1,
+                        nodes: [],
+                    });
+                },
+                afterMount: () => {
+                    isMounted = true;
+
+                    lifecycle.afterMount?.();
+
+                    onMountActions.forEach((action) => action());
+                },
+                beforeUnmount: () => {
+                    lifecycle.beforeUnmount?.();
+
+                    onUnmountActions.forEach((action) => action());
+
                     isMounted = false;
                 },
-                onBeforeAttach: () => {
-                    connectEffects();
-                    childrenLifecycle.onBeforeAttach();
-                },
-                attachSelf: () => {
-                    connectEffects();
-                    childrenLifecycle.onBeforeAttach();
-                    mountSelf();
-                    childrenLifecycle.onAfterAttach();
-                    callOnMount();
-                },
-                onAfterAttach: () => {
-                    childrenLifecycle.onAfterAttach();
-                    callOnMount();
-                },
-                onBeforeDetach: () => {
-                    childrenLifecycle.onBeforeDetach();
-                    callOnUnmount();
-                },
-                detachSelf: () => {
-                    childrenLifecycle.onBeforeDetach();
-                    callOnUnmount();
-                    unmountSelf();
-                    childrenLifecycle.onAfterDetach();
-                    disconnectEffects();
-                },
-                onAfterDetach: () => {
-                    childrenLifecycle.onAfterDetach();
-                    disconnectEffects();
+                destroy: () => {
+                    childrenRenderNode.release();
+                    renderNodeElement = null;
+                    onMountActions.clear();
+                    onUnmountActions.clear();
+                    isAttached = false;
+                    isMounted = false;
                 },
             };
         }
@@ -817,77 +805,86 @@ function createComponentRenderNode(
     props: any,
     children: JSXNode[]
 ): RenderNode {
-    let renderNode: RenderNode | null = null;
-
+    const type = RenderNodeType.component;
     const mountHandlers = new Set<() => void>();
     const unmountHandlers = new Set<() => void>();
     const createdEffects: Calculation<any>[] = [];
     const createdCalculations: Calculation<any>[] = [];
     let isInitialized = false;
 
-    const childrenRenderNode = createArrayRenderNode(children);
+    let componentRenderNode: RenderNode | null = null;
 
-    return makeRenderNode(
-        RenderNodeType.component,
-        DEBUG && { Component, props, childrenRenderNode },
-        (handler, renderContext, isAttached) => {
-            if (!renderNode) {
-                const listeners: ComponentListeners = {
-                    onMount: (handler) => {
-                        log.assert(
-                            !isInitialized,
-                            'Component cannot call onMount after render'
+    let isMounted = false;
+
+    return makeRenderNode(type, DEBUG && { Component, props, children }, () => {
+        return {
+            attach: (handler, context) => {
+                if (!componentRenderNode) {
+                    const listeners: ComponentListeners = {
+                        onMount: (handler) => {
+                            log.assert(
+                                !isInitialized,
+                                'Component cannot call onMount after render'
+                            );
+                            mountHandlers.add(handler);
+                        },
+                        onUnmount: (handler) => {
+                            log.assert(
+                                !isInitialized,
+                                'Component cannot call onUnmount after render'
+                            );
+                            unmountHandlers.add(handler);
+                        },
+                        onEffect: (effectCallback, debugName?: string) => {
+                            log.assert(
+                                !isInitialized,
+                                'Component cannot call onEffect after render'
+                            );
+                            const effectCalc = effect(
+                                effectCallback,
+                                `componenteffect:${Component.name}:${
+                                    debugName ?? '?'
+                                }`
+                            );
+                            createdEffects.push(effectCalc);
+                        },
+                        getContext: (targetContext) => {
+                            return readContext(
+                                context.contextMap,
+                                targetContext
+                            );
+                        },
+                    };
+                    const propsObj = props || {};
+                    let propsWithChildren: any;
+                    if (children.length === 0) {
+                        propsWithChildren = propsObj;
+                    } else if (children.length === 1) {
+                        propsWithChildren = {
+                            ...propsObj,
+                            children: children[0],
+                        };
+                    } else {
+                        propsWithChildren = { ...propsObj, children };
+                    }
+                    componentRenderNode = untracked(() => {
+                        let jsxNode: JSXNode = null;
+                        createdCalculations.push(
+                            ...trackCreatedCalculations(() => {
+                                jsxNode = Component(
+                                    propsWithChildren,
+                                    listeners
+                                );
+                            })
                         );
-                        mountHandlers.add(handler);
-                    },
-                    onUnmount: (handler) => {
-                        log.assert(
-                            !isInitialized,
-                            'Component cannot call onUnmount after render'
-                        );
-                        unmountHandlers.add(handler);
-                    },
-                    onEffect: (effectCallback, debugName?: string) => {
-                        log.assert(
-                            !isInitialized,
-                            'Component cannot call onEffect after render'
-                        );
-                        const effectCalc = effect(
-                            effectCallback,
-                            `componenteffect:${Component.name}:${
-                                debugName ?? '?'
-                            }`
-                        );
-                        createdEffects.push(effectCalc);
-                    },
-                    getContext: (context) => {
-                        return readContext(renderContext.contextMap, context);
-                    },
-                };
-                const propsObj = props || {};
-                let propsWithChildren: any;
-                if (children.length === 0) {
-                    propsWithChildren = propsObj;
-                } else if (children.length === 1) {
-                    propsWithChildren = { ...propsObj, children: children[0] };
-                } else {
-                    propsWithChildren = { ...propsObj, children };
+                        return jsxNodeToRenderNode(jsxNode);
+                    });
+                    isInitialized = true;
+                    componentRenderNode.retain();
                 }
-                renderNode = untracked(() => {
-                    let jsxNode: JSXNode = null;
-                    createdCalculations.push(
-                        ...trackCreatedCalculations(() => {
-                            jsxNode = Component(propsWithChildren, listeners);
-                        })
-                    );
-                    return jsxNodeToRenderNode(jsxNode);
-                });
-                isInitialized = true;
-            }
 
-            const connectCalculations = () => {
                 createdEffects.forEach((eff) => {
-                    addOrderingDep(renderContext.nodeOrdering, eff);
+                    addOrderingDep(context.nodeOrdering, eff);
                     retain(eff);
                     eff(); // it may have been dirtied and flushed; re-cache
                 });
@@ -895,72 +892,50 @@ function createComponentRenderNode(
                     retain(calculation);
                     calculation(); // it may have been dirtied and flushed; re-cache
                 });
-            };
-            const callOnMount = () => {
-                mountHandlers.forEach((handler) => handler());
-            };
-            const callOnUnmount = () => {
-                unmountHandlers.forEach((handler) => handler());
-            };
-            const disconnectCalculations = () => {
+
+                componentRenderNode._lifecycle?.attach?.(handler, context);
+
+                if (isMounted) {
+                    mountHandlers.forEach((handler) => handler());
+                }
+            },
+            detach: (handler, context) => {
+                componentRenderNode?._lifecycle?.detach?.(handler, context);
+
                 createdEffects.forEach((eff) => {
-                    removeOrderingDep(renderContext.nodeOrdering, eff);
+                    removeOrderingDep(context.nodeOrdering, eff);
                     release(eff);
                 });
                 createdCalculations.forEach((calculation) => {
                     release(calculation);
                 });
-            };
+            },
+            afterMount: () => {
+                isMounted = true;
 
-            if (isAttached) {
-                connectCalculations();
-            }
-            const childLifecycle = renderNode.start(
-                handler,
-                renderContext,
-                isAttached
-            );
-            if (isAttached) {
-                callOnMount();
-            }
+                componentRenderNode?._lifecycle?.afterMount?.();
 
-            return {
-                stop: () => {
-                    childLifecycle.stop();
+                mountHandlers.forEach((handler) => handler());
+            },
+            beforeUnmount: () => {
+                componentRenderNode?._lifecycle?.beforeUnmount?.();
 
-                    createdCalculations.forEach((calculation) => {
-                        disposeNode(calculation);
-                    });
-                },
-                onBeforeAttach: () => {
-                    childLifecycle.onBeforeAttach();
-                    connectCalculations();
-                },
-                attachSelf: () => {
-                    connectCalculations();
-                    childLifecycle.attachSelf();
-                    callOnMount();
-                },
-                onAfterAttach: () => {
-                    childLifecycle.onAfterAttach();
-                    callOnMount();
-                },
-                onBeforeDetach: () => {
-                    childLifecycle.onBeforeDetach();
-                    callOnUnmount();
-                },
-                detachSelf: () => {
-                    callOnUnmount();
-                    childLifecycle.detachSelf();
-                    disconnectCalculations();
-                },
-                onAfterDetach: () => {
-                    childLifecycle.onAfterDetach();
-                    disconnectCalculations();
-                },
-            };
-        }
-    );
+                unmountHandlers.forEach((handler) => handler());
+
+                isMounted = false;
+            },
+            destroy: () => {
+                mountHandlers.clear();
+                unmountHandlers.clear();
+                createdEffects.splice(0, createdEffects.length);
+                createdCalculations.splice(0, createdEffects.length);
+                isInitialized = false;
+                componentRenderNode?.release();
+                componentRenderNode = null;
+                isMounted = false;
+            },
+        };
+    });
 }
 
 function createContextRenderNode<TContext>(
@@ -969,21 +944,42 @@ function createContextRenderNode<TContext>(
     children: RenderNode[]
 ) {
     const childrenRenderNode = createArrayRenderNode(children);
+    const type = RenderNodeType.context;
 
     return makeRenderNode(
-        RenderNodeType.context,
+        type,
         DEBUG && { Context, value, childrenRenderNode },
-        (handler, context, isAttached) => {
-            const subContextMap = new Map(context.contextMap);
-            subContextMap.set(Context, value);
-            return childrenRenderNode.start(
-                handler,
-                {
-                    ...context,
-                    contextMap: subContextMap,
+        () => {
+            const lifecycle = childrenRenderNode.retain();
+            let subContext: null | RenderContext = null;
+
+            return {
+                attach: (handler, context) => {
+                    const contextMap = new Map(context.contextMap);
+                    contextMap.set(Context, value);
+                    subContext = { ...context, contextMap };
+                    childrenRenderNode._lifecycle?.attach?.(
+                        handler,
+                        subContext
+                    );
                 },
-                isAttached
-            );
+                detach: (handler, context) => {
+                    log.assert(
+                        subContext,
+                        `RenderNode ${type} detach without attach?`
+                    );
+                    childrenRenderNode._lifecycle?.detach?.(
+                        handler,
+                        subContext
+                    );
+                    subContext = null;
+                },
+                destroy: () => {
+                    childrenRenderNode.release();
+                },
+                afterMount: lifecycle.afterMount,
+                beforeUnmount: lifecycle.beforeUnmount,
+            };
         }
     );
 }
@@ -998,131 +994,142 @@ function createLifecycleObserverRenderNode(
     },
     children: RenderNode[]
 ) {
+    const type = RenderNodeType.lifecycleObserver;
+    let attachedState: null | {
+        handler: RenderEventHandler;
+        context: RenderContext;
+    } = null;
     const childrenRenderNode = createArrayRenderNode(children);
+    let isMounted = false;
 
     return makeRenderNode(
-        RenderNodeType.lifecycleObserver,
+        type,
         DEBUG && { nodeCallback, elementCallback, childrenRenderNode },
-        (handler, context, isAttached) => {
-            const childNodes: Node[] = [];
-            const childLifecycleHandler = childrenRenderNode.start(
-                (event) => {
-                    switch (event.type) {
-                        case 'splice': {
-                            const removed = childNodes.splice(
-                                event.index,
-                                event.count,
-                                ...event.nodes
-                            );
-                            if (isAttached) {
-                                removed.forEach((node) => {
-                                    nodeCallback?.(node, 'remove');
-                                    if (node instanceof Element) {
-                                        elementCallback?.(node, 'remove');
-                                    }
-                                });
-                            }
-                            handler(event);
-                            if (isAttached) {
-                                event.nodes.forEach((node) => {
-                                    nodeCallback?.(node, 'add');
-                                    if (node instanceof Element) {
-                                        elementCallback?.(node, 'add');
-                                    }
-                                });
-                            }
-                            break;
-                        }
-                        case 'move': {
-                            const removed = childNodes.splice(
-                                event.fromIndex,
-                                event.count
-                            );
-                            let adjustedToIndex: number;
-                            // TODO: this is dumb, toIndex should be the index _after_ removal; not the index _before_ removal
-                            if (event.toIndex > event.fromIndex + event.count) {
-                                adjustedToIndex = event.toIndex - event.count;
-                            } else if (event.toIndex > event.fromIndex) {
-                                adjustedToIndex = event.fromIndex;
-                            } else {
-                                adjustedToIndex = event.toIndex;
-                            }
-                            childNodes.splice(adjustedToIndex, 0, ...removed);
-                            handler(event);
-                            break;
-                        }
-                        case 'sort': {
-                            const sortedSlice = Array(event.indexes.length);
-                            for (let i = 0; i < event.indexes.length; ++i) {
-                                sortedSlice[i] = childNodes[event.indexes[i]];
-                            }
-                            childNodes.splice(
-                                event.fromIndex,
-                                event.indexes.length,
-                                ...sortedSlice
-                            );
-                            handler(event);
-                            break;
-                        }
-                        default:
-                            log.assertExhausted(
-                                event,
-                                'LifecycleObserver RenderNode got unexpected event'
-                            );
-                    }
-                },
-                context,
-                isAttached
-            );
+        () => {
+            const lifecycle = childrenRenderNode.retain();
 
-            const notifyExistingAttached = () => {
-                childNodes.forEach((node) => {
-                    nodeCallback?.(node, 'add');
-                    if (node instanceof Element) {
-                        elementCallback?.(node, 'add');
+            let childNodes: Node[] = [];
+
+            const childLifecycleHandler = (event: RenderEvent) => {
+                log.assert(
+                    attachedState,
+                    'LifecycleObserver RenderNode got event when detached'
+                );
+                switch (event.type) {
+                    case 'splice': {
+                        const removed = childNodes.splice(
+                            event.index,
+                            event.count,
+                            ...event.nodes
+                        );
+                        if (isMounted) {
+                            removed.forEach((node) => {
+                                nodeCallback?.(node, 'remove');
+                                if (node instanceof Element) {
+                                    elementCallback?.(node, 'remove');
+                                }
+                            });
+                        }
+                        attachedState.handler(event);
+                        if (isMounted) {
+                            event.nodes.forEach((node) => {
+                                nodeCallback?.(node, 'add');
+                                if (node instanceof Element) {
+                                    elementCallback?.(node, 'add');
+                                }
+                            });
+                        }
+                        break;
                     }
-                });
+                    case 'move': {
+                        const removed = childNodes.splice(
+                            event.fromIndex,
+                            event.count
+                        );
+                        let adjustedToIndex: number;
+                        // TODO: this is dumb, toIndex should be the index _after_ removal; not the index _before_ removal
+                        if (event.toIndex > event.fromIndex + event.count) {
+                            adjustedToIndex = event.toIndex - event.count;
+                        } else if (event.toIndex > event.fromIndex) {
+                            adjustedToIndex = event.fromIndex;
+                        } else {
+                            adjustedToIndex = event.toIndex;
+                        }
+                        childNodes.splice(adjustedToIndex, 0, ...removed);
+                        attachedState.handler(event);
+                        break;
+                    }
+                    case 'sort': {
+                        const sortedSlice = Array(event.indexes.length);
+                        for (let i = 0; i < event.indexes.length; ++i) {
+                            sortedSlice[i] = childNodes[event.indexes[i]];
+                        }
+                        childNodes.splice(
+                            event.fromIndex,
+                            event.indexes.length,
+                            ...sortedSlice
+                        );
+                        attachedState.handler(event);
+                        break;
+                    }
+                    default:
+                        log.assertExhausted(
+                            event,
+                            'LifecycleObserver RenderNode got unexpected event'
+                        );
+                }
             };
 
-            const notifyExistingDetached = () => {
-                childNodes.forEach((node) => {
-                    nodeCallback?.(node, 'remove');
-                    if (node instanceof Element) {
-                        elementCallback?.(node, 'remove');
-                    }
-                });
-            };
-
-            // TODO: write some tests to check cases where detached LifecycleObserver RenderNodes have their subtree modified... somehow... maybe this can't happen?
             return {
-                stop: () => {
-                    childLifecycleHandler.stop();
+                attach: (handler, context) => {
+                    log.assert(
+                        attachedState === null,
+                        `Invariant: RenderNode ${type} double attached`
+                    );
+                    attachedState = { handler, context };
+                    lifecycle.attach?.(childLifecycleHandler, context);
                 },
-                onBeforeAttach: () => {
-                    childLifecycleHandler.onBeforeAttach();
+                detach: (handler, context) => {
+                    log.assert(
+                        attachedState !== null,
+                        `Invariant: RenderNode ${type} double detached`
+                    );
+                    lifecycle.detach?.(childLifecycleHandler, context);
+                    log.assert(
+                        childNodes.length === 0,
+                        'LifecycleObserver had leftover nodes after detach'
+                    );
+                    attachedState = null;
                 },
-                attachSelf: () => {
-                    notifyExistingAttached();
-                    isAttached = true;
-                    childLifecycleHandler.attachSelf();
+                afterMount: () => {
+                    isMounted = true;
+
+                    lifecycle.afterMount?.();
+
+                    childNodes.forEach((node) => {
+                        nodeCallback?.(node, 'add');
+                        if (node instanceof Element) {
+                            elementCallback?.(node, 'add');
+                        }
+                    });
                 },
-                onAfterAttach: () => {
-                    notifyExistingAttached();
-                    isAttached = true;
-                    childLifecycleHandler.onAfterAttach();
+                beforeUnmount: () => {
+                    lifecycle.beforeUnmount?.();
+
+                    isMounted = false;
+
+                    childNodes.forEach((node) => {
+                        nodeCallback?.(node, 'remove');
+                        if (node instanceof Element) {
+                            elementCallback?.(node, 'remove');
+                        }
+                    });
                 },
-                onBeforeDetach: () => {
-                    childLifecycleHandler.onBeforeDetach();
-                    isAttached = false;
-                    notifyExistingDetached();
-                },
-                detachSelf: () => {
-                    childLifecycleHandler.detachSelf();
-                    isAttached = false;
-                    notifyExistingDetached();
-                },
-                onAfterDetach: () => {
-                    childLifecycleHandler.onAfterDetach();
+                destroy: () => {
+                    childNodes = [];
+                    attachedState = null;
+                    childrenRenderNode.release();
+                    isMounted = false;
                 },
             };
         }
@@ -1232,107 +1239,126 @@ function readContext<TContext>(
 function createCollectionRenderNode(
     collection: Collection<JSXNode> | View<JSXNode>
 ): RenderNode {
-    return makeRenderNode(
-        RenderNodeType.collection,
-        DEBUG && { collection },
-        (callback, renderContext, isAttached) => {
-            const collectionNodeOrdering = makeNodeOrdering(
-                DEBUG
-                    ? `viewcoll:${debugNameFor(collection) ?? 'node'}:order`
-                    : 'viewcoll:order'
+    const type = RenderNodeType.collection;
+    let attachedState: null | {
+        handler: RenderEventHandler;
+        context: RenderContext;
+    } = null;
+    let isMounted = false;
+
+    return makeRenderNode(type, DEBUG && { collection }, () => {
+        const collectionNodeOrdering = makeNodeOrdering(
+            DEBUG
+                ? `viewcoll:${debugNameFor(collection) ?? 'node'}:order`
+                : 'viewcoll:order'
+        );
+        registerNode(collectionNodeOrdering);
+
+        type ChildInfoRecord = {
+            renderNode: RenderNode;
+            handler: RenderEventHandler;
+            size: number;
+        };
+        let childInfo: ChildInfoRecord[] = [];
+
+        // TODO: consolidate duplication between createArrayRenderNode and createCollectionRenderNode and
+        const childEventHandler = (
+            event: RenderEvent,
+            childNode: RenderNode
+        ) => {
+            log.assert(
+                attachedState,
+                'Collection RenderNode got event when detached'
             );
-            registerNode(collectionNodeOrdering);
-
-            type ChildInfoRecord = {
-                renderNode: RenderNode;
-                renderNodeLifecycle: RenderNodeLifecycle | null;
-                size: number;
-            };
-            let childInfo: ChildInfoRecord[] = [];
-
-            const getInsertionIndex = (childIndex: number) => {
-                let insertionIndex = 0;
-                for (let i = 0; i < childIndex; ++i) {
-                    insertionIndex += childInfo[i].size;
+            let insertionIndex = 0;
+            let infoRecord: null | ChildInfoRecord = null;
+            for (const info of childInfo) {
+                if (info.renderNode === childNode) {
+                    infoRecord = info;
+                    break;
                 }
-                return insertionIndex;
-            };
-
-            // TODO: consolidate duplication between createArrayRenderNode and createCollectionRenderNode and
-            const childEventHandler = (
-                event: RenderEvent,
-                childIndex: number
-            ) => {
-                switch (event.type) {
-                    case 'splice': {
-                        const insertionIndex = getInsertionIndex(childIndex);
-                        callback({
-                            type: 'splice',
-                            index: event.index + insertionIndex,
-                            count: event.count,
-                            nodes: event.nodes,
-                        });
-                        childInfo[childIndex].size =
-                            childInfo[childIndex].size -
-                            event.count +
-                            event.nodes.length;
-                        break;
-                    }
-                    case 'move': {
-                        const insertionIndex = getInsertionIndex(childIndex);
-                        callback({
-                            type: 'move',
-                            fromIndex: event.fromIndex + insertionIndex,
-                            count: event.count,
-                            toIndex: event.toIndex + insertionIndex,
-                        });
-                        break;
-                    }
-                    case 'sort': {
-                        const insertionIndex = getInsertionIndex(childIndex);
-                        callback({
-                            type: 'sort',
-                            fromIndex: insertionIndex + event.fromIndex,
-                            indexes: event.indexes.map(
-                                (index) => index + insertionIndex
-                            ),
-                        });
-                        break;
-                    }
-                    default:
-                        log.assertExhausted(event, 'unexpected render event');
+                insertionIndex += info.size;
+            }
+            log.assert(
+                infoRecord,
+                'Collection RenderNode got event for unknown node'
+            );
+            switch (event.type) {
+                case 'splice': {
+                    attachedState.handler({
+                        type: 'splice',
+                        index: event.index + insertionIndex,
+                        count: event.count,
+                        nodes: event.nodes,
+                    });
+                    infoRecord.size =
+                        infoRecord.size - event.count + event.nodes.length;
+                    break;
                 }
-            };
+                case 'move': {
+                    attachedState.handler({
+                        type: 'move',
+                        fromIndex: event.fromIndex + insertionIndex,
+                        count: event.count,
+                        toIndex: event.toIndex + insertionIndex,
+                    });
+                    break;
+                }
+                case 'sort': {
+                    attachedState.handler({
+                        type: 'sort',
+                        fromIndex: insertionIndex + event.fromIndex,
+                        indexes: event.indexes.map(
+                            (index) => index + insertionIndex
+                        ),
+                    });
+                    break;
+                }
+                default:
+                    log.assertExhausted(event, 'unexpected render event');
+            }
+        };
 
-            let unobserve: () => void = noop;
+        const subscriptionNode = collection[GetSubscriptionNodeKey]();
+        registerNode(subscriptionNode); // TODO: Wait what the fuck? Why am I doing this? This should be the responsible of the collection, right?
 
-            const initAndObserve = () => {
+        let unobserve: null | (() => void) = null;
+
+        return {
+            attach: (handler, context) => {
+                log.assert(
+                    attachedState === null,
+                    `Invariant: RenderNode ${type} double attached`
+                );
+                attachedState = { handler, context };
+                addOrderingDep(subscriptionNode, collectionNodeOrdering);
+                addOrderingDep(collectionNodeOrdering, context.nodeOrdering);
+
+                // Populate the initial collection
                 untracked(() => {
-                    collection.forEach((child, childIndex) => {
+                    childInfo = collection.map((child, childIndex) => {
                         const childNode = jsxNodeToRenderNode(child);
-                        childInfo[childIndex] = {
+                        return {
                             renderNode: childNode,
-                            renderNodeLifecycle: null,
+                            handler: (event) =>
+                                childEventHandler(event, childNode),
                             size: 0,
                         };
-                        childInfo[childIndex].renderNodeLifecycle =
-                            childNode.start(
-                                (event) => {
-                                    const realIndex = childInfo.findIndex(
-                                        (i) => i.renderNode === childNode
-                                    );
-                                    log.assert(
-                                        realIndex !== -1,
-                                        'event on removed child'
-                                    );
-                                    childEventHandler(event, realIndex);
-                                },
-                                renderContext, // TODO: I think the child renderContext needs to be set to have the nodeOrdering to be something else!
-                                isAttached
-                            );
+                    });
+
+                    childInfo.forEach((infoRecord) => {
+                        infoRecord.renderNode.retain();
+                        infoRecord.renderNode._lifecycle?.attach?.(
+                            infoRecord.handler,
+                            context
+                        );
+                        if (isMounted) {
+                            infoRecord.renderNode._lifecycle?.afterMount?.();
+                        }
                     });
                 });
 
+                // Observe for changes in the collection
                 unobserve = collection[ObserveKey]((events) => {
                     events.forEach((event) => {
                         if (event.type === 'splice') {
@@ -1342,43 +1368,44 @@ function createCollectionRenderNode(
                                 // - We asking the child to remove itself, which will make us update the .size childInfo for the corresponding children
                                 // - Once deleted, we still have remaining childInfo records at those indexes, and then remove our tracking record of the items
                                 for (let i = index; i < index + count; ++i) {
-                                    childInfo[
-                                        i
-                                    ].renderNodeLifecycle?.detachSelf();
-                                    childInfo[i].renderNodeLifecycle?.stop();
+                                    const infoRecord = childInfo[i];
+                                    if (isMounted) {
+                                        infoRecord.renderNode._lifecycle?.beforeUnmount?.();
+                                    }
+                                    infoRecord.renderNode._lifecycle?.detach?.(
+                                        infoRecord.handler,
+                                        context
+                                    );
+                                    infoRecord.renderNode.release();
                                 }
-                                childInfo.splice(index, count);
 
-                                items.forEach((child, itemIndex) => {
-                                    const childIndex = index + itemIndex;
-                                    const childNode =
-                                        jsxNodeToRenderNode(child);
-                                    childInfo.splice(childIndex, 0, {
-                                        renderNode: childNode,
-                                        renderNodeLifecycle: null,
-                                        size: 0,
-                                    });
-                                    childInfo[childIndex].renderNodeLifecycle =
-                                        childNode.start(
-                                            (event) => {
-                                                const realIndex =
-                                                    childInfo.findIndex(
-                                                        (i) =>
-                                                            i.renderNode ===
-                                                            child
-                                                    );
-                                                log.assert(
-                                                    realIndex !== -1,
-                                                    'event on removed child'
-                                                );
+                                const newInfo = items.map(
+                                    (child, itemIndex) => {
+                                        const childNode =
+                                            jsxNodeToRenderNode(child);
+                                        return {
+                                            renderNode: childNode,
+                                            handler: (event: RenderEvent) =>
                                                 childEventHandler(
                                                     event,
-                                                    realIndex
-                                                );
-                                            },
-                                            renderContext,
-                                            isAttached
-                                        );
+                                                    childNode
+                                                ),
+                                            size: 0,
+                                        };
+                                    }
+                                );
+
+                                childInfo.splice(index, count, ...newInfo);
+
+                                newInfo.forEach((infoRecord) => {
+                                    infoRecord.renderNode.retain();
+                                    infoRecord.renderNode._lifecycle?.attach?.(
+                                        infoRecord.handler,
+                                        context
+                                    );
+                                    if (isMounted) {
+                                        infoRecord.renderNode._lifecycle?.afterMount?.();
+                                    }
                                 });
                             });
                         } else if (event.type === 'move') {
@@ -1414,7 +1441,7 @@ function createCollectionRenderNode(
                             }
                             childInfo.splice(adjustedToIndex, 0, ...removed);
 
-                            callback({
+                            handler({
                                 type: 'move',
                                 fromIndex: realFromIndex,
                                 count: size,
@@ -1435,7 +1462,7 @@ function createCollectionRenderNode(
                                 childInfo[i] = oldChildInfo[indexes[i]];
                             }
 
-                            callback({
+                            handler({
                                 type: 'sort',
                                 fromIndex: 0,
                                 indexes: realIndexes,
@@ -1448,91 +1475,54 @@ function createCollectionRenderNode(
                         }
                     });
                 });
-            };
-
-            const subscriptionNode = collection[GetSubscriptionNodeKey]();
-            registerNode(subscriptionNode);
-
-            const connectOrdering = () => {
-                addOrderingDep(subscriptionNode, collectionNodeOrdering);
-                addOrderingDep(
-                    collectionNodeOrdering,
-                    renderContext.nodeOrdering
+            },
+            detach: (handler, context) => {
+                log.assert(
+                    attachedState !== null,
+                    `Invariant: RenderNode ${type} double detached`
                 );
-            };
-            const disconnectOrdering = () => {
-                removeOrderingDep(
-                    collectionNodeOrdering,
-                    renderContext.nodeOrdering
-                );
+                removeOrderingDep(collectionNodeOrdering, context.nodeOrdering);
                 removeOrderingDep(subscriptionNode, collectionNodeOrdering);
-            };
 
-            if (isAttached) {
-                connectOrdering();
-                initAndObserve();
-            }
+                // Stop observing for changes
+                unobserve?.();
 
-            // TODO: why do we have subscriptionNode **and** collectionNodeOrdering?
-
-            return {
-                stop: () => {
-                    childInfo.forEach((info) =>
-                        info.renderNodeLifecycle?.stop()
+                // Detach and abandon children
+                childInfo.forEach((infoRecord) => {
+                    if (isMounted) {
+                        infoRecord.renderNode._lifecycle?.beforeUnmount?.();
+                    }
+                    infoRecord.renderNode._lifecycle?.detach?.(
+                        infoRecord.handler,
+                        context
                     );
-                },
-                onBeforeAttach: () => {
-                    connectOrdering();
-                    initAndObserve();
-                    // TODO: is this right?
-                    childInfo.forEach((info) =>
-                        info.renderNodeLifecycle?.onBeforeAttach()
-                    );
-                    isAttached = true;
-                },
-                attachSelf: () => {
-                    connectOrdering();
-                    initAndObserve();
+                    infoRecord.renderNode.release();
+                });
+                childInfo = [];
 
-                    childInfo.forEach((info) =>
-                        info.renderNodeLifecycle?.attachSelf()
-                    );
+                attachedState = null;
+            },
+            afterMount: () => {
+                isMounted = true;
 
-                    isAttached = true;
-                },
-                onAfterAttach: () => {
-                    childInfo.forEach((info) =>
-                        info.renderNodeLifecycle?.onAfterAttach()
-                    );
-                },
-                onBeforeDetach: () => {
-                    childInfo.forEach((info) =>
-                        info.renderNodeLifecycle?.onBeforeDetach()
-                    );
-                },
-                detachSelf: () => {
-                    childInfo.forEach((info) =>
-                        info.renderNodeLifecycle?.detachSelf()
-                    );
+                childInfo.forEach((info) =>
+                    info.renderNode._lifecycle?.afterMount?.()
+                );
+            },
+            beforeUnmount: () => {
+                childInfo.forEach((info) =>
+                    info.renderNode._lifecycle?.beforeUnmount?.()
+                );
 
-                    isAttached = false;
-
-                    unobserve();
-                    disconnectOrdering();
-                },
-                onAfterDetach: () => {
-                    isAttached = false;
-
-                    childInfo.forEach((info) =>
-                        info.renderNodeLifecycle?.onAfterDetach()
-                    );
-
-                    unobserve();
-                    disconnectOrdering();
-                },
-            };
-        }
-    );
+                isMounted = false;
+            },
+            destroy: () => {
+                childInfo.forEach((info) => info.renderNode.release());
+                childInfo = [];
+                attachedState = null;
+            },
+        };
+    });
 }
 
 function makeNodeOrdering(debugName?: string): NodeOrdering {
@@ -1631,27 +1621,23 @@ export function mount(parentElement: Element, jsxNode: JSX.Element) {
                 log.assertExhausted(event, 'unexpected render event');
         }
     };
+    const subContext = { contextMap, nodeOrdering };
 
     const renderNode = jsxNodeToRenderNode(jsxNode);
-    const lifecycle = renderNode.start(
-        renderEventHandler,
-        {
-            contextMap,
-            nodeOrdering,
-        },
-        false
-    );
+    const lifecycle = renderNode.retain();
+    lifecycle.attach?.(renderEventHandler, subContext);
 
-    lifecycle.onBeforeAttach();
+    // Mount the documentFragment, updating the insertionIndex
     insertionIndex = parentElement.childNodes.length;
     parentElement.appendChild(mountNode);
     mountNode = parentElement;
-    lifecycle.onAfterAttach();
+
+    lifecycle.afterMount?.();
 
     return () => {
-        lifecycle.detachSelf();
-        lifecycle.stop();
-        release(nodeOrdering);
+        lifecycle.beforeUnmount?.();
+        lifecycle.detach?.(renderEventHandler, subContext);
+        renderNode.release();
 
         if (nodes.size > 0) {
             log.error(
