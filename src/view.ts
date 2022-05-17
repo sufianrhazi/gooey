@@ -885,8 +885,6 @@ function createComponentRenderNode(
 
                 createdEffects.forEach((eff) => {
                     addOrderingDep(context.nodeOrdering, eff);
-                    retain(eff);
-                    eff(); // it may have been dirtied and flushed; re-cache
                 });
                 createdCalculations.forEach((calculation) => {
                     retain(calculation);
@@ -904,7 +902,6 @@ function createComponentRenderNode(
 
                 createdEffects.forEach((eff) => {
                     removeOrderingDep(context.nodeOrdering, eff);
-                    release(eff);
                 });
                 createdCalculations.forEach((calculation) => {
                     release(calculation);
