@@ -21,8 +21,12 @@ import { Graph } from './graph';
 import { alwaysTrue, noop, strictEqual, uniqueid } from './util';
 import { clearNames, debugNameFor, name } from './debug';
 
-let activeCalculations: { calc: null | Calculation<any>; deps: GraphNode[] }[] =
-    [];
+const untrackedCalculationSentinel = Symbol('untrackedCalculationSentinel');
+let activeCalculation:
+    | null
+    | typeof untrackedCalculationSentinel
+    | Calculation<any> = null;
+let activeCalculationDeps: null | GraphNode[] = null;
 
 let globalDependencyGraph = new Graph<GraphNode>();
 
@@ -32,7 +36,8 @@ let refcountMap: Record<string, number> = {};
  * Reset all data to a clean slate.
  */
 export function reset() {
-    activeCalculations = [];
+    activeCalculation = null;
+    activeCalculationDeps = null;
 
     globalDependencyGraph = new Graph();
     refcountMap = {};
@@ -112,11 +117,15 @@ export function effect(
 }
 
 export function untracked<TRet>(func: () => TRet): TRet {
-    activeCalculations.push({ calc: null, deps: [] });
+    const prevCalculation = activeCalculation;
+    const prevCalculationDeps = activeCalculationDeps;
+    activeCalculation = untrackedCalculationSentinel;
+    activeCalculationDeps = null;
     try {
         return func();
     } finally {
-        activeCalculations.pop();
+        activeCalculation = prevCalculation;
+        activeCalculationDeps = prevCalculationDeps;
     }
 }
 
@@ -179,21 +188,26 @@ function makeCalculation<Ret>(
         switch (state) {
             case CalculationState.STATE_FLUSHED: {
                 state = CalculationState.STATE_TRACKING;
-                activeCalculations.push({ calc: calculation, deps: [] });
+                const prevCalculation = activeCalculation;
+                const prevCalculationDeps = activeCalculationDeps;
+                activeCalculation = calculation;
+                activeCalculationDeps = [];
                 const prevResult = result;
+                let err: unknown = null;
                 try {
                     result = { result: calculationFunc() };
                 } catch (e) {
-                    const calcRecord = activeCalculations.pop();
-                    log.assert(
-                        calcRecord?.calc === calculation,
-                        'calculation stack inconsistency'
-                    );
-                    globalDependencyGraph.replaceIncoming(
-                        calculation,
-                        calcRecord.deps
-                    );
-                    const isCycle = e instanceof CycleAbortError;
+                    err = e;
+                }
+                const calculationDeps = activeCalculationDeps;
+                activeCalculation = prevCalculation;
+                activeCalculationDeps = prevCalculationDeps;
+                globalDependencyGraph.replaceIncoming(
+                    calculation,
+                    calculationDeps
+                );
+                if (err) {
+                    const isCycle = err instanceof CycleAbortError;
                     if (isCycle) {
                         // Let the graph know that we are part of a cycle
                         globalDependencyGraph.markNodeCycle(calculation);
@@ -213,33 +227,27 @@ function makeCalculation<Ret>(
                     }
                     // Only return a value if we're the _outermost_ tracked call.
                     // Otherwise, we need to propagate the error to catch the remaining ones.
-                    if (result && activeCalculations.length === 0) {
+                    if (result && activeCalculation === null) {
                         return prevResult &&
                             isEqual(prevResult.result, result.result)
                             ? prevResult.result
                             : result.result;
                     }
                     if (isCycle) {
-                        throw e;
+                        throw err;
                     }
                     throw new CalculationError(
                         'Calculation error: calculation threw error while being called',
-                        e
+                        err
                     );
                 }
                 state = CalculationState.STATE_CACHED;
-                const calcRecord = activeCalculations.pop();
-                log.assert(
-                    calcRecord?.calc === calculation,
-                    'calculation stack inconsistency'
-                );
-                globalDependencyGraph.replaceIncoming(
-                    calculation,
-                    calcRecord.deps
-                );
-                return prevResult && isEqual(prevResult.result, result.result)
+                // If we are here, result is guaranteed to be defined as an exception did not raise
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                return prevResult && isEqual(prevResult.result, result!.result)
                     ? prevResult.result
-                    : result.result;
+                    : // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                      result!.result;
             }
             case CalculationState.STATE_TRACKING:
                 state = CalculationState.STATE_ERROR;
@@ -255,7 +263,7 @@ function makeCalculation<Ret>(
                     // only return a value if we are the outermost tracked
                     // call. Otherwise, we need to propagate the error to the
                     // callers
-                    if (activeCalculations.length === 0) {
+                    if (activeCalculation === null) {
                         return result.result;
                     }
                 }
@@ -440,18 +448,19 @@ function makeCalculation<Ret>(
 }
 
 export function addDepToCurrentCalculation(item: GraphNode) {
-    if (activeCalculations.length === 0) return;
-    const dependentCalculation =
-        activeCalculations[activeCalculations.length - 1];
-    dependentCalculation.deps.push(item);
+    if (
+        !activeCalculationDeps ||
+        !activeCalculation ||
+        activeCalculation === untrackedCalculationSentinel
+    )
+        return;
+    activeCalculationDeps.push(item);
     DEBUG &&
         log.debug(
             'New global dependency',
             debugNameFor(item),
             '->',
-            dependentCalculation.calc
-                ? debugNameFor(dependentCalculation.calc)
-                : '<untracked>' // We probably could avoid adding to .deps if we were untracked, but it may be helpful to log these
+            debugNameFor(activeCalculation)
         );
 }
 
@@ -753,7 +762,8 @@ export function debug(activeItem?: any): string {
 export function debugState() {
     return {
         globalDependencyGraph,
-        activeCalculations,
+        activeCalculation,
+        activeCalculationDeps,
         refcountMap,
         needsFlush,
         flushPromise,
