@@ -100,7 +100,7 @@ suite('Graph', () => {
             graph.addEdge(f, h, Graph.EDGE_HARD);
             graph.addEdge(g, i, Graph.EDGE_HARD);
 
-            graph.retain(i); // the almost end node is retained
+            graph.markRoot(i); // the almost end node is root
         });
 
         suite('process', () => {
@@ -129,10 +129,10 @@ suite('Graph', () => {
                 assert.arrayEqualsUnsorted([a, b, c, d, e, f, g, h, i], items);
             });
 
-            test('nodes that do not lead to retained nodes are not visited', () => {
-                graph.release(i); // no nodes are retained now
-                graph.retain(e);
-                graph.retain(f);
+            test('nodes that do not lead to root nodes are not visited', () => {
+                graph.unmarkRoot(i); // no nodes are root now
+                graph.markRoot(e);
+                graph.markRoot(f);
 
                 graph.markNodeDirty(a);
                 graph.markNodeDirty(i);
@@ -162,7 +162,7 @@ suite('Graph', () => {
                         d: ['recalculate'],
                         e: ['recalculate'],
                         f: ['recalculate'],
-                        // unretained nodes that become dirtied are flushed, but not recalculated
+                        // non-root nodes that become dirtied are flushed, but not recalculated
                         g: ['invalidate'],
                         h: ['invalidate'],
                         i: ['invalidate'],
@@ -306,7 +306,7 @@ suite('Graph', () => {
             graph.addEdge(f, h, Graph.EDGE_HARD);
             graph.addEdge(g, i, Graph.EDGE_HARD);
 
-            graph.retain(i);
+            graph.markRoot(i);
         });
 
         suite('process', () => {
@@ -426,7 +426,7 @@ suite('Graph Cycles', () => {
         graph.addEdge(c, d, Graph.EDGE_HARD);
         graph.addEdge(d, b, Graph.EDGE_HARD);
         graph.addEdge(c, e, Graph.EDGE_HARD);
-        graph.retain(e);
+        graph.markRoot(e);
         graph.markNodeDirty(a);
 
         assert.deepEqual(
@@ -454,7 +454,7 @@ suite('Graph Cycles', () => {
         graph.addEdge(c, d, Graph.EDGE_HARD);
         graph.addEdge(d, b, Graph.EDGE_HARD);
         graph.addEdge(c, e, Graph.EDGE_HARD);
-        graph.retain(e);
+        graph.markRoot(e);
         graph.markNodeDirty(a);
 
         assert.deepEqual(
@@ -494,7 +494,7 @@ suite('Graph Cycles', () => {
         graph.addEdge(c, d, Graph.EDGE_HARD);
         graph.addEdge(d, b, Graph.EDGE_HARD);
         graph.addEdge(c, e, Graph.EDGE_HARD);
-        graph.retain(e);
+        graph.markRoot(e);
         graph.markNodeDirty(a);
 
         graph.markNodeCycle(b);
@@ -534,7 +534,7 @@ suite('Graph Cycles', () => {
         graph.addEdge(c, d, Graph.EDGE_HARD);
         graph.addEdge(d, b, Graph.EDGE_HARD);
         graph.addEdge(c, e, Graph.EDGE_HARD);
-        graph.retain(e);
+        graph.markRoot(e);
         graph.markNodeDirty(a);
 
         assert.deepEqual(
@@ -564,7 +564,7 @@ suite('Graph Cycles', () => {
                 a: ['recalculate'],
                 b: ['recalculate'],
                 c: ['recalculate'],
-                d: ['invalidate'], // invalidated and not recalculated since it is no longer retained
+                d: ['invalidate'], // invalidated and not recalculated since it is no longer root
                 e: ['recalculate'],
             },
             processGraph(graph)
@@ -595,8 +595,8 @@ suite('Graph Cycles', () => {
         graph.addEdge(c, e, Graph.EDGE_HARD);
         graph.addEdge(d, b, Graph.EDGE_HARD);
         graph.addEdge(d, f, Graph.EDGE_HARD);
-        graph.retain(e);
-        graph.retain(f);
+        graph.markRoot(e);
+        graph.markRoot(f);
         graph.markNodeDirty(a);
 
         assert.deepEqual(
@@ -651,7 +651,7 @@ suite('Graph Cycles', () => {
 
         graph.addEdge(c, e, Graph.EDGE_HARD);
 
-        graph.retain(e);
+        graph.markRoot(e);
         graph.markNodeDirty(a);
 
         assert.deepEqual(
@@ -680,7 +680,7 @@ suite('Graph Cycles', () => {
 
         graph.addEdge(c, d, Graph.EDGE_HARD);
 
-        graph.retain(d);
+        graph.markRoot(d);
         graph.markNodeDirty(a);
         assert.deepEqual(
             {
@@ -719,7 +719,7 @@ suite('Graph Cycles', () => {
 
         graph.addEdge(d, f, Graph.EDGE_HARD);
 
-        graph.retain(f);
+        graph.markRoot(f);
         graph.markNodeDirty(a);
 
         assert.deepEqual(
@@ -786,7 +786,7 @@ suite('Graph Cycles', () => {
         graph.addEdge(e, d, Graph.EDGE_HARD);
 
         graph.markNodeDirty(a);
-        graph.retain(f);
+        graph.markRoot(f);
 
         assert.deepEqual(
             {
@@ -822,7 +822,7 @@ suite('Graph Cycles', () => {
 
         graph.addEdge(e, f, Graph.EDGE_HARD);
 
-        graph.retain(f);
+        graph.markRoot(f);
         graph.markNodeDirty(a);
 
         assert.deepEqual(
@@ -850,7 +850,7 @@ suite('Graph Cycles', () => {
 
         graph.addEdge(b, c, Graph.EDGE_HARD);
 
-        graph.retain(c);
+        graph.markRoot(c);
         graph.markNodeDirty(a);
 
         assert.deepEqual(

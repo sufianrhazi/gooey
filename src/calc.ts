@@ -666,7 +666,7 @@ export function flush() {
 }
 
 /**
- * Retain a calculation (increase the refcount)
+ * Retain a calculation (increase the refcount and mark as root)
  */
 export function retain(item: GraphNode) {
     const refcount = refcountMap[item.$__id] ?? 0;
@@ -679,7 +679,7 @@ export function retain(item: GraphNode) {
                 )} retained; refcount ${refcount} -> ${newRefcount}`
             );
         globalDependencyGraph.addNode(item);
-        globalDependencyGraph.retain(item);
+        globalDependencyGraph.markRoot(item);
     } else {
         DEBUG &&
             log.debug(
@@ -711,7 +711,8 @@ export function release(item: GraphNode) {
                     item
                 )} released; refcount ${refcount} -> ${newRefcount}`
             );
-        globalDependencyGraph.release(item);
+        globalDependencyGraph.unmarkRoot(item);
+        globalDependencyGraph.removeNode(item);
     } else {
         DEBUG &&
             log.debug(

@@ -80,7 +80,7 @@ export class Graph<Type extends object> {
     static EDGE_HARD = 0b10 as const;
     private static EDGE_ANY = 0b11 as const;
 
-    private retained: Record<string, true>;
+    private rootNodes: Record<string, true>;
     private dirtyNodes: Record<string, true>;
     private recentDirtyNodes: undefined | string[];
     private informedCycles: Map<string, boolean>;
@@ -125,7 +125,7 @@ export class Graph<Type extends object> {
         this.pendingOperations = [];
         this.pendingNodes = {};
 
-        this.retained = {};
+        this.rootNodes = {};
         this.graph = {};
         this.reverseGraph = {};
 
@@ -405,10 +405,7 @@ export class Graph<Type extends object> {
     private performRemoveNodeInner(nodeId: string) {
         // Note: this can be performed without reordering topological ordering,
         // since node and edge removal does not change the topological order.
-        log.assert(
-            !this.retained[nodeId],
-            'attempted to remove a retained node'
-        ); // Is this right?
+        log.assert(!this.rootNodes[nodeId], 'attempted to remove a root node'); // Is this right?
         const toIds = this.getDependenciesInner(nodeId, Graph.EDGE_ANY);
         const fromIds = this.getReverseDependenciesInner(nodeId);
 
@@ -428,7 +425,7 @@ export class Graph<Type extends object> {
             undefined;
         delete this.topologicalIndex[nodeId];
         this.markNodeCleanInner(nodeId);
-        delete this.retained[nodeId];
+        delete this.rootNodes[nodeId];
         const cycleInfo = this.knownCycles.get(nodeId);
         if (cycleInfo) {
             // TODO: do we need to "fix" the existing cycles? Yes, yes we do
@@ -436,16 +433,16 @@ export class Graph<Type extends object> {
         }
     }
 
-    retain(node: Type) {
+    markRoot(node: Type) {
         const nodeId = this.getId(node);
-        log.assert(!this.retained[nodeId], 'double-retain');
-        this.retained[nodeId] = true;
+        log.assert(!this.rootNodes[nodeId], 'double mark root node');
+        this.rootNodes[nodeId] = true;
     }
 
-    release(node: Type) {
+    unmarkRoot(node: Type) {
         const nodeId = this.getId(node);
-        log.assert(this.retained[nodeId], 'double-release');
-        delete this.retained[nodeId];
+        log.assert(this.rootNodes[nodeId], 'double unmark root node');
+        delete this.rootNodes[nodeId];
     }
 
     replaceIncoming(node: Type, newIncomingNodes: Type[]) {
@@ -460,9 +457,16 @@ export class Graph<Type extends object> {
             this.getId(fromNode)
         );
         const newFromSet = new Set(newFromIds);
+        const removedFromNodes: Type[] = [];
         beforeFromIds.forEach((fromId) => {
             if (!newFromSet.has(fromId)) {
                 this.removeEdgeInner(fromId, toId, Graph.EDGE_HARD);
+                const node =
+                    this.topologicallyOrderedNodes[
+                        this.topologicalIndex[fromId]
+                    ];
+                log.assert(node, 'replaceIncoming removed dead from node');
+                removedFromNodes.push(node);
             }
         });
         newFromIds.forEach((fromId) => {
@@ -470,15 +474,7 @@ export class Graph<Type extends object> {
                 this.addEdgeInner(fromId, toId, Graph.EDGE_HARD);
             }
         });
-    }
-
-    removeIncoming(node: Type) {
-        const toId = this.getId(node);
-
-        const fromIds = this.getReverseDependenciesInner(toId);
-        fromIds.forEach((fromId) => {
-            this.removeEdgeInner(fromId, toId, Graph.EDGE_HARD);
-        });
+        return removedFromNodes;
     }
 
     /**
@@ -534,10 +530,10 @@ export class Graph<Type extends object> {
      * Core Processing Algorithm
      * =========================
      *
-     * In topological order, recalculate all of the dirty nodes that reach retained nodes; propagating dirtiness if
+     * In topological order, recalculate all of the dirty nodes that reach root nodes; propagating dirtiness if
      * propagation is requested.
      *
-     * For all remaining dirty nodes (which do not reach retained nodes), flush them & all their reachable nodes.
+     * For all remaining dirty nodes (which do not reach root nodes), flush them & all their reachable nodes.
      *
      * If a strongly connected component is identified, it should be treated as a single unit:
      * - If any node is dirtied or flushed; all nodes are
@@ -895,14 +891,14 @@ export class Graph<Type extends object> {
             return minLowerBound || 0;
         };
 
-        let reachesRetainedCache: Record<string, boolean> = {};
-        const reachesRetained = (nodeId: string) => {
+        let reachesRootCache: Record<string, boolean> = {};
+        const reachesRoot = (nodeId: string) => {
             const visited: Record<string, boolean> = {};
             const visit = (id: string): boolean => {
-                if (this.retained[id]) {
-                    reachesRetainedCache[id] = true;
+                if (this.rootNodes[id]) {
+                    reachesRootCache[id] = true;
                 }
-                if (reachesRetainedCache[id]) {
+                if (reachesRootCache[id]) {
                     return true;
                 }
                 if (visited[id]) return false;
@@ -931,7 +927,7 @@ export class Graph<Type extends object> {
             if (!this.dirtyNodes[nodeId]) {
                 continue;
             }
-            if (!reachesRetained(nodeId)) {
+            if (!reachesRoot(nodeId)) {
                 continue;
             }
 
@@ -1116,8 +1112,8 @@ export class Graph<Type extends object> {
                 });
 
                 if (reordered || this.minCycleBrokenIndex !== null) {
-                    // If we've reordered, we need to flush the retained cache
-                    reachesRetainedCache = {};
+                    // If we've reordered, we need to flush the root cache
+                    reachesRootCache = {};
                     // If we've reordered, all bets are off with respect to which nodes are next
                     this.getUnorderedDirtyNodes().forEach((nodeId) =>
                         dirtyNodesUnknownPosition.add(nodeId)
@@ -1233,7 +1229,7 @@ export class Graph<Type extends object> {
                 );
             nodeIds.forEach((nodeId) => {
                 const props: Record<string, string> = {
-                    shape: this.retained[nodeId] ? 'box' : 'ellipse',
+                    shape: this.rootNodes[nodeId] ? 'box' : 'ellipse',
                     label: nodeAttributes[nodeId]?.label,
                     penwidth: nodeAttributes[nodeId]?.penwidth,
                     fillcolor: this.isNodeDirty(nodeId) ? '#FFDDDD' : '#DDDDDD',
