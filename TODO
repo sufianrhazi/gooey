@@ -1,20 +1,28 @@
+Current theme - memory management:
+[ ] Write a bunch of tests to confirm retain / release refcounting is sound (i.e. a component (that creates state, has a calculation, changes some content on click) is mounted, clicked, and then unmounted, the resulting graph is empty)
+[ ] Confirm all demos are working as expected
+  - garbage-test throws exceptions (looks like a calculation use after free/release in the debug graph?)
+  - form-inputs auto-scroll does not work; did the ordering of effects regress?
+  - perf comparison
+[ ] Move id issuance into the graph; allow for reissuing ids (to keep the topological ordered list compact)
+
 Next up:
-[ ] Understand the virtualized list re-render performance better: why so freakishly slow?
+[ ] Finish the design doc
+[ ] Go through the design and correct the identified design flaws
 
 Unprioritized:
 [ ] Build demonstration UI for the 7 GUIs: https://eugenkiss.github.io/7guis/
 [ ] Model: We have model.keys, do we need model.values and model.entries?
 [ ] Model: Ergonomics/efficiency around derived models? Or is calc(() => model({ val: derived.val })) good enough?
-[ ] Collection: Make .flatMapView recalculate automatically if feasible (will also apply to .filterView and .mapView)
-[ ] Collection: Consider adding .sortedView()
-[ ] View: Have an opinion on controlled vs uncontrolled components
-[ ] View: Any sort of error handling? Or maybe just document that uncaught exceptions while rendering will break everything?
+[ ] View: change the component/context API so that reparenting can re-read context values
+
+Future:
 [ ] View: Portals; do they make sense? Do we need event hijacking for them to be useful?
-[ ] View: Maybe allow for reparenting of a DOM subtree? Use case: moving an item between two lists without unmounting/remounting the item. The API would feel weird, but this could totally be done if source parent and destination parent were known. Biggest challenge will be getting this to work with Contexts and calc() ordering
-[ ] View: Could this play well with web components?
+[ ] View: Build a demo with web components / custom elements powered by gooey
 [ ] View: Consider the pros/cons of the style prop as a string / object
 
 Done:
+[x] View: Allow for reparenting of a DOM subtree?
 [x] Collection: Make .sort work + add new 'sort' event
 [x] View: Add a Context.Provider equivalent
 [x] View: Guarantee ordering of onEffect() to be after all mounted calc()s within a component

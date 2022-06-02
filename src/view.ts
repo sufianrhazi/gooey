@@ -2,11 +2,11 @@ import {
     effect,
     retain,
     release,
+    markRoot,
+    unmarkRoot,
     untracked,
     addOrderingDep,
     removeOrderingDep,
-    registerNode,
-    disposeNode, // TODO: dispose nodes!
     trackCreatedCalculations,
     afterFlush,
 } from './calc';
@@ -269,7 +269,8 @@ function createCalculationRenderNode(
                     attachedState.context.nodeOrdering,
                     maintenanceEffect
                 );
-                retain(maintenanceEffect);
+                retain(maintenanceEffect); // TODO: does this need to be a root?
+                markRoot(maintenanceEffect); // TODO: does this need to be a root?
                 maintenanceEffect();
             },
             detach: (handler, context) => {
@@ -282,6 +283,7 @@ function createCalculationRenderNode(
                     attachedState.context.nodeOrdering,
                     maintenanceEffect
                 );
+                unmarkRoot(maintenanceEffect);
                 release(maintenanceEffect);
                 // TODO: Do I need to do this? Probably
                 //   maintenanceEffect[CalculationInvalidateTag]();
@@ -566,7 +568,7 @@ function createIntrinsicRenderNode<TProps>(
     const initOrdering = () => {
         if (!nodeOrdering) {
             nodeOrdering = makeNodeOrdering('intrinsic:${elementType}:order');
-            registerNode(nodeOrdering);
+            retain(nodeOrdering);
         }
     };
     const boundEffects: Calculation<any>[] = [];
@@ -792,6 +794,10 @@ function createIntrinsicRenderNode<TProps>(
                     renderNodeElement = null;
                     onMountActions.clear();
                     onUnmountActions.clear();
+                    if (nodeOrdering) {
+                        release(nodeOrdering);
+                        nodeOrdering = null;
+                    }
                     isAttached = false;
                     isMounted = false;
                 },
@@ -887,7 +893,8 @@ function createComponentRenderNode(
                     addOrderingDep(context.nodeOrdering, eff);
                 });
                 createdCalculations.forEach((calculation) => {
-                    retain(calculation);
+                    retain(calculation); // TODO: does this need to be a root?
+                    markRoot(calculation); // TODO: does this need to be a root?
                     calculation(); // it may have been dirtied and flushed; re-cache
                 });
 
@@ -904,6 +911,7 @@ function createComponentRenderNode(
                     removeOrderingDep(context.nodeOrdering, eff);
                 });
                 createdCalculations.forEach((calculation) => {
+                    unmarkRoot(calculation);
                     release(calculation);
                 });
             },
@@ -1249,7 +1257,7 @@ function createCollectionRenderNode(
                 ? `viewcoll:${debugNameFor(collection) ?? 'node'}:order`
                 : 'viewcoll:order'
         );
-        registerNode(collectionNodeOrdering);
+        retain(collectionNodeOrdering);
 
         type ChildInfoRecord = {
             renderNode: RenderNode;
@@ -1317,7 +1325,7 @@ function createCollectionRenderNode(
         };
 
         const subscriptionNode = collection[GetSubscriptionNodeKey]();
-        registerNode(subscriptionNode); // TODO: Wait what the fuck? Why am I doing this? This should be the responsible of the collection, right?
+        retain(subscriptionNode);
 
         let unobserve: null | (() => void) = null;
 
@@ -1517,6 +1525,8 @@ function createCollectionRenderNode(
                 childInfo.forEach((info) => info.renderNode.release());
                 childInfo = [];
                 attachedState = null;
+                release(collectionNodeOrdering);
+                release(subscriptionNode);
             },
         };
     });
@@ -1549,8 +1559,8 @@ export function mount(parentElement: Element, jsxNode: JSX.Element) {
 
     const contextMap = new Map<Context<any>, any>();
     const nodeOrdering = makeNodeOrdering('root:mount');
-    registerNode(nodeOrdering);
     retain(nodeOrdering);
+    markRoot(nodeOrdering);
 
     const nodes = new Set<Text | Element>();
 
@@ -1635,6 +1645,8 @@ export function mount(parentElement: Element, jsxNode: JSX.Element) {
         lifecycle.beforeUnmount?.();
         lifecycle.detach?.(renderEventHandler, subContext);
         renderNode.release();
+        unmarkRoot(nodeOrdering);
+        release(nodeOrdering);
 
         if (nodes.size > 0) {
             log.error(

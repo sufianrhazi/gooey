@@ -10,6 +10,7 @@ import Gooey, {
     createContext,
     subscribe,
     LifecycleObserver,
+    setLogLevel,
 } from './index';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
 
@@ -17,8 +18,8 @@ let testRoot: HTMLElement = document.getElementById('test-root')!;
 
 beforeEach(() => {
     testRoot = document.getElementById('test-root')!;
-    subscribe();
     reset();
+    subscribe();
 });
 
 suite('mount static', () => {
@@ -230,7 +231,8 @@ suite('mount static', () => {
 
 suite('mount calculations', () => {
     test('renders child calculations as their raw value', () => {
-        mount(testRoot, <div id="ok">{calc(() => 'hello')}</div>);
+        setLogLevel('debug');
+        mount(testRoot, <div id="ok">{calc(() => 'hello', 'calctest')}</div>);
         assert.deepEqual(
             (testRoot.querySelector('#ok')!.childNodes[0] as Text).data,
             'hello'
@@ -444,6 +446,7 @@ suite('mount components', () => {
     });
 
     test('components are provided an onEffect callback which is called only while component is mounted', () => {
+        setLogLevel('debug');
         const state = model({
             showingChild: false,
             counter: 0,

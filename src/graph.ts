@@ -453,13 +453,15 @@ export class Graph<Type extends object> {
             Graph.EDGE_HARD
         );
         const beforeFromSet = new Set(beforeFromIds);
-        const newFromIds = newIncomingNodes.map((fromNode) =>
-            this.getId(fromNode)
-        );
-        const newFromSet = new Set(newFromIds);
+        const newFromMap = new Map<string, Type>();
+        newIncomingNodes.forEach((fromNode) => {
+            const nodeId = this.getId(fromNode);
+            newFromMap.set(nodeId, fromNode);
+        });
         const removedFromNodes: Type[] = [];
+        const newFromNodes: Type[] = [];
         beforeFromIds.forEach((fromId) => {
-            if (!newFromSet.has(fromId)) {
+            if (!newFromMap.has(fromId)) {
                 this.removeEdgeInner(fromId, toId, Graph.EDGE_HARD);
                 const node =
                     this.topologicallyOrderedNodes[
@@ -469,12 +471,16 @@ export class Graph<Type extends object> {
                 removedFromNodes.push(node);
             }
         });
-        newFromIds.forEach((fromId) => {
+        newFromMap.forEach((fromNode, fromId) => {
             if (!beforeFromSet.has(fromId)) {
                 this.addEdgeInner(fromId, toId, Graph.EDGE_HARD);
+                newFromNodes.push(fromNode);
             }
         });
-        return removedFromNodes;
+        return {
+            removed: removedFromNodes,
+            added: Array.from(newFromMap.values()),
+        };
     }
 
     /**

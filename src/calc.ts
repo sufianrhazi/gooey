@@ -179,6 +179,18 @@ function makeCalculation<Ret>(
     globalDependencyGraph.addNode(calculation);
 
     function calculationBody() {
+        DEBUG &&
+            log.debug(
+                `call calc ${debugNameFor(calculation)} refcount=${
+                    refcountMap[calculation.$__id]
+                } activeCalculation=${
+                    activeCalculation === untrackedCalculationSentinel
+                        ? '<<untracked>>'
+                        : activeCalculation
+                        ? debugNameFor(activeCalculation)
+                        : '<none>'
+                }`
+            );
         log.assert(!isDisposed, 'calculation already disposed');
         if (!isEffect) {
             // effects return void, so they **cannot** have an effect on the current calculation
@@ -202,10 +214,18 @@ function makeCalculation<Ret>(
                 const calculationDeps = activeCalculationDeps;
                 activeCalculation = prevCalculation;
                 activeCalculationDeps = prevCalculationDeps;
-                globalDependencyGraph.replaceIncoming(
+                const incomingChanges = globalDependencyGraph.replaceIncoming(
                     calculation,
                     calculationDeps
                 );
+                // Nodes that are newly contributing to this calculation are retained
+                incomingChanges.added.forEach((addedNode) => {
+                    retain(addedNode, calculation);
+                });
+                // Nodes that are no longer contributing to this calculation are released
+                incomingChanges.removed.forEach((removedNode) => {
+                    release(removedNode, calculation);
+                });
                 if (err) {
                     const isCycle = err instanceof CycleAbortError;
                     if (isCycle) {
@@ -452,8 +472,10 @@ export function addDepToCurrentCalculation(item: GraphNode) {
         !activeCalculationDeps ||
         !activeCalculation ||
         activeCalculation === untrackedCalculationSentinel
-    )
+    ) {
         return;
+    }
+    retain(item, activeCalculation); // By virtue of calling item, the callee "owns" it, thus retains it
     activeCalculationDeps.push(item);
     DEBUG &&
         log.debug(
@@ -600,102 +622,109 @@ export function flush() {
     log.assert(!isFlushing, 'Invariant: flush called recursively');
     isFlushing = true;
 
-    DEBUG && debugSubscription && debugSubscription(debug(), '0: flush start');
-
-    // Then flush dependencies in topological order
-    globalDependencyGraph.process((item, action) => {
-        let shouldPropagate = true;
-
-        switch (action) {
-            case 'cycle':
-                if (isCalculation(item)) {
-                    shouldPropagate = item[CalculationSetCycleTag]();
-                } else {
-                    throw new Error('Unexpected dependency on cycle');
-                }
-                break;
-            case 'invalidate':
-                if (isCalculation(item)) {
-                    item[CalculationInvalidateTag]();
-                }
-                break;
-            case 'recalculate-cycle':
-                if (isCalculation(item)) {
-                    shouldPropagate = item[CalculationRecalculateCycleTag]();
-                } else if (
-                    isCollection(item) ||
-                    isModel(item) ||
-                    isSubscription(item)
-                ) {
-                    shouldPropagate = item[FlushKey]();
-                }
-                break;
-            case 'recalculate':
-                if (isCalculation(item)) {
-                    item[CalculationInvalidateTag]();
-                    shouldPropagate = item[CalculationRecalculateTag]();
-                } else if (
-                    isCollection(item) ||
-                    isModel(item) ||
-                    isSubscription(item)
-                ) {
-                    shouldPropagate = item[FlushKey]();
-                }
-                break;
-            default:
-                log.assertExhausted(action);
-        }
-        if (DEBUG) {
-            log.debug(
-                `process:${action}`,
-                debugNameFor(item),
-                `shouldPropagate=${shouldPropagate}`
-            );
+    try {
+        DEBUG &&
             debugSubscription &&
-                debugSubscription(
-                    debug(item),
-                    `process:${action}:shouldPropagate=${shouldPropagate}`
+            debugSubscription(debug(), '0: flush start');
+
+        // Then flush dependencies in topological order
+        globalDependencyGraph.process((item, action) => {
+            let shouldPropagate = true;
+
+            switch (action) {
+                case 'cycle':
+                    if (isCalculation(item)) {
+                        shouldPropagate = item[CalculationSetCycleTag]();
+                    } else {
+                        throw new Error('Unexpected dependency on cycle');
+                    }
+                    break;
+                case 'invalidate':
+                    if (isCalculation(item)) {
+                        item[CalculationInvalidateTag]();
+                    }
+                    break;
+                case 'recalculate-cycle':
+                    if (isCalculation(item)) {
+                        shouldPropagate =
+                            item[CalculationRecalculateCycleTag]();
+                    } else if (
+                        isCollection(item) ||
+                        isModel(item) ||
+                        isSubscription(item)
+                    ) {
+                        shouldPropagate = item[FlushKey]();
+                    }
+                    break;
+                case 'recalculate':
+                    if (isCalculation(item)) {
+                        item[CalculationInvalidateTag]();
+                        shouldPropagate = item[CalculationRecalculateTag]();
+                    } else if (
+                        isCollection(item) ||
+                        isModel(item) ||
+                        isSubscription(item)
+                    ) {
+                        shouldPropagate = item[FlushKey]();
+                    }
+                    break;
+                default:
+                    log.assertExhausted(action);
+            }
+            if (DEBUG) {
+                log.debug(
+                    `process:${action}`,
+                    debugNameFor(item),
+                    `shouldPropagate=${shouldPropagate}`
                 );
-        }
-        return shouldPropagate;
-    });
+                debugSubscription &&
+                    debugSubscription(
+                        debug(item),
+                        `process:${action}:shouldPropagate=${shouldPropagate}`
+                    );
+            }
+            return shouldPropagate;
+        });
 
-    log.assert(
-        !globalDependencyGraph.hasDirtyNodes(),
-        'Graph contained dirty nodes post-flush'
-    );
+        log.assert(
+            !globalDependencyGraph.hasDirtyNodes(),
+            'Graph contained dirty nodes post-flush'
+        );
 
-    DEBUG && debugSubscription && debugSubscription(debug(), `2: after visit`);
+        DEBUG &&
+            debugSubscription &&
+            debugSubscription(debug(), `2: after visit`);
 
-    afterFlushCallbacks.forEach((callback) => callback());
-    afterFlushCallbacks.clear();
+        afterFlushCallbacks.forEach((callback) => callback());
+        afterFlushCallbacks.clear();
 
-    isFlushing = false;
-    resolveFlushPromise();
+        resolveFlushPromise();
+    } finally {
+        isFlushing = false;
+    }
 }
 
 /**
  * Retain a calculation (increase the refcount and mark as root)
  */
-export function retain(item: GraphNode) {
+export function retain(item: GraphNode, retainer?: GraphNode | string) {
     const refcount = refcountMap[item.$__id] ?? 0;
     const newRefcount = refcount + 1;
+    DEBUG &&
+        log.debug(
+            `retain ${debugNameFor(
+                item
+            )}; refcount ${refcount} -> ${newRefcount} retained by ${
+                typeof retainer === 'string'
+                    ? `<${retainer}>`
+                    : retainer
+                    ? debugNameFor(retainer)
+                    : '<unknown>'
+            }`
+        );
+
     if (refcount === 0) {
-        DEBUG &&
-            log.debug(
-                `retain ${debugNameFor(
-                    item
-                )} retained; refcount ${refcount} -> ${newRefcount}`
-            );
         globalDependencyGraph.addNode(item);
-        globalDependencyGraph.markRoot(item);
-    } else {
-        DEBUG &&
-            log.debug(
-                `retain ${debugNameFor(
-                    item
-                )} incremented; refcount ${refcount} -> ${newRefcount}`
-            );
     }
     refcountMap[item.$__id] = newRefcount;
 }
@@ -704,33 +733,45 @@ export function retain(item: GraphNode) {
  * Release a calculation (decrease the refcount). If the refcount reaches zero, the calculation will be garbage
  * collected.
  */
-export function release(item: GraphNode) {
+export function release(item: GraphNode, releaser?: GraphNode | string) {
     const refcount = refcountMap[item.$__id] ?? 0;
-    const newRefcount = Math.min(refcount - 1, 0);
-    if (refcount < 1) {
-        log.error(
-            `release called on unretained item ${debugNameFor(item)}`,
-            item
+    log.assert(refcount > 0, 'item double release');
+    const newRefcount = refcount - 1;
+    DEBUG &&
+        log.debug(
+            `release ${debugNameFor(
+                item
+            )}; refcount ${refcount} -> ${newRefcount} retained by ${
+                typeof releaser === 'string'
+                    ? `<${releaser}>`
+                    : releaser
+                    ? debugNameFor(releaser)
+                    : '<unknown>'
+            }`
         );
-    }
-    if (newRefcount < 1) {
-        DEBUG &&
-            log.debug(
-                `release ${debugNameFor(
-                    item
-                )} released; refcount ${refcount} -> ${newRefcount}`
-            );
-        globalDependencyGraph.unmarkRoot(item);
+
+    if (newRefcount == 0) {
         globalDependencyGraph.removeNode(item);
-    } else {
-        DEBUG &&
-            log.debug(
-                `release ${debugNameFor(
-                    item
-                )} decremented; refcount ${refcount} -> ${newRefcount}`
-            );
     }
     refcountMap[item.$__id] = newRefcount;
+}
+
+/**
+ * Mark a calculation as a root calculation
+ */
+export function markRoot(item: GraphNode) {
+    DEBUG && log.debug(`markRoot ${debugNameFor(item)}`);
+    log.assert(refcountMap[item.$__id] > 0, 'inert item marked as root');
+    globalDependencyGraph.markRoot(item);
+}
+
+/**
+ * Mark a calculation as not a root calculation
+ */
+export function unmarkRoot(item: GraphNode) {
+    DEBUG && log.debug(`unmarkRoot ${debugNameFor(item)}`);
+    log.assert(refcountMap[item.$__id] > 0, 'inert item unmarked as root');
+    globalDependencyGraph.unmarkRoot(item);
 }
 
 /**
@@ -752,7 +793,9 @@ export function debug(activeItem?: any): string {
             subgraph = item.item;
         }
         return {
-            label: `${id}\n${debugNameFor(item)}`,
+            label: `${id}\n${debugNameFor(item)}\nrc=${
+                refcountMap[item.$__id] ?? 0
+            }`,
             subgraph,
             penwidth: activeItem === item ? '5.0' : '1.0',
         };

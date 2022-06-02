@@ -14,6 +14,8 @@ export {
     nextFlush,
     retain,
     release,
+    markRoot,
+    unmarkRoot,
     debug,
     debugState,
     debugSubscribe,

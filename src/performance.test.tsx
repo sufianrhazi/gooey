@@ -11,6 +11,7 @@ import Gooey, {
     mount,
     release,
     retain,
+    markRoot,
     setLogLevel,
     reset,
     subscribe,
@@ -404,6 +405,7 @@ suite('perf tests', () => {
             for (let i = 0; i < COUNT; ++i) {
                 const calculation = calc(() => i);
                 retain(calculation);
+                markRoot(calculation);
                 calculations.push(calculation);
             }
             measure(() => {
@@ -426,6 +428,7 @@ suite('perf tests', () => {
                 for (let i = 0; i < COUNT; ++i) {
                     const calculation = calc(() => i);
                     retain(calculation);
+                    markRoot(calculation);
                     calculations.push(calculation);
                 }
             });
@@ -446,6 +449,7 @@ suite('perf tests', () => {
             for (let i = 0; i < COUNT; ++i) {
                 const calculation = calc(() => i);
                 retain(calculation);
+                markRoot(calculation);
                 calculations.push(calculation);
             }
             for (let i = 0; i < COUNT; ++i) {
@@ -469,6 +473,7 @@ suite('perf tests', () => {
                 return i + modelObj.num;
             });
             retain(calculation);
+            markRoot(calculation);
             calculation();
             calculations.push(calculation);
         }

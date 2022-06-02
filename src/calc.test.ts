@@ -1,8 +1,19 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
 import { collection } from './collection';
-import { flush, calc, effect, retain, release, reset, subscribe } from './calc';
+import {
+    flush,
+    calc,
+    effect,
+    retain,
+    release,
+    markRoot,
+    reset,
+    subscribe,
+    debug,
+} from './calc';
 import { Calculation } from './types';
+import { setLogLevel } from './log';
 
 beforeEach(() => {
     subscribe();
@@ -33,6 +44,7 @@ suite('calc', () => {
             return dependency.value;
         });
         retain(calculation);
+        markRoot(calculation);
         const a = calculation();
         dependency.value = 2;
         const b = calculation();
@@ -55,6 +67,7 @@ suite('calc', () => {
             return dependency.length;
         });
         retain(calculation);
+        markRoot(calculation);
         const a = calculation();
         dependency.push('item 2');
         const b = calculation();
@@ -100,6 +113,7 @@ suite('calc', () => {
             return left() + right();
         }, 'bottom');
         retain(bottom);
+        markRoot(bottom);
 
         const result = bottom();
         assert.is(5, result);
@@ -147,6 +161,7 @@ suite('calc', () => {
             }
         }, 'calculation');
         retain(calculation);
+        markRoot(calculation);
         calculation();
         flush();
         assert.deepEqual(['call a'], calls);
@@ -191,6 +206,7 @@ suite('effect', () => {
             return dependency.value;
         });
         retain(eff);
+        markRoot(eff);
         eff();
         assert.deepEqual(['call 1'], calls);
         dependency.value = 2;
@@ -206,6 +222,7 @@ suite('effect', () => {
             calls.push(`call ${dependency.length}`);
         });
         retain(eff);
+        markRoot(eff);
         eff();
         assert.deepEqual(['call 0'], calls);
         dependency.push('hi');
@@ -228,8 +245,10 @@ suite('effect', () => {
             eff();
             return dependency.calcdep;
         });
-        retain(eff);
         retain(cal);
+        markRoot(cal);
+        retain(eff);
+        markRoot(eff);
         cal();
         assert.deepEqual(['cal 0', 'eff 0'], calls);
         dependency.effdep = 1;
@@ -288,6 +307,7 @@ suite('effect', () => {
             return b() + c();
         }, 'a');
         retain(a);
+        markRoot(a);
         a();
 
         assert.deepEqual(['a', 'b', 'd', 'c'], calls);
@@ -320,6 +340,7 @@ suite('effect', () => {
             'd'
         );
         retain(d);
+        markRoot(d);
         const before = d();
 
         dependency.val = {
@@ -347,8 +368,11 @@ suite('cycles', () => {
             return calculations.b() + 'c';
         }, 'c');
         retain(calculations.a);
+        markRoot(calculations.a);
         retain(calculations.b);
+        markRoot(calculations.b);
         retain(calculations.c);
+        markRoot(calculations.c);
 
         assert.throwsMatching(/cycle reached/i, () => calculations.a());
     });
@@ -372,8 +396,11 @@ suite('cycles', () => {
             return calculations.b() + 'c';
         }, 'c');
         retain(calculations.a);
+        markRoot(calculations.a);
         retain(calculations.b);
+        markRoot(calculations.b);
         retain(calculations.c);
+        markRoot(calculations.c);
 
         assert.is('a', calculations.a());
         assert.is('ab', calculations.b());
@@ -414,8 +441,11 @@ suite('cycles', () => {
             return 'c' + calculations.b();
         }, 'c');
         retain(calculations.a);
+        markRoot(calculations.a);
         retain(calculations.b);
+        markRoot(calculations.b);
         retain(calculations.c);
+        markRoot(calculations.c);
 
         //
         // When isCycle = true:
@@ -508,9 +538,13 @@ suite('cycles', () => {
             });
 
             retain(calculations.a);
+            markRoot(calculations.a);
             retain(calculations.b);
+            markRoot(calculations.b);
             retain(calculations.c);
+            markRoot(calculations.c);
             retain(calculations.d);
+            markRoot(calculations.d);
             return { calculations, data, calls };
         };
 
@@ -602,11 +636,17 @@ suite('cycles', () => {
             }, 'g').onError(() => 'G');
 
             retain(calculations.a);
+            markRoot(calculations.a);
             retain(calculations.b);
+            markRoot(calculations.b);
             retain(calculations.c);
+            markRoot(calculations.c);
             retain(calculations.d);
+            markRoot(calculations.d);
             retain(calculations.e);
+            markRoot(calculations.e);
             retain(calculations.g);
+            markRoot(calculations.g);
             return { calculations, data };
         };
 
@@ -694,9 +734,13 @@ suite('cycles', () => {
             }, 'd');
 
             retain(calculations.a);
+            markRoot(calculations.a);
             retain(calculations.b);
+            markRoot(calculations.b);
             retain(calculations.c);
+            markRoot(calculations.c);
             retain(calculations.d);
+            markRoot(calculations.d);
             return { calculations, data, calls };
         };
 
@@ -761,6 +805,7 @@ suite('cycles', () => {
         });
 
         retain(catcher);
+        markRoot(catcher);
 
         assert.deepEqual(['a no cycle', 'b no cycle'], catcher());
 
@@ -806,6 +851,7 @@ suite('cycles', () => {
         });
 
         retain(catcher);
+        markRoot(catcher);
 
         assert.deepEqual('a no cycle', catcher());
 
@@ -838,6 +884,7 @@ suite('cycles', () => {
         });
 
         retain(catcher);
+        markRoot(catcher);
 
         assert.deepEqual('a no cycle', catcher());
 
@@ -883,9 +930,13 @@ suite('cycles', () => {
             return calculations.a() + ' and D';
         }, 'd');
         retain(calculations.a);
+        markRoot(calculations.a);
         retain(calculations.b);
+        markRoot(calculations.b);
         retain(calculations.c);
+        markRoot(calculations.c);
         retain(calculations.d);
+        markRoot(calculations.d);
 
         assert.throwsMatching(/cycle/, () => calculations.a());
         assert.throwsMatching(/cycle/, () => calculations.b());
@@ -937,9 +988,13 @@ suite('cycles', () => {
             return calculations.a() + ' and D';
         }, 'd');
         retain(calculations.a);
+        markRoot(calculations.a);
         retain(calculations.b);
+        markRoot(calculations.b);
         retain(calculations.c);
+        markRoot(calculations.c);
         retain(calculations.d);
+        markRoot(calculations.d);
 
         assert.is('C and B and A', calculations.a());
         assert.is('C and B', calculations.b());
@@ -1036,10 +1091,15 @@ suite('near cycles', () => {
                     return calculations.c() + ' and D';
             }
         }, 'd');
-        retain(calculations.a);
-        retain(calculations.b);
-        retain(calculations.c);
-        retain(calculations.d);
+        retain(calculations.a, 'setup');
+        markRoot(calculations.a);
+        retain(calculations.b, 'setup');
+        markRoot(calculations.b);
+        retain(calculations.c, 'setup');
+        markRoot(calculations.c);
+        retain(calculations.d, 'setup');
+        markRoot(calculations.d);
+        flush();
     });
 
     function assertCase0() {
@@ -1148,6 +1208,7 @@ suite('errors', () => {
             items.push(divide());
         }, 'root');
         retain(root);
+        markRoot(root);
         root();
         return { items, data };
     }
@@ -1181,3 +1242,5 @@ suite('errors', () => {
         assert.deepEqual([2, 'caught error', 4], items);
     });
 });
+
+suite('automatic memory management', () => {});

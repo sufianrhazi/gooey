@@ -1,8 +1,18 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
-import { flush, retain, release, subscribe } from './calc';
+import {
+    reset,
+    flush,
+    retain,
+    release,
+    markRoot,
+    unmarkRoot,
+    subscribe,
+} from './calc';
+import { setLogLevel } from './log';
 
 beforeEach(() => {
+    reset();
     subscribe();
 });
 
@@ -56,6 +66,7 @@ suite('model', () => {
         const simple = model<Record<string, any>>({}, 'model');
         const keys = model.keys(simple, 'keys');
         retain(keys);
+        markRoot(keys);
         assert.arrayEqualsUnsorted([], keys);
         simple.foo = 'a';
         flush();
@@ -69,6 +80,7 @@ suite('model', () => {
         delete simple.bar;
         flush();
         assert.arrayEqualsUnsorted(['foo'], keys);
+        unmarkRoot(keys);
         release(keys);
     });
 
@@ -76,6 +88,7 @@ suite('model', () => {
         const simple = model<Record<string, any>>({});
         const keys = model.keys(simple);
         retain(keys);
+        markRoot(keys);
         assert.arrayEqualsUnsorted([], keys);
         simple.foo = 'a';
         assert.arrayEqualsUnsorted([], keys);
@@ -87,6 +100,7 @@ suite('model', () => {
         assert.arrayEqualsUnsorted([], keys);
         flush();
         assert.arrayEqualsUnsorted(['foo'], keys);
+        unmarkRoot(keys);
         release(keys);
     });
 
@@ -94,6 +108,7 @@ suite('model', () => {
         const simple = model<Record<string, any>>({});
         const keys = model.keys(simple);
         retain(keys);
+        markRoot(keys);
         assert.arrayEqualsUnsorted([], keys);
         simple.foo = 'a';
         flush();
@@ -101,6 +116,7 @@ suite('model', () => {
         simple.bar = 'a';
         flush();
         assert.arrayEqualsUnsorted(['foo', 'bar'], keys);
+        unmarkRoot(keys);
         release(keys);
 
         simple.baz = 'new';
@@ -116,6 +132,7 @@ suite('model', () => {
         const keys = model.keys(simple);
         simple.after = 'after';
         retain(keys);
+        markRoot(keys);
 
         assert.arrayEqualsUnsorted(['before'], keys);
 
