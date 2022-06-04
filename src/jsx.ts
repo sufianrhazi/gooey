@@ -73,7 +73,7 @@ type EffectCallback = () => void;
 export type ComponentListeners = {
     onUnmount: (callback: OnUnmountCallback) => void;
     onMount: (callback: OnMountCallback) => void;
-    onEffect: (callback: EffectCallback) => void;
+    onEffect: (callback: EffectCallback, debugName?: string) => void;
     getContext: <TVal>(context: Context<TVal>) => TVal;
 };
 /**

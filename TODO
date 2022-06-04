@@ -9,6 +9,7 @@ Current theme - memory management:
 Next up:
 [ ] Finish the design doc
 [ ] Go through the design and correct the identified design flaws
+[ ] Go through the codebase and address all the TODOs
 
 Unprioritized:
 [ ] Build demonstration UI for the 7 GUIs: https://eugenkiss.github.io/7guis/

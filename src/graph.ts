@@ -214,6 +214,12 @@ export class Graph<Type extends object> {
         return Object.keys(this.dirtyNodes).length > 0;
     }
 
+    getNodes(): Type[] {
+        return this.topologicallyOrderedNodes.filter(
+            (node) => !!node
+        ) as Type[];
+    }
+
     /**
      * Indicate that toNode needs to be updated if fromNode has changed
      */
@@ -448,39 +454,47 @@ export class Graph<Type extends object> {
     replaceIncoming(node: Type, newIncomingNodes: Type[]) {
         const toId = this.getId(node);
 
-        const beforeFromIds = this.getReverseDependenciesInner(
-            toId,
-            Graph.EDGE_HARD
-        );
-        const beforeFromSet = new Set(beforeFromIds);
         const newFromMap = new Map<string, Type>();
         newIncomingNodes.forEach((fromNode) => {
             const nodeId = this.getId(fromNode);
             newFromMap.set(nodeId, fromNode);
         });
-        const removedFromNodes: Type[] = [];
-        const newFromNodes: Type[] = [];
+
+        const beforeFromIds = new Set(
+            this.getReverseDependenciesInner(toId, Graph.EDGE_HARD)
+        );
+        // Note: beforeFromIds does not include pending operations!
+        this.pendingOperations.forEach((op) => {
+            switch (op.type) {
+                case PendingOperationType.EDGE_ADD:
+                    if (op.toId === toId && op.kind & Graph.EDGE_HARD) {
+                        beforeFromIds.add(op.fromId);
+                    }
+                    break;
+                case PendingOperationType.EDGE_DELETE:
+                    if (op.toId === toId && op.kind & Graph.EDGE_HARD) {
+                        beforeFromIds.delete(op.fromId);
+                    }
+            }
+        });
+
+        const beforeFromNodes: Type[] = [];
         beforeFromIds.forEach((fromId) => {
+            const node =
+                this.topologicallyOrderedNodes[this.topologicalIndex[fromId]];
+            log.assert(node, 'replaceIncoming removed dead from node');
             if (!newFromMap.has(fromId)) {
                 this.removeEdgeInner(fromId, toId, Graph.EDGE_HARD);
-                const node =
-                    this.topologicallyOrderedNodes[
-                        this.topologicalIndex[fromId]
-                    ];
-                log.assert(node, 'replaceIncoming removed dead from node');
-                removedFromNodes.push(node);
             }
+            beforeFromNodes.push(node);
         });
+
         newFromMap.forEach((fromNode, fromId) => {
-            if (!beforeFromSet.has(fromId)) {
+            if (!beforeFromIds.has(fromId)) {
                 this.addEdgeInner(fromId, toId, Graph.EDGE_HARD);
-                newFromNodes.push(fromNode);
             }
         });
-        return {
-            removed: removedFromNodes,
-            added: Array.from(newFromMap.values()),
-        };
+        return beforeFromNodes;
     }
 
     /**
@@ -754,6 +768,7 @@ export class Graph<Type extends object> {
         };
 
         const processPendingEdges = () => {
+            if (this.pendingOperations.length === 0) return;
             let minLowerBound: number | null = null;
 
             //

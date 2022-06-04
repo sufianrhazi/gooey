@@ -210,52 +210,52 @@ function createCalculationRenderNode(
     return makeRenderNode(type, DEBUG && { calculation }, () => {
         let child: null | RenderNode = null;
 
-        const maintenanceEffect = effect(
-            () => {
-                const jsxNode = calculation();
+        const debugName = DEBUG
+            ? `rendercalc->${debugNameFor(calculation)}`
+            : 'rendercalc';
+        const maintenanceEffect = effect(() => {
+            const jsxNode = calculation();
 
-                const newChild = jsxNodeToRenderNode(jsxNode);
+            const newChild = jsxNodeToRenderNode(jsxNode);
 
-                // It's possible that the calculation has returned the same node; no need to detach/destroy/retain/remount
-                if (child === newChild) return;
+            // It's possible that the calculation has returned the same node; no need to detach/destroy/retain/remount
+            if (child === newChild) return;
 
-                // Hold onto the new child so it isn't destroyed/recreated if it is being moved
-                newChild.retain();
+            // Hold onto the new child so it isn't destroyed/recreated if it is being moved
+            newChild.retain();
 
-                // Relinquish old child
-                if (child) {
-                    if (attachedState) {
-                        if (isMounted) {
-                            child._lifecycle?.beforeUnmount?.();
-                        }
-                        child._lifecycle?.detach?.(
-                            attachedState.handler,
-                            attachedState.context
-                        );
+            // Relinquish old child
+            if (child) {
+                if (attachedState) {
+                    if (isMounted) {
+                        child._lifecycle?.beforeUnmount?.();
                     }
-                    child.release();
-                    child = null;
+                    child._lifecycle?.detach?.(
+                        attachedState.handler,
+                        attachedState.context
+                    );
                 }
+                child.release();
+                child = null;
+            }
 
-                // Gain responsibility for new child after flush, so that it may be relinquished elsewhere
-                afterFlush(() => {
-                    // Attach new child
-                    if (attachedState) {
-                        newChild._lifecycle?.attach?.(
-                            attachedState.handler,
-                            attachedState.context
-                        );
-                        if (isMounted) {
-                            newChild._lifecycle?.afterMount?.();
-                        }
+            // Gain responsibility for new child after flush, so that it may be relinquished elsewhere
+            afterFlush(() => {
+                // Attach new child
+                if (attachedState) {
+                    newChild._lifecycle?.attach?.(
+                        attachedState.handler,
+                        attachedState.context
+                    );
+                    if (isMounted) {
+                        newChild._lifecycle?.afterMount?.();
                     }
-                    child = newChild;
-                });
-            },
-            DEBUG
-                ? `render:effect->${debugNameFor(calculation)}`
-                : 'render:effect'
-        );
+                }
+                child = newChild;
+            });
+        }, `${debugName}:effect`);
+
+        retain(maintenanceEffect, debugName);
 
         return {
             attach: (handler, context) => {
@@ -269,8 +269,7 @@ function createCalculationRenderNode(
                     attachedState.context.nodeOrdering,
                     maintenanceEffect
                 );
-                retain(maintenanceEffect); // TODO: does this need to be a root?
-                markRoot(maintenanceEffect); // TODO: does this need to be a root?
+                markRoot(maintenanceEffect); // TODO: does this need to be a root? Yes... but this is weird!
                 maintenanceEffect();
             },
             detach: (handler, context) => {
@@ -284,9 +283,6 @@ function createCalculationRenderNode(
                     maintenanceEffect
                 );
                 unmarkRoot(maintenanceEffect);
-                release(maintenanceEffect);
-                // TODO: Do I need to do this? Probably
-                //   maintenanceEffect[CalculationInvalidateTag]();
 
                 // Detach prior result
                 if (child) {
@@ -313,6 +309,10 @@ function createCalculationRenderNode(
             destroy: () => {
                 child?.release();
                 child = null;
+                if (attachedState) {
+                    unmarkRoot(maintenanceEffect);
+                }
+                release(maintenanceEffect, debugName);
                 isMounted = false;
                 attachedState = null;
             },
@@ -565,10 +565,11 @@ function createIntrinsicRenderNode<TProps>(
     const onMountActions = new Set<() => void>();
     const onUnmountActions = new Set<() => void>();
     let nodeOrdering: NodeOrdering | null = null;
+    const debugName = `intrinsic:${elementType}`;
     const initOrdering = () => {
         if (!nodeOrdering) {
-            nodeOrdering = makeNodeOrdering('intrinsic:${elementType}:order');
-            retain(nodeOrdering);
+            nodeOrdering = makeNodeOrdering(`${debugName}:order`);
+            retain(nodeOrdering, debugName);
         }
     };
     const boundEffects: Calculation<any>[] = [];
@@ -696,6 +697,7 @@ function createIntrinsicRenderNode<TProps>(
                                         elementBoundEvents
                                     );
                                 }, `viewattr:${key}`);
+                                retain(boundEffect, debugName);
                                 boundEffects.push(boundEffect);
                                 initOrdering();
                             } else {
@@ -795,9 +797,13 @@ function createIntrinsicRenderNode<TProps>(
                     onMountActions.clear();
                     onUnmountActions.clear();
                     if (nodeOrdering) {
-                        release(nodeOrdering);
+                        release(nodeOrdering, debugName);
                         nodeOrdering = null;
                     }
+                    boundEffects.forEach((boundEffect) => {
+                        release(boundEffect, debugName);
+                    });
+                    boundEffects.splice(0, boundEffects.length);
                     isAttached = false;
                     isMounted = false;
                 },
@@ -821,8 +827,10 @@ function createComponentRenderNode(
     let componentRenderNode: RenderNode | null = null;
 
     let isMounted = false;
+    let isAttached = false;
 
     return makeRenderNode(type, DEBUG && { Component, props, children }, () => {
+        const debugName = `component:${Component.name}`;
         return {
             attach: (handler, context) => {
                 if (!componentRenderNode) {
@@ -841,15 +849,18 @@ function createComponentRenderNode(
                             );
                             unmountHandlers.add(handler);
                         },
-                        onEffect: (effectCallback, debugName?: string) => {
+                        onEffect: (
+                            effectCallback,
+                            effectDebugName?: string
+                        ) => {
                             log.assert(
                                 !isInitialized,
                                 'Component cannot call onEffect after render'
                             );
                             const effectCalc = effect(
                                 effectCallback,
-                                `componenteffect:${Component.name}:${
-                                    debugName ?? '?'
+                                `${debugName}:onEffect:${
+                                    effectDebugName ?? '?'
                                 }`
                             );
                             createdEffects.push(effectCalc);
@@ -887,22 +898,25 @@ function createComponentRenderNode(
                     });
                     isInitialized = true;
                     componentRenderNode.retain();
+
+                    createdCalculations.forEach((calculation) => {
+                        retain(calculation, debugName); // TODO: does this need to be a root?
+                        markRoot(calculation); // TODO: does this need to be a root?
+                        calculation(); // it may have been dirtied and flushed; re-cache
+                    });
+
+                    componentRenderNode._lifecycle?.attach?.(handler, context);
+
+                    if (isMounted) {
+                        throw new Error('does this ever occur?');
+                        mountHandlers.forEach((handler) => handler());
+                    }
                 }
 
                 createdEffects.forEach((eff) => {
                     addOrderingDep(context.nodeOrdering, eff);
                 });
-                createdCalculations.forEach((calculation) => {
-                    retain(calculation); // TODO: does this need to be a root?
-                    markRoot(calculation); // TODO: does this need to be a root?
-                    calculation(); // it may have been dirtied and flushed; re-cache
-                });
-
-                componentRenderNode._lifecycle?.attach?.(handler, context);
-
-                if (isMounted) {
-                    mountHandlers.forEach((handler) => handler());
-                }
+                isAttached = true;
             },
             detach: (handler, context) => {
                 componentRenderNode?._lifecycle?.detach?.(handler, context);
@@ -910,10 +924,11 @@ function createComponentRenderNode(
                 createdEffects.forEach((eff) => {
                     removeOrderingDep(context.nodeOrdering, eff);
                 });
+
                 createdCalculations.forEach((calculation) => {
                     unmarkRoot(calculation);
-                    release(calculation);
                 });
+                isAttached = false;
             },
             afterMount: () => {
                 isMounted = true;
@@ -933,6 +948,12 @@ function createComponentRenderNode(
                 mountHandlers.clear();
                 unmountHandlers.clear();
                 createdEffects.splice(0, createdEffects.length);
+                createdCalculations.forEach((calculation) => {
+                    if (isAttached) {
+                        unmarkRoot(calculation);
+                    }
+                    release(calculation, debugName);
+                });
                 createdCalculations.splice(0, createdEffects.length);
                 isInitialized = false;
                 componentRenderNode?.release();
@@ -1252,12 +1273,11 @@ function createCollectionRenderNode(
     let isMounted = false;
 
     return makeRenderNode(type, DEBUG && { collection }, () => {
-        const collectionNodeOrdering = makeNodeOrdering(
-            DEBUG
-                ? `viewcoll:${debugNameFor(collection) ?? 'node'}:order`
-                : 'viewcoll:order'
-        );
-        retain(collectionNodeOrdering);
+        const debugName = DEBUG
+            ? `viewcoll:${debugNameFor(collection) ?? 'node'}:order`
+            : 'viewcoll:order';
+        const collectionNodeOrdering = makeNodeOrdering(debugName);
+        retain(collectionNodeOrdering, debugName);
 
         type ChildInfoRecord = {
             renderNode: RenderNode;
@@ -1325,7 +1345,7 @@ function createCollectionRenderNode(
         };
 
         const subscriptionNode = collection[GetSubscriptionNodeKey]();
-        retain(subscriptionNode);
+        retain(subscriptionNode, debugName);
 
         let unobserve: null | (() => void) = null;
 
@@ -1525,8 +1545,8 @@ function createCollectionRenderNode(
                 childInfo.forEach((info) => info.renderNode.release());
                 childInfo = [];
                 attachedState = null;
-                release(collectionNodeOrdering);
-                release(subscriptionNode);
+                release(collectionNodeOrdering, debugName);
+                release(subscriptionNode, debugName);
             },
         };
     });
@@ -1558,8 +1578,9 @@ export function mount(parentElement: Element, jsxNode: JSX.Element) {
     let insertionIndex = 0;
 
     const contextMap = new Map<Context<any>, any>();
-    const nodeOrdering = makeNodeOrdering('root:mount');
-    retain(nodeOrdering);
+    const debugName = 'root:mount';
+    const nodeOrdering = makeNodeOrdering(debugName);
+    retain(nodeOrdering, debugName);
     markRoot(nodeOrdering);
 
     const nodes = new Set<Text | Element>();
@@ -1646,7 +1667,7 @@ export function mount(parentElement: Element, jsxNode: JSX.Element) {
         lifecycle.detach?.(renderEventHandler, subContext);
         renderNode.release();
         unmarkRoot(nodeOrdering);
-        release(nodeOrdering);
+        release(nodeOrdering, debugName);
 
         if (nodes.size > 0) {
             log.error(

@@ -10,10 +10,8 @@ import {
     markRoot,
     reset,
     subscribe,
-    debug,
 } from './calc';
 import { Calculation } from './types';
-import { setLogLevel } from './log';
 
 beforeEach(() => {
     subscribe();
@@ -1242,5 +1240,3 @@ suite('errors', () => {
         assert.deepEqual([2, 'caught error', 4], items);
     });
 });
-
-suite('automatic memory management', () => {});

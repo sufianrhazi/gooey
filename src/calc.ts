@@ -26,7 +26,7 @@ let activeCalculation:
     | null
     | typeof untrackedCalculationSentinel
     | Calculation<any> = null;
-let activeCalculationDeps: null | GraphNode[] = null;
+let activeCalculationDeps: null | Set<GraphNode> = null;
 
 let globalDependencyGraph = new Graph<GraphNode>();
 
@@ -203,7 +203,7 @@ function makeCalculation<Ret>(
                 const prevCalculation = activeCalculation;
                 const prevCalculationDeps = activeCalculationDeps;
                 activeCalculation = calculation;
-                activeCalculationDeps = [];
+                activeCalculationDeps = new Set();
                 const prevResult = result;
                 let err: unknown = null;
                 try {
@@ -214,18 +214,20 @@ function makeCalculation<Ret>(
                 const calculationDeps = activeCalculationDeps;
                 activeCalculation = prevCalculation;
                 activeCalculationDeps = prevCalculationDeps;
-                const incomingChanges = globalDependencyGraph.replaceIncoming(
+
+                // Retain nodes that contribute to the calculation
+                calculationDeps.forEach((depNode) => {
+                    retain(depNode, calculation);
+                });
+                const beforeIncoming = globalDependencyGraph.replaceIncoming(
                     calculation,
-                    calculationDeps
+                    Array.from(calculationDeps)
                 );
-                // Nodes that are newly contributing to this calculation are retained
-                incomingChanges.added.forEach((addedNode) => {
-                    retain(addedNode, calculation);
+                // Retain nodes that no longer contribute to the calculation
+                beforeIncoming.forEach((depNode) => {
+                    release(depNode, calculation);
                 });
-                // Nodes that are no longer contributing to this calculation are released
-                incomingChanges.removed.forEach((removedNode) => {
-                    release(removedNode, calculation);
-                });
+
                 if (err) {
                     const isCycle = err instanceof CycleAbortError;
                     if (isCycle) {
@@ -475,8 +477,7 @@ export function addDepToCurrentCalculation(item: GraphNode) {
     ) {
         return;
     }
-    retain(item, activeCalculation); // By virtue of calling item, the callee "owns" it, thus retains it
-    activeCalculationDeps.push(item);
+    activeCalculationDeps.add(item);
     DEBUG &&
         log.debug(
             'New global dependency',
@@ -751,7 +752,18 @@ export function release(item: GraphNode, releaser?: GraphNode | string) {
         );
 
     if (newRefcount == 0) {
+        if (isCalculation(item)) {
+            const beforeIncoming = globalDependencyGraph.replaceIncoming(
+                item,
+                []
+            );
+            // Nodes that are no longer contributing to this calculation are released
+            beforeIncoming.forEach((removedNode) => {
+                release(removedNode, item);
+            });
+        }
         globalDependencyGraph.removeNode(item);
+        scheduleFlush();
     }
     refcountMap[item.$__id] = newRefcount;
 }

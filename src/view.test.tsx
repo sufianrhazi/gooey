@@ -10,8 +10,9 @@ import Gooey, {
     createContext,
     subscribe,
     LifecycleObserver,
-    setLogLevel,
+    debugState,
 } from './index';
+import { debugNameFor } from './debug';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
@@ -231,7 +232,6 @@ suite('mount static', () => {
 
 suite('mount calculations', () => {
     test('renders child calculations as their raw value', () => {
-        setLogLevel('debug');
         mount(testRoot, <div id="ok">{calc(() => 'hello', 'calctest')}</div>);
         assert.deepEqual(
             (testRoot.querySelector('#ok')!.childNodes[0] as Text).data,
@@ -446,7 +446,6 @@ suite('mount components', () => {
     });
 
     test('components are provided an onEffect callback which is called only while component is mounted', () => {
-        setLogLevel('debug');
         const state = model({
             showingChild: false,
             counter: 0,
@@ -2901,3 +2900,127 @@ if (2 < 1) {
         });
     });
 }
+
+suite('automatic memory management', () => {
+    test('component with calculation, effect', () => {
+        let effectHit = false;
+        const Item: Component<{ name: string }> = (
+            { name },
+            { onMount, onEffect }
+        ) => {
+            const state = model(
+                {
+                    mountCount: 0,
+                    count: 0,
+                },
+                'item:state'
+            );
+            onMount(() => {
+                state.mountCount += 1;
+            });
+            onEffect(() => {
+                if (state.count > 2) {
+                    effectHit = true;
+                }
+            }, 'item:effect');
+            return (
+                <div>
+                    <button
+                        on:click={() => {
+                            state.count += 1;
+                        }}
+                    >
+                        Increment
+                    </button>
+                    <div
+                        data-mount-count={calc(
+                            () => state.mountCount.toString(),
+                            'data-mount-count'
+                        )}
+                    >
+                        {name}: {calc(() => state.count, 'click-count')}
+                    </div>
+                </div>
+            );
+        };
+        const unmount = mount(
+            testRoot,
+            <div>
+                <Item name="cool" />
+            </div>
+        );
+        assert.is(
+            '0',
+            testRoot
+                .querySelector('[data-mount-count]')
+                ?.getAttribute('data-mount-count')
+        );
+        assert.is(
+            'cool: 0',
+            testRoot.querySelector('[data-mount-count]')?.textContent
+        );
+        flush();
+        assert.is(
+            '1',
+            testRoot
+                .querySelector('[data-mount-count]')
+                ?.getAttribute('data-mount-count')
+        );
+        assert.is(
+            'cool: 0',
+            testRoot.querySelector('[data-mount-count]')?.textContent
+        );
+        testRoot
+            .querySelector('button')
+            ?.dispatchEvent(new MouseEvent('click'));
+        flush();
+        assert.is(
+            '1',
+            testRoot
+                .querySelector('[data-mount-count]')
+                ?.getAttribute('data-mount-count')
+        );
+        assert.is(
+            'cool: 1',
+            testRoot.querySelector('[data-mount-count]')?.textContent
+        );
+        testRoot
+            .querySelector('button')
+            ?.dispatchEvent(new MouseEvent('click'));
+        flush();
+        assert.is(
+            '1',
+            testRoot
+                .querySelector('[data-mount-count]')
+                ?.getAttribute('data-mount-count')
+        );
+        assert.is(
+            'cool: 2',
+            testRoot.querySelector('[data-mount-count]')?.textContent
+        );
+        assert.isFalsy(effectHit);
+        testRoot
+            .querySelector('button')
+            ?.dispatchEvent(new MouseEvent('click'));
+        flush();
+        assert.is(
+            '1',
+            testRoot
+                .querySelector('[data-mount-count]')
+                ?.getAttribute('data-mount-count')
+        );
+        assert.is(
+            'cool: 3',
+            testRoot.querySelector('[data-mount-count]')?.textContent
+        );
+        assert.isTruthy(effectHit);
+        unmount();
+        const { globalDependencyGraph } = debugState();
+
+        flush();
+        assert.deepEqual(
+            [],
+            globalDependencyGraph.getNodes().map((node) => debugNameFor(node))
+        );
+    });
+});
