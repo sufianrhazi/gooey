@@ -1,10 +1,5 @@
-import {
-    InvariantError,
-    MakeModelViewKey,
-    DisposeKey,
-    Model,
-    View,
-} from './types';
+import { InvariantError, MakeModelViewKey, Model, View } from './types';
+import { addCreatedRetainable } from './calc';
 import { trackedData } from './trackeddata';
 
 export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
@@ -16,7 +11,7 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
         Object.keys(obj)
     );
 
-    return trackedData(
+    const modelValue: Model<T> = trackedData(
         obj,
         'model' as const,
         {
@@ -48,13 +43,16 @@ export function model<T extends {}>(obj: T, debugName?: string): Model<T> {
                 return true;
             },
         },
-        ({ makeView, notify, observe, subscriptionNode }) => {
+        ({ makeView, notify, observe, subscriptionEmitter }) => {
             return {
                 [MakeModelViewKey]: makeView,
             };
         },
+        null,
         debugName
     );
+    addCreatedRetainable(modelValue);
+    return modelValue;
 }
 model.keys = function keys<T>(
     target: Model<T>,
@@ -95,7 +93,4 @@ model.keys = function keys<T>(
     );
 
     return view;
-};
-model.dispose = function dispose(m: Model<any>) {
-    m[DisposeKey]();
 };

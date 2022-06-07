@@ -99,6 +99,12 @@ export class Graph<Type extends object> {
      * The subgraph that has been added but not yet ordered
      */
     private pendingOperations: PendingOperation<Type>[];
+
+    /**
+     * Map of toId to fromIds -> number; Number is positive if a pending hard edge is added; negative if removed
+     * */
+    private pendingHardIncoming: Record<string, Record<string, number>>;
+
     private pendingNodes: Record<string, boolean>;
 
     /**
@@ -123,6 +129,7 @@ export class Graph<Type extends object> {
         this.topologicallyOrderedNodes = [];
 
         this.pendingOperations = [];
+        this.pendingHardIncoming = {};
         this.pendingNodes = {};
 
         this.rootNodes = {};
@@ -248,6 +255,12 @@ export class Graph<Type extends object> {
             toId,
             kind,
         });
+        if (kind & Graph.EDGE_HARD) {
+            if (!this.pendingHardIncoming[toId])
+                this.pendingHardIncoming[toId] = {};
+            this.pendingHardIncoming[toId][fromId] =
+                (this.pendingHardIncoming[toId][fromId] | 0) + 1;
+        }
     }
 
     private performAddEdgeInner(
@@ -289,6 +302,12 @@ export class Graph<Type extends object> {
             toId,
             kind,
         });
+        if (kind & Graph.EDGE_HARD) {
+            if (!this.pendingHardIncoming[toId])
+                this.pendingHardIncoming[toId] = {};
+            this.pendingHardIncoming[toId][fromId] =
+                (this.pendingHardIncoming[toId][fromId] | 0) - 1;
+        }
     }
 
     private performRemoveEdgeInner(
@@ -463,20 +482,15 @@ export class Graph<Type extends object> {
         const beforeFromIds = new Set(
             this.getReverseDependenciesInner(toId, Graph.EDGE_HARD)
         );
-        // Note: beforeFromIds does not include pending operations!
-        this.pendingOperations.forEach((op) => {
-            switch (op.type) {
-                case PendingOperationType.EDGE_ADD:
-                    if (op.toId === toId && op.kind & Graph.EDGE_HARD) {
-                        beforeFromIds.add(op.fromId);
-                    }
-                    break;
-                case PendingOperationType.EDGE_DELETE:
-                    if (op.toId === toId && op.kind & Graph.EDGE_HARD) {
-                        beforeFromIds.delete(op.fromId);
-                    }
+        Object.entries(this.pendingHardIncoming[toId] || {}).forEach(
+            ([fromId, addCount]) => {
+                if (addCount > 0) {
+                    beforeFromIds.add(fromId);
+                } else if (addCount < 0) {
+                    beforeFromIds.delete(fromId);
+                }
             }
-        });
+        );
 
         const beforeFromNodes: Type[] = [];
         beforeFromIds.forEach((fromId) => {
@@ -824,6 +838,7 @@ export class Graph<Type extends object> {
                 }
             );
             this.pendingOperations = [];
+            this.pendingHardIncoming = {};
 
             //
             // Pre-sort the final set of nodes to be added

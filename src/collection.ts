@@ -6,9 +6,10 @@ import {
     MappingFunction,
     View,
     NotifyKey,
-    DisposeKey,
+    SubscriptionEmitter,
 } from './types';
 import * as log from './log';
+import { addCreatedRetainable } from './calc';
 import { trackedData } from './trackeddata';
 
 // https://tc39.es/ecma262/multipage/indexed-collections.html#sec-sortcompare
@@ -27,11 +28,19 @@ function defaultSort(x: any, y: any) {
  * Make a mutable array to hold state, with some additional convenience methods
  */
 export function collection<T>(array: T[], debugName?: string): Collection<T> {
+    return makeCollectionInner<T>(array, null, debugName);
+}
+
+export function makeCollectionInner<T>(
+    array: T[],
+    derivedSubscriptionEmitter: null | SubscriptionEmitter,
+    debugName?: string | undefined
+): Collection<T> {
     if (!Array.isArray(array)) {
         throw new InvariantError('collection must be provided an array');
     }
 
-    return trackedData(
+    const coll: Collection<T> = trackedData(
         array,
         'collection' as const,
         {
@@ -69,7 +78,7 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
         },
         ({
             notify,
-            subscriptionNode,
+            subscriptionEmitter,
             makeView,
             processFieldChange,
             processFieldDelete,
@@ -229,12 +238,12 @@ export function collection<T>(array: T[], debugName?: string): Collection<T> {
                 return flatMapViewImplementation(this, fn, debugName);
             },
         }),
+        derivedSubscriptionEmitter,
         debugName
     );
+    addCreatedRetainable(coll);
+    return coll;
 }
-collection.dispose = function dispose(c: Collection<any>) {
-    c[DisposeKey]();
-};
 
 function mapViewImplementation<T, V>(
     sourceCollection: Collection<T> | View<T>,

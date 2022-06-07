@@ -6,7 +6,6 @@ import {
     calc,
     flush,
     retain,
-    release,
     markRoot,
     subscribe,
 } from './calc';
@@ -319,22 +318,20 @@ suite('collection', () => {
         assert.is(3, view[0]);
         assert.is(1, view.length);
         assert.is(true, calculation());
-
-        release(calculation);
     });
 });
 
 suite('mapView', () => {
     test('produces a mapped view', () => {
         const phrases = collection(['hi', 'hello', 'howdy'], 'phrases');
+        retain(phrases, 'test');
         const exclaimations = phrases.mapView(
             (phrase) => `${phrase}!`,
             'exclaimations'
         );
-        retain(exclaimations);
+        retain(exclaimations, 'test');
         markRoot(exclaimations);
-        assert.deepEqual(['hi!', 'hello!', 'howdy!'], exclaimations);
-        release(exclaimations);
+        assert.deepEqual(['hi!', 'hello!', 'howdy!'], [...exclaimations]);
     });
 
     test('handles push, only recalculating new items', () => {
@@ -352,9 +349,8 @@ suite('mapView', () => {
         flush();
         assert.deepEqual(
             ['hi!', 'hello!', 'howdy!', 'new:cool!'],
-            exclaimations
+            [...exclaimations]
         );
-        release(exclaimations);
     });
 
     test('handles pop, not recalculating anything', () => {
@@ -371,7 +367,6 @@ suite('mapView', () => {
         phrases.pop();
         flush();
         assert.deepEqual(['hi!', 'hello!'], exclaimations);
-        release(exclaimations);
     });
 
     test('handles unshift, only recalculating new items', () => {
@@ -391,7 +386,6 @@ suite('mapView', () => {
             ['new:cool!', 'hi!', 'hello!', 'howdy!'],
             exclaimations
         );
-        release(exclaimations);
     });
 
     test('handles shift, not recalculating anything', () => {
@@ -408,7 +402,6 @@ suite('mapView', () => {
         phrases.shift();
         flush();
         assert.deepEqual(['hello!', 'howdy!'], exclaimations);
-        release(exclaimations);
     });
 
     test('handles splice, only recalculating new items', () => {
@@ -431,7 +424,6 @@ suite('mapView', () => {
             ['hi!', 'new:wow!', 'new:neat!', 'new:fun!', 'howdy!'],
             exclaimations
         );
-        release(exclaimations);
     });
 
     test('handles moveSlice, not recalculating moved items', () => {
@@ -454,7 +446,6 @@ suite('mapView', () => {
             ['one!', 'four!', 'two!', 'three!', 'five!'],
             exclaimations
         );
-        release(exclaimations);
     });
 
     test('handles writes, only recalculating new items', () => {
@@ -484,7 +475,6 @@ suite('mapView', () => {
             ['hi!', 'new:wow!', 'new:neat!', 'howdy!'],
             exclaimations
         );
-        release(exclaimations);
     });
 
     test('recalculates writes only upon flush', () => {
@@ -511,8 +501,6 @@ suite('mapView', () => {
             ['new:new beginning!', 'new:new middle!', 'new:new end!'],
             exclaimations
         );
-
-        release(exclaimations);
     });
 
     test('obeys subscription ordering', () => {
@@ -585,8 +573,6 @@ suite('mapView', () => {
             ],
             reversedPhrases
         );
-
-        release(reversedPhrases);
     });
 });
 
@@ -597,7 +583,6 @@ suite('filterView', () => {
         retain(evenNumbers);
         markRoot(evenNumbers);
         assert.deepEqual([2, 4, 6], evenNumbers);
-        release(evenNumbers);
     });
 
     test('handles push/unshift', () => {
@@ -613,7 +598,6 @@ suite('filterView', () => {
 
         flush();
         assert.deepEqual([8, 4, 6, 2], evenNumbers);
-        release(evenNumbers);
     });
 
     test('handles pop/shift', () => {
@@ -631,7 +615,6 @@ suite('filterView', () => {
         numbers.shift(); // 4
         flush();
         assert.deepEqual([], evenNumbers);
-        release(evenNumbers);
     });
 
     test('handles splice when removing hidden item', () => {
@@ -643,8 +626,6 @@ suite('filterView', () => {
         numbers.splice(2, 1, 10, 11, 12); // 5 -> 10, 11, 12
         flush();
         assert.deepEqual([4, 10, 12, 6], evenNumbers);
-
-        release(evenNumbers);
     });
 
     test('handles splice when removing visible item', () => {
@@ -656,8 +637,6 @@ suite('filterView', () => {
         numbers.splice(2, 1, 11, 12, 13); // 5 -> 11, 12, 13
         flush();
         assert.deepEqual([3, 11, 13, 7], evenNumbers);
-
-        release(evenNumbers);
     });
 
     test('handles splice when removing both visible and hidden items', () => {
@@ -669,8 +648,6 @@ suite('filterView', () => {
         numbers.splice(1, 3, 11, 12, 13); // 4, 5, 6 -> 11, 12, 13
         flush();
         assert.deepEqual([3, 11, 13, 7], evenNumbers);
-
-        release(evenNumbers);
     });
 
     test('handles assignment', () => {
@@ -686,8 +663,6 @@ suite('filterView', () => {
         numbers[2] = 2;
         flush();
         assert.deepEqual([4, 2, 6], evenNumbers);
-
-        release(evenNumbers);
     });
 
     test('handles moveSlice', () => {
@@ -706,8 +681,6 @@ suite('filterView', () => {
         numbers.moveSlice(2, 3, 0);
         flush();
         assert.deepEqual([six, four], evenNumbers);
-
-        release(evenNumbers);
     });
 
     test('handles sort', () => {
@@ -737,8 +710,6 @@ suite('filterView', () => {
 
         flush();
         assert.deepEqual(['lazy', 'WHAT', 'ZERO'], evenPhrases);
-
-        release(evenPhrases);
     });
 });
 
@@ -751,7 +722,6 @@ suite('flatMapView', () => {
         retain(evenDupedNumbers);
         markRoot(evenDupedNumbers);
         assert.deepEqual([2, 2, 4, 4, 6, 6], evenDupedNumbers);
-        release(evenDupedNumbers);
     });
 
     test('handles push/unshift', () => {
@@ -769,7 +739,6 @@ suite('flatMapView', () => {
 
         flush();
         assert.deepEqual([8, 8, 4, 4, 6, 6, 2, 2], evenDupedNumbers);
-        release(evenDupedNumbers);
     });
 
     test('handles pop/shift', () => {
@@ -789,7 +758,6 @@ suite('flatMapView', () => {
         numbers.shift(); // 4
         flush();
         assert.deepEqual([], evenDupedNumbers);
-        release(evenDupedNumbers);
     });
 
     test('handles splice', () => {
@@ -803,8 +771,6 @@ suite('flatMapView', () => {
         numbers.splice(2, 1, 10, 11, 12); // 5 -> 10, 11, 12
         flush();
         assert.deepEqual([4, 4, 10, 10, 12, 12, 6, 6], evenDupedNumbers);
-
-        release(evenDupedNumbers);
     });
 
     test('handles assignment', () => {
@@ -822,8 +788,6 @@ suite('flatMapView', () => {
         numbers[2] = 2;
         flush();
         assert.deepEqual([4, 4, 2, 2, 6, 6], evenDupedNumbers);
-
-        release(evenDupedNumbers);
     });
 
     test('handles moveSlice', () => {
@@ -838,8 +802,6 @@ suite('flatMapView', () => {
         flush();
 
         assert.deepEqual([3, 6, 6, 4, 4, 5, 7], evenDupedNumbers);
-
-        release(evenDupedNumbers);
     });
 
     test('handles sort', () => {
@@ -901,7 +863,5 @@ suite('flatMapView', () => {
             ],
             flatMapped
         );
-
-        release(flatMapped);
     });
 });

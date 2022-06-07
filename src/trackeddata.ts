@@ -1,19 +1,21 @@
 import {
     Collection,
-    Subscription,
+    SubscriptionConsumer,
+    SubscriptionEmitter,
     ViewSpec,
     FlushKey,
-    AddDeferredWorkKey,
+    AddSubscriptionConsumerWorkKey,
     ObserveKey,
     NotifyKey,
-    GetSubscriptionNodeKey,
+    GetSubscriptionConsumerKey,
+    GetSubscriptionEmitterKey,
     TypeTag,
     DataTypeTag,
     ModelField,
     TrackedData,
     DisposeKey,
 } from './types';
-import { collection } from './collection';
+import { makeCollectionInner } from './collection';
 import {
     untracked,
     addManualDep,
@@ -25,6 +27,8 @@ import {
     registerNode,
     disposeNode,
     nextFlush,
+    retain,
+    release,
 } from './calc';
 import { uniqueid } from './util';
 import { name } from './debug';
@@ -73,10 +77,11 @@ export function trackedData<
             spec: ViewSpec<TData, V, TEvent>,
             viewDebugName?: string | undefined
         ) => Collection<V>;
-        subscriptionNode: Subscription;
+        subscriptionEmitter: SubscriptionEmitter;
         processFieldChange: (field: string | symbol) => void;
         processFieldDelete: (field: string | symbol) => void;
     }) => TMethods,
+    derivedSubscriptionEmitter: null | SubscriptionEmitter,
     debugName?: string
 ): TrackedData<TDataTypeTag, TEvent> & TData & TMethods {
     type Observer = (events: TEvent[]) => void;
@@ -89,15 +94,36 @@ export function trackedData<
 
     let deferredTasks: (() => void)[] = [];
 
-    const subscriptionNode: Subscription = {
+    // How memory management should work for trackedData
+    // - The trackedData's memory "root" is the subscription emitter
+    // - The subscription emitter owns/retains all of the fields
+    // - If the trackedData is derived, the subscription emitter owns the subscription consumer (weird, but ok)
+    // - If the trackedData is derived, the subscription consumer owns the subscription emitter it is derived from (needs to be passed in instead of isDerived)
+    const subscriptionEmitter: SubscriptionEmitter = {
         $__id: uniqueid(),
-        [TypeTag]: 'subscription',
-        [FlushKey]: flushSubscription,
+        [TypeTag]: 'subscriptionEmitter',
+        [FlushKey]: flushSubscriptionEmitter,
         item: null, // assigned later
     };
-    name(subscriptionNode, `${debugName || '?'}:sub`);
+    name(subscriptionEmitter, `${debugName ?? 'trackeddata'}:emitter`);
+    registerNode(subscriptionEmitter); // TODO: is this right? Shouldn't it be added on retain?
 
-    function flushSubscription() {
+    let subscriptionConsumer: SubscriptionConsumer | null = null;
+    if (derivedSubscriptionEmitter) {
+        subscriptionConsumer = {
+            $__id: uniqueid(),
+            [TypeTag]: 'subscriptionConsumer',
+            [FlushKey]: flushSubscriptionConsumer,
+            item: null, // assigned later
+        };
+        name(subscriptionConsumer, `${debugName ?? 'trackeddata'}:consumer`);
+        retain(subscriptionConsumer, subscriptionEmitter);
+        retain(derivedSubscriptionEmitter, subscriptionConsumer);
+        addManualDep(derivedSubscriptionEmitter, subscriptionConsumer);
+        addOrderingDep(subscriptionConsumer, subscriptionEmitter);
+    }
+
+    function flushSubscriptionEmitter() {
         log.assert(!isDisposed, 'data already disposed');
         let processed = false;
         const toProcess = subscriptionEvents;
@@ -109,7 +135,7 @@ export function trackedData<
         return processed;
     }
 
-    function flush() {
+    function flushSubscriptionConsumer() {
         log.assert(!isDisposed, 'data already disposed');
         const toProcess = deferredTasks;
         let processed = false;
@@ -121,10 +147,14 @@ export function trackedData<
         return processed;
     }
 
-    function addDeferredTask(task: () => void) {
+    function addSubscriptionConsumerWork(task: () => void) {
         log.assert(!isDisposed, 'data already disposed');
+        log.assert(
+            subscriptionConsumer,
+            'cannot add subscription consumer work to non-derived trackeddata'
+        );
         deferredTasks.push(task);
-        markDirty(proxy);
+        markDirty(subscriptionConsumer);
     }
 
     function notify(event: TEvent) {
@@ -138,32 +168,33 @@ export function trackedData<
                 }
                 observerEvents.push(event);
             });
-            markDirty(subscriptionNode);
+            markDirty(subscriptionEmitter);
         }
     }
 
-    function getSubscriptionNode() {
+    function getSubscriptionConsumer() {
         log.assert(!isDisposed, 'data already disposed');
-        return subscriptionNode;
+        return subscriptionConsumer;
+    }
+
+    function getSubscriptionEmitter() {
+        log.assert(!isDisposed, 'data already disposed');
+        return subscriptionEmitter;
     }
 
     function observe(observer: (events: TEvent[]) => void) {
         log.assert(!isDisposed, 'data already disposed');
         if (observers.length === 0) {
-            registerNode(proxy);
-            registerNode(subscriptionNode);
-            addManualDep(proxy, subscriptionNode);
             fieldRecords.forEach((field) => {
-                addOrderingDep(field, subscriptionNode);
+                addOrderingDep(field, subscriptionEmitter);
             });
         }
         observers.push(observer);
         return () => {
             observers = observers.filter((obs) => obs !== observer);
             if (observers.length === 0) {
-                removeManualDep(proxy, subscriptionNode);
                 fieldRecords.forEach((field) => {
-                    removeOrderingDep(field, subscriptionNode);
+                    removeOrderingDep(field, subscriptionEmitter);
                 });
             }
         };
@@ -175,15 +206,18 @@ export function trackedData<
     ) {
         log.assert(!isDisposed, 'data already disposed');
         const viewArray: V[] = untracked(() => spec.initialize(initialValue));
-        const view = collection(viewArray, viewDebugName);
+        const view = makeCollectionInner(
+            viewArray,
+            subscriptionEmitter,
+            viewDebugName
+        );
         observe((events: TEvent[]) => {
-            view[AddDeferredWorkKey](() => {
+            view[AddSubscriptionConsumerWorkKey](() => {
                 events.forEach((event) => {
                     spec.processEvent(view, event, viewArray);
                 });
             });
         });
-        addManualDep(subscriptionNode, view);
         return view;
     }
 
@@ -199,24 +233,31 @@ export function trackedData<
         markDirty(field);
     }
 
-    function dispose() {
+    function onSubscriptionEmitterDisposed() {
         log.assert(!isDisposed, 'data already disposed');
         // Delete and clean everything up
         fieldRecords.forEach((field) => {
-            removeOrderingDep(proxy, field);
+            if (subscriptionConsumer) {
+                removeOrderingDep(subscriptionConsumer, field);
+            }
             if (observers.length > 0) {
-                removeOrderingDep(field, subscriptionNode);
+                removeOrderingDep(field, subscriptionEmitter);
             }
             disposeNode(field);
         });
         fieldRecords.clear();
-        disposeNode(proxy);
-        disposeNode(subscriptionNode);
+
+        if (derivedSubscriptionEmitter && subscriptionConsumer) {
+            removeManualDep(derivedSubscriptionEmitter, subscriptionConsumer);
+            removeOrderingDep(subscriptionConsumer, subscriptionEmitter);
+            release(derivedSubscriptionEmitter);
+            release(subscriptionConsumer);
+        }
 
         observers.splice(0, observers.length);
         subscriptionEvents.clear();
         deferredTasks.splice(0, deferredTasks.length);
-        // TODO: this is very gross!
+        // TODO: Is there a better way to say "after the subscription emitter is actually released, revoke this thing?"
         nextFlush().then(() => {
             revokableProxy.revoke();
         });
@@ -227,17 +268,17 @@ export function trackedData<
         $__id: uniqueid(),
         [TypeTag]: 'data',
         [DataTypeTag]: typeTag,
-        [FlushKey]: flush,
-        [AddDeferredWorkKey]: addDeferredTask,
+        [AddSubscriptionConsumerWorkKey]: addSubscriptionConsumerWork,
         [ObserveKey]: observe,
         [NotifyKey]: notify,
-        [GetSubscriptionNodeKey]: getSubscriptionNode,
-        [DisposeKey]: dispose,
+        [GetSubscriptionConsumerKey]: getSubscriptionConsumer,
+        [GetSubscriptionEmitterKey]: getSubscriptionEmitter,
+        [DisposeKey]: onSubscriptionEmitterDisposed,
         ...bindMethods({
             observe,
             notify,
             makeView,
-            subscriptionNode,
+            subscriptionEmitter,
             processFieldChange,
             processFieldDelete,
         }),
@@ -254,10 +295,11 @@ export function trackedData<
             if (debugName) name(field, debugName);
             fieldRecords.set(key, field);
             registerNode(field);
-            addOrderingDep(proxy, field);
-            if (observers.length > 0) {
-                addOrderingDep(field, subscriptionNode);
+            if (subscriptionConsumer) {
+                addOrderingDep(subscriptionConsumer, field);
             }
+            addOrderingDep(field, subscriptionEmitter);
+            retain(field, subscriptionEmitter);
         }
         return field;
     }
@@ -321,10 +363,12 @@ export function trackedData<
     const proxy: TrackedData<TDataTypeTag, TEvent> & TData & TMethods =
         revokableProxy.proxy;
 
-    subscriptionNode.item = proxy;
+    name(proxy, `${debugName ?? 'trackeddata'}`);
 
-    if (debugName) name(proxy, debugName);
-    registerNode(proxy);
+    subscriptionEmitter.item = proxy;
+    if (subscriptionConsumer) {
+        subscriptionConsumer.item = proxy;
+    }
 
     return proxy;
 }

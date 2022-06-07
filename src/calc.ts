@@ -1,4 +1,7 @@
 import {
+    Model,
+    Collection,
+    View,
     Calculation,
     CalculationRecalculateTag,
     CalculationRecalculateCycleTag,
@@ -6,15 +9,20 @@ import {
     CalculationSetCycleTag,
     CalculationTypeTag,
     GraphNode,
+    RetainedItem,
     EqualityFunc,
+    DisposeKey,
     FlushKey,
     InvariantError,
     TypeTag,
     isCalculation,
+    isModelField,
     isCollection,
     isModel,
-    isModelField,
-    isSubscription,
+    isSubscriptionEmitter,
+    isSubscriptionConsumer,
+    isNodeOrdering,
+    GetSubscriptionEmitterKey,
 } from './types';
 import * as log from './log';
 import { Graph } from './graph';
@@ -44,20 +52,24 @@ export function reset() {
     clearNames();
 }
 
-let createdCalculations: Calculation<any>[] | undefined;
+let createdRetainables: RetainedItem[] | undefined;
 /**
  * Collect all synchronously created calc() and effect() calls
  */
-export function trackCreatedCalculations(fn: () => void): Calculation<any>[] {
-    const before = createdCalculations;
-    createdCalculations = [];
+export function trackCreatedRetainables(fn: () => void): RetainedItem[] {
+    const before = createdRetainables;
+    createdRetainables = [];
     try {
         fn();
-        const toReturn = createdCalculations;
+        const toReturn = createdRetainables;
         return toReturn;
     } finally {
-        createdCalculations = before;
+        createdRetainables = before;
     }
+}
+
+export function addCreatedRetainable(retainedItem: RetainedItem) {
+    if (createdRetainables) createdRetainables.push(retainedItem);
 }
 
 /**
@@ -87,7 +99,7 @@ export function calc<Ret>(
     if (typeof debugName !== 'string') debugName = undefined;
     const calculation = makeCalculation(func, isEqual, false);
     if (debugName) name(calculation, debugName);
-    if (createdCalculations) createdCalculations.push(calculation);
+    addCreatedRetainable(calculation);
     return calculation;
 }
 
@@ -112,7 +124,7 @@ export function effect(
         true
     );
     if (debugName) name(calculation, debugName);
-    if (createdCalculations) createdCalculations.push(calculation);
+    addCreatedRetainable(calculation);
     return calculation;
 }
 
@@ -650,9 +662,8 @@ export function flush() {
                         shouldPropagate =
                             item[CalculationRecalculateCycleTag]();
                     } else if (
-                        isCollection(item) ||
-                        isModel(item) ||
-                        isSubscription(item)
+                        isSubscriptionEmitter(item) ||
+                        isSubscriptionConsumer(item)
                     ) {
                         shouldPropagate = item[FlushKey]();
                     }
@@ -662,9 +673,8 @@ export function flush() {
                         item[CalculationInvalidateTag]();
                         shouldPropagate = item[CalculationRecalculateTag]();
                     } else if (
-                        isCollection(item) ||
-                        isModel(item) ||
-                        isSubscription(item)
+                        isSubscriptionEmitter(item) ||
+                        isSubscriptionConsumer(item)
                     ) {
                         shouldPropagate = item[FlushKey]();
                     }
@@ -708,13 +718,28 @@ export function flush() {
 /**
  * Retain a calculation (increase the refcount and mark as root)
  */
-export function retain(item: GraphNode, retainer?: GraphNode | string) {
-    const refcount = refcountMap[item.$__id] ?? 0;
+export function retain(item: RetainedItem, retainer?: GraphNode | string) {
+    let id: number;
+    if (
+        isModelField(item) ||
+        isCalculation(item) ||
+        isNodeOrdering(item) ||
+        isSubscriptionConsumer(item) ||
+        isSubscriptionEmitter(item)
+    ) {
+        id = item.$__id;
+    } else if (isModel(item) || isCollection(item)) {
+        const subscriptionEmitter = item[GetSubscriptionEmitterKey]();
+        id = subscriptionEmitter.$__id;
+    } else {
+        log.assertExhausted(item);
+    }
+    const refcount = refcountMap[id] ?? 0;
     const newRefcount = refcount + 1;
     DEBUG &&
         log.debug(
             `retain ${debugNameFor(
-                item
+                item as any // TODO: fix debugNameFor
             )}; refcount ${refcount} -> ${newRefcount} retained by ${
                 typeof retainer === 'string'
                     ? `<${retainer}>`
@@ -725,23 +750,52 @@ export function retain(item: GraphNode, retainer?: GraphNode | string) {
         );
 
     if (refcount === 0) {
-        globalDependencyGraph.addNode(item);
+        if (
+            isModelField(item) ||
+            isCalculation(item) ||
+            isNodeOrdering(item) ||
+            isSubscriptionConsumer(item) ||
+            isSubscriptionEmitter(item)
+        ) {
+            globalDependencyGraph.addNode(item);
+        } else if (isModel(item) || isCollection(item)) {
+            const subscriptionEmitter = item[GetSubscriptionEmitterKey]();
+            id = subscriptionEmitter.$__id;
+        } else {
+            log.assertExhausted(item);
+        }
     }
-    refcountMap[item.$__id] = newRefcount;
+    refcountMap[id] = newRefcount;
 }
 
 /**
  * Release a calculation (decrease the refcount). If the refcount reaches zero, the calculation will be garbage
  * collected.
  */
-export function release(item: GraphNode, releaser?: GraphNode | string) {
-    const refcount = refcountMap[item.$__id] ?? 0;
+export function release(item: RetainedItem, releaser?: GraphNode | string) {
+    let id: number;
+    // TODO: perhaps we should delegate release() to the varying implementations?
+    if (
+        isModelField(item) ||
+        isCalculation(item) ||
+        isNodeOrdering(item) ||
+        isSubscriptionConsumer(item) ||
+        isSubscriptionEmitter(item)
+    ) {
+        id = item.$__id;
+    } else if (isModel(item) || isCollection(item)) {
+        const subscriptionEmitter = item[GetSubscriptionEmitterKey]();
+        id = subscriptionEmitter.$__id;
+    } else {
+        log.assertExhausted(item);
+    }
+    const refcount = refcountMap[id] ?? 0;
     log.assert(refcount > 0, 'item double release');
     const newRefcount = refcount - 1;
     DEBUG &&
         log.debug(
             `release ${debugNameFor(
-                item
+                item as any // TODO: fix debugNameFor
             )}; refcount ${refcount} -> ${newRefcount} retained by ${
                 typeof releaser === 'string'
                     ? `<${releaser}>`
@@ -752,7 +806,14 @@ export function release(item: GraphNode, releaser?: GraphNode | string) {
         );
 
     if (newRefcount == 0) {
-        if (isCalculation(item)) {
+        if (
+            isModelField(item) ||
+            isNodeOrdering(item) ||
+            isSubscriptionConsumer(item) ||
+            isSubscriptionEmitter(item)
+        ) {
+            globalDependencyGraph.removeNode(item);
+        } else if (isCalculation(item)) {
             const beforeIncoming = globalDependencyGraph.replaceIncoming(
                 item,
                 []
@@ -761,29 +822,97 @@ export function release(item: GraphNode, releaser?: GraphNode | string) {
             beforeIncoming.forEach((removedNode) => {
                 release(removedNode, item);
             });
+            globalDependencyGraph.removeNode(item);
+        } else if (isModel(item) || isCollection(item)) {
+            const subscriptionEmitter = item[GetSubscriptionEmitterKey]();
+            globalDependencyGraph.removeNode(subscriptionEmitter);
+            item[DisposeKey]();
+        } else {
+            log.assertExhausted(item);
         }
-        globalDependencyGraph.removeNode(item);
         scheduleFlush();
     }
-    refcountMap[item.$__id] = newRefcount;
+    refcountMap[id] = newRefcount;
 }
 
 /**
  * Mark a calculation as a root calculation
  */
-export function markRoot(item: GraphNode) {
-    DEBUG && log.debug(`markRoot ${debugNameFor(item)}`);
-    log.assert(refcountMap[item.$__id] > 0, 'inert item marked as root');
-    globalDependencyGraph.markRoot(item);
+export function markRoot(
+    item: GraphNode | Model<any> | Collection<any> | View<any>
+) {
+    let id: number;
+    if (
+        isModelField(item) ||
+        isCalculation(item) ||
+        isNodeOrdering(item) ||
+        isSubscriptionConsumer(item) ||
+        isSubscriptionEmitter(item)
+    ) {
+        id = item.$__id;
+    } else if (isModel(item) || isCollection(item)) {
+        const subscriptionEmitter = item[GetSubscriptionEmitterKey]();
+        id = subscriptionEmitter.$__id;
+    } else {
+        log.assertExhausted(item);
+    }
+    DEBUG && log.debug(`markRoot ${debugNameFor(item as any)}`);
+    log.assert(refcountMap[id] > 0, 'inert item marked as root');
+    if (
+        isModelField(item) ||
+        isNodeOrdering(item) ||
+        isSubscriptionConsumer(item) ||
+        isSubscriptionEmitter(item)
+    ) {
+        globalDependencyGraph.markRoot(item);
+    } else if (isCalculation(item)) {
+        globalDependencyGraph.markRoot(item);
+    } else if (isModel(item) || isCollection(item)) {
+        const subscriptionEmitter = item[GetSubscriptionEmitterKey]();
+        globalDependencyGraph.markRoot(subscriptionEmitter);
+    } else {
+        log.assertExhausted(item);
+    }
 }
 
 /**
  * Mark a calculation as not a root calculation
  */
-export function unmarkRoot(item: GraphNode) {
+export function unmarkRoot(
+    item: GraphNode | Model<any> | Collection<any> | View<any>
+) {
+    let id: number;
+    if (
+        isModelField(item) ||
+        isCalculation(item) ||
+        isNodeOrdering(item) ||
+        isSubscriptionConsumer(item) ||
+        isSubscriptionEmitter(item)
+    ) {
+        id = item.$__id;
+    } else if (isModel(item) || isCollection(item)) {
+        const subscriptionEmitter = item[GetSubscriptionEmitterKey]();
+        id = subscriptionEmitter.$__id;
+    } else {
+        log.assertExhausted(item);
+    }
     DEBUG && log.debug(`unmarkRoot ${debugNameFor(item)}`);
-    log.assert(refcountMap[item.$__id] > 0, 'inert item unmarked as root');
-    globalDependencyGraph.unmarkRoot(item);
+    log.assert(refcountMap[id] > 0, 'inert item unmarked as root');
+    if (
+        isModelField(item) ||
+        isNodeOrdering(item) ||
+        isSubscriptionConsumer(item) ||
+        isSubscriptionEmitter(item)
+    ) {
+        globalDependencyGraph.unmarkRoot(item);
+    } else if (isCalculation(item)) {
+        globalDependencyGraph.unmarkRoot(item);
+    } else if (isModel(item) || isCollection(item)) {
+        const subscriptionEmitter = item[GetSubscriptionEmitterKey]();
+        globalDependencyGraph.unmarkRoot(subscriptionEmitter);
+    } else {
+        log.assertExhausted(item);
+    }
 }
 
 /**
@@ -792,16 +921,10 @@ export function unmarkRoot(item: GraphNode) {
 export function debug(activeItem?: any): string {
     return globalDependencyGraph.graphviz((id, item) => {
         let subgraph: object | undefined = undefined;
-        if (isModel(item)) {
-            subgraph = item;
-        }
-        if (isCollection(item)) {
-            subgraph = item;
-        }
         if (isModelField(item)) {
             subgraph = item.model;
         }
-        if (isSubscription(item)) {
+        if (isSubscriptionEmitter(item) || isSubscriptionConsumer(item)) {
             subgraph = item.item;
         }
         return {

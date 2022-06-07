@@ -1,12 +1,17 @@
 import {
+    Model,
+    Collection,
+    View,
     GraphNode,
     isCalculation,
-    isCollection,
     isEffect,
-    isModel,
-    isSubscription,
+    isSubscriptionConsumer,
+    isSubscriptionEmitter,
     isNodeOrdering,
     isModelField,
+    isModel,
+    isCollection,
+    GetSubscriptionEmitterKey,
 } from './types';
 
 let nameMap: WeakMap<any, string> = new WeakMap();
@@ -15,24 +20,28 @@ export function clearNames() {
     nameMap = new WeakMap();
 }
 
-export function debugNameFor(item: GraphNode): string {
+export function debugNameFor(
+    item: GraphNode | Model<any> | Collection<any> | View<any>
+): string {
     if (!DEBUG) {
         return '';
     }
-    const id = (item as any).$__id;
-    if (isCollection(item)) {
-        return `${id}:collection:${nameMap.get(item) ?? '?'}`;
+    if (isModel(item) || isCollection(item)) {
+        const subscriptionEmitter = item[GetSubscriptionEmitterKey]();
+        const id = subscriptionEmitter.$__id;
+        return `${id}:trackeddata:${nameMap.get(item) ?? '?'}`;
     }
+    const id = item.$__id;
     if (isCalculation(item)) {
         return `${id}:${isEffect(item) ? 'effect' : 'calc'}:${
             nameMap.get(item) ?? '?'
         }`;
     }
-    if (isModel(item)) {
-        return `${id}:model:${nameMap.get(item) ?? '?'}`;
+    if (isSubscriptionEmitter(item)) {
+        return `${id}:emitter:${nameMap.get(item) ?? '?'}`;
     }
-    if (isSubscription(item)) {
-        return `${id}:sub:${nameMap.get(item) ?? '?'}`;
+    if (isSubscriptionConsumer(item)) {
+        return `${id}:consumer:${nameMap.get(item) ?? '?'}`;
     }
     if (isNodeOrdering(item)) {
         return `${id}:ord:${nameMap.get(item) ?? '?'}`;

@@ -18,11 +18,18 @@ export const CalculationInvalidateTag = Symbol('calculationInvalidate');
 export const CalculationSetCycleTag = Symbol('calculationSetCycle');
 
 export const ObserveKey = Symbol('observe');
-export const GetSubscriptionNodeKey = Symbol('getSubscriptionNode');
+export const GetSubscriptionConsumerKey = Symbol('getSubscriptionConsumer');
+export const GetSubscriptionEmitterKey = Symbol('getSubscriptionEmitter');
 export const MakeModelViewKey = Symbol('makeModelView');
+
 export const DisposeKey = Symbol('dispose');
+export const MarkRootKey = Symbol('markRoot');
+export const UnmarkRootKey = Symbol('unmarkRoot');
+
 export const FlushKey = Symbol('flush');
-export const AddDeferredWorkKey = Symbol('addDeferredWork');
+export const AddSubscriptionConsumerWorkKey = Symbol(
+    'addSubscriptionConsumerWork'
+);
 export const NotifyKey = Symbol('notify');
 
 export type IntrinsicNodeObserverNodeCallback = (
@@ -119,17 +126,22 @@ export type CollectionEvent<T> =
       };
 
 export type TrackedData<TTypeTag, TEvent> = {
-    $__id: number;
     [TypeTag]: 'data';
     [DataTypeTag]: TTypeTag;
-    [FlushKey]: () => boolean;
-    [AddDeferredWorkKey]: (task: () => void) => void;
+    [AddSubscriptionConsumerWorkKey]: (task: () => void) => void;
     [ObserveKey]: (
-        listener: (events: TEvent[], subscriptionNode: Subscription) => void
+        listener: (
+            events: TEvent[],
+            subscriptionEmitter: SubscriptionEmitter
+        ) => void
     ) => () => void;
-    [GetSubscriptionNodeKey]: () => Subscription;
+    [GetSubscriptionConsumerKey]: () => SubscriptionConsumer;
+    [GetSubscriptionEmitterKey]: () => SubscriptionEmitter;
     [NotifyKey](event: TEvent): void; // Note: bivariance needed here!
+
     [DisposeKey]: () => void;
+    [MarkRootKey]: () => void;
+    [UnmarkRootKey]: () => void;
 };
 
 /**
@@ -188,9 +200,16 @@ export interface View<T>
         ViewMethods<T>,
         ReadonlyArray<T> {}
 
-export interface Subscription {
+export interface SubscriptionConsumer {
     $__id: number;
-    [TypeTag]: 'subscription';
+    [TypeTag]: 'subscriptionConsumer';
+    item: any;
+    [FlushKey]: () => boolean;
+}
+
+export interface SubscriptionEmitter {
+    $__id: number;
+    [TypeTag]: 'subscriptionEmitter';
     item: any;
     [FlushKey]: () => boolean;
 }
@@ -286,12 +305,27 @@ export function isEffect(thing: Calculation<unknown>): boolean {
     return thing[CalculationTypeTag] === 'effect';
 }
 
-export function isSubscription(thing: any): thing is Subscription {
-    return !!(thing && thing[TypeTag] === 'subscription');
+export function isSubscriptionEmitter(
+    thing: any
+): thing is SubscriptionEmitter {
+    return !!(thing && thing[TypeTag] === 'subscriptionEmitter');
+}
+
+export function isSubscriptionConsumer(
+    thing: any
+): thing is SubscriptionConsumer {
+    return !!(thing && thing[TypeTag] === 'subscriptionConsumer');
 }
 
 export function isNodeOrdering(thing: any): thing is NodeOrdering {
     return !!(thing && thing[TypeTag] === 'nodeOrdering');
 }
 
-export type GraphNode = { $__id: number };
+export type GraphNode =
+    | Calculation<any>
+    | ModelField
+    | SubscriptionConsumer
+    | SubscriptionEmitter
+    | NodeOrdering;
+
+export type RetainedItem = GraphNode | Model<any> | Collection<any> | View<any>;

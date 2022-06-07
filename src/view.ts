@@ -7,7 +7,7 @@ import {
     untracked,
     addOrderingDep,
     removeOrderingDep,
-    trackCreatedCalculations,
+    trackCreatedRetainables,
     afterFlush,
 } from './calc';
 import { name, debugNameFor } from './debug';
@@ -22,12 +22,13 @@ import {
     isCollection,
     isRef,
     ObserveKey,
-    GetSubscriptionNodeKey,
+    GetSubscriptionEmitterKey,
     TypeTag,
     createContext,
     getContext,
     IntrinsicNodeObserverNodeCallback,
     IntrinsicNodeObserverElementCallback,
+    RetainedItem,
 } from './types';
 import * as log from './log';
 import { uniqueid } from './util';
@@ -821,7 +822,7 @@ function createComponentRenderNode(
     const mountHandlers = new Set<() => void>();
     const unmountHandlers = new Set<() => void>();
     const createdEffects: Calculation<any>[] = [];
-    const createdCalculations: Calculation<any>[] = [];
+    const createdRetainables: RetainedItem[] = [];
     let isInitialized = false;
 
     let componentRenderNode: RenderNode | null = null;
@@ -886,8 +887,8 @@ function createComponentRenderNode(
                     }
                     componentRenderNode = untracked(() => {
                         let jsxNode: JSXNode = null;
-                        createdCalculations.push(
-                            ...trackCreatedCalculations(() => {
+                        createdRetainables.push(
+                            ...trackCreatedRetainables(() => {
                                 jsxNode = Component(
                                     propsWithChildren,
                                     listeners
@@ -899,10 +900,12 @@ function createComponentRenderNode(
                     isInitialized = true;
                     componentRenderNode.retain();
 
-                    createdCalculations.forEach((calculation) => {
-                        retain(calculation, debugName); // TODO: does this need to be a root?
-                        markRoot(calculation); // TODO: does this need to be a root?
-                        calculation(); // it may have been dirtied and flushed; re-cache
+                    createdRetainables.forEach((retainable) => {
+                        retain(retainable, debugName); // TODO: does this need to be a root?
+                        if (isCalculation(retainable)) {
+                            markRoot(retainable); // TODO: does this need to be a root?
+                            retainable(); // it may have been dirtied and flushed; re-cache
+                        }
                     });
 
                     componentRenderNode._lifecycle?.attach?.(handler, context);
@@ -925,8 +928,10 @@ function createComponentRenderNode(
                     removeOrderingDep(context.nodeOrdering, eff);
                 });
 
-                createdCalculations.forEach((calculation) => {
-                    unmarkRoot(calculation);
+                createdRetainables.forEach((retainable) => {
+                    if (isCalculation(retainable)) {
+                        unmarkRoot(retainable);
+                    }
                 });
                 isAttached = false;
             },
@@ -948,13 +953,13 @@ function createComponentRenderNode(
                 mountHandlers.clear();
                 unmountHandlers.clear();
                 createdEffects.splice(0, createdEffects.length);
-                createdCalculations.forEach((calculation) => {
-                    if (isAttached) {
-                        unmarkRoot(calculation);
+                createdRetainables.forEach((retainable) => {
+                    if (isCalculation(retainable) && isAttached) {
+                        unmarkRoot(retainable);
                     }
-                    release(calculation, debugName);
+                    release(retainable, debugName);
                 });
-                createdCalculations.splice(0, createdEffects.length);
+                createdRetainables.splice(0, createdEffects.length);
                 isInitialized = false;
                 componentRenderNode?.release();
                 componentRenderNode = null;
@@ -1344,8 +1349,8 @@ function createCollectionRenderNode(
             }
         };
 
-        const subscriptionNode = collection[GetSubscriptionNodeKey]();
-        retain(subscriptionNode, debugName);
+        const subscriptionEmitter = collection[GetSubscriptionEmitterKey]();
+        retain(subscriptionEmitter, debugName);
 
         let unobserve: null | (() => void) = null;
 
@@ -1356,7 +1361,7 @@ function createCollectionRenderNode(
                     `Invariant: RenderNode ${type} double attached`
                 );
                 attachedState = { handler, context };
-                addOrderingDep(subscriptionNode, collectionNodeOrdering);
+                addOrderingDep(subscriptionEmitter, collectionNodeOrdering);
                 addOrderingDep(collectionNodeOrdering, context.nodeOrdering);
 
                 // Populate the initial collection
@@ -1507,7 +1512,7 @@ function createCollectionRenderNode(
                     `Invariant: RenderNode ${type} double detached`
                 );
                 removeOrderingDep(collectionNodeOrdering, context.nodeOrdering);
-                removeOrderingDep(subscriptionNode, collectionNodeOrdering);
+                removeOrderingDep(subscriptionEmitter, collectionNodeOrdering);
 
                 // Stop observing for changes
                 unobserve?.();
@@ -1546,7 +1551,7 @@ function createCollectionRenderNode(
                 childInfo = [];
                 attachedState = null;
                 release(collectionNodeOrdering, debugName);
-                release(subscriptionNode, debugName);
+                release(subscriptionEmitter, debugName);
             },
         };
     });

@@ -3,13 +3,12 @@ import { model } from './model';
 import {
     reset,
     flush,
-    retain,
-    release,
     markRoot,
     unmarkRoot,
     subscribe,
+    retain,
+    release,
 } from './calc';
-import { setLogLevel } from './log';
 
 beforeEach(() => {
     reset();
