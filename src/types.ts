@@ -256,7 +256,7 @@ export interface Calculation<Result> {
     $__id: number;
     [TypeTag]: 'calculation';
     [CalculationTypeTag]: 'calculation' | 'effect';
-    dispose: () => void;
+    [DisposeKey]: () => void;
     onError: (handler: (errorType: 'cycle' | 'error') => Result) => this;
     [CalculationSetCycleTag]: () => boolean;
     [CalculationRecalculateTag]: () => boolean;

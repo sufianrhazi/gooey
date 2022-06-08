@@ -185,7 +185,7 @@ function makeCalculation<Ret>(
         [CalculationRecalculateCycleTag]: calculationRecalculateCycle,
         [CalculationInvalidateTag]: calculationInvalidate,
         onError: calculationOnError,
-        dispose: calculationDispose,
+        [DisposeKey]: calculationDispose,
     });
 
     globalDependencyGraph.addNode(calculation);
@@ -822,10 +822,8 @@ export function release(item: RetainedItem, releaser?: GraphNode | string) {
             beforeIncoming.forEach((removedNode) => {
                 release(removedNode, item);
             });
-            globalDependencyGraph.removeNode(item);
+            item[DisposeKey]();
         } else if (isModel(item) || isCollection(item)) {
-            const subscriptionEmitter = item[GetSubscriptionEmitterKey]();
-            globalDependencyGraph.removeNode(subscriptionEmitter);
             item[DisposeKey]();
         } else {
             log.assertExhausted(item);

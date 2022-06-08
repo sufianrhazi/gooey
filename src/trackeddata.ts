@@ -233,7 +233,7 @@ export function trackedData<
         markDirty(field);
     }
 
-    function onSubscriptionEmitterDisposed() {
+    function dispose() {
         log.assert(!isDisposed, 'data already disposed');
         // Delete and clean everything up
         fieldRecords.forEach((field) => {
@@ -261,6 +261,8 @@ export function trackedData<
         nextFlush().then(() => {
             revokableProxy.revoke();
         });
+
+        disposeNode(subscriptionEmitter);
         isDisposed = true;
     }
 
@@ -273,7 +275,7 @@ export function trackedData<
         [NotifyKey]: notify,
         [GetSubscriptionConsumerKey]: getSubscriptionConsumer,
         [GetSubscriptionEmitterKey]: getSubscriptionEmitter,
-        [DisposeKey]: onSubscriptionEmitterDisposed,
+        [DisposeKey]: dispose,
         ...bindMethods({
             observe,
             notify,
