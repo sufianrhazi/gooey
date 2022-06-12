@@ -47,8 +47,8 @@ suite('perf tests', () => {
         gc();
     });
 
-    test('render 100 flat, static items in 8ms', async () => {
-        const COUNT = 100;
+    test('render 1000 flat, static items in 8ms', async () => {
+        const COUNT = 1000;
         const items = collection<{ id: number }>([]);
         for (let i = 0; i < COUNT; ++i) {
             items.push({ id: i });
@@ -67,8 +67,8 @@ suite('perf tests', () => {
         });
     });
 
-    test('render 100 flat, component items in 8ms', async () => {
-        const COUNT = 1;
+    test('render 1000 flat, component items in 15ms', async () => {
+        const COUNT = 1000;
         const items = collection<{ id: number }>([]);
         for (let i = 0; i < COUNT; ++i) {
             items.push({ id: i });
@@ -80,14 +80,14 @@ suite('perf tests', () => {
             </div>
         );
 
-        await assert.medianRuntimeLessThan(8, (measure) => {
+        await assert.medianRuntimeLessThan(15, (measure) => {
             const unmount = measure(() => mount(testRoot, <Items />));
             unmount();
         });
     });
 
-    test('render 100 flat, dynamic items in 18ms', async () => {
-        const COUNT = 100;
+    test('render 1000 flat, dynamic items in 24ms', async () => {
+        const COUNT = 1000;
         const items = collection<Model<{ id: number }>>([]);
         for (let i = 0; i < COUNT; ++i) {
             items.push(model({ id: i }));
@@ -100,14 +100,14 @@ suite('perf tests', () => {
             </div>
         );
 
-        await assert.medianRuntimeLessThan(18, (measure) => {
+        await assert.medianRuntimeLessThan(24, (measure) => {
             const unmount = measure(() => mount(testRoot, <Items />));
             unmount();
         });
     });
 
-    test('render 100 flat, component+dynamic items in 20ms', async () => {
-        const COUNT = 100;
+    test('render 1000 flat, component+dynamic items in 30ms', async () => {
+        const COUNT = 1000;
         const items = collection<Model<{ id: number }>>([]);
         for (let i = 0; i < COUNT; ++i) {
             items.push(model({ id: i }));
@@ -121,14 +121,14 @@ suite('perf tests', () => {
             </div>
         );
 
-        await assert.medianRuntimeLessThan(20, (measure) => {
+        await assert.medianRuntimeLessThan(30, (measure) => {
             const unmount = measure(() => mount(testRoot, <Items />));
             unmount();
         });
     });
 
-    test('add 1 item to end of 100 flat items in 2ms', async () => {
-        const COUNT = 100;
+    test('add 1 item to end of 1000 flat items in 2ms', async () => {
+        const COUNT = 1000;
         const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
         const items = collection<Model<{ id: number }>>([], 'coll');
         for (let i = 0; i < COUNT; ++i) {
@@ -155,8 +155,8 @@ suite('perf tests', () => {
         unmount();
     });
 
-    test('add 1 item to front of 100 flat items in 10ms', async () => {
-        const COUNT = 100;
+    test('add 1 item to front of 1000 flat items in 150ms', async () => {
+        const COUNT = 1000;
         const Item = ({ id }: { id: number }) => (
             <div>{calc(() => id, `calcitem-${id}`)}</div>
         );
@@ -179,7 +179,8 @@ suite('perf tests', () => {
 
         const unmount = mount(testRoot, <Items />);
         flush();
-        await assert.medianRuntimeLessThan(10, (measure) => {
+        await assert.medianRuntimeLessThan(150, (measure) => {
+            // TODO: Wow this is slow!!! Graph is fucked
             measure(() => {
                 items.unshift(model({ id: 1001 }, 'newmodel'));
                 flush();
@@ -190,8 +191,8 @@ suite('perf tests', () => {
         unmount();
     });
 
-    test('add 1 item to middle of 100 flat items in 5ms', async () => {
-        const COUNT = 100;
+    test('add 1 item to middle of 1000 flat items in 120ms', async () => {
+        const COUNT = 1000;
         const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
         const items = collection<Model<{ id: number }>>([]);
         for (let i = 0; i < COUNT; ++i) {
@@ -204,7 +205,8 @@ suite('perf tests', () => {
         );
 
         const unmount = mount(testRoot, <Items />);
-        await assert.medianRuntimeLessThan(5, (measure) => {
+        await assert.medianRuntimeLessThan(120, (measure) => {
+            // TODO: Wow this is slow!!! Graph is fucked
             measure(() => {
                 items.splice(50, 0, model({ id: 1001 }));
                 flush();
@@ -215,8 +217,8 @@ suite('perf tests', () => {
         unmount();
     });
 
-    test('empty 100 flat items in 19ms', async () => {
-        const COUNT = 100;
+    test('empty 1000 flat items in 150ms', async () => {
+        const COUNT = 1000;
         const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
         const items = collection<Model<{ id: number }>>([]);
         for (let i = 0; i < COUNT; ++i) {
@@ -229,7 +231,8 @@ suite('perf tests', () => {
         );
 
         const unmount = mount(testRoot, <Items />);
-        await assert.medianRuntimeLessThan(19, (measure) => {
+        await assert.medianRuntimeLessThan(150, (measure) => {
+            // TODO: Wow this is slow!! Graph is fucked
             const toReadd = items.splice(0, items.length);
             measure(() => {
                 flush();
@@ -240,21 +243,28 @@ suite('perf tests', () => {
         unmount();
     });
 
-    test('render 10 * 10 nested items in 20ms', async () => {
+    test('render 10 * 10 * 10 nested items in 30ms', async () => {
         type Item = Model<{ id: number }>;
         type Level1 = Collection<Model<{ id: number }>>;
         type Level2 = Collection<Collection<Model<{ id: number }>>>;
+        type Level3 = Collection<Collection<Collection<Model<{ id: number }>>>>;
 
         const COUNT = 10;
-        const level2: Level2 = collection<Collection<Model<{ id: number }>>>(
-            []
-        );
-        for (let k = 0; k < COUNT; ++k) {
-            const level1: Level1 = collection<Model<{ id: number }>>([]);
-            for (let l = 0; l < COUNT; ++l) {
-                level1.push(model({ id: l }));
+        const level3: Level3 = collection<
+            Collection<Collection<Model<{ id: number }>>>
+        >([]);
+        for (let j = 0; j < COUNT; ++j) {
+            const level2: Level2 = collection<
+                Collection<Model<{ id: number }>>
+            >([]);
+            for (let k = 0; k < COUNT; ++k) {
+                const level1: Level1 = collection<Model<{ id: number }>>([]);
+                for (let l = 0; l < COUNT; ++l) {
+                    level1.push(model({ id: l }));
+                }
+                level2.push(level1);
             }
-            level2.push(level1);
+            level3.push(level2);
         }
 
         const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
@@ -272,30 +282,42 @@ suite('perf tests', () => {
                 {calc(() => items.mapView((item) => <Level1 items={item} />))}
             </div>
         );
+        const Level3 = ({ items }: { items: Level3 }) => (
+            <div>
+                {calc(() => items.mapView((item) => <Level2 items={item} />))}
+            </div>
+        );
 
-        await assert.medianRuntimeLessThan(20, (measure) => {
+        await assert.medianRuntimeLessThan(30, (measure) => {
             const unmount = measure(() =>
-                mount(testRoot, <Level2 items={level2} />)
+                mount(testRoot, <Level3 items={level3} />)
             );
             unmount();
         });
     });
 
-    test('update one of 10 * 10 nested items in 2.5ms', async () => {
+    test('update one of 10 * 10 * 10 nested items in 1ms', async () => {
         type Item = Model<{ id: number }>;
         type Level1 = Collection<Model<{ id: number }>>;
         type Level2 = Collection<Collection<Model<{ id: number }>>>;
+        type Level3 = Collection<Collection<Collection<Model<{ id: number }>>>>;
 
         const COUNT = 10;
-        const level2: Level2 = collection<Collection<Model<{ id: number }>>>(
-            []
-        );
-        for (let k = 0; k < COUNT; ++k) {
-            const level1: Level1 = collection<Model<{ id: number }>>([]);
-            for (let l = 0; l < COUNT; ++l) {
-                level1.push(model({ id: l }));
+        const level3: Level3 = collection<
+            Collection<Collection<Model<{ id: number }>>>
+        >([]);
+        for (let j = 0; j < COUNT; ++j) {
+            const level2: Level2 = collection<
+                Collection<Model<{ id: number }>>
+            >([]);
+            for (let k = 0; k < COUNT; ++k) {
+                const level1: Level1 = collection<Model<{ id: number }>>([]);
+                for (let l = 0; l < COUNT; ++l) {
+                    level1.push(model({ id: l }));
+                }
+                level2.push(level1);
             }
-            level2.push(level1);
+            level3.push(level2);
         }
 
         const Item = ({ id }: { id: number }) => <div>{calc(() => id)}</div>;
@@ -313,21 +335,24 @@ suite('perf tests', () => {
                 {calc(() => items.mapView((item) => <Level1 items={item} />))}
             </div>
         );
+        const Level3 = ({ items }: { items: Level3 }) => (
+            <div>
+                {calc(() => items.mapView((item) => <Level2 items={item} />))}
+            </div>
+        );
 
-        const unmount = mount(testRoot, <Level2 items={level2} />);
-
-        await assert.medianRuntimeLessThan(2.5, (measure) => {
+        const unmount = mount(testRoot, <Level3 items={level3} />);
+        await assert.medianRuntimeLessThan(1, (measure) => {
             measure(() => {
-                level2[4][4].id = Math.random();
+                level3[4][4][4].id = Math.random();
                 flush();
             });
         });
-
         unmount();
     });
 
-    test('update 100 text nodes amongst 100 flat items in 40ms', async () => {
-        const COUNT = 100;
+    test('update 1000 text nodes amongst 1000 flat items in 40ms', async () => {
+        const COUNT = 1000;
         const Item = ({ item }: { item: Model<{ id: number }> }) => (
             <div>{calc(() => item.id, `item-${item.id}-calc`)}</div>
         );
@@ -360,8 +385,8 @@ suite('perf tests', () => {
         unmount();
     });
 
-    test('update 100 dom attributes in 15ms', async () => {
-        const COUNT = 100;
+    test('update 1000 dom attributes in 15ms', async () => {
+        const COUNT = 1000;
         const Item = ({ item }: { item: Model<{ id: number }> }) => (
             <div data-whatever={calc(() => item.id)} />
         );
@@ -387,9 +412,9 @@ suite('perf tests', () => {
         unmount();
     });
 
-    test('make 100 calculations in 0.75ms', async () => {
-        const COUNT = 100;
-        await assert.medianRuntimeLessThan(0.75, (measure) => {
+    test('make 1000 calculations in 10ms', async () => {
+        const COUNT = 1000;
+        await assert.medianRuntimeLessThan(10, (measure) => {
             measure(() => {
                 for (let i = 0; i < COUNT; ++i) {
                     calc(() => i);
@@ -398,10 +423,10 @@ suite('perf tests', () => {
         });
     });
 
-    test('call 100 calculations in 0.25ms', async () => {
-        const COUNT = 100;
+    test('call 1000 calculations in 1ms', async () => {
+        const COUNT = 1000;
         const calculations: Calculation<number>[] = [];
-        await assert.medianRuntimeLessThan(0.25, (measure) => {
+        await assert.medianRuntimeLessThan(1, (measure) => {
             for (let i = 0; i < COUNT; ++i) {
                 const calculation = calc(() => i);
                 retain(calculation);
@@ -420,10 +445,10 @@ suite('perf tests', () => {
         });
     });
 
-    test('allocate + retain 100 calculations in 1.5ms', async () => {
-        const COUNT = 100;
+    test('allocate + retain 1000 calculations in 10ms', async () => {
+        const COUNT = 1000;
         let calculations: Calculation<number>[] = [];
-        await assert.medianRuntimeLessThan(1.5, (measure) => {
+        await assert.medianRuntimeLessThan(10, (measure) => {
             measure(() => {
                 for (let i = 0; i < COUNT; ++i) {
                     const calculation = calc(() => i);
@@ -442,10 +467,10 @@ suite('perf tests', () => {
         });
     });
 
-    test('release 100 calculations in 0.25ms', async () => {
-        const COUNT = 100;
+    test('release 1000 calculations in 1ms', async () => {
+        const COUNT = 1000;
         const calculations: Calculation<number>[] = [];
-        await assert.medianRuntimeLessThan(0.25, (measure) => {
+        await assert.medianRuntimeLessThan(1, (measure) => {
             for (let i = 0; i < COUNT; ++i) {
                 const calculation = calc(() => i);
                 retain(calculation);
@@ -464,8 +489,8 @@ suite('perf tests', () => {
         });
     });
 
-    test('update 100 calculations in 2ms', async () => {
-        const COUNT = 100;
+    test('update 1000 calculations in 4ms', async () => {
+        const COUNT = 1000;
         const modelObj = model({ num: 0 });
         const calculations: Calculation<number>[] = [];
         for (let i = 0; i < COUNT; ++i) {
@@ -477,7 +502,7 @@ suite('perf tests', () => {
             calculation();
             calculations.push(calculation);
         }
-        await assert.medianRuntimeLessThan(2, (measure) => {
+        await assert.medianRuntimeLessThan(4, (measure) => {
             measure(() => {
                 modelObj.num += 1;
                 flush();
@@ -488,13 +513,13 @@ suite('perf tests', () => {
         }
     });
 
-    test('add 100 nodes in 0.5ms', async () => {
-        const COUNT = 100;
+    test('add 1000 nodes in 2ms', async () => {
+        const COUNT = 1000;
         const objects: { $__id: number; i: number }[] = [];
         for (let i = 0; i < COUNT; ++i) {
             objects.push({ $__id: i, i });
         }
-        await assert.medianRuntimeLessThan(0.5, (measure) => {
+        await assert.medianRuntimeLessThan(2, (measure) => {
             // Build a random graph of 10k nodes and edges all consolidating on a single destination node
             const graph = new Graph();
             measure(() => {
@@ -505,8 +530,8 @@ suite('perf tests', () => {
         });
     });
 
-    test('add 100 edges in 1ms', async () => {
-        const COUNT = 100;
+    test('add 1000 edges in 1ms', async () => {
+        const COUNT = 1000;
         const objects: { $__id: number; i: number }[] = [];
         for (let i = 0; i < COUNT; ++i) {
             objects.push({ $__id: i, i });
@@ -534,13 +559,14 @@ suite('perf tests', () => {
         });
     });
 
-    test('process 10% dirty nodes in a 100 node graph in 2ms', async () => {
-        const COUNT = 100;
+    test('allocate and process 10% dirty nodes in a 1000 node graph in 20ms', async () => {
+        const COUNT = 1000;
         const objects: { $__id: number; i: number }[] = [];
         for (let i = 0; i < COUNT; ++i) {
             objects.push({ $__id: i, i });
         }
-        await assert.medianRuntimeLessThan(2, (measure) => {
+        await assert.medianRuntimeLessThan(20, (measure) => {
+            // TODO: this should be much faster, it is slow due to topological sorting
             // Build a random graph of 10k nodes and edges all consolidating on a single destination node
             const graph = new Graph();
             for (let i = 0; i < COUNT; ++i) {
@@ -553,6 +579,36 @@ suite('perf tests', () => {
                 const candidate = randint(i + 1, COUNT);
                 graph.addEdge(objects[i], objects[candidate], Graph.EDGE_HARD);
             }
+            measure(() => {
+                graph.process(() => false);
+            });
+        });
+    });
+
+    test('process 10% existing dirty nodes in a 1000 node graph in 20ms', async () => {
+        const COUNT = 1000;
+        const objects: { $__id: number; i: number }[] = [];
+        for (let i = 0; i < COUNT; ++i) {
+            objects.push({ $__id: i, i });
+        }
+        await assert.medianRuntimeLessThan(4, (measure) => {
+            // Build a random graph of 10k nodes and edges all consolidating on a single destination node
+            const graph = new Graph();
+            for (let i = 0; i < COUNT; ++i) {
+                graph.addNode(objects[i]);
+            }
+            for (let i = 0; i < COUNT - 1; ++i) {
+                const candidate = randint(i + 1, COUNT);
+                graph.addEdge(objects[i], objects[candidate], Graph.EDGE_HARD);
+            }
+            graph.process(() => false);
+
+            for (let i = 0; i < COUNT; ++i) {
+                if (Math.random() < 0.1) {
+                    graph.markNodeDirty(objects[i]);
+                }
+            }
+
             measure(() => {
                 graph.process(() => false);
             });
