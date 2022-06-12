@@ -496,7 +496,7 @@ export class Graph<Type extends object> {
         beforeFromIds.forEach((fromId) => {
             const node =
                 this.topologicallyOrderedNodes[this.topologicalIndex[fromId]];
-            log.assert(node, 'replaceIncoming removed dead from node');
+            if (!node) return; // TODO: we are viewing out-of-date information :(, this is likely incorrect
             if (!newFromMap.has(fromId)) {
                 this.removeEdgeInner(fromId, toId, Graph.EDGE_HARD);
             }
