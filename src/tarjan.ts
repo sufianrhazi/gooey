@@ -1,27 +1,29 @@
 type Vertex = {
-    nodeId: string;
+    nodeId: number;
     index?: number;
     lowlink?: number;
     onStack?: boolean;
 };
 
 export function tarjanStronglyConnected(
-    graph: Record<string, Record<string, number>>,
-    fromNodes: string[]
-): Set<string>[] {
+    reverseAdjacency: Readonly<Record<number, readonly number[]>>,
+    topologicalIndexById: readonly number[],
+    lowerBound: number,
+    upperBound: number,
+    fromNodes: Iterable<number>
+): number[][] {
     let index = 0;
-    const nodeVertex: Record<string, Vertex> = {};
+    const nodeVertex: Record<number, Vertex> = {};
     const stack: Vertex[] = [];
-    const reverseTopoSort: Vertex[][] = [];
+    const reverseTopoSort: number[][] = [];
 
-    function getDepenencies(nodeId: string) {
-        const dependencies: string[] = [];
-        Object.keys(graph[nodeId] || {}).forEach((toId) => {
-            if (graph[nodeId][toId]) {
-                dependencies.push(toId);
+    function* getDepenencies(nodeId: number) {
+        for (const toId of reverseAdjacency[nodeId]) {
+            const toIndex = topologicalIndexById[toId];
+            if (lowerBound <= toIndex && toIndex <= upperBound) {
+                yield toId;
             }
-        });
-        return dependencies;
+        }
     }
 
     const strongconnect = (vertex: Vertex) => {
@@ -32,7 +34,7 @@ export function tarjanStronglyConnected(
         vertex.onStack = true;
 
         // Consider successors of v
-        getDepenencies(vertex.nodeId).forEach((toId) => {
+        for (const toId of getDepenencies(vertex.nodeId)) {
             if (!nodeVertex[toId]) {
                 nodeVertex[toId] = {
                     nodeId: toId,
@@ -59,18 +61,18 @@ export function tarjanStronglyConnected(
                     toVertex.index
                 );
             }
-        });
+        }
 
         // If vertex is a root node, pop the stack and generate an SCC
         if (vertex.lowlink === vertex.index) {
             // start a new strongly connected component
-            const component: Vertex[] = [];
+            const component: number[] = [];
             for (;;) {
                 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 const toVertex = stack.pop()!;
                 toVertex.onStack = false;
                 // add toVertex to current strongly connected component
-                component.push(toVertex);
+                component.push(toVertex.nodeId);
                 if (toVertex === vertex) {
                     break;
                 }
@@ -80,18 +82,14 @@ export function tarjanStronglyConnected(
         }
     };
 
-    fromNodes.forEach((nodeId) => {
+    for (const nodeId of fromNodes) {
         if (!nodeVertex[nodeId]) {
             nodeVertex[nodeId] = {
                 nodeId,
             };
             strongconnect(nodeVertex[nodeId]);
         }
-    });
+    }
 
-    reverseTopoSort.reverse();
-
-    return reverseTopoSort.map(
-        (component) => new Set(component.map((vertex) => vertex.nodeId))
-    );
+    return reverseTopoSort;
 }
