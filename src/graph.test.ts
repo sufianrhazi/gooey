@@ -2,15 +2,15 @@ import { Graph, ProcessAction } from './graph';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
 
 suite('Graph', () => {
-    const a = { name: 'a', $__id: 0 };
-    const b = { name: 'b', $__id: 1 };
-    const c = { name: 'c', $__id: 2 };
-    const d = { name: 'd', $__id: 3 };
-    const e = { name: 'e', $__id: 4 };
-    const f = { name: 'f', $__id: 5 };
-    const g = { name: 'g', $__id: 6 };
-    const h = { name: 'h', $__id: 7 };
-    const i = { name: 'i', $__id: 8 };
+    const a = { name: 'a' };
+    const b = { name: 'b' };
+    const c = { name: 'c' };
+    const d = { name: 'd' };
+    const e = { name: 'e' };
+    const f = { name: 'f' };
+    const g = { name: 'g' };
+    const h = { name: 'h' };
+    const i = { name: 'i' };
 
     interface TNode {
         name: string;
@@ -29,6 +29,102 @@ suite('Graph', () => {
         assert.throwsMatching(/vertex not found/, () => {
             graph.addEdge(a, b, Graph.EDGE_HARD);
         });
+    });
+
+    test('removeVertex removes vertices', () => {
+        const graph = new Graph<TNode>();
+
+        graph.addVertex(a);
+        graph.removeVertex(a);
+        graph.addVertex(b);
+        graph.removeVertex(b);
+
+        graph.addVertex(b);
+        graph.addVertex(a);
+    });
+
+    test('id issuance: ids can be reused', () => {
+        const graph = new Graph<TNode>();
+
+        graph.addVertex(a);
+        graph.addVertex(b);
+
+        const aInfo = graph._test_getVertexInfo(a);
+        const bInfo = graph._test_getVertexInfo(b);
+
+        graph.removeVertex(a);
+        graph.addVertex(c);
+
+        const cInfo = graph._test_getVertexInfo(c);
+
+        assert.isTruthy(aInfo);
+        assert.isTruthy(bInfo);
+        assert.isTruthy(cInfo);
+
+        assert.isNot(aInfo?.id, bInfo?.id);
+        assert.isNot(bInfo?.id, cInfo?.id);
+        assert.is(aInfo?.id, cInfo?.id);
+
+        assert.isNot(aInfo?.index, bInfo?.index);
+        assert.isNot(bInfo?.index, cInfo?.index);
+        assert.is(aInfo?.index, cInfo?.index);
+    });
+
+    test('index issuance with respect to reordering', () => {
+        const graph = new Graph<TNode>();
+
+        graph.addVertex(c);
+        graph.addVertex(b);
+        graph.addVertex(a);
+
+        // initial order: [c, b, a]
+        assert.is(0, graph._test_getVertexInfo(c)?.index);
+        assert.is(1, graph._test_getVertexInfo(b)?.index);
+        assert.is(2, graph._test_getVertexInfo(a)?.index);
+
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.process(() => false); // trigger reorder
+
+        // reordered: [a, b, c]
+        assert.is(2, graph._test_getVertexInfo(c)?.index);
+        assert.is(1, graph._test_getVertexInfo(b)?.index);
+        assert.is(0, graph._test_getVertexInfo(a)?.index);
+
+        graph.removeEdge(a, b, Graph.EDGE_HARD);
+        graph.process(() => false); // trigger reorder
+
+        // no changes, despite a->b edge removal: [a, b, c]
+        assert.is(2, graph._test_getVertexInfo(c)?.index);
+        assert.is(1, graph._test_getVertexInfo(b)?.index);
+        assert.is(0, graph._test_getVertexInfo(a)?.index);
+
+        graph.removeVertex(a);
+        // Order now is: [undefined, b, c]
+
+        graph.addVertex(d);
+        graph.addVertex(e);
+
+        // vertices issued in "holes" in order [d, b, c, e]
+        assert.is(undefined, graph._test_getVertexInfo(a));
+        assert.is(1, graph._test_getVertexInfo(b)?.index);
+        assert.is(2, graph._test_getVertexInfo(c)?.index);
+        assert.is(0, graph._test_getVertexInfo(d)?.index);
+        assert.is(3, graph._test_getVertexInfo(e)?.index);
+
+        // reordering can work as expected after reissuance
+        graph.addEdge(d, c, Graph.EDGE_HARD);
+        graph.addEdge(e, d, Graph.EDGE_HARD);
+        graph.process(() => false); // trigger reorder
+
+        assert.lessThan(
+            graph._test_getVertexInfo(d)!.index,
+            graph._test_getVertexInfo(c)!.index
+        );
+        assert.lessThan(
+            graph._test_getVertexInfo(e)!.index,
+            graph._test_getVertexInfo(d)!.index
+        );
     });
 
     test('_test_getDependencies gets dependencies', () => {
@@ -387,15 +483,19 @@ suite('Graph', () => {
             });
         });
     });
+
+    if (DEBUG) {
+        test('graphviz representation', () => {});
+    }
 });
 
 suite('Graph Cycles', () => {
-    const a = { name: 'a', $__id: 0 };
-    const b = { name: 'b', $__id: 1 };
-    const c = { name: 'c', $__id: 2 };
-    const d = { name: 'd', $__id: 3 };
-    const e = { name: 'e', $__id: 4 };
-    const f = { name: 'f', $__id: 5 };
+    const a = { name: 'a' };
+    const b = { name: 'b' };
+    const c = { name: 'c' };
+    const d = { name: 'd' };
+    const e = { name: 'e' };
+    const f = { name: 'f' };
 
     interface TNode {
         name: string;

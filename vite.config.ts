@@ -24,6 +24,7 @@ export default defineConfig({
     },
     define: {
         DEBUG: false,
+        TEST: true,
         LIB_VERSION: '"development"',
     },
 });

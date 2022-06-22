@@ -7,7 +7,7 @@ type Vertex = {
 
 export function tarjanStronglyConnected(
     reverseAdjacency: Readonly<Record<number, readonly number[]>>,
-    topologicalIndexById: readonly number[],
+    topologicalIndexById: readonly (number | undefined)[],
     lowerBound: number,
     upperBound: number,
     fromNodes: Iterable<number>
@@ -20,7 +20,11 @@ export function tarjanStronglyConnected(
     function* getDepenencies(nodeId: number) {
         for (const toId of reverseAdjacency[nodeId]) {
             const toIndex = topologicalIndexById[toId];
-            if (lowerBound <= toIndex && toIndex <= upperBound) {
+            if (
+                toIndex !== undefined &&
+                lowerBound <= toIndex &&
+                toIndex <= upperBound
+            ) {
                 yield toId;
             }
         }

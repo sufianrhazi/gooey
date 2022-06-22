@@ -59,6 +59,11 @@ export function invariant(check: () => any, ...items: any[]) {
     }
 }
 
+export function fail(msg: string, ...items: any[]): never {
+    error('Invariant error', msg, ...items);
+    throw new InvariantError(`Invariant error: ${msg}`);
+}
+
 export function assert(check: any, msg: string): asserts check {
     if (!check) {
         error(

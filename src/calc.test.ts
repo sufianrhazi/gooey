@@ -1,21 +1,20 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
 import { collection } from './collection';
+import { Calculation, calc, effect } from './calc';
 import {
     flush,
-    calc,
-    effect,
     retain,
     release,
     markRoot,
     reset,
     subscribe,
-} from './calc';
-import { Calculation } from './types';
+    debug,
+} from './engine';
 
 beforeEach(() => {
-    subscribe();
     reset();
+    subscribe();
 });
 
 suite('calc', () => {
@@ -34,19 +33,23 @@ suite('calc', () => {
 
     test('reruns when model dependency changes', () => {
         const calls: string[] = [];
-        const dependency = model({
-            value: 1,
-        });
+        const dependency = model(
+            {
+                value: 1,
+            },
+            'model'
+        );
         const calculation = calc(() => {
             calls.push('call');
             return dependency.value;
-        });
+        }, 'calculation');
         retain(calculation);
         markRoot(calculation);
         const a = calculation();
         dependency.value = 2;
         const b = calculation();
         assert.deepEqual(['call'], calls);
+        console.log('WHAT', debug());
         flush();
         assert.deepEqual(['call', 'call'], calls);
         const c = calculation();
@@ -284,14 +287,10 @@ suite('effect', () => {
             b: { left: string; right: string }
         ) => a.left === b.left && a.right === b.right;
 
-        const d = calc(
-            () => {
-                calls.push('d');
-                return dependency.val;
-            },
-            isEqual,
-            'd'
-        );
+        const d = calc(() => {
+            calls.push('d');
+            return dependency.val;
+        }, 'd').setCmp(isEqual);
         const b = calc(() => {
             calls.push('b');
             return d().left;
@@ -330,13 +329,9 @@ suite('effect', () => {
             b: { left: string; right: string }
         ) => a.left === b.left && a.right === b.right;
 
-        const d = calc(
-            () => {
-                return dependency.val;
-            },
-            isEqual,
-            'd'
-        );
+        const d = calc(() => {
+            return dependency.val;
+        }, 'd').setCmp(isEqual);
         retain(d);
         markRoot(d);
         const before = d();
@@ -467,11 +462,15 @@ suite('cycles', () => {
         assert.is('cba', calculations.c());
 
         data.isCycle = true;
+        console.group('flush isCycle = true');
         flush();
+        console.groupEnd();
 
         calls = [];
         data.value = 'y';
+        console.group('flush isCycle = false');
         flush();
+        console.groupEnd();
 
         // We expect a to be called because it has a dependency on value, which has changed
         // We expect b and c to be called because they were dirtied as if they had a dependency on value
@@ -710,6 +709,7 @@ suite('cycles', () => {
             // B --> C --> D
             //
             calculations.a = calc(() => {
+                console.log('calling a');
                 calls.push('a');
                 if (data.hasCycle > 0) {
                     return 'a' + calculations.c() + 'a';
@@ -718,14 +718,17 @@ suite('cycles', () => {
                 }
             }, 'a');
             calculations.b = calc(() => {
+                console.log('calling b');
                 calls.push('b');
                 return 'b' + calculations.a() + 'b';
             }, 'b');
             calculations.c = calc(() => {
+                console.log('calling c');
                 calls.push('c');
                 return 'c' + calculations.b() + 'c';
             }, 'c');
             calculations.d = calc(() => {
+                console.log('calling d');
                 calls.push('d');
                 const result = 'd' + calculations.c() + 'd';
                 return result;
@@ -750,7 +753,9 @@ suite('cycles', () => {
             assert.deepEqual(['d', 'c', 'b', 'a'], calls);
 
             calls.splice(0, calls.length);
+            console.log(debug());
             flush();
+            console.log(debug());
 
             assert.arrayEqualsUnsorted(['a', 'b', 'c', 'd'], calls);
         });
@@ -765,11 +770,11 @@ suite('cycles', () => {
             calls.splice(0, calls.length);
             flush();
 
-            // All nodes are called
-            assert.arrayIncludes(calls, 'a');
-            assert.arrayIncludes(calls, 'b');
-            assert.arrayIncludes(calls, 'c');
-            assert.arrayIncludes(calls, 'd');
+            // Prior the flush, the graph is known as a line: a -> b -> c -> d
+            // Once a is recalculated with hasCycle=1, edge:  a <------ c is added
+            //
+            // This closes the cycle, so b and c are not needed to be recalculated.
+            assert.arrayEqualsUnsorted(['a', 'd'], calls);
 
             calls.splice(0, calls.length);
             flush();
@@ -787,12 +792,14 @@ suite('cycles', () => {
             if (!data.hasCycle) return 'a no cycle';
             return 'a cycle:' + calculations.b();
         }, 'a').onError(() => {
+            console.log('a error handler');
             return 'A CAUGHT';
         });
         calculations.b = calc(() => {
             if (!data.hasCycle) return 'b no cycle';
             return 'b cycle:' + calculations.a();
         }, 'b').onError(() => {
+            console.log('b error handler');
             return 'B CAUGHT';
         });
 
@@ -808,7 +815,9 @@ suite('cycles', () => {
         assert.deepEqual(['a no cycle', 'b no cycle'], catcher());
 
         data.hasCycle = true;
+        console.group('flush');
         flush();
+        console.groupEnd();
 
         // There are three plausible values for catcher():
         // 1. ['A CAUGHT', 'B CAUGHT']
@@ -936,18 +945,18 @@ suite('cycles', () => {
         retain(calculations.d);
         markRoot(calculations.d);
 
-        assert.throwsMatching(/cycle/, () => calculations.a());
-        assert.throwsMatching(/cycle/, () => calculations.b());
+        assert.throwsMatching(/cycle/i, () => calculations.a());
+        assert.throwsMatching(/cycle/i, () => calculations.b());
         assert.is('C', calculations.c());
         assert.throwsMatching(/error/, () => calculations.d());
 
         data.e = 1;
         flush();
 
-        assert.throwsMatching(/cycle/, () => calculations.a());
-        assert.throwsMatching(/cycle/, () => calculations.b());
-        assert.throwsMatching(/cycle/, () => calculations.c());
-        assert.throwsMatching(/cycle/, () => calculations.d());
+        assert.throwsMatching(/cycle/i, () => calculations.a());
+        assert.throwsMatching(/cycle/i, () => calculations.b());
+        assert.throwsMatching(/cycle/i, () => calculations.c());
+        assert.throwsMatching(/cycle/i, () => calculations.d());
     });
 
     test('cycle created by recalculation is detected correctly on all nodes', () => {
@@ -1002,10 +1011,10 @@ suite('cycles', () => {
         data.e = 1;
         flush();
 
-        assert.throwsMatching(/cycle/, () => calculations.a());
-        assert.throwsMatching(/cycle/, () => calculations.b());
-        assert.throwsMatching(/cycle/, () => calculations.c());
-        assert.throwsMatching(/cycle/, () => calculations.d());
+        assert.throwsMatching(/cycle/i, () => calculations.a());
+        assert.throwsMatching(/cycle/i, () => calculations.b());
+        assert.throwsMatching(/cycle/i, () => calculations.c());
+        assert.throwsMatching(/cycle/i, () => calculations.d());
     });
 });
 
@@ -1089,13 +1098,13 @@ suite('near cycles', () => {
                     return calculations.c() + ' and D';
             }
         }, 'd');
-        retain(calculations.a, 'setup');
+        retain(calculations.a);
         markRoot(calculations.a);
-        retain(calculations.b, 'setup');
+        retain(calculations.b);
         markRoot(calculations.b);
-        retain(calculations.c, 'setup');
+        retain(calculations.c);
         markRoot(calculations.c);
-        retain(calculations.d, 'setup');
+        retain(calculations.d);
         markRoot(calculations.d);
         flush();
     });
@@ -1148,12 +1157,14 @@ suite('near cycles', () => {
         assertCase3();
     });
 
-    test('E=0 -> E=1 does not produce cycle', () => {
+    test.only('E=0 -> E=1 does not produce cycle', () => {
         data.e = 0;
         assertCase0();
 
         data.e = 1;
+        console.group('flush');
         flush();
+        console.groupEnd();
 
         assertCase1();
     });

@@ -9,13 +9,6 @@ export class InvariantError extends Error {
 export const TypeTag = Symbol('typeTag');
 export const ContextGetterTag = Symbol('contextGetter');
 export const DataTypeTag = Symbol('dataTypeTag');
-export const CalculationTypeTag = Symbol('calculationType');
-export const CalculationRecalculateTag = Symbol('calculationRecalculate');
-export const CalculationRecalculateCycleTag = Symbol(
-    'calculationRecalculateCycle'
-);
-export const CalculationInvalidateTag = Symbol('calculationInvalidate');
-export const CalculationSetCycleTag = Symbol('calculationSetCycle');
 
 export const ObserveKey = Symbol('observe');
 export const GetSubscriptionConsumerKey = Symbol('getSubscriptionConsumer');
@@ -251,18 +244,6 @@ export function isContext(val: any): val is Context<any> {
 /**
  * A calculation cell that recalculates when dependencies change
  */
-export interface Calculation<Result> {
-    (): Result;
-    $__id: number;
-    [TypeTag]: 'calculation';
-    [CalculationTypeTag]: 'calculation' | 'effect';
-    [DisposeKey]: () => void;
-    onError: (handler: (errorType: 'cycle' | 'error') => Result) => this;
-    [CalculationSetCycleTag]: () => boolean;
-    [CalculationRecalculateTag]: () => boolean;
-    [CalculationRecalculateCycleTag]: () => boolean;
-    [CalculationInvalidateTag]: () => void;
-}
 
 export interface ModelField {
     $__id: number;
@@ -297,14 +278,6 @@ export function isCollection(thing: any): thing is Collection<any> | View<any> {
     );
 }
 
-export function isCalculation(thing: any): thing is Calculation<any> {
-    return !!(thing && thing[TypeTag] === 'calculation');
-}
-
-export function isEffect(thing: Calculation<unknown>): boolean {
-    return thing[CalculationTypeTag] === 'effect';
-}
-
 export function isSubscriptionEmitter(
     thing: any
 ): thing is SubscriptionEmitter {
@@ -322,7 +295,6 @@ export function isNodeOrdering(thing: any): thing is NodeOrdering {
 }
 
 export type GraphNode =
-    | Calculation<any>
     | ModelField
     | SubscriptionConsumer
     | SubscriptionEmitter

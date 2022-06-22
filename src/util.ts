@@ -1,6 +1,10 @@
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 export const noop = () => {};
 
+export const dead = (): any => {
+    throw new Error('Cannot call dead function');
+};
+
 export const uniqueid = (() => {
     let id = 1;
     return () => id++;
