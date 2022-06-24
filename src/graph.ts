@@ -644,6 +644,34 @@ export class Graph<TVertex> {
         return lowerBound;
     }
 
+    private processVertex(
+        vertexId: number,
+        callback: (vertex: TVertex, action: ProcessAction) => boolean
+    ) {
+        const reachesRoot =
+            this.vertexBitsById[vertexId] & VERTEX_BIT_REACHES_ROOT;
+        const vertex = this.vertexById[vertexId];
+        log.assert(vertex, 'nonexistent vertex dirtied');
+        if (!reachesRoot) {
+            return callback(vertex, ProcessAction.INVALIDATE);
+        }
+
+        const isCycle =
+            this.vertexBitsById[vertexId] &
+            (VERTEX_BIT_CYCLE | VERTEX_BIT_SELF_CYCLE);
+        const isInformed =
+            this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE_INFORMED;
+
+        if (isCycle && isInformed) {
+            return callback(vertex, ProcessAction.RECALCULATE);
+        }
+        if (isCycle && !isInformed) {
+            this.vertexBitsById[vertexId] |= VERTEX_BIT_CYCLE_INFORMED;
+            return callback(vertex, ProcessAction.CYCLE);
+        }
+        return callback(vertex, ProcessAction.RECALCULATE);
+    }
+
     process(callback: (vertex: TVertex, action: ProcessAction) => boolean) {
         if (this.toReorderIds.size > 0) {
             this.resort(this.toReorderIds);
@@ -661,48 +689,25 @@ export class Graph<TVertex> {
             log.assert(vertex, 'nonexistent vertex dirtied');
 
             const cycleInfo = this.cycleInfoById[vertexId];
-            const reachesRoot =
-                this.vertexBitsById[vertexId] & VERTEX_BIT_REACHES_ROOT;
-            const isCycle =
-                cycleInfo ||
-                this.vertexBitsById[vertexId] & VERTEX_BIT_SELF_CYCLE;
 
-            let recheckCycleIds: null | number[] = null;
             let shouldPropagate = false;
-            if (!reachesRoot) {
-                shouldPropagate = callback(vertex, ProcessAction.INVALIDATE);
-            } else if (cycleInfo) {
-                recheckCycleIds = [];
+            const recheckIds: null | number[] = cycleInfo ? [] : null;
+            if (cycleInfo) {
                 for (const cycleId of cycleInfo.vertexIds) {
-                    const cycleVertex = this.vertexById[cycleId];
-                    log.assert(cycleVertex, 'nonexistent vertex in cycle');
-
                     const isInformed =
                         this.vertexBitsById[cycleId] &
                         VERTEX_BIT_CYCLE_INFORMED;
                     if (isInformed) {
-                        recheckCycleIds.push(cycleId);
-                        shouldPropagate =
-                            callback(cycleVertex, ProcessAction.RECALCULATE) ||
-                            shouldPropagate;
-                    } else {
-                        shouldPropagate =
-                            callback(cycleVertex, ProcessAction.CYCLE) ||
-                            shouldPropagate;
-                        this.vertexBitsById[cycleId] |=
-                            VERTEX_BIT_CYCLE_INFORMED;
+                        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                        recheckIds!.push(cycleId);
                     }
+                    shouldPropagate =
+                        this.processVertex(cycleId, callback) ||
+                        shouldPropagate;
                 }
-            } else if (
-                isCycle &&
-                (this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE_INFORMED) ===
-                    0
-            ) {
-                shouldPropagate = callback(vertex, ProcessAction.CYCLE);
-                this.vertexBitsById[vertexId] |= VERTEX_BIT_CYCLE_INFORMED;
             } else {
-                recheckCycleIds = [vertexId];
-                shouldPropagate = callback(vertex, ProcessAction.RECALCULATE);
+                shouldPropagate =
+                    this.processVertex(vertexId, callback) || shouldPropagate;
             }
 
             if (this.toReorderIds.size > 0) {
@@ -713,8 +718,9 @@ export class Graph<TVertex> {
             // If cycles remain after recalculating an informed cycle, the
             // recalculation failed to break the cycle, so we need to call the
             // callback with CYCLE actions to correctly set their error state
-            if (recheckCycleIds) {
-                for (const cycleId of recheckCycleIds) {
+            if (cycleInfo) {
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                for (const cycleId of recheckIds!) {
                     const isStillCycle =
                         this.vertexBitsById[cycleId] &
                         (VERTEX_BIT_CYCLE | VERTEX_BIT_SELF_CYCLE);
