@@ -2,15 +2,7 @@ import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
 import { collection } from './collection';
 import { Calculation, calc, effect } from './calc';
-import {
-    flush,
-    retain,
-    release,
-    markRoot,
-    reset,
-    subscribe,
-    debug,
-} from './engine';
+import { flush, retain, release, markRoot, reset, subscribe } from './engine';
 
 beforeEach(() => {
     reset();
@@ -49,7 +41,6 @@ suite('calc', () => {
         dependency.value = 2;
         const b = calculation();
         assert.deepEqual(['call'], calls);
-        console.log('WHAT', debug());
         flush();
         assert.deepEqual(['call', 'call'], calls);
         const c = calculation();
@@ -178,18 +169,14 @@ suite('calc', () => {
         assert.deepEqual(['call a', 'call a'], calls);
 
         // Dependency on which, recalc
-        console.group('which = a');
         dependency.which = 'b';
         flush();
         assert.deepEqual(['call a', 'call a', 'call b'], calls);
-        console.groupEnd();
 
         // No longer dependency on a
-        console.group('dependency.a = 5');
         dependency.a = 5;
         flush();
         assert.deepEqual(['call a', 'call a', 'call b'], calls);
-        console.groupEnd();
 
         // Dependency on b, recalc
         dependency.b = 6;
@@ -404,9 +391,7 @@ suite('cycles', () => {
         assert.is('abc', calculations.c());
 
         data.isCycle = true;
-        console.group('flush');
         flush();
-        console.groupEnd();
 
         assert.throwsMatching(/cycle reached/i, () => calculations.a());
         assert.throwsMatching(/cycle reached/i, () => calculations.b());
@@ -468,15 +453,11 @@ suite('cycles', () => {
         assert.is('cba', calculations.c());
 
         data.isCycle = true;
-        console.group('flush isCycle = true');
         flush();
-        console.groupEnd();
 
         calls = [];
         data.value = 'y';
-        console.group('flush isCycle = false');
         flush();
-        console.groupEnd();
 
         // We expect a to be called because it has a dependency on value, which has changed
         // We expect b and c to be called because they were dirtied as if they had a dependency on value
@@ -573,10 +554,8 @@ suite('cycles', () => {
             assert.is('C', calculations.c());
             assert.is('dCd', calculations.d()); // because c caught its cycle, d is unaware and runs as expected
 
-            console.group('flush 2');
             data.hasCycle = 0;
             flush();
-            console.groupEnd();
 
             assert.is('x', calculations.a());
             assert.is('bxb', calculations.b());
@@ -677,7 +656,6 @@ suite('cycles', () => {
 
             data.hasCycle = true;
             flush();
-            console.log(debug());
 
             assert.throwsMatching(/cycle/i, () => calculations.a());
             assert.throwsMatching(/cycle/i, () => calculations.b());
@@ -720,7 +698,6 @@ suite('cycles', () => {
             // B --> C --> D
             //
             calculations.a = calc(() => {
-                console.log('calling a');
                 calls.push('a');
                 if (data.hasCycle > 0) {
                     return 'a' + calculations.c() + 'a';
@@ -729,17 +706,14 @@ suite('cycles', () => {
                 }
             }, 'a');
             calculations.b = calc(() => {
-                console.log('calling b');
                 calls.push('b');
                 return 'b' + calculations.a() + 'b';
             }, 'b');
             calculations.c = calc(() => {
-                console.log('calling c');
                 calls.push('c');
                 return 'c' + calculations.b() + 'c';
             }, 'c');
             calculations.d = calc(() => {
-                console.log('calling d');
                 calls.push('d');
                 const result = 'd' + calculations.c() + 'd';
                 return result;
@@ -764,9 +738,7 @@ suite('cycles', () => {
             assert.deepEqual(['d', 'c', 'b', 'a'], calls);
 
             calls.splice(0, calls.length);
-            console.log(debug());
             flush();
-            console.log(debug());
 
             assert.arrayEqualsUnsorted(['a', 'b', 'c', 'd'], calls);
         });
@@ -803,14 +775,12 @@ suite('cycles', () => {
             if (!data.hasCycle) return 'a no cycle';
             return 'a cycle:' + calculations.b();
         }, 'a').onError(() => {
-            console.log('a error handler');
             return 'A CAUGHT';
         });
         calculations.b = calc(() => {
             if (!data.hasCycle) return 'b no cycle';
             return 'b cycle:' + calculations.a();
         }, 'b').onError(() => {
-            console.log('b error handler');
             return 'B CAUGHT';
         });
 
@@ -826,9 +796,7 @@ suite('cycles', () => {
         assert.deepEqual(['a no cycle', 'b no cycle'], catcher());
 
         data.hasCycle = true;
-        console.group('flush');
         flush();
-        console.groupEnd();
 
         // There are three plausible values for catcher():
         // 1. ['A CAUGHT', 'B CAUGHT']
@@ -922,15 +890,10 @@ suite('cycles', () => {
         retain(catcher);
         markRoot(catcher);
 
-        console.group('call');
         assert.deepEqual('a no cycle', catcher());
-        console.groupEnd();
 
-        console.log(debug());
         data.hasCycle = true;
-        console.group('flush');
         flush();
-        console.groupEnd();
 
         assert.deepEqual('catcher caught', catcher());
     });
@@ -1196,10 +1159,7 @@ suite('near cycles', () => {
         assertCase0();
 
         data.e = 1;
-        console.log(debug());
-        console.group('flush');
         flush();
-        console.groupEnd();
 
         assertCase1();
     });

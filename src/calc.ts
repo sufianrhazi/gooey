@@ -230,10 +230,6 @@ function calculationCall<T>(calculation: Calculation<T>): T {
         case CalculationState.CACHED:
             return calculation._val as T;
         case CalculationState.CALLING:
-            console.log(
-                'SETTING CALCULATION TO ERROR BECAUSE IT REACHED ITSELF',
-                { name: calculation[SymDebugName], calc: calculation }
-            );
             calculation._state = CalculationState.ERROR;
             calculation._error = new CycleError(
                 'Cycle reached: calculation reached itself',
@@ -273,10 +269,6 @@ function calculationCall<T>(calculation: Calculation<T>): T {
                 CalculationState.ERROR
             ) {
                 exception = calculation._error;
-                console.log('CALCULATION DETECTED IT REACHED ITSELF', {
-                    calculation,
-                    exception,
-                });
             }
 
             let isActiveCycle = false;
@@ -310,25 +302,12 @@ function calculationCall<T>(calculation: Calculation<T>): T {
                     delete calculation._val;
                 }
                 calculation._error = exception;
-                console.log(
-                    'SETTING CALCULATION TO ERROR BECAUSE RESULT IS SENTINEL: exception and no error handler',
-                    {
-                        name: calculation[SymDebugName],
-                        calc: calculation,
-                        e: exception,
-                    }
-                );
                 calculation._state = CalculationState.ERROR;
             } else {
                 calculation._val = result;
                 if ('_error' in calculation) {
                     delete calculation._error;
                 }
-                console.log('SET CALCULATION TO CACHED', {
-                    name: calculation[SymDebugName],
-                    calculation,
-                    value: result,
-                });
                 calculation._state = CalculationState.CACHED;
                 unmarkDirty(calculation);
             }
@@ -400,11 +379,6 @@ function calculationRecalculate<T>(this: Calculation<T>) {
             try {
                 newResult = calculationCall(this);
             } catch (e) {
-                console.log('SETTING CALCULATION TO ERROR BECAUSE EXCEPTION', {
-                    name: this[SymDebugName],
-                    calc: this,
-                    e,
-                });
                 this._state = CalculationState.ERROR;
                 this._error = e;
                 return true; // Errors always propagate
@@ -460,17 +434,9 @@ function calculationCycle<T>(this: Calculation<T>) {
                     () => errorHandler(CalculationErrorType.CYCLE),
                     this[SymDebugName]
                 );
-                console.log('SET CALCULATION TO CACHED AFTER HANDLING ERROR', {
-                    name: this[SymDebugName],
-                    calculation: this,
-                });
                 this._state = CalculationState.CACHED;
                 unmarkDirty(this);
             } else {
-                console.log(
-                    'SETTING CALCULATION TO ERROR BECAUSE TOLD OF CYCLE',
-                    { name: this[SymDebugName], calc: this }
-                );
                 this._state = CalculationState.ERROR;
                 this._error = Sentinel;
                 return true; // Errors always propagate

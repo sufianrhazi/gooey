@@ -86,9 +86,6 @@ export function release(retainable: Retainable) {
 
 function processHandler(vertex: Processable, action: ProcessAction) {
     console.log('process', ProcessAction[action], vertex[SymDebugName], vertex);
-    //console.log(
-    //    debug(vertex, `${ProcessAction[action]} ${vertex[SymDebugName]}`)
-    //);
     switch (action) {
         case ProcessAction.INVALIDATE:
             return vertex[SymInvalidate]?.() ?? false;

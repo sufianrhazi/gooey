@@ -130,7 +130,6 @@
  */
 import { tarjanStronglyConnected } from './tarjan';
 import * as log from './log';
-import { SymDebugName } from './engine';
 
 export enum EdgeColor {
     EDGE_SOFT = 0b01,
@@ -329,11 +328,6 @@ export class Graph<TVertex> {
 
     private markVertexDirtyInner(vertexId: number) {
         const vertex = this.vertexById[vertexId];
-        console.log(
-            'markVertexDirtyInner',
-            vertex![SymDebugName],
-            !!(this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY)
-        );
         if (vertex && !(this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY)) {
             this.vertexBitsById[vertexId] |= VERTEX_BIT_DIRTY;
             this.dirtyVertexIds.push(vertexId);
@@ -645,10 +639,6 @@ export class Graph<TVertex> {
                     this.cycleInfoById[vertexId] = cycle;
                 } else if (this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE) {
                     // Vertex no longer part of a cycle, clear the cycle bits and mark as dirty
-                    console.log(
-                        'CLEARING VERTEX AS INFORMED; CLEARING CYCLE',
-                        (this.vertexById[vertexId] as any)[SymDebugName]
-                    );
                     this.vertexBitsById[vertexId] =
                         this.vertexBitsById[vertexId] &
                         ~(VERTEX_BIT_CYCLE | VERTEX_BIT_CYCLE_INFORMED);
@@ -702,7 +692,6 @@ export class Graph<TVertex> {
 
             const vertex = this.vertexById[vertexId];
             log.assert(vertex, 'nonexistent vertex dirtied');
-            console.group('VISIT', (vertex as any)[SymDebugName]);
 
             const cycleInfo = this.cycleInfoById[vertexId];
 
@@ -763,7 +752,6 @@ export class Graph<TVertex> {
                 shouldPropagate = true;
             }
 
-            console.log('PROPAGATE?', shouldPropagate);
             if (shouldPropagate) {
                 // 3 sets of vertices to union + propagate:
                 // - the vertexId we are processing
@@ -784,7 +772,6 @@ export class Graph<TVertex> {
                     this.propagateDirty(cycleId, toPropagate);
                 }
             }
-            console.groupEnd();
         }
     }
 
@@ -792,13 +779,6 @@ export class Graph<TVertex> {
         vertexId: number,
         cycleVertexIds: null | Set<number>
     ) {
-        const vertex = this.vertexById[vertexId]!;
-        console.group(
-            'PROPAGATING',
-            (vertex as any)[SymDebugName],
-            'avoiding',
-            cycleVertexIds
-        );
         this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
         for (const toId of this.forwardAdjacencyHard[vertexId]) {
             const toCycleInfo = this.cycleInfoById[toId];
@@ -814,7 +794,6 @@ export class Graph<TVertex> {
                 }
             }
         }
-        console.groupEnd();
     }
 
     debug(getAttrs: (vertex: TVertex) => DebugAttributes, label?: string) {
