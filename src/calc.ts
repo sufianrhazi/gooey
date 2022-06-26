@@ -151,6 +151,7 @@ import {
     removeVertex,
     retain,
     markCycleInformed,
+    unmarkDirty,
     isToplevel,
     tracked,
     untracked,
@@ -207,7 +208,14 @@ function calcSetCmp<T>(this: Calculation<T>, eq: (a: T, b: T) => boolean) {
     return this;
 }
 
-class CycleError extends Error {}
+class CycleError extends Error {
+    sourceCalculation: Calculation<any>;
+
+    constructor(msg: string, sourceCalculation: Calculation<any>) {
+        super(msg);
+        this.sourceCalculation = sourceCalculation;
+    }
+}
 
 function calculationCall<T>(calculation: Calculation<T>): T {
     if (!calculation._isEffect) {
@@ -222,16 +230,19 @@ function calculationCall<T>(calculation: Calculation<T>): T {
         case CalculationState.CACHED:
             return calculation._val as T;
         case CalculationState.CALLING:
+            console.log(
+                'SETTING CALCULATION TO ERROR BECAUSE IT REACHED ITSELF',
+                { name: calculation[SymDebugName], calc: calculation }
+            );
             calculation._state = CalculationState.ERROR;
             calculation._error = new CycleError(
-                'Cycle reached: calculation reached itself'
+                'Cycle reached: calculation reached itself',
+                calculation
             );
             throw calculation._error;
         case CalculationState.ERROR:
             if (calculation._error === Sentinel) {
-                throw new CycleError(
-                    'Cycle reached: calculation reached itself'
-                );
+                throw new Error('Cycle reached: calculation reached itself');
             } else {
                 throw new Error(
                     'Calculation in error state: ' + calculation._error.message
@@ -249,24 +260,33 @@ function calculationCall<T>(calculation: Calculation<T>): T {
                     () => calculation._fn(),
                     calculation[SymDebugName]
                 );
-                // If A calls B, which calls A, and B has an error handler:
-                // B will catch and return the self-cycle error.
-                // In this case, A will mark itself in the ERROR state.
-                if (
-                    // Cast due to TypeScript limitation
-                    (calculation._state as CalculationState) ===
-                    CalculationState.ERROR
-                ) {
-                    result = Sentinel;
-                    exception = calculation._error;
-                }
             } catch (e) {
                 exception = e;
             }
 
+            // If A calls B, which calls A, and B has an error handler:
+            // B will catch and return the self-cycle error.
+            // In this case, A will mark itself in the ERROR state.
+            if (
+                // Cast due to TypeScript limitation
+                (calculation._state as CalculationState) ===
+                CalculationState.ERROR
+            ) {
+                exception = calculation._error;
+                console.log('CALCULATION DETECTED IT REACHED ITSELF', {
+                    calculation,
+                    exception,
+                });
+            }
+
             let isActiveCycle = false;
+            let isActiveCycleRoot = false;
             if (exception) {
-                isActiveCycle = exception instanceof CycleError;
+                if (exception instanceof CycleError) {
+                    isActiveCycle = true;
+                    isActiveCycleRoot =
+                        exception.sourceCalculation === calculation;
+                }
                 const errorHandler = calculation._errorHandler;
                 if (errorHandler) {
                     result = untracked(
@@ -290,13 +310,27 @@ function calculationCall<T>(calculation: Calculation<T>): T {
                     delete calculation._val;
                 }
                 calculation._error = exception;
+                console.log(
+                    'SETTING CALCULATION TO ERROR BECAUSE RESULT IS SENTINEL: exception and no error handler',
+                    {
+                        name: calculation[SymDebugName],
+                        calc: calculation,
+                        e: exception,
+                    }
+                );
                 calculation._state = CalculationState.ERROR;
             } else {
                 calculation._val = result;
                 if ('_error' in calculation) {
                     delete calculation._error;
                 }
+                console.log('SET CALCULATION TO CACHED', {
+                    name: calculation[SymDebugName],
+                    calculation,
+                    value: result,
+                });
                 calculation._state = CalculationState.CACHED;
+                unmarkDirty(calculation);
             }
 
             if (calculation._retained) {
@@ -320,7 +354,7 @@ function calculationCall<T>(calculation: Calculation<T>): T {
 
             if (result === Sentinel) {
                 throw exception;
-            } else if (isActiveCycle && isToplevel()) {
+            } else if (isActiveCycle && !isActiveCycleRoot) {
                 throw exception;
             } else {
                 return result;
@@ -366,6 +400,11 @@ function calculationRecalculate<T>(this: Calculation<T>) {
             try {
                 newResult = calculationCall(this);
             } catch (e) {
+                console.log('SETTING CALCULATION TO ERROR BECAUSE EXCEPTION', {
+                    name: this[SymDebugName],
+                    calc: this,
+                    e,
+                });
                 this._state = CalculationState.ERROR;
                 this._error = e;
                 return true; // Errors always propagate
@@ -396,7 +435,6 @@ function calculationInvalidate<T>(this: Calculation<T>) {
             return false;
         case CalculationState.CACHED:
             this._state = CalculationState.READY;
-            delete this._val;
             return true;
         default:
             log.assertExhausted(this._state, 'Calculation in unknown state');
@@ -422,8 +460,17 @@ function calculationCycle<T>(this: Calculation<T>) {
                     () => errorHandler(CalculationErrorType.CYCLE),
                     this[SymDebugName]
                 );
+                console.log('SET CALCULATION TO CACHED AFTER HANDLING ERROR', {
+                    name: this[SymDebugName],
+                    calculation: this,
+                });
                 this._state = CalculationState.CACHED;
+                unmarkDirty(this);
             } else {
+                console.log(
+                    'SETTING CALCULATION TO ERROR BECAUSE TOLD OF CYCLE',
+                    { name: this[SymDebugName], calc: this }
+                );
                 this._state = CalculationState.ERROR;
                 this._error = Sentinel;
                 return true; // Errors always propagate

@@ -22,7 +22,7 @@ export interface Processable {
     [SymInvalidate]?: () => boolean;
 }
 
-let globalDependencyGraph = new Graph<Processable>();
+let globalDependencyGraph = new Graph<Processable>(processHandler);
 let activeCalculationReads: (Set<Retainable & Processable> | null)[] = [];
 let needsFlush = false;
 let flushHandle: (() => void) | null = null;
@@ -38,7 +38,7 @@ function defaultScheduler(callback: () => void) {
 }
 
 export function reset() {
-    globalDependencyGraph = new Graph<Processable>();
+    globalDependencyGraph = new Graph<Processable>(processHandler);
     activeCalculationReads = [];
     needsFlush = false;
     if (flushHandle) flushHandle();
@@ -84,28 +84,25 @@ export function release(retainable: Retainable) {
     retainable[SymRefcount] -= 1;
 }
 
+function processHandler(vertex: Processable, action: ProcessAction) {
+    console.log('process', ProcessAction[action], vertex[SymDebugName], vertex);
+    //console.log(
+    //    debug(vertex, `${ProcessAction[action]} ${vertex[SymDebugName]}`)
+    //);
+    switch (action) {
+        case ProcessAction.INVALIDATE:
+            return vertex[SymInvalidate]?.() ?? false;
+        case ProcessAction.RECALCULATE:
+            return vertex[SymRecalculate]?.() ?? false;
+        case ProcessAction.CYCLE:
+            return vertex[SymCycle]?.() ?? false;
+        default:
+            log.assertExhausted(action, 'unknown action');
+    }
+}
+
 export function flush() {
-    globalDependencyGraph.process((vertex, action) => {
-        console.log(
-            'process',
-            ProcessAction[action],
-            vertex[SymDebugName],
-            vertex
-        );
-        console.log(
-            debug(vertex, `${ProcessAction[action]} ${vertex[SymDebugName]}`)
-        );
-        switch (action) {
-            case ProcessAction.INVALIDATE:
-                return vertex[SymInvalidate]?.() ?? false;
-            case ProcessAction.RECALCULATE:
-                return vertex[SymRecalculate]?.() ?? false;
-            case ProcessAction.CYCLE:
-                return vertex[SymCycle]?.() ?? false;
-            default:
-                log.assertExhausted(action, 'unknown action');
-        }
-    });
+    globalDependencyGraph.process();
     console.log(debug(undefined, `flush complete`));
 }
 
@@ -163,6 +160,11 @@ export function markDirty(vertex: Processable) {
     console.log('dirty', vertex[SymDebugName]);
     globalDependencyGraph.markVertexDirty(vertex);
     scheduleFlush();
+}
+
+export function unmarkDirty(vertex: Processable) {
+    console.log('clean', vertex[SymDebugName]);
+    globalDependencyGraph.clearVertexDirty(vertex);
 }
 
 export function markRoot(vertex: Processable) {
@@ -223,7 +225,11 @@ export function addDependencyToActiveCalculation(
     const calculationReads =
         activeCalculationReads[activeCalculationReads.length - 1];
     if (calculationReads) {
-        console.log('adding dependency to active calculation');
+        console.log(
+            'adding dependency',
+            dependency[SymDebugName],
+            'to active calculation'
+        );
         calculationReads.add(dependency);
     }
 }

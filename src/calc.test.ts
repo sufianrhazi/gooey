@@ -178,14 +178,18 @@ suite('calc', () => {
         assert.deepEqual(['call a', 'call a'], calls);
 
         // Dependency on which, recalc
+        console.group('which = a');
         dependency.which = 'b';
         flush();
         assert.deepEqual(['call a', 'call a', 'call b'], calls);
+        console.groupEnd();
 
         // No longer dependency on a
+        console.group('dependency.a = 5');
         dependency.a = 5;
         flush();
         assert.deepEqual(['call a', 'call a', 'call b'], calls);
+        console.groupEnd();
 
         // Dependency on b, recalc
         dependency.b = 6;
@@ -400,7 +404,9 @@ suite('cycles', () => {
         assert.is('abc', calculations.c());
 
         data.isCycle = true;
+        console.group('flush');
         flush();
+        console.groupEnd();
 
         assert.throwsMatching(/cycle reached/i, () => calculations.a());
         assert.throwsMatching(/cycle reached/i, () => calculations.b());
@@ -567,8 +573,10 @@ suite('cycles', () => {
             assert.is('C', calculations.c());
             assert.is('dCd', calculations.d()); // because c caught its cycle, d is unaware and runs as expected
 
+            console.group('flush 2');
             data.hasCycle = 0;
             flush();
+            console.groupEnd();
 
             assert.is('x', calculations.a());
             assert.is('bxb', calculations.b());
@@ -642,6 +650,8 @@ suite('cycles', () => {
             markRoot(calculations.d);
             retain(calculations.e);
             markRoot(calculations.e);
+            retain(calculations.f);
+            markRoot(calculations.f);
             retain(calculations.g);
             markRoot(calculations.g);
             return { calculations, data };
@@ -667,6 +677,7 @@ suite('cycles', () => {
 
             data.hasCycle = true;
             flush();
+            console.log(debug());
 
             assert.throwsMatching(/cycle/i, () => calculations.a());
             assert.throwsMatching(/cycle/i, () => calculations.b());
@@ -871,32 +882,55 @@ suite('cycles', () => {
     test('cycle does not catch and resolve itself if all cycles do not catch', () => {
         const calculations: Record<string, Calculation<string>> = {};
 
-        const data = model({ hasCycle: false });
+        const data = model({ hasCycle: false }, 'model');
 
         calculations.a = calc(() => {
             if (!data.hasCycle) return 'a no cycle';
             return 'a cycle' + calculations.b();
-        });
+        }, 'a');
         calculations.b = calc(() => {
             if (!data.hasCycle) return 'b no cycle';
             return 'b cycle' + calculations.a();
-        }).onError(() => {
+        }, 'b').onError(() => {
             return 'B CAUGHT';
         });
 
         const catcher = calc(() => {
             return calculations.a();
-        }).onError(() => {
+        }, 'catcher').onError(() => {
             return 'catcher caught';
         });
+
+        // With hasCycle=false:
+        //     hasCycle ----+
+        //            |     |
+        //            v     v
+        //            b     a
+        //                  |
+        //                  v
+        //           [catcher]
+        //
+        // With hasCycle=true:
+        //     hasCycle ----+
+        //            |     |
+        //            v     v
+        //            b <-> a
+        //                  |
+        //                  v
+        //           [catcher]
 
         retain(catcher);
         markRoot(catcher);
 
+        console.group('call');
         assert.deepEqual('a no cycle', catcher());
+        console.groupEnd();
 
+        console.log(debug());
         data.hasCycle = true;
+        console.group('flush');
         flush();
+        console.groupEnd();
 
         assert.deepEqual('catcher caught', catcher());
     });
@@ -1157,11 +1191,12 @@ suite('near cycles', () => {
         assertCase3();
     });
 
-    test.only('E=0 -> E=1 does not produce cycle', () => {
+    test('E=0 -> E=1 does not produce cycle', () => {
         data.e = 0;
         assertCase0();
 
         data.e = 1;
+        console.log(debug());
         console.group('flush');
         flush();
         console.groupEnd();

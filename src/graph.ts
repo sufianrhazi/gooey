@@ -130,6 +130,7 @@
  */
 import { tarjanStronglyConnected } from './tarjan';
 import * as log from './log';
+import { SymDebugName } from './engine';
 
 export enum EdgeColor {
     EDGE_SOFT = 0b01,
@@ -210,7 +211,13 @@ export class Graph<TVertex> {
     /** Set of vertex ids that need reordering */
     protected toReorderIds: Set<number>;
 
-    constructor() {
+    private processHandler: (vertex: TVertex, action: ProcessAction) => boolean;
+
+    constructor(
+        processHandler: (vertex: TVertex, action: ProcessAction) => boolean
+    ) {
+        this.processHandler = processHandler;
+
         this.nextId = 1;
         this.availableIds = [];
         this.availableIndices = [];
@@ -317,15 +324,30 @@ export class Graph<TVertex> {
     markVertexDirty(vertex: TVertex) {
         const vertexId = this.vertexToId.get(vertex);
         log.assert(vertexId, 'markVertexDirty on nonexistent vertex');
-        if (!(this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY)) {
+        this.markVertexDirtyInner(vertexId);
+    }
+
+    private markVertexDirtyInner(vertexId: number) {
+        const vertex = this.vertexById[vertexId];
+        console.log(
+            'markVertexDirtyInner',
+            vertex![SymDebugName],
+            !!(this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY)
+        );
+        if (vertex && !(this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY)) {
             this.vertexBitsById[vertexId] |= VERTEX_BIT_DIRTY;
             this.dirtyVertexIds.push(vertexId);
+            this.processHandler(vertex, ProcessAction.INVALIDATE);
         }
     }
 
     clearVertexDirty(vertex: TVertex) {
         const vertexId = this.vertexToId.get(vertex);
         log.assert(vertexId, 'markVertexDirty on nonexistent vertex');
+        this.clearVertexDirtyInner(vertexId);
+    }
+
+    private clearVertexDirtyInner(vertexId: number) {
         if (this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY) {
             this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
             const index = this.dirtyVertexIds.indexOf(vertexId);
@@ -596,7 +618,6 @@ export class Graph<TVertex> {
                 };
             }
 
-            let anyNewCycles = false;
             for (const vertexId of component) {
                 const index = this.topologicalIndexById[vertexId];
                 log.assert(index !== undefined, 'malformed graph');
@@ -606,26 +627,35 @@ export class Graph<TVertex> {
 
                     if (!(this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE)) {
                         this.vertexBitsById[vertexId] |= VERTEX_BIT_CYCLE;
-                        anyNewCycles = true;
+                    }
+                    if (
+                        !(
+                            this.vertexBitsById[vertexId] &
+                            VERTEX_BIT_CYCLE_INFORMED
+                        )
+                    ) {
+                        // A vertex is discovered to be part of a cycle, inform it
+                        const vertex = this.vertexById[vertexId];
+                        log.assert(vertex, 'uninformed vertex missing');
+                        this.processHandler(vertex, ProcessAction.CYCLE);
+                        this.vertexBitsById[vertexId] |=
+                            VERTEX_BIT_CYCLE_INFORMED;
                     }
 
                     this.cycleInfoById[vertexId] = cycle;
                 } else if (this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE) {
                     // Vertex no longer part of a cycle, clear the cycle bits and mark as dirty
+                    console.log(
+                        'CLEARING VERTEX AS INFORMED; CLEARING CYCLE',
+                        (this.vertexById[vertexId] as any)[SymDebugName]
+                    );
                     this.vertexBitsById[vertexId] =
-                        (this.vertexBitsById[vertexId] &
-                            ~(VERTEX_BIT_CYCLE | VERTEX_BIT_CYCLE_INFORMED)) |
-                        VERTEX_BIT_DIRTY;
+                        this.vertexBitsById[vertexId] &
+                        ~(VERTEX_BIT_CYCLE | VERTEX_BIT_CYCLE_INFORMED);
                     this.cycleInfoById[vertexId] = undefined;
+                    this.markVertexDirtyInner(vertexId);
                 }
                 allocatedIndexes.push(index);
-            }
-
-            if (anyNewCycles) {
-                // If any of the vertices were newly marked as a cycle, all the vertices are dirtied
-                for (const vertexId of component) {
-                    this.vertexBitsById[vertexId] |= VERTEX_BIT_DIRTY;
-                }
             }
         }
 
@@ -644,35 +674,20 @@ export class Graph<TVertex> {
         return lowerBound;
     }
 
-    private processVertex(
-        vertexId: number,
-        callback: (vertex: TVertex, action: ProcessAction) => boolean
-    ) {
+    private processVertex(vertexId: number) {
         const reachesRoot =
             this.vertexBitsById[vertexId] & VERTEX_BIT_REACHES_ROOT;
         const vertex = this.vertexById[vertexId];
         log.assert(vertex, 'nonexistent vertex dirtied');
         if (!reachesRoot) {
-            return callback(vertex, ProcessAction.INVALIDATE);
+            this.clearVertexDirtyInner(vertexId);
+            // TODO: we are already invalidating vertices actively, do we need to invalidate if they do not reach root?
+            return this.processHandler(vertex, ProcessAction.INVALIDATE);
         }
-
-        const isCycle =
-            this.vertexBitsById[vertexId] &
-            (VERTEX_BIT_CYCLE | VERTEX_BIT_SELF_CYCLE);
-        const isInformed =
-            this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE_INFORMED;
-
-        if (isCycle && isInformed) {
-            return callback(vertex, ProcessAction.RECALCULATE);
-        }
-        if (isCycle && !isInformed) {
-            this.vertexBitsById[vertexId] |= VERTEX_BIT_CYCLE_INFORMED;
-            return callback(vertex, ProcessAction.CYCLE);
-        }
-        return callback(vertex, ProcessAction.RECALCULATE);
+        return this.processHandler(vertex, ProcessAction.RECALCULATE);
     }
 
-    process(callback: (vertex: TVertex, action: ProcessAction) => boolean) {
+    process() {
         if (this.toReorderIds.size > 0) {
             this.resort(this.toReorderIds);
             this.toReorderIds.clear();
@@ -687,6 +702,7 @@ export class Graph<TVertex> {
 
             const vertex = this.vertexById[vertexId];
             log.assert(vertex, 'nonexistent vertex dirtied');
+            console.group('VISIT', (vertex as any)[SymDebugName]);
 
             const cycleInfo = this.cycleInfoById[vertexId];
 
@@ -702,12 +718,11 @@ export class Graph<TVertex> {
                         recheckIds!.push(cycleId);
                     }
                     shouldPropagate =
-                        this.processVertex(cycleId, callback) ||
-                        shouldPropagate;
+                        this.processVertex(cycleId) || shouldPropagate;
                 }
             } else {
                 shouldPropagate =
-                    this.processVertex(vertexId, callback) || shouldPropagate;
+                    this.processVertex(vertexId) || shouldPropagate;
             }
 
             if (this.toReorderIds.size > 0) {
@@ -715,9 +730,8 @@ export class Graph<TVertex> {
                 this.toReorderIds.clear();
             }
 
-            // If cycles remain after recalculating an informed cycle, the
-            // recalculation failed to break the cycle, so we need to call the
-            // callback with CYCLE actions to correctly set their error state
+            // If cycles remain after recalculating an informed cycle, the recalculation failed to break the cycle, so
+            // we need to call the process handler with CYCLE actions to correctly set their error state
             if (cycleInfo) {
                 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 for (const cycleId of recheckIds!) {
@@ -728,41 +742,79 @@ export class Graph<TVertex> {
                         const cycleVertex = this.vertexById[cycleId];
                         log.assert(cycleVertex, 'nonexistent vertex in cycle');
                         shouldPropagate =
-                            callback(cycleVertex, ProcessAction.CYCLE) ||
-                            shouldPropagate;
+                            this.processHandler(
+                                cycleVertex,
+                                ProcessAction.CYCLE
+                            ) || shouldPropagate;
                     }
                 }
             }
 
-            if (cycleInfo) {
-                if (shouldPropagate) {
-                    for (const cycleId of cycleInfo.vertexIds) {
-                        this.propagateDirty(cycleId);
-                    }
-                }
-                for (const cycleId of cycleInfo.vertexIds) {
-                    this.vertexBitsById[cycleId] &= ~VERTEX_BIT_DIRTY;
-                }
-            } else {
-                if (shouldPropagate) {
-                    this.propagateDirty(vertexId);
-                }
-                this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
+            // Check if we gained new cycle nodes which need to be propagated
+            const newCycleInfo = this.cycleInfoById[vertexId];
+            if (!cycleInfo && newCycleInfo) {
+                shouldPropagate = true;
             }
+            if (
+                cycleInfo &&
+                newCycleInfo &&
+                newCycleInfo.vertexIds !== cycleInfo.vertexIds
+            ) {
+                shouldPropagate = true;
+            }
+
+            console.log('PROPAGATE?', shouldPropagate);
+            if (shouldPropagate) {
+                // 3 sets of vertices to union + propagate:
+                // - the vertexId we are processing
+                // - the vertexIds that were part of the cycle prior to recalculating
+                // - the vertexIds that were part of the cycle after to recalculating
+                const toPropagate: Set<number> = new Set();
+                toPropagate.add(vertexId);
+                if (cycleInfo) {
+                    for (const oldVertexId of cycleInfo.vertexIds)
+                        toPropagate.add(oldVertexId);
+                }
+                if (newCycleInfo) {
+                    for (const newVertexId of newCycleInfo.vertexIds)
+                        toPropagate.add(newVertexId);
+                }
+
+                for (const cycleId of toPropagate) {
+                    this.propagateDirty(cycleId, toPropagate);
+                }
+            }
+            console.groupEnd();
         }
     }
 
-    private propagateDirty(vertexId: number) {
+    private propagateDirty(
+        vertexId: number,
+        cycleVertexIds: null | Set<number>
+    ) {
+        const vertex = this.vertexById[vertexId]!;
+        console.group(
+            'PROPAGATING',
+            (vertex as any)[SymDebugName],
+            'avoiding',
+            cycleVertexIds
+        );
+        this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
         for (const toId of this.forwardAdjacencyHard[vertexId]) {
             const toCycleInfo = this.cycleInfoById[toId];
             if (toCycleInfo) {
                 for (const toCycleId of toCycleInfo.vertexIds) {
-                    this.vertexBitsById[toCycleId] |= VERTEX_BIT_DIRTY;
+                    if (!cycleVertexIds || !cycleVertexIds.has(toCycleId)) {
+                        this.markVertexDirtyInner(toCycleId);
+                    }
                 }
             } else {
-                this.vertexBitsById[toId] |= VERTEX_BIT_DIRTY;
+                if (!cycleVertexIds || !cycleVertexIds.has(toId)) {
+                    this.markVertexDirtyInner(toId);
+                }
             }
         }
+        console.groupEnd();
     }
 
     debug(getAttrs: (vertex: TVertex) => DebugAttributes, label?: string) {
