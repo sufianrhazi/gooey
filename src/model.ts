@@ -1,308 +1,153 @@
-import {
-    Processable,
-    Retainable,
-    addDependencyToActiveCalculation,
-    addHardEdge,
-    removeHardEdge,
-    addSoftEdge,
-    removeSoftEdge,
-    addVertex,
-    release,
-    removeVertex,
-    retain,
-    SymDebugName,
-    SymDestroy,
-    SymRecalculate,
-    SymRefcount,
-} from './engine';
 import * as log from './log';
-import { field as makeField, Field } from './field';
+import {
+    getTrackedDataHandle,
+    TrackedData,
+    makeTrackedData,
+    ProxyHandler,
+    SubscribeHandlerType,
+    SubscriptionConsumer,
+    subscriptionConsumerAddEvent,
+} from './trackeddata';
+import {
+    Collection,
+    CollectionEvent,
+    CollectionHandler,
+    CollectionPrototype,
+} from './collection';
+import { addVertex, markRoot, SymDebugName, SymRecalculate } from './engine';
 
-type FieldMap = Map<string, Field<any>>;
+// Note: this is unused in models, since models do not have methods
+const ModelPrototype = {};
 
-interface ModelSubscriptionEmitter extends Processable {
-    subscribers: ModelSubscribeHandler[];
-    subscriberOffset: number[];
-    events: [key: string, value: any][];
+export enum ModelEventType {
+    ADD,
+    SET,
+    DEL,
 }
 
-interface ModelSubscriptionConsumer extends Processable {
-    unsubscribe?: () => void;
-    events: [key: string, value: any][];
-    handler: (derivedModel: Model<any>, key: string, value: any) => void;
-}
+type ModelEvent =
+    | { type: ModelEventType.ADD; prop: string; value: any }
+    | { type: ModelEventType.SET; prop: string; value: any }
+    | { type: ModelEventType.DEL; prop: string };
 
-type ModelSubscribeHandler = (
-    events: [key: string, value: any][],
-    index: number
-) => void;
-type ModelUnsubscribe = () => void;
-
-interface ModelInterface<T> extends Retainable {
-    fieldMap: FieldMap;
-    keys: Set<string>;
-    subscribe: (
-        handler: ModelSubscribeHandler,
-        receiver: Processable
-    ) => ModelUnsubscribe;
-    keysField: Field<number>;
-    emitter?: ModelSubscriptionEmitter;
-    consumer?: ModelSubscriptionConsumer;
-    target: any;
-    revocable: {
-        proxy: Model<T>;
-        revoke: () => void;
-    };
-}
-
-/** Unused, but avoids assigning T to Model<T> */
-declare const SymModelTag: unique symbol;
-export type Model<T extends {}> = T & { [SymModelTag]: unknown };
-
-const modelInterfaceMap = new Map<any, ModelInterface<any>>();
-
-function makeModel<T extends {}>(
-    target: T,
-    debugName?: string
-): ModelInterface<T> {
-    const fieldMap: FieldMap = new Map();
-    const keys = new Set<string>(Object.keys(target));
-    const keysField = makeField(`${debugName ?? 'm'}:@keys`, keys.size);
-    const revocable = Proxy.revocable(target as Model<T>, {
-        get: modelGet,
-        has: modelHas,
-        set: modelSet,
-        deleteProperty: modelDelete,
-        ownKeys: modelOwnKeys,
-    });
-    const modelInterface: ModelInterface<T> = {
-        fieldMap: fieldMap,
-        keysField: keysField,
-        keys: keys,
-        subscribe: modelSubscribe,
-        target,
-        revocable,
-        [SymDebugName]: debugName ?? 'm',
-        [SymRefcount]: 1,
-        [SymDestroy]: modelDestroy,
-    };
-    modelInterfaceMap.set(target, modelInterface);
-    return modelInterface;
-}
+export type Model<T extends {}> = TrackedData<T, typeof ModelPrototype>;
 
 export function model<T extends {}>(target: T, debugName?: string): Model<T> {
-    const modelInterface = makeModel(target, debugName);
+    const proxyHandler: ProxyHandler<ModelEvent> = {
+        get: (dataAccessor, emitter, prop, receiver) =>
+            dataAccessor.get(prop, receiver),
+        has: (dataAccessor, emitter, prop) => dataAccessor.has(prop),
+        set: (dataAccessor, emitter, prop, value, receiver) => {
+            if (typeof prop === 'string') {
+                if (dataAccessor.peekHas(prop)) {
+                    emitter({ type: ModelEventType.SET, prop, value });
+                } else {
+                    emitter({ type: ModelEventType.ADD, prop, value });
+                }
+            }
+            return dataAccessor.set(prop, value, receiver);
+        },
+        delete: (dataAccessor, emitter, prop) => {
+            if (typeof prop === 'string' && dataAccessor.peekHas(prop)) {
+                emitter({ type: ModelEventType.DEL, prop });
+            }
+            return dataAccessor.delete(prop);
+        },
+    };
+    const modelInterface = makeTrackedData(
+        target,
+        proxyHandler,
+        ModelPrototype,
+        debugName
+    );
     return modelInterface.revocable.proxy;
 }
 
-model.keys = function modelKeys<T extends {}>(sourceModel: Model<T>) {
-    // TODO: implement
-    return [];
-};
+model.keys = function modelKeys<T extends {}>(
+    sourceModel: Model<T>
+): Collection<string> {
+    const sourceTDHandle = getTrackedDataHandle(sourceModel);
+    log.assert(sourceTDHandle, 'missing tdHandle');
 
-model.derived = function modelDerived<T extends {}, U extends {}>(
-    sourceModel: Model<T>,
-    init: (m: Model<T>) => U,
-    handler: (derivedModel: Model<U>, key: string, value: any) => void,
-    debugName?: string
-) {
-    const derivedModelInterface = makeModel(
-        init(sourceModel),
-        debugName ?? 'derived'
+    const initialKeys = Object.keys(sourceModel);
+
+    const derivedCollection = makeTrackedData<
+        string[],
+        typeof CollectionPrototype,
+        CollectionEvent<string>,
+        ModelEvent
+    >(
+        initialKeys,
+        CollectionHandler,
+        CollectionPrototype,
+        `:${sourceTDHandle[SymDebugName]}:keys`
     );
-    log.assert(derivedModelInterface, 'missing model interface');
-    const subscriptionConsumer: ModelSubscriptionConsumer = {
-        [SymDebugName]: `subcons:${derivedModelInterface[SymDebugName]}`,
-        [SymRecalculate]: modelSubscriptionConsumerFlush,
+
+    const subscriptionConsumer: SubscriptionConsumer<
+        Collection<string>,
+        ModelEvent
+    > = {
+        [SymDebugName]: `subcons:${sourceTDHandle[SymDebugName]}:keys`,
+        [SymRecalculate]: keysConsumerFlush,
         events: [],
-        handler,
+        handler: keysHandler,
+        trackedData: derivedCollection.revocable.proxy,
     };
-    subscriptionConsumer.unsubscribe = derivedModelInterface.subscribe(
-        (events, index) => {
-            for (let i = index; i < events.length; ++i) {
-                subscriptionConsumer.events.push(events[i]);
-            }
-        },
+
+    derivedCollection.consumer = subscriptionConsumer;
+    addVertex(subscriptionConsumer);
+    markRoot(subscriptionConsumer);
+
+    subscriptionConsumer.unsubscribe = sourceTDHandle.subscribe(
+        subscribeHandler,
         subscriptionConsumer
     );
-    derivedModelInterface.consumer = subscriptionConsumer;
+    return derivedCollection.revocable.proxy;
 
-    addVertex(subscriptionConsumer);
-    retain(derivedModelInterface);
-
-    for (const field of derivedModelInterface.fieldMap.values()) {
-        addSoftEdge(subscriptionConsumer, field);
+    function subscribeHandler(
+        type: SubscribeHandlerType.EVENTS,
+        events: ModelEvent[],
+        index: number
+    ): void {
+        switch (type) {
+            case SubscribeHandlerType.EVENTS:
+                // index must be defined
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                for (let i = index!; i < events.length; ++i) {
+                    subscriptionConsumerAddEvent(
+                        subscriptionConsumer,
+                        events[i]
+                    );
+                }
+                break;
+            default:
+                log.assertExhausted(type);
+        }
     }
 };
 
-function modelSubscriptionConsumerFlush(this: ModelSubscriptionConsumer) {
-    for (const [key, value] of this.events) {
-        this.handler(this, key, value);
+function keysHandler(trackedData: Collection<string>, event: ModelEvent) {
+    switch (event.type) {
+        case ModelEventType.DEL:
+            trackedData.reject((key) => key === event.prop);
+            break;
+        case ModelEventType.ADD:
+            trackedData.push(event.prop);
+            break;
+        case ModelEventType.SET:
+            // Preexisting key
+            break;
+        default:
+            log.assertExhausted(event);
+    }
+}
+
+function keysConsumerFlush(
+    this: SubscriptionConsumer<Collection<string>, CollectionEvent<string>>
+) {
+    for (const event of this.events) {
+        this.handler(this.trackedData, event);
     }
     this.events.splice(0, this.events.length);
     return false;
-}
-
-function getField(
-    modelInterface: ModelInterface<any>,
-    prop: string,
-    value: any
-) {
-    const fieldMap = modelInterface.fieldMap;
-    let field = fieldMap.get(prop);
-    if (!field) {
-        field = makeField(`${modelInterface[SymDebugName]}:${prop}`, value);
-        const subscriptionConsumer = modelInterface.consumer;
-        if (subscriptionConsumer) {
-            addSoftEdge(subscriptionConsumer, field);
-        }
-        const subscriptionEmitter = modelInterface.emitter;
-        if (subscriptionEmitter) {
-            addSoftEdge(field, subscriptionEmitter);
-        }
-        fieldMap.set(prop, field);
-    }
-    return field;
-}
-
-function modelGet<T extends {}>(
-    target: T,
-    prop: string | symbol,
-    receiver: Model<T>
-) {
-    if (typeof prop === 'symbol') return Reflect.get(target, prop, receiver);
-    const value = Reflect.get(target, prop, receiver);
-    const modelInterface = modelInterfaceMap.get(target);
-    log.assert(modelInterface, 'missing model interface');
-    const field = getField(modelInterface, prop, value);
-    addDependencyToActiveCalculation(field);
-    return value;
-}
-
-function modelHas<T extends {}>(target: T, prop: string | symbol) {
-    if (typeof prop === 'symbol') return Reflect.has(target, prop);
-    const value = Reflect.has(target, prop);
-    const modelInterface = modelInterfaceMap.get(target);
-    log.assert(modelInterface, 'missing model interface');
-    const field = getField(modelInterface, prop, value);
-    addDependencyToActiveCalculation(field);
-    return value;
-}
-
-function modelSet<T extends {}>(
-    target: T,
-    prop: string | symbol,
-    value: any,
-    receiver: Model<T>
-) {
-    if (typeof prop === 'symbol')
-        return Reflect.set(target, prop, value, receiver);
-    const hadProp = Reflect.has(target, prop);
-    const prevValue = Reflect.get(target, prop, receiver);
-    const modelInterface = modelInterfaceMap.get(target);
-    log.assert(modelInterface, 'missing model interface');
-    const field = getField(modelInterface, prop, prevValue);
-    field.set(value);
-    if (!hadProp) {
-        const keys = modelInterface.keys;
-        keys.add(prop);
-        modelInterface.keysField.set(keys.size);
-    }
-    return Reflect.set(target, prop, value, receiver);
-}
-
-function modelDelete<T extends {}>(target: T, prop: string | symbol) {
-    if (typeof prop === 'symbol') return Reflect.deleteProperty(target, prop);
-    const hadProp = Reflect.has(target, prop);
-    const result = Reflect.deleteProperty(target, prop);
-    if (hadProp) {
-        const modelInterface = modelInterfaceMap.get(target);
-        log.assert(modelInterface, 'missing model interface');
-        const keys = modelInterface.keys;
-        keys.delete(prop);
-        modelInterface.keysField.set(keys.size);
-    }
-    return result;
-}
-
-function modelOwnKeys<T extends {}>(target: T) {
-    const modelInterface = modelInterfaceMap.get(target);
-    log.assert(modelInterface, 'missing model interface');
-    const keys = modelInterface.keys;
-    modelInterface.keysField.get(); // force a read to add a dependency on keys
-    return [...keys];
-}
-
-function modelSubscribe(
-    this: ModelInterface<any>,
-    handler: ModelSubscribeHandler,
-    receiver: Processable
-): ModelUnsubscribe {
-    if (!this.emitter) {
-        this.emitter = {
-            subscribers: [],
-            subscriberOffset: [],
-            events: [],
-            [SymDebugName]: `subemit:${this[SymDebugName]}`,
-            [SymRecalculate]: subscriptionEmitterFlush,
-        };
-
-        addVertex(this.emitter);
-        for (const field of this.fieldMap.values()) {
-            addSoftEdge(field, this.emitter);
-        }
-    }
-    addHardEdge(this.emitter, receiver);
-    this.emitter.subscribers.push(handler);
-    this.emitter.subscriberOffset.push(this.emitter.events.length);
-
-    return () => {
-        if (!this.emitter) return;
-        const index = this.emitter.subscribers.indexOf(handler);
-        if (index === -1) return;
-        removeHardEdge(this.emitter, receiver);
-        this.emitter.subscribers.slice(index, 1);
-        this.emitter.subscriberOffset.slice(index, 1);
-        if (this.emitter.subscribers.length === 0) {
-            for (const field of this.fieldMap.values()) {
-                removeSoftEdge(field, this.emitter);
-            }
-            delete this.emitter;
-        }
-    };
-}
-
-function subscriptionEmitterFlush(this: ModelSubscriptionEmitter) {
-    for (let i = 0; i < this.subscribers.length; ++i) {
-        const subscriber = this.subscribers[i];
-        subscriber(this.events, this.subscriberOffset[i]);
-    }
-    return true;
-}
-
-function modelDestroy(this: ModelInterface<any>) {
-    for (const field of this.fieldMap.values()) {
-        if (this.consumer) {
-            removeSoftEdge(this.consumer, field);
-        }
-        if (this.emitter) {
-            removeSoftEdge(field, this.emitter);
-        }
-        release(field);
-    }
-    this.fieldMap.clear();
-    this.keys.clear();
-    release(this.keysField);
-    if (this.consumer) {
-        this.consumer.unsubscribe?.();
-        removeVertex(this.consumer);
-        delete this.consumer;
-    }
-    if (this.emitter) {
-        removeVertex(this.emitter);
-        delete this.emitter;
-    }
-    this.revocable.revoke();
-    this.target = null;
-    this.revocable.proxy = null;
 }

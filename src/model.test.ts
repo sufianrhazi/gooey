@@ -1,14 +1,6 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
-import {
-    reset,
-    flush,
-    markRoot,
-    unmarkRoot,
-    subscribe,
-    retain,
-    release,
-} from './engine';
+import { reset, flush, subscribe } from './engine';
 
 beforeEach(() => {
     reset();
@@ -63,9 +55,7 @@ suite('model', () => {
 
     test('model.keys produces view of keys', () => {
         const simple = model<Record<string, any>>({}, 'model');
-        const keys = model.keys(simple, 'keys');
-        retain(keys);
-        markRoot(keys);
+        const keys = model.keys(simple);
         assert.arrayEqualsUnsorted([], keys);
         simple.foo = 'a';
         flush();
@@ -79,15 +69,11 @@ suite('model', () => {
         delete simple.bar;
         flush();
         assert.arrayEqualsUnsorted(['foo'], keys);
-        unmarkRoot(keys);
-        release(keys);
     });
 
     test('model.keys waits for flush', () => {
         const simple = model<Record<string, any>>({});
         const keys = model.keys(simple);
-        retain(keys);
-        markRoot(keys);
         assert.arrayEqualsUnsorted([], keys);
         simple.foo = 'a';
         assert.arrayEqualsUnsorted([], keys);
@@ -99,15 +85,11 @@ suite('model', () => {
         assert.arrayEqualsUnsorted([], keys);
         flush();
         assert.arrayEqualsUnsorted(['foo'], keys);
-        unmarkRoot(keys);
-        release(keys);
     });
 
     test('model.keys does nothing after release', () => {
         const simple = model<Record<string, any>>({});
         const keys = model.keys(simple);
-        retain(keys);
-        markRoot(keys);
         assert.arrayEqualsUnsorted([], keys);
         simple.foo = 'a';
         flush();
@@ -115,8 +97,8 @@ suite('model', () => {
         simple.bar = 'a';
         flush();
         assert.arrayEqualsUnsorted(['foo', 'bar'], keys);
-        unmarkRoot(keys);
-        release(keys);
+        // TODO: how to dispose of collection?
+        return;
 
         simple.baz = 'new';
         delete simple.foo;
@@ -130,8 +112,6 @@ suite('model', () => {
         simple.before = 'before';
         const keys = model.keys(simple);
         simple.after = 'after';
-        retain(keys);
-        markRoot(keys);
 
         assert.arrayEqualsUnsorted(['before'], keys);
 

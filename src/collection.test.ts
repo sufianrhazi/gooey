@@ -1,19 +1,22 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
-import { collection } from './collection';
-import {
-    reset,
-    calc,
-    flush,
-    retain,
-    markRoot,
-    subscribe,
-} from './calc';
+import { collection, Collection } from './collection';
+import { calc } from './calc';
+import { reset, flush, retain, markRoot, subscribe } from './engine';
 
 beforeEach(() => {
-    subscribe();
     reset();
+    subscribe();
 });
+
+function retainCollection(collection: Collection<any>) {
+    const root = calc(() => {
+        collection.forEach(() => true);
+    });
+    markRoot(root);
+    retain(root);
+    root();
+}
 
 suite('collection', () => {
     test('reads feel like reads', () => {
@@ -59,14 +62,26 @@ suite('collection', () => {
     });
 
     test('reject is an in-place filter', () => {
-        const simple = collection([0, 1, 2, 3, 4, 5]);
-        simple.reject((n) => n > 1 && n < 4);
-        assert.deepEqual([0, 1, 4, 5], simple);
+        const start = collection([0, 1, 2, 3, 4, 5]);
+        start.reject((n) => n < 4);
+        assert.deepEqual([4, 5], start);
+
+        const mid = collection([0, 1, 2, 3, 4, 5]);
+        mid.reject((n) => n > 1 && n < 4);
+        assert.deepEqual([0, 1, 4, 5], mid);
+
+        const end = collection([0, 1, 2, 3, 4, 5]);
+        end.reject((n) => n > 1);
+        assert.deepEqual([0, 1], end);
+
+        const all = collection([0, 1, 2, 3, 4, 5]);
+        all.reject(() => true);
+        assert.deepEqual([], all);
     });
 
     test('moveSlice is an in-place movement of a slice (destination after move)', () => {
         const simple = collection([0, 1, 2, 3, 4, 5]);
-        simple.moveSlice(1, 2, 5);
+        simple.moveSlice(1, 2, 3);
         assert.deepEqual([0, 3, 4, 1, 2, 5], simple);
     });
     test('moveSlice is an in-place movement of a slice (destination before move)', () => {
@@ -275,12 +290,9 @@ suite('collection', () => {
         const doublePlusTwoView = doublePlusOneView.mapView((item) => item + 1);
         sourceCollection.push(7);
 
-        retain(doubleView);
-        markRoot(doubleView);
-        retain(doublePlusOneView);
-        markRoot(doublePlusOneView);
-        retain(doublePlusTwoView);
-        markRoot(doublePlusTwoView);
+        retainCollection(doubleView);
+        retainCollection(doublePlusOneView);
+        retainCollection(doublePlusTwoView);
 
         assert.deepEqual([1, 2, 3, 4, 5, 6, 7], sourceCollection);
         assert.deepEqual([2, 4, 6, 8], doubleView);
@@ -301,8 +313,8 @@ suite('collection', () => {
         const calculation = calc(() => {
             return m.isActive && view.some((item) => item === 3);
         });
-        retain(view);
-        markRoot(view);
+        retainCollection(view);
+
         retain(calculation);
         markRoot(calculation);
         calculation();
@@ -324,13 +336,12 @@ suite('collection', () => {
 suite('mapView', () => {
     test('produces a mapped view', () => {
         const phrases = collection(['hi', 'hello', 'howdy'], 'phrases');
-        retain(phrases, 'test');
         const exclaimations = phrases.mapView(
             (phrase) => `${phrase}!`,
             'exclaimations'
         );
-        retain(exclaimations, 'test');
-        markRoot(exclaimations);
+        retainCollection(exclaimations);
+
         assert.deepEqual(['hi!', 'hello!', 'howdy!'], [...exclaimations]);
     });
 
@@ -341,8 +352,7 @@ suite('mapView', () => {
             (phrase) => `${prefix}${phrase}!`,
             'exclaimations'
         );
-        retain(exclaimations);
-        markRoot(exclaimations);
+        retainCollection(exclaimations);
 
         prefix = 'new:';
         phrases.push('cool');
@@ -360,8 +370,7 @@ suite('mapView', () => {
             (phrase) => `${prefix}${phrase}!`,
             'exclaimations'
         );
-        retain(exclaimations);
-        markRoot(exclaimations);
+        retainCollection(exclaimations);
 
         prefix = 'new:';
         phrases.pop();
@@ -376,8 +385,7 @@ suite('mapView', () => {
             (phrase) => `${prefix}${phrase}!`,
             'exclaimations'
         );
-        retain(exclaimations);
-        markRoot(exclaimations);
+        retainCollection(exclaimations);
 
         prefix = 'new:';
         phrases.unshift('cool');
@@ -395,8 +403,7 @@ suite('mapView', () => {
             (phrase) => `${prefix}${phrase}!`,
             'exclaimations'
         );
-        retain(exclaimations);
-        markRoot(exclaimations);
+        retainCollection(exclaimations);
 
         prefix = 'new:';
         phrases.shift();
@@ -414,8 +421,7 @@ suite('mapView', () => {
             (phrase) => `${prefix}${phrase}!`,
             'exclaimations'
         );
-        retain(exclaimations);
-        markRoot(exclaimations);
+        retainCollection(exclaimations);
 
         prefix = 'new:';
         phrases.splice(1, 2, 'wow', 'neat', 'fun');
@@ -436,11 +442,10 @@ suite('mapView', () => {
             (phrase) => `${prefix}${phrase}!`,
             'exclaimations'
         );
-        retain(exclaimations);
-        markRoot(exclaimations);
+        retainCollection(exclaimations);
 
         prefix = 'new:';
-        phrases.moveSlice(1, 2, 4);
+        phrases.moveSlice(1, 2, 2);
         flush();
         assert.deepEqual(
             ['one!', 'four!', 'two!', 'three!', 'five!'],
@@ -458,8 +463,7 @@ suite('mapView', () => {
             (phrase) => `${prefix}${phrase}!`,
             'exclaimations'
         );
-        retain(exclaimations);
-        markRoot(exclaimations);
+        retainCollection(exclaimations);
 
         prefix = 'new:';
         phrases[1] = 'wow';
@@ -484,8 +488,7 @@ suite('mapView', () => {
             (phrase) => `${prefix}${phrase}!`,
             'exclaimations'
         );
-        retain(exclaimations);
-        markRoot(exclaimations);
+        retainCollection(exclaimations);
 
         phrases.pop();
         phrases.shift();
@@ -510,8 +513,7 @@ suite('mapView', () => {
             'exclaimations'
         );
         phrases.push('after');
-        retain(exclaimations);
-        markRoot(exclaimations);
+        retainCollection(exclaimations);
 
         assert.deepEqual(['before!'], exclaimations);
         flush();
@@ -536,8 +538,7 @@ suite('mapView', () => {
         const reversedPhrases = phrases.mapView((phrase) =>
             Array.from(phrase).reverse().join('')
         );
-        retain(reversedPhrases);
-        markRoot(reversedPhrases);
+        retainCollection(reversedPhrases);
         phrases.sort();
 
         flush();
@@ -580,16 +581,14 @@ suite('filterView', () => {
     test('produces a filtered view', () => {
         const numbers = collection([1, 2, 3, 4, 5, 6], 'numbers');
         const evenNumbers = numbers.filterView((num) => num % 2 === 0);
-        retain(evenNumbers);
-        markRoot(evenNumbers);
+        retainCollection(evenNumbers);
         assert.deepEqual([2, 4, 6], evenNumbers);
     });
 
     test('handles push/unshift', () => {
         const numbers = collection([3, 4, 5, 6, 7], 'numbers');
         const evenNumbers = numbers.filterView((num) => num % 2 === 0);
-        retain(evenNumbers);
-        markRoot(evenNumbers);
+        retainCollection(evenNumbers);
 
         numbers.push(1);
         numbers.push(2);
@@ -603,8 +602,7 @@ suite('filterView', () => {
     test('handles pop/shift', () => {
         const numbers = collection([3, 4, 5, 6, 7], 'numbers');
         const evenNumbers = numbers.filterView((num) => num % 2 === 0);
-        retain(evenNumbers);
-        markRoot(evenNumbers);
+        retainCollection(evenNumbers);
 
         numbers.pop(); // 7
         numbers.shift(); // 3
@@ -620,8 +618,7 @@ suite('filterView', () => {
     test('handles splice when removing hidden item', () => {
         const numbers = collection([3, 4, 5, 6, 7], 'numbers');
         const evenNumbers = numbers.filterView((num) => num % 2 === 0);
-        retain(evenNumbers);
-        markRoot(evenNumbers);
+        retainCollection(evenNumbers);
 
         numbers.splice(2, 1, 10, 11, 12); // 5 -> 10, 11, 12
         flush();
@@ -631,8 +628,7 @@ suite('filterView', () => {
     test('handles splice when removing visible item', () => {
         const numbers = collection([3, 4, 5, 6, 7], 'numbers');
         const evenNumbers = numbers.filterView((num) => num % 2 === 1);
-        retain(evenNumbers);
-        markRoot(evenNumbers);
+        retainCollection(evenNumbers);
 
         numbers.splice(2, 1, 11, 12, 13); // 5 -> 11, 12, 13
         flush();
@@ -642,8 +638,7 @@ suite('filterView', () => {
     test('handles splice when removing both visible and hidden items', () => {
         const numbers = collection([3, 4, 5, 6, 7], 'numbers');
         const evenNumbers = numbers.filterView((num) => num % 2 === 1);
-        retain(evenNumbers);
-        markRoot(evenNumbers);
+        retainCollection(evenNumbers);
 
         numbers.splice(1, 3, 11, 12, 13); // 4, 5, 6 -> 11, 12, 13
         flush();
@@ -653,8 +648,7 @@ suite('filterView', () => {
     test('handles assignment', () => {
         const numbers = collection([3, 4, 5, 6, 7], 'numbers');
         const evenNumbers = numbers.filterView((num) => num % 2 === 0);
-        retain(evenNumbers);
-        markRoot(evenNumbers);
+        retainCollection(evenNumbers);
 
         numbers[2] = 1;
         flush();
@@ -673,8 +667,7 @@ suite('filterView', () => {
         const seven = model({ value: 7 });
         const numbers = collection([three, four, five, six, seven], 'numbers');
         const evenNumbers = numbers.filterView((item) => item.value % 2 === 0);
-        retain(evenNumbers);
-        markRoot(evenNumbers);
+        retainCollection(evenNumbers);
 
         assert.deepEqual([four, six], evenNumbers);
 
@@ -698,8 +691,7 @@ suite('filterView', () => {
         const evenPhrases = phrases.filterView(
             (phrase) => phrase.length % 2 === 0
         );
-        retain(evenPhrases);
-        markRoot(evenPhrases);
+        retainCollection(evenPhrases);
         phrases.sort();
 
         flush();
@@ -719,8 +711,7 @@ suite('flatMapView', () => {
         const evenDupedNumbers = numbers.flatMapView((num) =>
             num % 2 === 0 ? [num, num] : []
         );
-        retain(evenDupedNumbers);
-        markRoot(evenDupedNumbers);
+        retainCollection(evenDupedNumbers);
         assert.deepEqual([2, 2, 4, 4, 6, 6], evenDupedNumbers);
     });
 
@@ -729,8 +720,7 @@ suite('flatMapView', () => {
         const evenDupedNumbers = numbers.flatMapView((num) =>
             num % 2 === 0 ? [num, num] : []
         );
-        retain(evenDupedNumbers);
-        markRoot(evenDupedNumbers);
+        retainCollection(evenDupedNumbers);
 
         numbers.push(1);
         numbers.push(2);
@@ -746,8 +736,7 @@ suite('flatMapView', () => {
         const evenDupedNumbers = numbers.flatMapView((num) =>
             num % 2 === 0 ? [num, num] : []
         );
-        retain(evenDupedNumbers);
-        markRoot(evenDupedNumbers);
+        retainCollection(evenDupedNumbers);
 
         numbers.pop(); // 7
         numbers.shift(); // 3
@@ -765,8 +754,7 @@ suite('flatMapView', () => {
         const evenDupedNumbers = numbers.flatMapView((num) =>
             num % 2 === 0 ? [num, num] : []
         );
-        retain(evenDupedNumbers);
-        markRoot(evenDupedNumbers);
+        retainCollection(evenDupedNumbers);
 
         numbers.splice(2, 1, 10, 11, 12); // 5 -> 10, 11, 12
         flush();
@@ -778,8 +766,7 @@ suite('flatMapView', () => {
         const evenDupedNumbers = numbers.flatMapView((num) =>
             num % 2 === 0 ? [num, num] : []
         );
-        retain(evenDupedNumbers);
-        markRoot(evenDupedNumbers);
+        retainCollection(evenDupedNumbers);
 
         numbers[2] = 1;
         flush();
@@ -795,10 +782,9 @@ suite('flatMapView', () => {
         const evenDupedNumbers = numbers.flatMapView((num) =>
             num % 2 === 0 ? [num, num] : [num]
         );
-        retain(evenDupedNumbers);
-        markRoot(evenDupedNumbers);
+        retainCollection(evenDupedNumbers);
 
-        numbers.moveSlice(1, 2, 4); // 3, 6, 4, 5, 7
+        numbers.moveSlice(1, 2, 2); // 3, 6, 4, 5, 7
         flush();
 
         assert.deepEqual([3, 6, 6, 4, 4, 5, 7], evenDupedNumbers);
@@ -821,8 +807,7 @@ suite('flatMapView', () => {
                 ? [Array.from(phrase).join('-')]
                 : [phrase, phrase.toUpperCase()]
         );
-        retain(flatMapped);
-        markRoot(flatMapped);
+        retainCollection(flatMapped);
         phrases.sort();
 
         flush();
