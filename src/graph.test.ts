@@ -965,19 +965,22 @@ suite('Graph Cycles', () => {
         graph.addVertex(c);
 
         graph.addEdge(a, b, Graph.EDGE_HARD);
-
         graph.addEdge(b, b, Graph.EDGE_HARD);
-
         graph.addEdge(b, c, Graph.EDGE_HARD);
 
         graph.markVertexRoot(c);
+        graph.markVertexDirty(a);
         graph.markVertexDirty(a);
 
         assert.deepEqual(
             {
                 a: [ProcessAction.RECALCULATE],
-                b: [ProcessAction.CYCLE],
-                c: [ProcessAction.RECALCULATE],
+                b: [
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                c: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
             },
             process()
         );

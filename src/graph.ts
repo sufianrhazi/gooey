@@ -442,8 +442,21 @@ export class Graph<TVertex> {
         this.reverseAdjacencyEither[toId].push(fromId);
         reverseList.push(fromId);
 
-        if (fromId === toId) {
-            this.vertexBitsById[fromId] |= VERTEX_BIT_SELF_CYCLE;
+        if (
+            fromId === toId &&
+            (this.vertexBitsById[fromId] & VERTEX_BIT_SELF_CYCLE) === 0
+        ) {
+            const isInformed =
+                this.vertexBitsById[fromId] & VERTEX_BIT_CYCLE_INFORMED;
+            if (!isInformed) {
+                const vertex = this.vertexById[fromId];
+                log.assert(vertex, 'missing vertex in self-cycle');
+                this.processHandler(vertex, ProcessAction.CYCLE);
+                this.vertexBitsById[fromId] |=
+                    VERTEX_BIT_CYCLE_INFORMED | VERTEX_BIT_SELF_CYCLE;
+            } else {
+                this.vertexBitsById[fromId] |= VERTEX_BIT_SELF_CYCLE;
+            }
         }
 
         // Adding an edge may mean fromVertex now reaches root
@@ -696,7 +709,11 @@ export class Graph<TVertex> {
             const cycleInfo = this.cycleInfoById[vertexId];
 
             let shouldPropagate = false;
-            const recheckIds: null | number[] = cycleInfo ? [] : null;
+            const recheckIds: null | number[] =
+                cycleInfo ||
+                this.vertexBitsById[vertexId] & VERTEX_BIT_SELF_CYCLE
+                    ? []
+                    : null;
             if (cycleInfo) {
                 for (const cycleId of cycleInfo.vertexIds) {
                     const isInformed =
@@ -710,6 +727,11 @@ export class Graph<TVertex> {
                         this.processVertex(cycleId) || shouldPropagate;
                 }
             } else {
+                const isInformed =
+                    this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE_INFORMED;
+                if (isInformed && recheckIds) {
+                    recheckIds.push(vertexId);
+                }
                 shouldPropagate =
                     this.processVertex(vertexId) || shouldPropagate;
             }
@@ -721,7 +743,10 @@ export class Graph<TVertex> {
 
             // If cycles remain after recalculating an informed cycle, the recalculation failed to break the cycle, so
             // we need to call the process handler with CYCLE actions to correctly set their error state
-            if (cycleInfo) {
+            if (
+                cycleInfo ||
+                this.vertexBitsById[vertexId] & VERTEX_BIT_SELF_CYCLE
+            ) {
                 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 for (const cycleId of recheckIds!) {
                     const isStillCycle =
