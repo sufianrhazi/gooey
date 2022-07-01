@@ -17,7 +17,7 @@ suite('Graph', () => {
     }
 
     test('addVertex returns whether or not node added', () => {
-        const graph = new Graph<TNode>();
+        const graph = new Graph<TNode>(() => false);
         graph.addVertex(a);
         assert.throwsMatching(/double vertex addition/, () =>
             graph.addVertex(a)
@@ -25,14 +25,14 @@ suite('Graph', () => {
     });
 
     test('addEdge fails if nodes not added', () => {
-        const graph = new Graph<TNode>();
+        const graph = new Graph<TNode>(() => false);
         assert.throwsMatching(/vertex not found/, () => {
             graph.addEdge(a, b, Graph.EDGE_HARD);
         });
     });
 
     test('removeVertex removes vertices', () => {
-        const graph = new Graph<TNode>();
+        const graph = new Graph<TNode>(() => false);
 
         graph.addVertex(a);
         graph.removeVertex(a);
@@ -44,7 +44,7 @@ suite('Graph', () => {
     });
 
     test('id issuance: ids can be reused', () => {
-        const graph = new Graph<TNode>();
+        const graph = new Graph<TNode>(() => false);
 
         graph.addVertex(a);
         graph.addVertex(b);
@@ -71,7 +71,7 @@ suite('Graph', () => {
     });
 
     test('index issuance with respect to reordering', () => {
-        const graph = new Graph<TNode>();
+        const graph = new Graph<TNode>(() => false);
 
         graph.addVertex(c);
         graph.addVertex(b);
@@ -84,7 +84,7 @@ suite('Graph', () => {
 
         graph.addEdge(a, b, Graph.EDGE_HARD);
         graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.process(() => false); // trigger reorder
+        graph.process(); // trigger reorder
 
         // reordered: [a, b, c]
         assert.is(2, graph._test_getVertexInfo(c)?.index);
@@ -92,7 +92,7 @@ suite('Graph', () => {
         assert.is(0, graph._test_getVertexInfo(a)?.index);
 
         graph.removeEdge(a, b, Graph.EDGE_HARD);
-        graph.process(() => false); // trigger reorder
+        graph.process(); // trigger reorder
 
         // no changes, despite a->b edge removal: [a, b, c]
         assert.is(2, graph._test_getVertexInfo(c)?.index);
@@ -115,7 +115,7 @@ suite('Graph', () => {
         // reordering can work as expected after reissuance
         graph.addEdge(d, c, Graph.EDGE_HARD);
         graph.addEdge(e, d, Graph.EDGE_HARD);
-        graph.process(() => false); // trigger reorder
+        graph.process(); // trigger reorder
 
         assert.lessThan(
             graph._test_getVertexInfo(d)!.index,
@@ -128,7 +128,7 @@ suite('Graph', () => {
     });
 
     test('_test_getDependencies gets dependencies', () => {
-        const graph = new Graph<TNode>();
+        const graph = new Graph<TNode>(() => false);
         graph.addVertex(a);
         graph.addVertex(b);
         graph.addVertex(c);
@@ -149,8 +149,6 @@ suite('Graph', () => {
     });
 
     suite('complex graph', () => {
-        let graph = new Graph<TNode>();
-
         /*
          * Graph for reference:
          *
@@ -169,8 +167,10 @@ suite('Graph', () => {
          *             └─┘   └─┘
          */
 
-        beforeEach(() => {
-            graph = new Graph<TNode>();
+        const setup = (
+            processor: (item: TNode, action: ProcessAction) => boolean
+        ) => {
+            const graph = new Graph<TNode>(processor);
 
             graph.addVertex(a);
             graph.addVertex(b);
@@ -196,43 +196,38 @@ suite('Graph', () => {
             graph.addEdge(g, i, Graph.EDGE_HARD);
 
             graph.markVertexRoot(i); // the almost end node is root
-        });
+            return graph;
+        };
 
         suite('process', () => {
             test('nothing visited if nothing dirty', () => {
                 const items: TNode[] = [];
-
-                graph.process((item) => {
+                const graph = setup((item) => {
                     items.push(item);
                     return false;
                 });
+
+                graph.process();
 
                 assert.arrayIs([], items);
             });
 
             test('all nodes visited starting from dirty nodes', () => {
-                graph.markVertexDirty(a);
-
                 const items: TNode[] = [];
-
-                graph.process((item) => {
+                const graph = setup((item) => {
                     items.push(item);
                     return true;
                 });
+                graph.markVertexDirty(a);
+
+                graph.process();
 
                 // we visit all nodes
                 assert.arrayEqualsUnsorted([a, b, c, d, e, f, g, h, i], items);
             });
 
             test('nodes that do not lead to root nodes are not visited', () => {
-                graph.clearVertexRoot(i); // no nodes are root now
-                graph.markVertexRoot(e);
-                graph.markVertexRoot(f);
-
-                graph.markVertexDirty(a);
-                graph.markVertexDirty(i);
-
-                const actionsPerNode: Record<string, string[]> = {
+                const actionsPerNode: Record<string, ProcessAction[]> = {
                     a: [],
                     b: [],
                     c: [],
@@ -244,58 +239,90 @@ suite('Graph', () => {
                     i: [],
                 };
 
-                graph.process((node, action) => {
+                const graph = setup((node, action) => {
                     actionsPerNode[node.name].push(action);
                     return true;
                 });
+                graph.clearVertexRoot(i); // no nodes are root now
+                graph.markVertexRoot(e);
+                graph.markVertexRoot(f);
 
+                graph.markVertexDirty(a);
+                graph.markVertexDirty(i);
+
+                graph.process();
+
+                // TODO: we invalidate upon dirtying... but can we avoid double-invalidating non reaches root vertices?
                 assert.deepEqual(
                     {
-                        a: [ProcessAction.RECALCULATE],
-                        b: [ProcessAction.RECALCULATE],
-                        c: [ProcessAction.RECALCULATE],
-                        d: [ProcessAction.RECALCULATE],
-                        e: [ProcessAction.RECALCULATE],
-                        f: [ProcessAction.RECALCULATE],
+                        a: [
+                            ProcessAction.INVALIDATE,
+                            ProcessAction.RECALCULATE,
+                        ],
+                        b: [
+                            ProcessAction.INVALIDATE,
+                            ProcessAction.RECALCULATE,
+                        ],
+                        c: [
+                            ProcessAction.INVALIDATE,
+                            ProcessAction.RECALCULATE,
+                        ],
+                        d: [
+                            ProcessAction.INVALIDATE,
+                            ProcessAction.RECALCULATE,
+                        ],
+                        e: [
+                            ProcessAction.INVALIDATE,
+                            ProcessAction.RECALCULATE,
+                        ],
+                        f: [
+                            ProcessAction.INVALIDATE,
+                            ProcessAction.RECALCULATE,
+                        ],
                         // non-root nodes that become dirtied are flushed, but not recalculated
-                        g: [ProcessAction.INVALIDATE],
-                        h: [ProcessAction.INVALIDATE],
-                        i: [ProcessAction.INVALIDATE],
+                        g: [ProcessAction.INVALIDATE, ProcessAction.INVALIDATE],
+                        h: [ProcessAction.INVALIDATE, ProcessAction.INVALIDATE],
+                        i: [ProcessAction.INVALIDATE, ProcessAction.INVALIDATE],
                     },
                     actionsPerNode
                 );
             });
 
             test('nodes can stop traversal by returning true', () => {
-                graph.markVertexDirty(a);
-
-                const items: { item: TNode; action: string }[] = [];
-
-                graph.process((item, action) => {
+                const items: { item: TNode; action: ProcessAction }[] = [];
+                const graph = setup((item, action) => {
                     items.push({ item, action });
                     return false;
                 });
 
+                graph.markVertexDirty(a);
+
+                graph.process();
+
                 // we only visit A nodes
                 assert.deepEqual(
-                    [{ item: a, action: ProcessAction.RECALCULATE }],
+                    [
+                        { item: a, action: ProcessAction.INVALIDATE },
+                        { item: a, action: ProcessAction.RECALCULATE },
+                    ],
                     items
                 );
             });
 
             test('given c -> e; d -> e, and visiting c returns true but visiting d returns false, we still visit e and all dependencies', () => {
-                graph.markVertexDirty(c);
-                graph.markVertexDirty(d);
-
                 const items: TNode[] = [];
-
-                graph.process((item, action) => {
+                const graph = setup((item, action) => {
                     if (action === ProcessAction.RECALCULATE) {
                         items.push(item);
                     }
                     if (item === c) return false;
                     return true;
                 });
+
+                graph.markVertexDirty(c);
+                graph.markVertexDirty(d);
+
+                graph.process();
 
                 // The order of d and c may change
                 assert.arrayEqualsUnsorted([d, c], items.slice(0, 2));
@@ -304,17 +331,18 @@ suite('Graph', () => {
             });
 
             test('given c -> e; d -> e, and visiting c returns true but visiting d returns false, we still visit e and all dependencies', () => {
-                graph.markVertexDirty(b);
-
                 const items: TNode[] = [];
-
-                graph.process((item, action) => {
+                const graph = setup((item, action) => {
                     if (action === ProcessAction.RECALCULATE) {
                         items.push(item);
                     }
                     if (item === c) return false;
                     return true;
                 });
+
+                graph.markVertexDirty(b);
+
+                graph.process();
 
                 // The first item visited is the dirty root
                 assert.arrayIs([b], items.slice(0, 1));
@@ -325,16 +353,17 @@ suite('Graph', () => {
             });
 
             test('dirty nodes visited in topological order', () => {
-                graph.markVertexDirty(a);
-
                 const items: TNode[] = [];
 
-                graph.process((item, action) => {
+                const graph = setup((item, action) => {
                     if (action === ProcessAction.RECALCULATE) {
                         items.push(item);
                     }
                     return true;
                 });
+                graph.markVertexDirty(a);
+
+                graph.process();
 
                 function assertBefore(fromNode: TNode, toNode: TNode) {
                     const fromIndex = items.indexOf(fromNode);
@@ -358,8 +387,6 @@ suite('Graph', () => {
     });
 
     suite('complex graph with soft edges', () => {
-        let graph = new Graph<TNode>();
-
         /*
          * Graph for reference: (soft edges are ..>)
          *
@@ -378,8 +405,10 @@ suite('Graph', () => {
          *             └─┘   └─┘
          */
 
-        beforeEach(() => {
-            graph = new Graph<TNode>();
+        const setup = (
+            processor: (item: TNode, action: ProcessAction) => boolean
+        ) => {
+            const graph = new Graph<TNode>(processor);
 
             graph.addVertex(a);
             graph.addVertex(b);
@@ -405,27 +434,27 @@ suite('Graph', () => {
             graph.addEdge(g, i, Graph.EDGE_HARD);
 
             graph.markVertexRoot(i);
-        });
+            return graph;
+        };
 
         suite('process', () => {
             test('nothing visited if nothing dirty', () => {
                 const items: TNode[] = [];
-
-                graph.process((item) => {
+                const graph = setup((item) => {
                     items.push(item);
                     return false;
                 });
+
+                graph.process();
 
                 assert.arrayIs([], items);
             });
 
             test('all nodes reachable from hard edges visited', () => {
-                graph.markVertexDirty(a);
-
                 const invalidated: TNode[] = [];
                 const recalculated: TNode[] = [];
 
-                graph.process((item, action) => {
+                const graph = setup((item, action) => {
                     if (action === ProcessAction.INVALIDATE) {
                         invalidated.push(item);
                     }
@@ -434,23 +463,27 @@ suite('Graph', () => {
                     }
                     return true;
                 });
+                graph.markVertexDirty(a);
 
-                assert.arrayEqualsUnsorted([], invalidated);
+                graph.process();
+
+                assert.arrayEqualsUnsorted([a, b, c, d, e], invalidated);
                 assert.arrayEqualsUnsorted([a, b, c, d, e], recalculated);
             });
 
             test('soft edges, despite not being visited dictate topological order', () => {
-                graph.markVertexDirty(a);
-                graph.markVertexDirty(f);
-
                 const items: TNode[] = [];
-
-                graph.process((item, action) => {
+                const graph = setup((item, action) => {
                     if (action === ProcessAction.RECALCULATE) {
                         items.push(item);
                     }
                     return true;
                 });
+
+                graph.markVertexDirty(a);
+                graph.markVertexDirty(f);
+
+                graph.process();
 
                 function assertBefore(fromNode: TNode, toNode: TNode) {
                     const fromIndex = items.indexOf(fromNode);
@@ -485,6 +518,7 @@ suite('Graph', () => {
     });
 
     if (DEBUG) {
+        // TODO: fix this test
         test('graphviz representation', () => {});
     }
 });
@@ -501,22 +535,27 @@ suite('Graph Cycles', () => {
         name: string;
     }
 
-    function processGraph(graph: Graph<TNode>) {
+    const setup = () => {
         const actionsPerNode: Record<string, ProcessAction[]> = {};
-
-        graph.process((node, action) => {
+        const graph = new Graph<TNode>((node: TNode, action: ProcessAction) => {
             if (!actionsPerNode[node.name]) {
                 actionsPerNode[node.name] = [];
             }
             actionsPerNode[node.name].push(action);
             return true;
         });
-
-        return actionsPerNode;
-    }
+        const process = () => {
+            Object.keys(actionsPerNode).forEach((key) => {
+                delete actionsPerNode[key];
+            });
+            graph.process();
+            return actionsPerNode;
+        };
+        return { graph, process };
+    };
 
     test('cycles can be identified', () => {
-        const graph = new Graph<TNode>();
+        const { graph, process } = setup();
         graph.addVertex(a);
         graph.addVertex(b);
         graph.addVertex(c);
@@ -528,65 +567,39 @@ suite('Graph Cycles', () => {
         graph.addEdge(c, d, Graph.EDGE_HARD);
         graph.addEdge(d, b, Graph.EDGE_HARD);
         graph.addEdge(c, e, Graph.EDGE_HARD);
-        graph.markVertexRoot(e);
-        graph.markVertexDirty(a);
-
-        // TODO: previously all CYCLE events were preceded by an INVALIDATE event... why?
-        // TODO: previously subsequent recalculations of cycle vertices produced a RECALCULATE-CYCLE even... why?
-        assert.deepEqual(
-            {
-                a: [ProcessAction.RECALCULATE],
-                b: [ProcessAction.CYCLE],
-                c: [ProcessAction.CYCLE],
-                d: [ProcessAction.CYCLE],
-                e: [ProcessAction.RECALCULATE],
-            },
-            processGraph(graph)
-        );
-    });
-
-    test('cycles that are dirtied are notified via recalculate-cycle', () => {
-        const graph = new Graph<TNode>();
-        graph.addVertex(a);
-        graph.addVertex(b);
-        graph.addVertex(c);
-        graph.addVertex(d);
-        graph.addVertex(e);
-
-        graph.addEdge(a, b, Graph.EDGE_HARD);
-        graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.addEdge(c, d, Graph.EDGE_HARD);
-        graph.addEdge(d, b, Graph.EDGE_HARD);
-        graph.addEdge(c, e, Graph.EDGE_HARD);
+        process(); // allow cycle to be detected here
         graph.markVertexRoot(e);
         graph.markVertexDirty(a);
 
         assert.deepEqual(
             {
+                // A: Only recalculated, it was invalidated when dirtied
                 a: [ProcessAction.RECALCULATE],
-                b: [ProcessAction.CYCLE],
-                c: [ProcessAction.CYCLE],
-                d: [ProcessAction.CYCLE],
-                e: [ProcessAction.RECALCULATE],
+                // B, C, and D: invalidated when dirtied by A, recalculated because cycles that are dirtied need to be recalculated to determine if they have been broken, and cycle as the cycle was not broken
+                b: [
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                c: [
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                d: [
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                // E: invalidated when dirtied by BCD cycle then recalculated as normal
+                e: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
             },
-            processGraph(graph)
-        );
-
-        graph.markVertexDirty(a);
-        assert.deepEqual(
-            {
-                a: [ProcessAction.RECALCULATE],
-                b: [ProcessAction.CYCLE],
-                c: [ProcessAction.CYCLE],
-                d: [ProcessAction.CYCLE],
-                e: [ProcessAction.RECALCULATE],
-            },
-            processGraph(graph)
+            process()
         );
     });
 
     test('cycles that are broken are notified as normal', () => {
-        const graph = new Graph<TNode>();
+        const { graph, process } = setup();
         graph.addVertex(a);
         graph.addVertex(b);
         graph.addVertex(c);
@@ -606,18 +619,31 @@ suite('Graph Cycles', () => {
         graph.addEdge(c, d, Graph.EDGE_HARD);
         graph.addEdge(d, b, Graph.EDGE_HARD);
         graph.addEdge(c, e, Graph.EDGE_HARD);
+        process(); // allow cycle to be detected
         graph.markVertexRoot(e);
         graph.markVertexDirty(a);
 
         assert.deepEqual(
             {
                 a: [ProcessAction.RECALCULATE],
-                b: [ProcessAction.CYCLE],
-                c: [ProcessAction.CYCLE],
-                d: [ProcessAction.CYCLE],
-                e: [ProcessAction.RECALCULATE],
+                b: [
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                c: [
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                d: [
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                e: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
             },
-            processGraph(graph)
+            process()
         );
 
         // After:
@@ -634,17 +660,17 @@ suite('Graph Cycles', () => {
         assert.deepEqual(
             {
                 a: [ProcessAction.RECALCULATE],
-                b: [ProcessAction.RECALCULATE],
-                c: [ProcessAction.RECALCULATE],
-                d: [ProcessAction.INVALIDATE], // invalidated and not recalculated since it is no longer root
-                e: [ProcessAction.RECALCULATE],
+                b: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
+                c: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
+                d: [ProcessAction.INVALIDATE, ProcessAction.INVALIDATE], // invalidated and not recalculated since it is no longer root
+                e: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
             },
-            processGraph(graph)
+            process()
         );
     });
 
     test('cycles that are reduced in size are notified as normal', () => {
-        const graph = new Graph<TNode>();
+        const { graph, process } = setup();
         graph.addVertex(a);
         graph.addVertex(b);
         graph.addVertex(c);
@@ -667,6 +693,7 @@ suite('Graph Cycles', () => {
         graph.addEdge(c, e, Graph.EDGE_HARD);
         graph.addEdge(d, b, Graph.EDGE_HARD);
         graph.addEdge(d, f, Graph.EDGE_HARD);
+        process();
         graph.markVertexRoot(e);
         graph.markVertexRoot(f);
         graph.markVertexDirty(a);
@@ -674,13 +701,25 @@ suite('Graph Cycles', () => {
         assert.deepEqual(
             {
                 a: [ProcessAction.RECALCULATE],
-                b: [ProcessAction.CYCLE],
-                c: [ProcessAction.CYCLE],
-                d: [ProcessAction.CYCLE],
-                e: [ProcessAction.RECALCULATE],
-                f: [ProcessAction.RECALCULATE],
+                b: [
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                c: [
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                d: [
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                e: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
+                f: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
             },
-            processGraph(graph)
+            process()
         );
 
         // After:
@@ -697,18 +736,26 @@ suite('Graph Cycles', () => {
         assert.deepEqual(
             {
                 a: [ProcessAction.RECALCULATE],
-                b: [ProcessAction.CYCLE], // recalculate-cycle as it has already been notified
-                c: [ProcessAction.CYCLE], // recalculate-cycle as it has already been notified
-                d: [ProcessAction.RECALCULATE],
-                e: [ProcessAction.RECALCULATE],
-                f: [ProcessAction.RECALCULATE],
+                b: [
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ], // recalculate-cycle as it has already been notified
+                c: [
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ], // recalculate-cycle as it has already been notified
+                d: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
+                e: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
+                f: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
             },
-            processGraph(graph)
+            process()
         );
     });
 
     test('cycle type: ring', () => {
-        const graph = new Graph<TNode>();
+        const { graph, process } = setup();
         graph.addVertex(a);
         graph.addVertex(b);
         graph.addVertex(c);
@@ -723,23 +770,18 @@ suite('Graph Cycles', () => {
 
         graph.addEdge(c, e, Graph.EDGE_HARD);
 
-        graph.markVertexRoot(e);
-        graph.markVertexDirty(a);
-
         assert.deepEqual(
             {
-                a: [ProcessAction.RECALCULATE],
                 b: [ProcessAction.CYCLE],
                 c: [ProcessAction.CYCLE],
                 d: [ProcessAction.CYCLE],
-                e: [ProcessAction.RECALCULATE],
             },
-            processGraph(graph)
+            process()
         );
     });
 
     test('cycle type: single loop', () => {
-        const graph = new Graph<TNode>();
+        const { graph, process } = setup();
         graph.addVertex(a);
         graph.addVertex(b);
         graph.addVertex(c);
@@ -752,21 +794,17 @@ suite('Graph Cycles', () => {
 
         graph.addEdge(c, d, Graph.EDGE_HARD);
 
-        graph.markVertexRoot(d);
-        graph.markVertexDirty(a);
         assert.deepEqual(
             {
-                a: [ProcessAction.RECALCULATE],
                 b: [ProcessAction.CYCLE],
                 c: [ProcessAction.CYCLE],
-                d: [ProcessAction.RECALCULATE],
             },
-            processGraph(graph)
+            process()
         );
     });
 
     test('cycle type: joined double loop', () => {
-        const graph = new Graph<TNode>();
+        const { graph, process } = setup();
         graph.addVertex(a);
         graph.addVertex(b);
         graph.addVertex(c);
@@ -797,13 +835,13 @@ suite('Graph Cycles', () => {
         assert.deepEqual(
             {
                 a: [ProcessAction.RECALCULATE],
-                b: [ProcessAction.RECALCULATE],
-                c: [ProcessAction.RECALCULATE],
-                d: [ProcessAction.RECALCULATE],
-                e: [ProcessAction.RECALCULATE],
-                f: [ProcessAction.RECALCULATE],
+                b: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
+                c: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
+                d: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
+                e: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
+                f: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
             },
-            processGraph(graph)
+            process()
         );
 
         // Introduce edge which contains two separate cycles
@@ -819,18 +857,38 @@ suite('Graph Cycles', () => {
         assert.deepEqual(
             {
                 a: [ProcessAction.RECALCULATE],
-                b: [ProcessAction.CYCLE],
-                c: [ProcessAction.CYCLE],
-                d: [ProcessAction.CYCLE],
-                e: [ProcessAction.CYCLE],
-                f: [ProcessAction.RECALCULATE],
+                b: [
+                    ProcessAction.CYCLE,
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                c: [
+                    ProcessAction.CYCLE,
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                d: [
+                    ProcessAction.CYCLE,
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                e: [
+                    ProcessAction.CYCLE,
+                    ProcessAction.INVALIDATE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                f: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
             },
-            processGraph(graph)
+            process()
         );
     });
 
     test('cycle type: joined double loop without preflush', () => {
-        const graph = new Graph<TNode>();
+        const { graph, process } = setup();
         graph.addVertex(a);
         graph.addVertex(b);
         graph.addVertex(c);
@@ -857,24 +915,19 @@ suite('Graph Cycles', () => {
         graph.addEdge(d, f, Graph.EDGE_HARD);
         graph.addEdge(e, d, Graph.EDGE_HARD);
 
-        graph.markVertexDirty(a);
-        graph.markVertexRoot(f);
-
         assert.deepEqual(
             {
-                a: [ProcessAction.RECALCULATE],
                 b: [ProcessAction.CYCLE],
                 c: [ProcessAction.CYCLE],
                 d: [ProcessAction.CYCLE],
                 e: [ProcessAction.CYCLE],
-                f: [ProcessAction.RECALCULATE],
             },
-            processGraph(graph)
+            process()
         );
     });
 
     test('cycle type: separate double loop', () => {
-        const graph = new Graph<TNode>();
+        const { graph, process } = setup();
         graph.addVertex(a);
         graph.addVertex(b);
         graph.addVertex(c);
@@ -894,24 +947,19 @@ suite('Graph Cycles', () => {
 
         graph.addEdge(e, f, Graph.EDGE_HARD);
 
-        graph.markVertexRoot(f);
-        graph.markVertexDirty(a);
-
         assert.deepEqual(
             {
-                a: [ProcessAction.RECALCULATE],
                 b: [ProcessAction.CYCLE],
                 c: [ProcessAction.CYCLE],
                 d: [ProcessAction.CYCLE],
                 e: [ProcessAction.CYCLE],
-                f: [ProcessAction.RECALCULATE],
             },
-            processGraph(graph)
+            process()
         );
     });
 
     test('cycle type: self cycle', () => {
-        const graph = new Graph<TNode>();
+        const { graph, process } = setup();
         graph.addVertex(a);
         graph.addVertex(b);
         graph.addVertex(c);
@@ -931,7 +979,7 @@ suite('Graph Cycles', () => {
                 b: [ProcessAction.CYCLE],
                 c: [ProcessAction.RECALCULATE],
             },
-            processGraph(graph)
+            process()
         );
     });
 });
