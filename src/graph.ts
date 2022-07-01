@@ -161,6 +161,9 @@ interface DebugAttributes {
     name: string;
 }
 
+type DebugFormatter<TVertex> = (vertex: TVertex) => DebugAttributes;
+type DebugSubscription = (label: string, graphviz: string) => void;
+
 export class Graph<TVertex> {
     static EDGE_SOFT = EdgeColor.EDGE_SOFT;
     static EDGE_HARD = EdgeColor.EDGE_HARD;
@@ -210,12 +213,20 @@ export class Graph<TVertex> {
     /** Set of vertex ids that need reordering */
     protected toReorderIds: Set<number>;
 
-    private processHandler: (vertex: TVertex, action: ProcessAction) => boolean;
+    private debugSubscriptions: Set<{
+        formatter: DebugFormatter<TVertex>;
+        subscription: DebugSubscription;
+    }>;
+
+    private _processHandler: (
+        vertex: TVertex,
+        action: ProcessAction
+    ) => boolean;
 
     constructor(
         processHandler: (vertex: TVertex, action: ProcessAction) => boolean
     ) {
-        this.processHandler = processHandler;
+        this._processHandler = processHandler;
 
         this.nextId = 1;
         this.availableIds = [];
@@ -238,6 +249,8 @@ export class Graph<TVertex> {
 
         this.dirtyVertexIds = [];
         this.toReorderIds = new Set();
+
+        this.debugSubscriptions = new Set();
     }
 
     /**
@@ -677,6 +690,26 @@ export class Graph<TVertex> {
         return lowerBound;
     }
 
+    private processHandler(vertex: TVertex, action: ProcessAction) {
+        if (DEBUG) {
+            this.debugSubscriptions.forEach(({ subscription, formatter }) => {
+                const name = formatter(vertex).name;
+                const label = `${ProcessAction[action]}: ${name}`;
+                subscription(
+                    label,
+                    this.debug(
+                        (v) => ({
+                            ...formatter(v),
+                            isActive: v === vertex,
+                        }),
+                        label
+                    )
+                );
+            });
+        }
+        return this._processHandler(vertex, action);
+    }
+
     private processVertex(vertexId: number) {
         const reachesRoot =
             this.vertexBitsById[vertexId] & VERTEX_BIT_REACHES_ROOT;
@@ -691,6 +724,20 @@ export class Graph<TVertex> {
     }
 
     process() {
+        if (DEBUG) {
+            this.debugSubscriptions.forEach(({ subscription, formatter }) => {
+                const label = `Process start`;
+                subscription(
+                    label,
+                    this.debug(
+                        (v) => ({
+                            ...formatter(v),
+                        }),
+                        label
+                    )
+                );
+            });
+        }
         if (this.toReorderIds.size > 0) {
             this.resort(this.toReorderIds);
             this.toReorderIds.clear();
@@ -798,6 +845,21 @@ export class Graph<TVertex> {
                 }
             }
         }
+
+        if (DEBUG) {
+            this.debugSubscriptions.forEach(({ subscription, formatter }) => {
+                const label = `Process end`;
+                subscription(
+                    label,
+                    this.debug(
+                        (v) => ({
+                            ...formatter(v),
+                        }),
+                        label
+                    )
+                );
+            });
+        }
     }
 
     private propagateDirty(
@@ -821,7 +883,7 @@ export class Graph<TVertex> {
         }
     }
 
-    debug(getAttrs: (vertex: TVertex) => DebugAttributes, label?: string) {
+    debug(getAttrs: DebugFormatter<TVertex>, label?: string) {
         const lines = [];
         lines.push('digraph dependencies {');
         lines.push(`  graph [fontname="helvetica bold"];`);
@@ -917,6 +979,20 @@ export class Graph<TVertex> {
         }
         lines.push('}');
         return lines.join('\n');
+    }
+
+    debugSubscribe(
+        formatter: DebugFormatter<TVertex>,
+        subscription: (label: string, graphviz: string) => void
+    ) {
+        const entry = {
+            formatter,
+            subscription,
+        };
+        this.debugSubscriptions.add(entry);
+        return () => {
+            this.debugSubscriptions.delete(entry);
+        };
     }
 }
 

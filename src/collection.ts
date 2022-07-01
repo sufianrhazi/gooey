@@ -31,12 +31,28 @@ export const CollectionPrototype = {
     moveSlice: collectionMoveSlice,
 
     // View production
-    mapView: collectionMapView,
-    filterView: collectionFilterView,
-    flatMapView: collectionFlatMapView,
+    mapView,
+    filterView,
+    flatMapView,
+} as const;
+
+export const ViewPrototype = {
+    // Array mutation values
+    splice: viewSplice,
+    push: viewPush,
+    pop: viewPop,
+    shift: viewShift,
+    unshift: viewUnshift,
+    sort: viewSort,
+
+    // View production
+    mapView,
+    filterView,
+    flatMapView,
 } as const;
 
 export type Collection<T> = TrackedData<T[], typeof CollectionPrototype>;
+export type View<T> = TrackedData<readonly T[], typeof ViewPrototype>;
 
 enum CollectionEventType {
     SPLICE,
@@ -58,7 +74,6 @@ export type CollectionEvent<T> =
       }
     | {
           type: CollectionEventType.SORT;
-          from: number;
           indexes: readonly number[];
       };
 
@@ -88,6 +103,21 @@ export const CollectionHandler: ProxyHandler<CollectionEvent<any>> = {
     },
 };
 
+export const ViewHandler: ProxyHandler<CollectionEvent<any>> = {
+    get: (dataAccessor, emitter, prop, receiver) => {
+        return dataAccessor.get(prop, receiver);
+    },
+    has: (dataAccessor, emitter, prop) => {
+        return dataAccessor.has(prop);
+    },
+    set: (dataAccessor, emitter, prop, value, receiver) => {
+        log.fail('Cannot mutate readonly view');
+    },
+    delete: (dataAccessor, emitter, prop) => {
+        log.fail('Cannot mutate readonly view');
+    },
+};
+
 export function collection<T>(items: T[], debugName?: string): Collection<T> {
     const handle = makeTrackedData<
         T[],
@@ -96,6 +126,25 @@ export function collection<T>(items: T[], debugName?: string): Collection<T> {
         CollectionEvent<T>
     >(items, CollectionHandler, CollectionPrototype, debugName);
     return handle.revocable.proxy;
+}
+
+export function view<T>(items: T[], debugName?: string): View<T> {
+    const handle = makeTrackedData<
+        readonly T[],
+        typeof ViewPrototype,
+        CollectionEvent<T>,
+        CollectionEvent<T>
+    >(items, ViewHandler, ViewPrototype, debugName);
+    return handle.revocable.proxy;
+}
+
+function viewSplice<T>(
+    this: View<T>,
+    index: number,
+    count: number,
+    ...items: T[]
+) {
+    log.fail('Cannot mutate readonly view');
 }
 
 function collectionSplice<T>(
@@ -145,17 +194,33 @@ function collectionSplice<T>(
     return removed;
 }
 
+function viewPush<T>(this: View<T>, ...items: T[]) {
+    log.fail('Cannot mutate readonly view');
+}
+
 function collectionPush<T>(this: Collection<T>, ...items: T[]) {
     collectionSplice.call(this, this.length, 0, ...items);
     return this.length;
+}
+
+function viewPop<T>(this: View<T>) {
+    log.fail('Cannot mutate readonly view');
 }
 
 function collectionPop<T>(this: Collection<T>): T | undefined {
     return collectionSplice.call(this, this.length - 1, 1)[0];
 }
 
+function viewShift<T>(this: View<T>) {
+    log.fail('Cannot mutate readonly view');
+}
+
 function collectionShift<T>(this: Collection<T>): T | undefined {
     return collectionSplice.call(this, 0, 1)[0];
+}
+
+function viewUnshift<T>(this: View<T>, ...items: T[]) {
+    log.fail('Cannot mutate readonly view');
 }
 
 function collectionUnshift<T>(this: Collection<T>, ...items: T[]) {
@@ -206,26 +271,53 @@ function collectionMoveSlice<T>(
     }
 }
 
+function viewSort<T>(this: Collection<T>, sortFn?: (a: T, b: T) => number) {
+    log.fail('Cannot mutate readonly view');
+}
+
+// https://tc39.es/ecma262/multipage/indexed-collections.html#sec-sortcompare
+function defaultSort(x: any, y: any) {
+    if (x === undefined && y === undefined) return 0;
+    if (x === undefined) return 1;
+    if (y === undefined) return -1;
+    const xStr = '' + x;
+    const yStr = '' + y;
+    if (xStr < yStr) return -1;
+    if (xStr > yStr) return 1;
+    return 0;
+}
+
 function collectionSort<T>(
     this: Collection<T>,
-    sortFn?: (a: T, b: T) => number
+    sortFn: (a: T, b: T) => number = defaultSort
 ) {
     const tdHandle = getTrackedDataHandle(this);
     log.assert(tdHandle, 'collectionSort missing tdHandle');
-    // TODO: invalidate fields, emit sort action
-    tdHandle.target.sort.call(this, sortFn);
+    let indexes: null | number[] = null;
+    if (tdHandle.emitter) {
+        indexes = (tdHandle.target as T[])
+            .map((_unused: T, index: number) => index)
+            .sort((a, b) => sortFn(tdHandle.target[a], tdHandle.target[b]));
+    }
+    tdHandle.target.sort(sortFn);
+    if (tdHandle.emitter && indexes) {
+        subscriptionEmitterAddEvent(tdHandle.emitter, {
+            type: CollectionEventType.SORT,
+            indexes,
+        });
+    }
     return this;
 }
 
-function collectionMapView<T, V>(
-    this: Collection<T>,
+function mapView<T, V>(
+    this: Collection<T> | View<T>,
     fn: (item: T) => V,
     debugName?: string
 ) {
     return makeFlatMapView(this, (item: T) => [fn(item)], debugName);
 }
-function collectionFilterView<T>(
-    this: Collection<T>,
+function filterView<T>(
+    this: Collection<T> | View<T>,
     fn: (item: T) => boolean,
     debugName?: string
 ) {
@@ -235,8 +327,8 @@ function collectionFilterView<T>(
         debugName
     );
 }
-function collectionFlatMapView<T, V>(
-    this: Collection<T>,
+function flatMapView<T, V>(
+    this: Collection<T> | View<T>,
     fn: (item: T) => V[],
     debugName?: string
 ) {
@@ -244,13 +336,13 @@ function collectionFlatMapView<T, V>(
 }
 
 interface FlatMapConsumer<T, V>
-    extends SubscriptionConsumer<Collection<V>, CollectionEvent<T>> {
+    extends SubscriptionConsumer<View<V>, CollectionEvent<T>> {
     slotSizes: number[];
     flatMap: (item: T) => readonly V[];
 }
 
 function makeFlatMapView<T, V>(
-    sourceCollection: Collection<T>,
+    sourceCollection: Collection<T> | View<T>,
     flatMap: (item: T) => readonly V[],
     debugName?: string
 ) {
@@ -268,16 +360,11 @@ function makeFlatMapView<T, V>(
     });
 
     const derivedCollection = makeTrackedData<
-        V[],
-        typeof CollectionPrototype,
+        readonly V[],
+        typeof ViewPrototype,
         CollectionEvent<V>,
         CollectionEvent<T>
-    >(
-        initialTransform,
-        CollectionHandler,
-        CollectionPrototype,
-        debugName ?? 'derived'
-    );
+    >(initialTransform, ViewHandler, ViewPrototype, debugName ?? 'derived');
 
     const subscriptionConsumer: FlatMapConsumer<T, V> = {
         [SymDebugName]: `subcons:${debugName ?? 'derived'}`,
@@ -333,9 +420,11 @@ function flatMapConsumerFlush<T>(
 
 function flatMapHandler<T, V>(
     this: FlatMapConsumer<T, V>,
-    trackedData: Collection<V>,
+    trackedData: Collection<V> | View<V>,
     event: CollectionEvent<T>
 ) {
+    const tdHandle = getTrackedDataHandle(this.trackedData);
+    log.assert(tdHandle, 'missing tdHandle');
     switch (event.type) {
         case CollectionEventType.SPLICE: {
             let fromIndex = 0;
@@ -357,11 +446,47 @@ function flatMapHandler<T, V>(
                 slotItems.push(slot.length);
                 items.push(...slot);
             }
-            this.trackedData.splice(fromIndex, count, ...items);
+            tdHandle.target.splice(fromIndex, count, ...items);
             this.slotSizes.splice(event.index, event.count, ...slotItems);
+            if (tdHandle.emitter) {
+                subscriptionEmitterAddEvent(tdHandle.emitter, {
+                    type: CollectionEventType.SPLICE,
+                    index: fromIndex,
+                    count,
+                    items,
+                });
+            }
             break;
         }
         case CollectionEventType.SORT: {
+            const slotStartIndex: number[] = [];
+            let realIndex = 0;
+            for (const slotSize of this.slotSizes) {
+                slotStartIndex.push(realIndex);
+                realIndex += slotSize;
+            }
+            const copiedSlotSizes = this.slotSizes.slice();
+            const copiedSource = (tdHandle.target as T[]).slice();
+            const newIndexes: number[] = [];
+            let destSlotIndex = 0;
+            let destIndex = 0;
+            for (const sourceIndex of event.indexes) {
+                const realCount = copiedSlotSizes[sourceIndex];
+                const realIndex = slotStartIndex[sourceIndex];
+                for (let i = 0; i < realCount; ++i) {
+                    newIndexes.push(realIndex + i);
+                    tdHandle.target[destIndex] = copiedSource[realIndex + i];
+                    destIndex += 1;
+                }
+                this.slotSizes[destSlotIndex] = copiedSlotSizes[sourceIndex];
+                destSlotIndex += 1;
+            }
+            if (tdHandle.emitter) {
+                subscriptionEmitterAddEvent(tdHandle.emitter, {
+                    type: CollectionEventType.SORT,
+                    indexes: newIndexes,
+                });
+            }
             break;
         }
         case CollectionEventType.MOVE: {
@@ -375,12 +500,20 @@ function flatMapHandler<T, V>(
                 count += this.slotSizes[event.from + i];
             }
             const movedSlots = this.slotSizes.splice(event.from, event.count);
-            const movedItems = this.trackedData.splice(fromIndex, count);
+            const movedItems = tdHandle.target.splice(fromIndex, count);
             for (let i = 0; i < event.to; ++i) {
                 toIndex += this.slotSizes[i];
             }
             this.slotSizes.splice(event.to, 0, ...movedSlots);
-            this.trackedData.splice(toIndex, 0, ...movedItems);
+            tdHandle.target.splice(toIndex, 0, ...movedItems);
+            if (tdHandle.emitter) {
+                subscriptionEmitterAddEvent(tdHandle.emitter, {
+                    type: CollectionEventType.MOVE,
+                    from: fromIndex,
+                    count,
+                    toIndex,
+                });
+            }
             break;
         }
         default:

@@ -240,3 +240,13 @@ export function debug(activeVertex?: Processable, label?: string) {
         };
     }, label);
 }
+
+export function debugSubscribe(fn: (label: string, graphviz: string) => void) {
+    return globalDependencyGraph.debugSubscribe((vertex) => {
+        return {
+            isActive: false,
+            group: undefined,
+            name: vertex[SymDebugName],
+        };
+    }, fn);
+}

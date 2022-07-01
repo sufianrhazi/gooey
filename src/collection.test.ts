@@ -1,6 +1,6 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
-import { collection, Collection } from './collection';
+import { collection, Collection, View } from './collection';
 import { calc } from './calc';
 import { reset, flush, retain, markRoot, subscribe } from './engine';
 
@@ -9,7 +9,7 @@ beforeEach(() => {
     subscribe();
 });
 
-function retainCollection(collection: Collection<any>) {
+function retainCollection(collection: Collection<any> | View<any>) {
     const root = calc(() => {
         collection.forEach(() => true);
     });
@@ -345,6 +345,36 @@ suite('mapView', () => {
         assert.deepEqual(['hi!', 'hello!', 'howdy!'], [...exclaimations]);
     });
 
+    test('mapped views are readonly', () => {
+        const phrases = collection(['hi', 'hello', 'howdy'], 'phrases');
+        const exclaimations = phrases.mapView(
+            (phrase) => `${phrase}!`,
+            'exclaimations'
+        );
+        retainCollection(exclaimations);
+
+        assert.throwsMatching(/Cannot mutate readonly view/, () => {
+            // @ts-expect-error
+            exclaimations[0] = 'ok';
+        });
+        assert.throwsMatching(/Cannot mutate readonly view/, () => {
+            // @ts-expect-error
+            exclaimations.length = 5;
+        });
+        assert.throwsMatching(/Cannot mutate readonly view/, () => {
+            exclaimations.push('ok');
+        });
+        assert.throwsMatching(/Cannot mutate readonly view/, () => {
+            exclaimations.unshift('ok');
+        });
+        assert.throwsMatching(/Cannot mutate readonly view/, () => {
+            exclaimations.pop();
+        });
+        assert.throwsMatching(/Cannot mutate readonly view/, () => {
+            exclaimations.shift();
+        });
+    });
+
     test('handles push, only recalculating new items', () => {
         const phrases = collection(['hi', 'hello', 'howdy'], 'phrases');
         let prefix = '';
@@ -573,6 +603,61 @@ suite('mapView', () => {
                 'eht',
             ],
             reversedPhrases
+        );
+    });
+
+    test('handles sort twice', () => {
+        const phrases = collection([
+            'a',
+            'quick',
+            'brown',
+            'fox',
+            'jumps',
+            'over',
+        ]);
+        const reversedPhrases = phrases.mapView((phrase) =>
+            Array.from(phrase).reverse().join('')
+        );
+        retainCollection(reversedPhrases);
+        const reverseExclaimedPhrases = reversedPhrases.mapView(
+            (phrase) => `${phrase}!`
+        );
+        retainCollection(reverseExclaimedPhrases);
+        phrases.push('the', 'lazy', 'dog');
+        phrases.sort();
+
+        flush();
+        assert.deepEqual(
+            [
+                'a!',
+                'nworb!',
+                'god!',
+                'xof!',
+                'spmuj!',
+                'yzal!',
+                'revo!',
+                'kciuq!',
+                'eht!',
+            ],
+            reverseExclaimedPhrases
+        );
+
+        phrases[1] = 'HELLO';
+
+        flush();
+        assert.deepEqual(
+            [
+                'a!',
+                'OLLEH!',
+                'god!',
+                'xof!',
+                'spmuj!',
+                'yzal!',
+                'revo!',
+                'kciuq!',
+                'eht!',
+            ],
+            reverseExclaimedPhrases
         );
     });
 });
