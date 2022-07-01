@@ -606,6 +606,32 @@ suite('mapView', () => {
         );
     });
 
+    test('handles sort with calculation on specific field', () => {
+        const phrases = collection([
+            'a',
+            'quick',
+            'brown',
+            'fox',
+            'jumps',
+            'over',
+            'the',
+            'lazy',
+            'dog',
+        ]);
+        const values: string[] = [];
+        const exclaimOne = calc(() => {
+            const result = phrases[1] + '!';
+            values.push(result);
+            return result;
+        });
+        retain(exclaimOne);
+        markRoot(exclaimOne);
+        exclaimOne();
+        phrases.sort();
+        flush();
+        assert.deepEqual(['quick!', 'brown!'], values);
+    });
+
     test('handles sort twice', () => {
         const phrases = collection([
             'a',

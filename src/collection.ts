@@ -128,16 +128,6 @@ export function collection<T>(items: T[], debugName?: string): Collection<T> {
     return handle.revocable.proxy;
 }
 
-export function view<T>(items: T[], debugName?: string): View<T> {
-    const handle = makeTrackedData<
-        readonly T[],
-        typeof ViewPrototype,
-        CollectionEvent<T>,
-        CollectionEvent<T>
-    >(items, ViewHandler, ViewPrototype, debugName);
-    return handle.revocable.proxy;
-}
-
 function viewSplice<T>(
     this: View<T>,
     index: number,
@@ -305,6 +295,12 @@ function collectionSort<T>(
             type: CollectionEventType.SORT,
             indexes,
         });
+    }
+
+    // Invalidate sorted fields
+    for (let i = 0; i < tdHandle.target.length; ++i) {
+        const field = tdHandle.fieldMap.get(i.toString());
+        field?.set(tdHandle.target[i]);
     }
     return this;
 }
