@@ -2,19 +2,10 @@ import {
     TrackedData,
     makeTrackedData,
     getTrackedDataHandle,
-    SubscriptionConsumer,
-    SubscribeHandlerType,
-    subscriptionConsumerAddEvent,
-    subscriptionEmitterAddEvent,
     ProxyHandler,
+    SubscriptionEmitter,
 } from './trackeddata';
-import {
-    SymDebugName,
-    SymRecalculate,
-    untracked,
-    addVertex,
-    markRoot,
-} from './engine';
+import { untracked } from './engine';
 import * as log from './log';
 
 export const CollectionPrototype = {
@@ -54,7 +45,7 @@ export const ViewPrototype = {
 export type Collection<T> = TrackedData<T[], typeof CollectionPrototype>;
 export type View<T> = TrackedData<readonly T[], typeof ViewPrototype>;
 
-enum CollectionEventType {
+export enum CollectionEventType {
     SPLICE,
     MOVE,
     SORT,
@@ -124,7 +115,7 @@ export function collection<T>(items: T[], debugName?: string): Collection<T> {
         typeof CollectionPrototype,
         CollectionEvent<T>,
         CollectionEvent<T>
-    >(items, CollectionHandler, CollectionPrototype, debugName);
+    >(items, CollectionHandler, CollectionPrototype, null, null, debugName);
     return handle.revocable.proxy;
 }
 
@@ -173,14 +164,12 @@ function collectionSplice<T>(
         const field = tdHandle.fieldMap.get('length');
         field?.set(endLength);
     }
-    if (tdHandle.emitter) {
-        subscriptionEmitterAddEvent(tdHandle.emitter, {
-            type: CollectionEventType.SPLICE,
-            index,
-            count,
-            items,
-        });
-    }
+    tdHandle.emitter.addEvent({
+        type: CollectionEventType.SPLICE,
+        index,
+        count,
+        items,
+    });
     return removed;
 }
 
@@ -251,14 +240,12 @@ function collectionMoveSlice<T>(
     log.assert(tdHandle, 'moveSlice missing tdHandle');
     const removed = tdHandle.target.splice(fromIndex, count);
     tdHandle.target.splice(toIndex, 0, ...removed);
-    if (tdHandle.emitter) {
-        subscriptionEmitterAddEvent(tdHandle.emitter, {
-            type: CollectionEventType.MOVE,
-            from: fromIndex,
-            count,
-            to: toIndex,
-        });
-    }
+    tdHandle.emitter.addEvent({
+        type: CollectionEventType.MOVE,
+        from: fromIndex,
+        count,
+        to: toIndex,
+    });
 }
 
 function viewSort<T>(this: Collection<T>, sortFn?: (a: T, b: T) => number) {
@@ -290,8 +277,8 @@ function collectionSort<T>(
             .sort((a, b) => sortFn(tdHandle.target[a], tdHandle.target[b]));
     }
     tdHandle.target.sort(sortFn);
-    if (tdHandle.emitter && indexes) {
-        subscriptionEmitterAddEvent(tdHandle.emitter, {
+    if (indexes) {
+        tdHandle.emitter.addEvent({
             type: CollectionEventType.SORT,
             indexes,
         });
@@ -331,12 +318,6 @@ function flatMapView<T, V>(
     return makeFlatMapView(this, fn, debugName);
 }
 
-interface FlatMapConsumer<T, V>
-    extends SubscriptionConsumer<View<V>, CollectionEvent<T>> {
-    slotSizes: number[];
-    flatMap: (item: T) => readonly V[];
-}
-
 function makeFlatMapView<T, V>(
     sourceCollection: Collection<T> | View<T>,
     flatMap: (item: T) => readonly V[],
@@ -360,109 +341,70 @@ function makeFlatMapView<T, V>(
         typeof ViewPrototype,
         CollectionEvent<V>,
         CollectionEvent<T>
-    >(initialTransform, ViewHandler, ViewPrototype, debugName ?? 'derived');
-
-    const subscriptionConsumer: FlatMapConsumer<T, V> = {
-        [SymDebugName]: `subcons:${debugName ?? 'derived'}`,
-        [SymRecalculate]: flatMapConsumerFlush,
-        events: [],
-        handler: flatMapHandler,
-        trackedData: derivedCollection.revocable.proxy,
-        slotSizes,
-        flatMap,
-    };
-
-    derivedCollection.consumer = subscriptionConsumer;
-    addVertex(subscriptionConsumer);
-    markRoot(subscriptionConsumer);
-
-    subscriptionConsumer.unsubscribe = sourceTDHandle.subscribe(
-        subscribeHandler,
-        subscriptionConsumer
+    >(
+        initialTransform,
+        ViewHandler,
+        ViewPrototype,
+        sourceTDHandle.emitter,
+        (target, event, emitter) =>
+            flatMapHandler(
+                slotSizes,
+                flatMap,
+                initialTransform,
+                event,
+                emitter
+            ),
+        debugName ?? 'derived'
     );
+
     return derivedCollection.revocable.proxy;
-
-    function subscribeHandler(
-        type: SubscribeHandlerType.EVENTS,
-        events: CollectionEvent<T>[],
-        index: number
-    ): void {
-        switch (type) {
-            case SubscribeHandlerType.EVENTS:
-                // index must be defined
-                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                for (let i = index!; i < events.length; ++i) {
-                    subscriptionConsumerAddEvent(
-                        subscriptionConsumer,
-                        events[i]
-                    );
-                }
-                break;
-            default:
-                log.assertExhausted(type);
-        }
-    }
-}
-
-function flatMapConsumerFlush<T>(
-    this: SubscriptionConsumer<Collection<T>, CollectionEvent<T>>
-) {
-    for (const event of this.events) {
-        this.handler(this.trackedData, event);
-    }
-    this.events.splice(0, this.events.length);
-    return false;
 }
 
 function flatMapHandler<T, V>(
-    this: FlatMapConsumer<T, V>,
-    trackedData: Collection<V> | View<V>,
-    event: CollectionEvent<T>
+    slotSizes: number[],
+    flatMap: (item: T) => readonly V[],
+    target: V[],
+    event: CollectionEvent<T>,
+    emitter: SubscriptionEmitter<CollectionEvent<V>>
 ) {
-    const tdHandle = getTrackedDataHandle(this.trackedData);
-    log.assert(tdHandle, 'missing tdHandle');
     switch (event.type) {
         case CollectionEventType.SPLICE: {
             let fromIndex = 0;
             let count = 0;
             for (let i = 0; i < event.index; ++i) {
-                fromIndex += i < this.slotSizes.length ? this.slotSizes[i] : 0;
+                fromIndex += i < slotSizes.length ? slotSizes[i] : 0;
             }
             for (let i = 0; i < event.count; ++i) {
                 const slotIndex = event.index + i;
                 count +=
-                    slotIndex < this.slotSizes.length
-                        ? this.slotSizes[slotIndex]
-                        : 0;
+                    slotIndex < slotSizes.length ? slotSizes[slotIndex] : 0;
             }
             const slotItems: number[] = [];
             const items: V[] = [];
             for (const item of event.items) {
-                const slot = this.flatMap(item);
+                const slot = flatMap(item);
                 slotItems.push(slot.length);
                 items.push(...slot);
             }
-            tdHandle.target.splice(fromIndex, count, ...items);
-            this.slotSizes.splice(event.index, event.count, ...slotItems);
-            if (tdHandle.emitter) {
-                subscriptionEmitterAddEvent(tdHandle.emitter, {
-                    type: CollectionEventType.SPLICE,
-                    index: fromIndex,
-                    count,
-                    items,
-                });
-            }
+            target.splice(fromIndex, count, ...items);
+            slotSizes.splice(event.index, event.count, ...slotItems);
+            emitter.addEvent({
+                type: CollectionEventType.SPLICE,
+                index: fromIndex,
+                count,
+                items,
+            });
             break;
         }
         case CollectionEventType.SORT: {
             const slotStartIndex: number[] = [];
             let realIndex = 0;
-            for (const slotSize of this.slotSizes) {
+            for (const slotSize of slotSizes) {
                 slotStartIndex.push(realIndex);
                 realIndex += slotSize;
             }
-            const copiedSlotSizes = this.slotSizes.slice();
-            const copiedSource = (tdHandle.target as T[]).slice();
+            const copiedSlotSizes = slotSizes.slice();
+            const copiedSource = target.slice();
             const newIndexes: number[] = [];
             let destSlotIndex = 0;
             let destIndex = 0;
@@ -471,18 +413,16 @@ function flatMapHandler<T, V>(
                 const realIndex = slotStartIndex[sourceIndex];
                 for (let i = 0; i < realCount; ++i) {
                     newIndexes.push(realIndex + i);
-                    tdHandle.target[destIndex] = copiedSource[realIndex + i];
+                    target[destIndex] = copiedSource[realIndex + i];
                     destIndex += 1;
                 }
-                this.slotSizes[destSlotIndex] = copiedSlotSizes[sourceIndex];
+                slotSizes[destSlotIndex] = copiedSlotSizes[sourceIndex];
                 destSlotIndex += 1;
             }
-            if (tdHandle.emitter) {
-                subscriptionEmitterAddEvent(tdHandle.emitter, {
-                    type: CollectionEventType.SORT,
-                    indexes: newIndexes,
-                });
-            }
+            emitter.addEvent({
+                type: CollectionEventType.SORT,
+                indexes: newIndexes,
+            });
             break;
         }
         case CollectionEventType.MOVE: {
@@ -490,26 +430,24 @@ function flatMapHandler<T, V>(
             let toIndex = 0;
             let count = 0;
             for (let i = 0; i < event.from; ++i) {
-                fromIndex += this.slotSizes[i];
+                fromIndex += slotSizes[i];
             }
             for (let i = 0; i < event.count; ++i) {
-                count += this.slotSizes[event.from + i];
+                count += slotSizes[event.from + i];
             }
-            const movedSlots = this.slotSizes.splice(event.from, event.count);
-            const movedItems = tdHandle.target.splice(fromIndex, count);
+            const movedSlots = slotSizes.splice(event.from, event.count);
+            const movedItems = target.splice(fromIndex, count);
             for (let i = 0; i < event.to; ++i) {
-                toIndex += this.slotSizes[i];
+                toIndex += slotSizes[i];
             }
-            this.slotSizes.splice(event.to, 0, ...movedSlots);
-            tdHandle.target.splice(toIndex, 0, ...movedItems);
-            if (tdHandle.emitter) {
-                subscriptionEmitterAddEvent(tdHandle.emitter, {
-                    type: CollectionEventType.MOVE,
-                    from: fromIndex,
-                    count,
-                    toIndex,
-                });
-            }
+            slotSizes.splice(event.to, 0, ...movedSlots);
+            target.splice(toIndex, 0, ...movedItems);
+            emitter.addEvent({
+                type: CollectionEventType.MOVE,
+                from: fromIndex,
+                count,
+                to: toIndex,
+            });
             break;
         }
         default:

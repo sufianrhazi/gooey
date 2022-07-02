@@ -152,17 +152,16 @@ import {
     retain,
     markCycleInformed,
     unmarkDirty,
-    isToplevel,
     tracked,
     untracked,
     SymCycle,
     SymDebugName,
-    SymDestroy,
+    SymAlive,
+    SymDead,
     SymInvalidate,
     SymRecalculate,
     SymRefcount,
 } from './engine';
-import { dead } from './util';
 
 enum CalculationState {
     READY,
@@ -225,8 +224,8 @@ function calculationCall<T>(calculation: Calculation<T>): T {
     const state = calculation._state;
     switch (state) {
         case CalculationState.DEAD:
-            log.fail('Cannot call dead calculation');
-            break;
+            // Note: dead calculations are just plain old functions
+            return calculation._fn();
         case CalculationState.CACHED:
             return calculation._val as T;
         case CalculationState.CALLING:
@@ -258,6 +257,19 @@ function calculationCall<T>(calculation: Calculation<T>): T {
                 );
             } catch (e) {
                 exception = e;
+            }
+
+            if (
+                (calculation._state as CalculationState) ===
+                CalculationState.DEAD
+            ) {
+                // It's possible that a cycle which is recalculated releases itself entirely
+                // In this case we release all of the things retained (automatically, see note XXX:AUTO_RETAIN)
+                for (const retained of calculationReads) {
+                    release(retained);
+                }
+                if (result === Sentinel) throw exception;
+                return result;
             }
 
             // If A calls B, which calls A, and B has an error handler:
@@ -316,8 +328,12 @@ function calculationCall<T>(calculation: Calculation<T>): T {
                 for (const priorDependency of calculation._retained) {
                     if (!calculationReads.has(priorDependency)) {
                         removeHardEdge(priorDependency, calculation);
-                        release(priorDependency);
                     }
+                    // XXX:AUTO_RETAIN: THIS IS SURPRISING
+                    // We retain all dependencies read when they are first added to a tracked calculation
+                    // So we need to release prior dependencies to keep the refcount stable
+                    // This is a bit gross...
+                    release(priorDependency);
                 }
             }
             for (const dependency of calculationReads) {
@@ -326,7 +342,6 @@ function calculationCall<T>(calculation: Calculation<T>): T {
                     !calculation._retained.has(dependency)
                 ) {
                     addHardEdge(dependency, calculation);
-                    retain(dependency);
                 }
             }
             calculation._retained = calculationReads;
@@ -344,22 +359,22 @@ function calculationCall<T>(calculation: Calculation<T>): T {
     }
 }
 
-function calculationDestroy<T>(this: Calculation<T>) {
-    removeVertex(this);
+function calculationAlive<T>(this: Calculation<T>) {
+    addVertex(this);
+    this._state = CalculationState.READY;
+}
 
-    this.onError = dead;
-    this.setCmp = dead;
-    this._fn = dead;
-    this._eq = dead;
-    this._errorHandler = dead;
-    this._state = CalculationState.DEAD;
-    delete this._val;
+function calculationDead<T>(this: Calculation<T>) {
     if (this._retained) {
         for (const retained of this._retained) {
+            removeHardEdge(retained, this);
             release(retained);
         }
     }
-    this[SymDestroy] = dead;
+    delete this._retained;
+    removeVertex(this);
+    this._state = CalculationState.DEAD;
+    delete this._val;
 }
 
 function calculationRecalculate<T>(this: Calculation<T>) {
@@ -459,7 +474,7 @@ export function calc<T>(fn: () => T, debugName?: string) {
             // Dynamic members
             _fn: fn,
             _isEffect: false,
-            _state: CalculationState.READY,
+            _state: CalculationState.DEAD,
             _call: calculationCall,
             _eq: strictEqual,
 
@@ -468,8 +483,9 @@ export function calc<T>(fn: () => T, debugName?: string) {
             setCmp: calcSetCmp,
 
             // Retainable
-            [SymDestroy]: calculationDestroy,
-            [SymRefcount]: 1,
+            [SymAlive]: calculationAlive,
+            [SymDead]: calculationDead,
+            [SymRefcount]: 0,
 
             // Processable
             [SymDebugName]: debugName ?? fn.name,
@@ -478,7 +494,6 @@ export function calc<T>(fn: () => T, debugName?: string) {
             [SymInvalidate]: calculationInvalidate,
         }
     );
-    addVertex(calculation);
     return calculation;
 }
 
@@ -489,7 +504,7 @@ export function effect<T>(fn: () => T, debugName?: string) {
             // Dynamic members
             _fn: fn,
             _isEffect: true,
-            _state: CalculationState.READY,
+            _state: CalculationState.DEAD,
             _call: calculationCall,
             _eq: strictEqual,
 
@@ -498,8 +513,9 @@ export function effect<T>(fn: () => T, debugName?: string) {
             setCmp: calcSetCmp,
 
             // Retainable
-            [SymDestroy]: calculationDestroy,
-            [SymRefcount]: 1,
+            [SymAlive]: calculationAlive,
+            [SymDead]: calculationDead,
+            [SymRefcount]: 0,
 
             // Processable
             [SymDebugName]: debugName ?? fn.name,
@@ -508,6 +524,5 @@ export function effect<T>(fn: () => T, debugName?: string) {
             [SymInvalidate]: calculationInvalidate,
         }
     );
-    addVertex(calculation);
     return calculation;
 }

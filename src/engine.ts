@@ -4,15 +4,17 @@ import { Graph, ProcessAction } from './graph';
 
 export const SymDebugName = Symbol('debugName');
 export const SymRefcount = Symbol('refcount');
-export const SymDestroy = Symbol('refcount');
-export const SymRecalculate = Symbol('refcount');
-export const SymCycle = Symbol('refcount');
-export const SymInvalidate = Symbol('refcount');
+export const SymAlive = Symbol('alive');
+export const SymDead = Symbol('dead');
+export const SymRecalculate = Symbol('recalculate');
+export const SymCycle = Symbol('cycle');
+export const SymInvalidate = Symbol('invalidate');
 
 export interface Retainable {
     [SymDebugName]: string;
     [SymRefcount]: number;
-    [SymDestroy]: () => void;
+    [SymAlive]: () => void;
+    [SymDead]: () => void;
 }
 
 export interface Processable {
@@ -68,6 +70,9 @@ export function retain(retainable: Retainable) {
         retainable[SymRefcount]
     );
     retainable[SymRefcount] += 1;
+    if (retainable[SymRefcount] === 1) {
+        retainable[SymAlive]();
+    }
 }
 
 export function release(retainable: Retainable) {
@@ -79,7 +84,7 @@ export function release(retainable: Retainable) {
     );
     log.assert(retainable[SymRefcount] > 0, 'double release');
     if (retainable[SymRefcount] === 1) {
-        retainable[SymDestroy]();
+        retainable[SymDead]();
     }
     retainable[SymRefcount] -= 1;
 }
@@ -197,10 +202,6 @@ export function tracked<T>(
     }
 }
 
-export function isToplevel() {
-    return activeCalculationReads.length > 0;
-}
-
 export function untracked<T>(fn: () => T, debugName?: string): T {
     console.group('untracked', debugName ?? 'call');
     activeCalculationReads.push(null);
@@ -227,7 +228,10 @@ export function addDependencyToActiveCalculation(
             dependency[SymDebugName],
             'to active calculation'
         );
-        calculationReads.add(dependency);
+        if (!calculationReads.has(dependency)) {
+            retain(dependency);
+            calculationReads.add(dependency);
+        }
     }
 }
 
@@ -236,7 +240,9 @@ export function debug(activeVertex?: Processable, label?: string) {
         return {
             isActive: vertex === activeVertex,
             group: undefined,
-            name: vertex[SymDebugName],
+            name: `${vertex[SymDebugName]} (rc=${
+                (vertex as any)[SymRefcount]
+            })`,
         };
     }, label);
 }

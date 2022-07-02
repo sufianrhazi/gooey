@@ -13,8 +13,8 @@ function retainCollection(collection: Collection<any> | View<any>) {
     const root = calc(() => {
         collection.forEach(() => true);
     });
-    markRoot(root);
     retain(root);
+    markRoot(root);
     root();
 }
 

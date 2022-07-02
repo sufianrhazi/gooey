@@ -7,12 +7,15 @@ import {
     addSoftEdge,
     removeSoftEdge,
     markDirty,
-    unmarkRoot,
     addVertex,
+    markRoot,
+    unmarkRoot,
+    retain,
     release,
     removeVertex,
     SymDebugName,
-    SymDestroy,
+    SymAlive,
+    SymDead,
     SymRecalculate,
     SymRefcount,
 } from './engine';
@@ -21,47 +24,199 @@ import { field as makeField, Field } from './field';
 
 type FieldMap = Map<string, Field<any>>;
 
-export interface SubscriptionEmitter<TEmitEvent> extends Processable {
-    subscribers: SubscribeHandler<TEmitEvent>[];
-    subscriberOffset: number[];
-    events: TEmitEvent[];
-}
+export class SubscriptionEmitter<TEmitEvent>
+    implements Processable, Retainable
+{
+    private subscribers: SubscribeHandler<TEmitEvent>[];
+    private subscriberOffset: number[];
+    private events: TEmitEvent[];
+    private fieldMap: FieldMap;
+    private isActive: boolean;
 
-export function subscriptionEmitterAddEvent<TEmitEvent>(
-    subscriptionEmitter: SubscriptionEmitter<TEmitEvent>,
-    event: TEmitEvent
-) {
-    const length = subscriptionEmitter.events.push(event);
-    if (length === 1) {
-        markDirty(subscriptionEmitter);
+    // Processable
+    [SymDebugName]: string;
+
+    [SymRecalculate]() {
+        for (let i = 0; i < this.subscribers.length; ++i) {
+            const subscriber = this.subscribers[i];
+            subscriber(this.events, this.subscriberOffset[i]);
+            this.subscriberOffset[i] = 0;
+        }
+        this.events.splice(0, this.events.length);
+        return true;
+    }
+
+    // Retainable
+    [SymRefcount]: number;
+
+    [SymAlive]() {
+        this.isActive = true;
+        addVertex(this);
+        for (const field of this.fieldMap.values()) {
+            retain(field);
+            addSoftEdge(field, this);
+        }
+    }
+
+    [SymDead]() {
+        log.assert(
+            this.subscribers.length === 0,
+            'released subscription emitter that had subscribers'
+        );
+        log.assert(
+            this.subscriberOffset.length === 0,
+            'released subscription emitter that had subscribers'
+        );
+        this.events.splice(0, this.events.length);
+        for (const field of this.fieldMap.values()) {
+            release(field);
+            removeSoftEdge(field, this);
+        }
+        removeVertex(this);
+        this.isActive = false;
+    }
+
+    constructor(fieldMap: FieldMap, debugName: string) {
+        this.subscribers = [];
+        this.subscriberOffset = [];
+        this.events = [];
+        this.fieldMap = fieldMap;
+        this.isActive = false;
+        this[SymRefcount] = 0;
+        this[SymDebugName] = `emitter:${debugName}`;
+    }
+
+    addEvent(event: TEmitEvent) {
+        if (!this.isActive) return;
+        const length = this.events.push(event);
+        if (length === 1) {
+            markDirty(this);
+        }
+    }
+
+    addField(field: Field<any>) {
+        if (this.isActive) {
+            retain(field);
+            addSoftEdge(field, this);
+        }
+    }
+
+    subscribe(receiver: Processable, handler: SubscribeHandler<TEmitEvent>) {
+        addHardEdge(this, receiver);
+        this.subscribers.push(handler);
+        this.subscriberOffset.push(this.events.length);
+        return () => {
+            const index = this.subscribers.indexOf(handler);
+            if (index === -1) return;
+            this.subscribers.slice(index, 1);
+            this.subscriberOffset.slice(index, 1);
+            removeHardEdge(this, receiver);
+        };
     }
 }
 
-export interface SubscriptionConsumer<TTrackedData, TConsumeEvent>
-    extends Processable {
-    unsubscribe?: () => void;
-    events: TConsumeEvent[];
-    handler: (trackedData: TTrackedData, event: TConsumeEvent) => void;
-    trackedData: TTrackedData;
-}
+export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
+    implements Processable, Retainable
+{
+    private target: TData;
+    private handler: (
+        target: TData,
+        event: TConsumeEvent,
+        emitter: SubscriptionEmitter<TEmitEvent>
+    ) => void;
+    private events: TConsumeEvent[];
+    private fieldMap: FieldMap;
+    private isActive: boolean;
+    private sourceEmitter: SubscriptionEmitter<TConsumeEvent>;
+    private transformEmitter: SubscriptionEmitter<TEmitEvent>;
+    private unsubscribe?: () => void;
 
-export function subscriptionConsumerAddEvent<TTrackedData, TConsumeEvent>(
-    subscriptionConsumer: SubscriptionConsumer<TTrackedData, TConsumeEvent>,
-    event: TConsumeEvent
-) {
-    subscriptionConsumer.events.push(event);
-}
+    // Processable
+    [SymDebugName]: string;
 
-export enum SubscribeHandlerType {
-    EVENTS, // TODO: remove this enum
+    [SymRecalculate]() {
+        for (const event of this.events) {
+            this.handler(this.target, event, this.transformEmitter);
+        }
+        this.events.splice(0, this.events.length);
+        return false;
+    }
+
+    // Retainable
+    [SymRefcount]: number;
+
+    [SymAlive]() {
+        this.isActive = true;
+        addVertex(this);
+        markRoot(this);
+        for (const field of this.fieldMap.values()) {
+            retain(field);
+            addSoftEdge(this, field);
+        }
+        this.unsubscribe = this.sourceEmitter.subscribe(
+            this,
+            (events, offset) => {
+                for (let i = offset; i < events.length; ++i) {
+                    this.addEvent(events[i]);
+                }
+            }
+        );
+    }
+
+    [SymDead]() {
+        this.unsubscribe?.();
+        this.events.splice(0, this.events.length);
+        for (const field of this.fieldMap.values()) {
+            removeSoftEdge(this, field);
+            release(field);
+        }
+        unmarkRoot(this);
+        removeVertex(this);
+        this.isActive = false;
+    }
+
+    constructor(
+        target: TData,
+        fieldMap: FieldMap,
+        sourceEmitter: SubscriptionEmitter<TConsumeEvent>,
+        transformEmitter: SubscriptionEmitter<TEmitEvent>,
+        handler: (
+            target: TData,
+            event: TConsumeEvent,
+            emitter: SubscriptionEmitter<TEmitEvent>
+        ) => void,
+        debugName: string
+    ) {
+        this.target = target;
+        this.handler = handler;
+        this.events = [];
+        this.fieldMap = fieldMap;
+        this.isActive = false;
+        this.sourceEmitter = sourceEmitter;
+        this.transformEmitter = transformEmitter;
+        this[SymRefcount] = 0;
+        this[SymDebugName] = `consumer:${debugName}`;
+        retain(sourceEmitter);
+    }
+
+    addEvent(event: TConsumeEvent) {
+        if (!this.isActive) return;
+        const length = this.events.push(event);
+        if (length === 1) {
+            markDirty(this);
+        }
+    }
+
+    addField(field: Field<any>) {
+        if (this.isActive) {
+            retain(field);
+            addSoftEdge(this, field);
+        }
+    }
 }
 
 interface SubscribeHandler<TEmitEvent> {
-    (
-        type: SubscribeHandlerType.EVENTS,
-        events: TEmitEvent[],
-        index: number
-    ): void;
+    (events: TEmitEvent[], index: number): void;
 }
 type TrackedDataUnsubscribe = () => void;
 
@@ -85,8 +240,7 @@ export interface EventEmitter<TEmitEvent> {
     (type: EventEmitterType.DEL, prop: string): Iterable<TEmitEvent>;
 }
 
-interface TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent>
-    extends Retainable {
+interface TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent> {
     fieldMap: FieldMap;
     keys: Set<string>;
     subscribe: (
@@ -94,11 +248,8 @@ interface TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent>
         receiver: Processable
     ) => TrackedDataUnsubscribe;
     keysField: Field<number>;
-    emitter?: SubscriptionEmitter<TEmitEvent>;
-    consumer?: SubscriptionConsumer<
-        TrackedData<TData, TMethods>,
-        TConsumeEvent
-    >;
+    emitter: SubscriptionEmitter<TEmitEvent>;
+    consumer: null | SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>;
     target: any;
     revocable: {
         proxy: TrackedData<TData, TMethods>;
@@ -156,24 +307,51 @@ export interface ProxyHandler<TEmitEvent> {
 
 export function makeTrackedData<
     TData extends {},
-    TExtra,
+    TMethods,
     TEmitEvent,
     TConsumeEvent
 >(
     target: TData,
     proxyHandler: ProxyHandler<TEmitEvent>,
-    methods: TExtra,
-    debugName?: string
-): TrackedDataHandle<TData, TExtra, TEmitEvent, TConsumeEvent> {
+    methods: TMethods,
+    derivedEmitter: null | SubscriptionEmitter<TConsumeEvent>,
+    handleEvent:
+        | null
+        | ((
+              target: TData,
+              event: TConsumeEvent,
+              emitter: SubscriptionEmitter<TEmitEvent>
+          ) => void),
+    _debugName?: string
+): TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent> {
+    const debugName = _debugName ?? 'trackeddata';
     const fieldMap: FieldMap = new Map();
     const keys = new Set<string>(Object.keys(target));
-    const keysField = makeField(`${debugName ?? 'm'}:@keys`, keys.size);
-    const emitter = (event: TEmitEvent) => {
-        const subscriptionEmitter = tdHandle.emitter;
-        if (subscriptionEmitter) {
-            subscriptionEmitterAddEvent(subscriptionEmitter, event);
-        }
+    const keysField = makeField(`${debugName}:@keys`, keys.size);
+
+    const emitter = new SubscriptionEmitter<TEmitEvent>(fieldMap, debugName);
+
+    let consumer: null | SubscriptionConsumer<
+        TData,
+        TConsumeEvent,
+        TEmitEvent
+    > = null;
+    if (derivedEmitter && handleEvent) {
+        consumer = new SubscriptionConsumer(
+            target,
+            fieldMap,
+            derivedEmitter,
+            emitter,
+            handleEvent,
+            debugName
+        );
+        retain(consumer);
+    }
+
+    const emitEvent = (event: TEmitEvent) => {
+        emitter.addEvent(event);
     };
+
     const dataAccessor: DataAccessor = {
         get: (prop, receiver) => {
             if (typeof prop === 'symbol') {
@@ -183,7 +361,14 @@ export function makeTrackedData<
                 return (methods as any)[prop];
             }
             const value = Reflect.get(target, prop, receiver);
-            const field = getOrMakeField(tdHandle, prop, value);
+            const field = getOrMakeField(
+                debugName,
+                fieldMap,
+                consumer,
+                emitter,
+                prop,
+                value
+            );
             addDependencyToActiveCalculation(field);
             return value;
         },
@@ -201,7 +386,14 @@ export function makeTrackedData<
                 return true;
             }
             const value = Reflect.has(target, prop);
-            const field = getOrMakeField(tdHandle, prop, value);
+            const field = getOrMakeField(
+                debugName,
+                fieldMap,
+                consumer,
+                emitter,
+                prop,
+                value
+            );
             addDependencyToActiveCalculation(field);
             return value;
         },
@@ -213,8 +405,14 @@ export function makeTrackedData<
                 return false; // Prevent writes to owned methods
             }
             const hadProp = Reflect.has(target, prop);
-            const prevValue = Reflect.get(target, prop, receiver);
-            const field = getOrMakeField(tdHandle, prop, prevValue);
+            const field = getOrMakeField(
+                debugName,
+                fieldMap,
+                consumer,
+                emitter,
+                prop,
+                value
+            );
             field.set(value);
             if (!hadProp) {
                 keys.add(prop);
@@ -239,17 +437,23 @@ export function makeTrackedData<
         },
     };
 
-    const revocable = Proxy.revocable<TrackedData<TData, TExtra>>(
-        target as TrackedData<TData, TExtra>,
+    const revocable = Proxy.revocable<TrackedData<TData, TMethods>>(
+        target as TrackedData<TData, TMethods>,
         {
             get: (target, prop, receiver) =>
-                proxyHandler.get(dataAccessor, emitter, prop, receiver),
+                proxyHandler.get(dataAccessor, emitEvent, prop, receiver),
             has: (target, prop) =>
-                proxyHandler.has(dataAccessor, emitter, prop),
+                proxyHandler.has(dataAccessor, emitEvent, prop),
             set: (target, prop, value, receiver) =>
-                proxyHandler.set(dataAccessor, emitter, prop, value, receiver),
+                proxyHandler.set(
+                    dataAccessor,
+                    emitEvent,
+                    prop,
+                    value,
+                    receiver
+                ),
             deleteProperty: (target, prop) =>
-                proxyHandler.delete(dataAccessor, emitter, prop),
+                proxyHandler.delete(dataAccessor, emitEvent, prop),
             ownKeys: () => {
                 const keys = tdHandle.keys;
                 tdHandle.keysField.get(); // force a read to add a dependency on keys
@@ -259,7 +463,7 @@ export function makeTrackedData<
     );
     const tdHandle: TrackedDataHandle<
         TData,
-        TExtra,
+        TMethods,
         TEmitEvent,
         TConsumeEvent
     > = {
@@ -269,9 +473,8 @@ export function makeTrackedData<
         subscribe: modelSubscribe,
         target,
         revocable,
-        [SymDebugName]: debugName ?? 'm',
-        [SymRefcount]: 1,
-        [SymDestroy]: modelDestroy,
+        emitter,
+        consumer,
     };
     tdHandleMap.set(target, tdHandle);
     tdHandleMap.set(revocable.proxy, tdHandle);
@@ -279,23 +482,19 @@ export function makeTrackedData<
 }
 
 function getOrMakeField(
-    tdHandle: TrackedDataHandle<any, any, any, any>,
+    debugPrefix: string,
+    fieldMap: FieldMap,
+    consumer: null | SubscriptionConsumer<any, any, any>,
+    emitter: SubscriptionEmitter<any>,
     prop: string,
     value: any
 ) {
-    const fieldMap = tdHandle.fieldMap;
     let field = fieldMap.get(prop);
     if (!field) {
-        field = makeField(`${tdHandle[SymDebugName]}:${prop}`, value);
-        const subscriptionConsumer = tdHandle.consumer;
-        if (subscriptionConsumer) {
-            addSoftEdge(subscriptionConsumer, field);
-        }
-        const subscriptionEmitter = tdHandle.emitter;
-        if (subscriptionEmitter) {
-            addSoftEdge(field, subscriptionEmitter);
-        }
+        field = makeField(`${debugPrefix}:${prop}`, value);
         fieldMap.set(prop, field);
+        consumer?.addField(field);
+        emitter.addField(field);
     }
     return field;
 }
@@ -305,81 +504,11 @@ function modelSubscribe<TEmitEvent, TConsumeEvent>(
     handler: SubscribeHandler<TEmitEvent>,
     receiver: Processable
 ): TrackedDataUnsubscribe {
-    if (!this.emitter) {
-        this.emitter = {
-            subscribers: [],
-            subscriberOffset: [],
-            events: [],
-            [SymDebugName]: `subemit:${this[SymDebugName]}`,
-            [SymRecalculate]: subscriptionEmitterFlush,
-        };
-
-        addVertex(this.emitter);
-        for (const field of this.fieldMap.values()) {
-            addSoftEdge(field, this.emitter);
-        }
-    }
-    addHardEdge(this.emitter, receiver);
-    this.emitter.subscribers.push(handler);
-    this.emitter.subscriberOffset.push(this.emitter.events.length);
+    retain(this.emitter);
+    const unsubscribe = this.emitter.subscribe(receiver, handler);
 
     return () => {
-        if (!this.emitter) return;
-        const index = this.emitter.subscribers.indexOf(handler);
-        if (index === -1) return;
-        removeHardEdge(this.emitter, receiver);
-        this.emitter.subscribers.slice(index, 1);
-        this.emitter.subscriberOffset.slice(index, 1);
-        if (this.emitter.subscribers.length === 0) {
-            for (const field of this.fieldMap.values()) {
-                removeSoftEdge(field, this.emitter);
-            }
-            removeVertex(this.emitter);
-            delete this.emitter;
-        }
+        unsubscribe();
+        release(this.emitter);
     };
-}
-
-function subscriptionEmitterFlush(this: SubscriptionEmitter<any>) {
-    for (let i = 0; i < this.subscribers.length; ++i) {
-        const subscriber = this.subscribers[i];
-        subscriber(
-            SubscribeHandlerType.EVENTS,
-            this.events,
-            this.subscriberOffset[i]
-        );
-        this.subscriberOffset[i] = 0;
-    }
-    this.events.splice(0, this.events.length);
-    return true;
-}
-
-function modelDestroy(this: TrackedDataHandle<any, any, any, any>) {
-    for (const field of this.fieldMap.values()) {
-        if (this.consumer) {
-            removeSoftEdge(this.consumer, field);
-        }
-        if (this.emitter) {
-            removeSoftEdge(field, this.emitter);
-        }
-        release(field);
-    }
-    this.fieldMap.clear();
-    this.keys.clear();
-    release(this.keysField);
-    if (this.consumer) {
-        this.consumer.unsubscribe?.();
-        unmarkRoot(this.consumer);
-        removeVertex(this.consumer);
-        delete this.consumer;
-    }
-    if (this.emitter) {
-        removeVertex(this.emitter);
-        delete this.emitter;
-    }
-    tdHandleMap.delete(this.revocable.proxy);
-    tdHandleMap.delete(this.target);
-    this.revocable.revoke();
-    this.target = null;
-    this.revocable.proxy = null;
 }

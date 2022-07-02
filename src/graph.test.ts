@@ -662,7 +662,7 @@ suite('Graph Cycles', () => {
                 a: [ProcessAction.RECALCULATE],
                 b: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
                 c: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
-                d: [ProcessAction.INVALIDATE, ProcessAction.INVALIDATE], // invalidated and not recalculated since it is no longer root
+                d: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE], // although no longer root, recalculated as it was a broken cycle
                 e: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
             },
             process()

@@ -2,7 +2,15 @@ import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
 import { collection } from './collection';
 import { Calculation, calc, effect } from './calc';
-import { flush, retain, release, markRoot, reset, subscribe } from './engine';
+import {
+    flush,
+    retain,
+    release,
+    markRoot,
+    unmarkRoot,
+    reset,
+    subscribe,
+} from './engine';
 
 beforeEach(() => {
     reset();
@@ -16,6 +24,7 @@ suite('calc', () => {
             calls.push('call');
             return 1 + 1;
         });
+        retain(calculation);
         const a = calculation();
         const b = calculation();
         assert.is(2, a);
@@ -48,6 +57,7 @@ suite('calc', () => {
         assert.is(1, a);
         assert.is(1, b);
         assert.is(2, c);
+        unmarkRoot(calculation);
         release(calculation);
     });
 
@@ -71,6 +81,7 @@ suite('calc', () => {
         assert.is(1, a);
         assert.is(1, b);
         assert.is(2, c);
+        unmarkRoot(calculation);
         release(calculation);
     });
 
@@ -130,6 +141,7 @@ suite('calc', () => {
 
         assert.is('root', calls[0]);
         assert.is('bottom', calls[3]);
+        unmarkRoot(bottom);
         release(bottom);
     });
 
@@ -183,6 +195,7 @@ suite('calc', () => {
         flush();
         assert.deepEqual(['call a', 'call a', 'call b', 'call b'], calls);
 
+        unmarkRoot(calculation);
         release(calculation);
     });
 });
@@ -204,6 +217,7 @@ suite('effect', () => {
         dependency.value = 2;
         flush();
         assert.deepEqual(['call 1', 'call 2'], calls);
+        unmarkRoot(eff);
         release(eff);
     });
 
@@ -220,6 +234,7 @@ suite('effect', () => {
         dependency.push('hi');
         flush();
         assert.deepEqual(['call 0', 'call 1'], calls);
+        unmarkRoot(eff);
         release(eff);
     });
 
@@ -258,7 +273,9 @@ suite('effect', () => {
             ['cal 0', 'eff 0', 'eff 1', 'cal 2', 'cal 3', 'eff 4'],
             calls
         );
+        unmarkRoot(cal);
         release(cal);
+        unmarkRoot(eff);
         release(eff);
     });
 
@@ -307,6 +324,7 @@ suite('effect', () => {
         flush();
 
         assert.deepEqual(['a', 'b', 'd', 'c', 'd'], calls);
+        unmarkRoot(a);
         release(a);
     });
 
@@ -335,6 +353,7 @@ suite('effect', () => {
 
         const after = d();
         assert.is(after, before);
+        unmarkRoot(d);
         release(d);
     });
 });
@@ -698,6 +717,7 @@ suite('cycles', () => {
             // B --> C --> D
             //
             calculations.a = calc(() => {
+                console.log('CALL a');
                 calls.push('a');
                 if (data.hasCycle > 0) {
                     return 'a' + calculations.c() + 'a';
@@ -706,25 +726,22 @@ suite('cycles', () => {
                 }
             }, 'a');
             calculations.b = calc(() => {
+                console.log('CALL b');
                 calls.push('b');
                 return 'b' + calculations.a() + 'b';
             }, 'b');
             calculations.c = calc(() => {
+                console.log('CALL c');
                 calls.push('c');
                 return 'c' + calculations.b() + 'c';
             }, 'c');
             calculations.d = calc(() => {
+                console.log('CALL d');
                 calls.push('d');
                 const result = 'd' + calculations.c() + 'd';
                 return result;
             }, 'd');
 
-            retain(calculations.a);
-            markRoot(calculations.a);
-            retain(calculations.b);
-            markRoot(calculations.b);
-            retain(calculations.c);
-            markRoot(calculations.c);
             retain(calculations.d);
             markRoot(calculations.d);
             return { calculations, data, calls };
@@ -740,7 +757,11 @@ suite('cycles', () => {
             calls.splice(0, calls.length);
             flush();
 
-            assert.arrayEqualsUnsorted(['a', 'b', 'c', 'd'], calls);
+            // Note: even though we set hasCycle to 1, since it's not yet added to the graph (no active calculation
+            // depends on it), the dirty state is not known. So flushing is a noop
+            assert.arrayEqualsUnsorted([], calls);
+            unmarkRoot(calculations.d);
+            release(calculations.d);
         });
 
         test('cycle nodes called only once when recalculating', () => {

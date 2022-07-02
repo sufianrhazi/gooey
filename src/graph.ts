@@ -323,6 +323,7 @@ export class Graph<TVertex> {
         this.cycleInfoById[id] = undefined;
         this.vertexToId.delete(vertex);
         this.vertexById[id] = undefined;
+        this.toReorderIds.delete(id);
 
         // Mark vertices as available for reuse
         this.availableIds.push(id);
@@ -403,24 +404,74 @@ export class Graph<TVertex> {
             this.vertexBitsById[vertexId] & VERTEX_BIT_ROOT,
             'clearVertexRoot on non-root vertex'
         );
+        this.vertexBitsById[vertexId] &= ~VERTEX_BIT_ROOT;
         this.checkReachesRootRecursive(vertexId);
     }
 
+    private reachesRoot(vertexId: number) {
+        const cycleInfo = this.cycleInfoById[vertexId];
+        if (cycleInfo) {
+            for (const cycleId of cycleInfo.vertexIds) {
+                if (this.vertexBitsById[cycleId] & VERTEX_BIT_REACHES_ROOT) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        return !!(this.vertexBitsById[vertexId] & VERTEX_BIT_REACHES_ROOT);
+    }
+
+    private *cycleAwareAdjacency(
+        vertexId: number,
+        cycleInfo: CycleInfo | undefined,
+        adjacencyList: number[][]
+    ) {
+        if (cycleInfo) {
+            const yielded = new Set<number>();
+            for (const cycleId of cycleInfo.vertexIds) {
+                for (const toId of adjacencyList[cycleId]) {
+                    if (!cycleInfo.vertexIds.has(toId) && !yielded.has(toId)) {
+                        yielded.add(toId);
+                        yield toId;
+                    }
+                }
+            }
+            return;
+        }
+        for (const toId of adjacencyList[vertexId]) {
+            if (toId !== vertexId) yield toId;
+        }
+    }
+
     private checkReachesRootRecursive(vertexId: number) {
-        if ((this.vertexBitsById[vertexId] & VERTEX_BIT_REACHES_ROOT) === 0) {
+        if (!this.reachesRoot(vertexId)) {
             return;
         }
 
-        const reachesRoot = this.forwardAdjacencyEither[vertexId].some(
-            (toId) => this.vertexBitsById[toId] & VERTEX_BIT_REACHES_ROOT
-        );
-        if (reachesRoot) return;
+        const cycleInfo = this.cycleInfoById[vertexId];
+        for (const toId of this.cycleAwareAdjacency(
+            vertexId,
+            cycleInfo,
+            this.forwardAdjacencyEither
+        )) {
+            if (this.reachesRoot(toId)) return;
+        }
 
         // This vertex no longer reaches root; clear
-        this.vertexBitsById[vertexId] &= ~VERTEX_BIT_REACHES_ROOT;
+        if (cycleInfo) {
+            for (const cycleId of cycleInfo.vertexIds) {
+                this.vertexBitsById[cycleId] &= ~VERTEX_BIT_REACHES_ROOT;
+            }
+        } else {
+            this.vertexBitsById[vertexId] &= ~VERTEX_BIT_REACHES_ROOT;
+        }
 
         // Recurse to reverse edges
-        for (const fromId of this.reverseAdjacencyEither[vertexId]) {
+        for (const fromId of this.cycleAwareAdjacency(
+            vertexId,
+            cycleInfo,
+            this.reverseAdjacencyEither
+        )) {
             this.checkReachesRootRecursive(fromId);
         }
     }
@@ -707,6 +758,7 @@ export class Graph<TVertex> {
                 );
             });
         }
+        console.log('PROCESS', vertex, ProcessAction[action]);
         return this._processHandler(vertex, action);
     }
 
@@ -763,6 +815,7 @@ export class Graph<TVertex> {
                     : null;
             if (cycleInfo) {
                 for (const cycleId of cycleInfo.vertexIds) {
+                    if (!this.vertexById[cycleId]) continue; // broken cycles may release vertices in cycle
                     const isInformed =
                         this.vertexBitsById[cycleId] &
                         VERTEX_BIT_CYCLE_INFORMED;
@@ -832,15 +885,18 @@ export class Graph<TVertex> {
                 const toPropagate: Set<number> = new Set();
                 toPropagate.add(vertexId);
                 if (cycleInfo) {
-                    for (const oldVertexId of cycleInfo.vertexIds)
+                    for (const oldVertexId of cycleInfo.vertexIds) {
                         toPropagate.add(oldVertexId);
+                    }
                 }
                 if (newCycleInfo) {
-                    for (const newVertexId of newCycleInfo.vertexIds)
+                    for (const newVertexId of newCycleInfo.vertexIds) {
                         toPropagate.add(newVertexId);
+                    }
                 }
 
                 for (const cycleId of toPropagate) {
+                    if (!this.vertexById[cycleId]) continue; // broken cycles may release vertices in cycle
                     this.propagateDirty(cycleId, toPropagate);
                 }
             }
