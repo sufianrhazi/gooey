@@ -3,9 +3,9 @@ import {
     makeTrackedData,
     getTrackedDataHandle,
     ProxyHandler,
-    SubscriptionEmitter,
 } from './trackeddata';
 import { untracked } from './engine';
+import { ArrayEvent, ArrayEventType, arrayEventFlatMap } from './arrayevent';
 import * as log from './log';
 
 export const CollectionPrototype = {
@@ -45,30 +45,7 @@ export const ViewPrototype = {
 export type Collection<T> = TrackedData<T[], typeof CollectionPrototype>;
 export type View<T> = TrackedData<readonly T[], typeof ViewPrototype>;
 
-export enum CollectionEventType {
-    SPLICE,
-    MOVE,
-    SORT,
-}
-export type CollectionEvent<T> =
-    | {
-          type: CollectionEventType.SPLICE;
-          index: number;
-          count: number;
-          items: readonly T[];
-      }
-    | {
-          type: CollectionEventType.MOVE;
-          from: number;
-          count: number;
-          to: number;
-      }
-    | {
-          type: CollectionEventType.SORT;
-          indexes: readonly number[];
-      };
-
-export const CollectionHandler: ProxyHandler<CollectionEvent<any>> = {
+export const CollectionHandler: ProxyHandler<ArrayEvent<any>> = {
     get: (dataAccessor, emitter, prop, receiver) => {
         return dataAccessor.get(prop, receiver);
     },
@@ -80,7 +57,7 @@ export const CollectionHandler: ProxyHandler<CollectionEvent<any>> = {
             const numericProp = parseInt(prop, 10);
             if (!isNaN(numericProp)) {
                 emitter({
-                    type: CollectionEventType.SPLICE,
+                    type: ArrayEventType.SPLICE,
                     index: numericProp,
                     count: 1,
                     items: [value],
@@ -94,7 +71,7 @@ export const CollectionHandler: ProxyHandler<CollectionEvent<any>> = {
     },
 };
 
-export const ViewHandler: ProxyHandler<CollectionEvent<any>> = {
+export const ViewHandler: ProxyHandler<ArrayEvent<any>> = {
     get: (dataAccessor, emitter, prop, receiver) => {
         return dataAccessor.get(prop, receiver);
     },
@@ -113,8 +90,8 @@ export function collection<T>(items: T[], debugName?: string): Collection<T> {
     const handle = makeTrackedData<
         T[],
         typeof CollectionPrototype,
-        CollectionEvent<T>,
-        CollectionEvent<T>
+        ArrayEvent<T>,
+        ArrayEvent<T>
     >(items, CollectionHandler, CollectionPrototype, null, null, debugName);
     return handle.revocable.proxy;
 }
@@ -165,7 +142,7 @@ function collectionSplice<T>(
         field?.set(endLength);
     }
     tdHandle.emitter.addEvent({
-        type: CollectionEventType.SPLICE,
+        type: ArrayEventType.SPLICE,
         index,
         count,
         items,
@@ -241,7 +218,7 @@ function collectionMoveSlice<T>(
     const removed = tdHandle.target.splice(fromIndex, count);
     tdHandle.target.splice(toIndex, 0, ...removed);
     tdHandle.emitter.addEvent({
-        type: CollectionEventType.MOVE,
+        type: ArrayEventType.MOVE,
         from: fromIndex,
         count,
         to: toIndex,
@@ -279,7 +256,8 @@ function collectionSort<T>(
     tdHandle.target.sort(sortFn);
     if (indexes) {
         tdHandle.emitter.addEvent({
-            type: CollectionEventType.SORT,
+            type: ArrayEventType.SORT,
+            from: 0,
             indexes,
         });
     }
@@ -339,118 +317,17 @@ function makeFlatMapView<T, V>(
     const derivedCollection = makeTrackedData<
         readonly V[],
         typeof ViewPrototype,
-        CollectionEvent<V>,
-        CollectionEvent<T>
+        ArrayEvent<V>,
+        ArrayEvent<T>
     >(
         initialTransform,
         ViewHandler,
         ViewPrototype,
         sourceTDHandle.emitter,
-        (target, event, emitter) =>
-            flatMapHandler(
-                slotSizes,
-                flatMap,
-                initialTransform,
-                event,
-                emitter
-            ),
+        (target, event) =>
+            arrayEventFlatMap(slotSizes, flatMap, initialTransform, event),
         debugName ?? 'derived'
     );
 
     return derivedCollection.revocable.proxy;
-}
-
-function flatMapHandler<T, V>(
-    slotSizes: number[],
-    flatMap: (item: T) => readonly V[],
-    target: V[],
-    event: CollectionEvent<T>,
-    emitter: SubscriptionEmitter<CollectionEvent<V>>
-) {
-    switch (event.type) {
-        case CollectionEventType.SPLICE: {
-            let fromIndex = 0;
-            let count = 0;
-            for (let i = 0; i < event.index; ++i) {
-                fromIndex += i < slotSizes.length ? slotSizes[i] : 0;
-            }
-            for (let i = 0; i < event.count; ++i) {
-                const slotIndex = event.index + i;
-                count +=
-                    slotIndex < slotSizes.length ? slotSizes[slotIndex] : 0;
-            }
-            const slotItems: number[] = [];
-            const items: V[] = [];
-            for (const item of event.items) {
-                const slot = flatMap(item);
-                slotItems.push(slot.length);
-                items.push(...slot);
-            }
-            target.splice(fromIndex, count, ...items);
-            slotSizes.splice(event.index, event.count, ...slotItems);
-            emitter.addEvent({
-                type: CollectionEventType.SPLICE,
-                index: fromIndex,
-                count,
-                items,
-            });
-            break;
-        }
-        case CollectionEventType.SORT: {
-            const slotStartIndex: number[] = [];
-            let realIndex = 0;
-            for (const slotSize of slotSizes) {
-                slotStartIndex.push(realIndex);
-                realIndex += slotSize;
-            }
-            const copiedSlotSizes = slotSizes.slice();
-            const copiedSource = target.slice();
-            const newIndexes: number[] = [];
-            let destSlotIndex = 0;
-            let destIndex = 0;
-            for (const sourceIndex of event.indexes) {
-                const realCount = copiedSlotSizes[sourceIndex];
-                const realIndex = slotStartIndex[sourceIndex];
-                for (let i = 0; i < realCount; ++i) {
-                    newIndexes.push(realIndex + i);
-                    target[destIndex] = copiedSource[realIndex + i];
-                    destIndex += 1;
-                }
-                slotSizes[destSlotIndex] = copiedSlotSizes[sourceIndex];
-                destSlotIndex += 1;
-            }
-            emitter.addEvent({
-                type: CollectionEventType.SORT,
-                indexes: newIndexes,
-            });
-            break;
-        }
-        case CollectionEventType.MOVE: {
-            let fromIndex = 0;
-            let toIndex = 0;
-            let count = 0;
-            for (let i = 0; i < event.from; ++i) {
-                fromIndex += slotSizes[i];
-            }
-            for (let i = 0; i < event.count; ++i) {
-                count += slotSizes[event.from + i];
-            }
-            const movedSlots = slotSizes.splice(event.from, event.count);
-            const movedItems = target.splice(fromIndex, count);
-            for (let i = 0; i < event.to; ++i) {
-                toIndex += slotSizes[i];
-            }
-            slotSizes.splice(event.to, 0, ...movedSlots);
-            target.splice(toIndex, 0, ...movedItems);
-            emitter.addEvent({
-                type: CollectionEventType.MOVE,
-                from: fromIndex,
-                count,
-                to: toIndex,
-            });
-            break;
-        }
-        default:
-            log.assertExhausted(event);
-    }
 }

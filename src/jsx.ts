@@ -1,5 +1,6 @@
 import { Calculation } from './calc';
 import { Collection, View } from './collection';
+import { RenderNode } from './rendernode';
 
 /**
  * The core type that can be used as a child or root of a JSX expression

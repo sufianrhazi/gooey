@@ -121,9 +121,8 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
     private target: TData;
     private handler: (
         target: TData,
-        event: TConsumeEvent,
-        emitter: SubscriptionEmitter<TEmitEvent>
-    ) => void;
+        event: TConsumeEvent
+    ) => IterableIterator<TEmitEvent>;
     private events: TConsumeEvent[];
     private fieldMap: FieldMap;
     private isActive: boolean;
@@ -136,7 +135,9 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
 
     [SymRecalculate]() {
         for (const event of this.events) {
-            this.handler(this.target, event, this.transformEmitter);
+            for (const emitEvent of this.handler(this.target, event)) {
+                this.transformEmitter.addEvent(emitEvent);
+            }
         }
         this.events.splice(0, this.events.length);
         return false;
@@ -182,9 +183,8 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
         transformEmitter: SubscriptionEmitter<TEmitEvent>,
         handler: (
             target: TData,
-            event: TConsumeEvent,
-            emitter: SubscriptionEmitter<TEmitEvent>
-        ) => void,
+            event: TConsumeEvent
+        ) => IterableIterator<TEmitEvent>,
         debugName: string
     ) {
         this.target = target;
@@ -319,9 +319,8 @@ export function makeTrackedData<
         | null
         | ((
               target: TData,
-              event: TConsumeEvent,
-              emitter: SubscriptionEmitter<TEmitEvent>
-          ) => void),
+              event: TConsumeEvent
+          ) => IterableIterator<TEmitEvent>),
     _debugName?: string
 ): TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent> {
     const debugName = _debugName ?? 'trackeddata';

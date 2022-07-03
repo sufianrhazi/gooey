@@ -8,11 +8,10 @@ import {
 } from './trackeddata';
 import {
     Collection,
-    CollectionEvent,
-    CollectionEventType,
     CollectionHandler,
     CollectionPrototype,
 } from './collection';
+import { ArrayEvent, ArrayEventType } from './arrayevent';
 
 // Note: this is unused in models, since models do not have methods
 const ModelPrototype = {};
@@ -75,7 +74,7 @@ model.keys = function modelKeys<T extends {}>(
     const derivedCollection = makeTrackedData<
         string[],
         typeof CollectionPrototype,
-        CollectionEvent<string>,
+        ArrayEvent<string>,
         ModelEvent
     >(
         initialKeys,
@@ -89,34 +88,33 @@ model.keys = function modelKeys<T extends {}>(
     return derivedCollection.revocable.proxy;
 };
 
-function keysHandler(
+function* keysHandler(
     target: string[],
-    event: ModelEvent,
-    emitter: SubscriptionEmitter<CollectionEvent<string>>
-) {
+    event: ModelEvent
+): IterableIterator<ArrayEvent<string>> {
     switch (event.type) {
         case ModelEventType.DEL: {
             const index = target.indexOf(event.prop);
             if (index !== -1) {
                 target.splice(index, 1);
-                emitter.addEvent({
-                    type: CollectionEventType.SPLICE,
+                yield {
+                    type: ArrayEventType.SPLICE,
                     index,
                     count: 1,
                     items: [],
-                });
+                };
             }
             break;
         }
         case ModelEventType.ADD: {
             const length = target.length;
             target.push(event.prop);
-            emitter.addEvent({
-                type: CollectionEventType.SPLICE,
+            yield {
+                type: ArrayEventType.SPLICE,
                 index: length,
                 count: 0,
                 items: [event.prop],
-            });
+            };
             break;
         }
         case ModelEventType.SET:

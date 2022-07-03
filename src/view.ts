@@ -1,3 +1,5 @@
+import { ElementTypeMapping } from './jsx';
+
 export function createElement(type: string | Function) {}
 createElement.Fragment = Fragment;
 
