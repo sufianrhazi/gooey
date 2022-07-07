@@ -3,12 +3,15 @@ import {
     makeTrackedData,
     getTrackedDataHandle,
     ProxyHandler,
+    SubscribeHandler,
 } from './trackeddata';
-import { untracked } from './engine';
+import { untracked, retain, release, markRoot } from './engine';
 import { ArrayEvent, ArrayEventType, arrayEventFlatMap } from './arrayevent';
 import * as log from './log';
 
 export const CollectionPrototype = {
+    _type: 'collection',
+
     // Array mutation values
     splice: collectionSplice,
     push: collectionPush,
@@ -16,6 +19,7 @@ export const CollectionPrototype = {
     shift: collectionShift,
     unshift: collectionUnshift,
     sort: collectionSort,
+    reverse: collectionReverse,
 
     // Handy API values
     reject: collectionReject,
@@ -25,9 +29,12 @@ export const CollectionPrototype = {
     mapView,
     filterView,
     flatMapView,
+    subscribe: collectionSubscribe,
 } as const;
 
 export const ViewPrototype = {
+    _type: 'view',
+
     // Array mutation values
     splice: viewSplice,
     push: viewPush,
@@ -35,15 +42,25 @@ export const ViewPrototype = {
     shift: viewShift,
     unshift: viewUnshift,
     sort: viewSort,
+    reverse: viewReverse,
 
     // View production
     mapView,
     filterView,
     flatMapView,
+    subscribe: collectionSubscribe,
 } as const;
 
 export type Collection<T> = TrackedData<T[], typeof CollectionPrototype>;
 export type View<T> = TrackedData<readonly T[], typeof ViewPrototype>;
+
+export function isCollection(val: any): val is Collection<any> {
+    return val && val._type === 'collection';
+}
+
+export function isView(val: any): val is View<any> {
+    return val && val._type === 'view';
+}
 
 export const CollectionHandler: ProxyHandler<ArrayEvent<any>> = {
     get: (dataAccessor, emitter, prop, receiver) => {
@@ -225,7 +242,30 @@ function collectionMoveSlice<T>(
     });
 }
 
+function collectionSubscribe<T>(
+    this: Collection<T> | View<T>,
+    handler: (event: ArrayEvent<T>) => void
+) {
+    console.log('SUFIAN collectionSubscribe', this);
+    const tdHandle = getTrackedDataHandle(this);
+    log.assert(tdHandle, 'subscribe missing tdHandle');
+    retain(tdHandle.emitter);
+    const unsubscribe = tdHandle.emitter.subscribe((events, offset) => {
+        for (let i = offset; i < events.length; ++i) {
+            handler(events[i]);
+        }
+    });
+    return () => {
+        unsubscribe();
+        release(tdHandle.emitter);
+    };
+}
+
 function viewSort<T>(this: Collection<T>, sortFn?: (a: T, b: T) => number) {
+    log.fail('Cannot mutate readonly view');
+}
+
+function viewReverse<T>(this: Collection<T>) {
     log.fail('Cannot mutate readonly view');
 }
 
@@ -255,6 +295,30 @@ function collectionSort<T>(
     }
     tdHandle.target.sort(sortFn);
     if (indexes) {
+        tdHandle.emitter.addEvent({
+            type: ArrayEventType.SORT,
+            from: 0,
+            indexes,
+        });
+    }
+
+    // Invalidate sorted fields
+    for (let i = 0; i < tdHandle.target.length; ++i) {
+        const field = tdHandle.fieldMap.get(i.toString());
+        field?.set(tdHandle.target[i]);
+    }
+    return this;
+}
+
+function collectionReverse<T>(this: Collection<T>) {
+    const tdHandle = getTrackedDataHandle(this);
+    log.assert(tdHandle, 'collectionReverse missing tdHandle');
+    tdHandle.target.reverse();
+    if (tdHandle.emitter) {
+        const indexes: number[] = [];
+        for (let i = tdHandle.target.length - 1; i >= 0; --i) {
+            indexes.push(i);
+        }
         tdHandle.emitter.addEvent({
             type: ArrayEventType.SORT,
             from: 0,

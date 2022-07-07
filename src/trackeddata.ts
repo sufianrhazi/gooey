@@ -24,6 +24,10 @@ import { field as makeField, Field } from './field';
 
 type FieldMap = Map<string, Field<any>>;
 
+export interface SubscribeHandler<TEmitEvent> {
+    (events: TEmitEvent[], index: number): void;
+}
+
 export class SubscriptionEmitter<TEmitEvent>
     implements Processable, Retainable
 {
@@ -101,16 +105,20 @@ export class SubscriptionEmitter<TEmitEvent>
         }
     }
 
-    subscribe(receiver: Processable, handler: SubscribeHandler<TEmitEvent>) {
-        addHardEdge(this, receiver);
+    subscribe(handler: SubscribeHandler<TEmitEvent>) {
+        if (this.subscribers.length === 0) {
+            markRoot(this);
+        }
         this.subscribers.push(handler);
         this.subscriberOffset.push(this.events.length);
         return () => {
             const index = this.subscribers.indexOf(handler);
             if (index === -1) return;
-            this.subscribers.slice(index, 1);
-            this.subscriberOffset.slice(index, 1);
-            removeHardEdge(this, receiver);
+            this.subscribers.splice(index, 1);
+            this.subscriberOffset.splice(index, 1);
+            if (this.subscribers.length === 0) {
+                unmarkRoot(this);
+            }
         };
     }
 }
@@ -154,18 +162,19 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
             retain(field);
             addSoftEdge(this, field);
         }
-        this.unsubscribe = this.sourceEmitter.subscribe(
-            this,
-            (events, offset) => {
-                for (let i = offset; i < events.length; ++i) {
-                    this.addEvent(events[i]);
-                }
+        addHardEdge(this.sourceEmitter, this);
+        this.unsubscribe = this.sourceEmitter.subscribe((events, offset) => {
+            for (let i = offset; i < events.length; ++i) {
+                this.addEvent(events[i]);
             }
-        );
+        });
     }
 
     [SymDead]() {
-        this.unsubscribe?.();
+        if (this.unsubscribe) {
+            this.unsubscribe();
+            removeHardEdge(this.sourceEmitter, this);
+        }
         this.events.splice(0, this.events.length);
         for (const field of this.fieldMap.values()) {
             removeSoftEdge(this, field);
@@ -215,11 +224,6 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
     }
 }
 
-interface SubscribeHandler<TEmitEvent> {
-    (events: TEmitEvent[], index: number): void;
-}
-type TrackedDataUnsubscribe = () => void;
-
 export enum EventEmitterType {
     ADD,
     SET,
@@ -243,10 +247,6 @@ export interface EventEmitter<TEmitEvent> {
 interface TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent> {
     fieldMap: FieldMap;
     keys: Set<string>;
-    subscribe: (
-        handler: SubscribeHandler<TEmitEvent>,
-        receiver: Processable
-    ) => TrackedDataUnsubscribe;
     keysField: Field<number>;
     emitter: SubscriptionEmitter<TEmitEvent>;
     consumer: null | SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>;
@@ -469,7 +469,6 @@ export function makeTrackedData<
         fieldMap: fieldMap,
         keysField: keysField,
         keys: keys,
-        subscribe: modelSubscribe,
         target,
         revocable,
         emitter,
@@ -496,18 +495,4 @@ function getOrMakeField(
         emitter.addField(field);
     }
     return field;
-}
-
-function modelSubscribe<TEmitEvent, TConsumeEvent>(
-    this: TrackedDataHandle<any, any, TEmitEvent, TConsumeEvent>,
-    handler: SubscribeHandler<TEmitEvent>,
-    receiver: Processable
-): TrackedDataUnsubscribe {
-    retain(this.emitter);
-    const unsubscribe = this.emitter.subscribe(receiver, handler);
-
-    return () => {
-        unsubscribe();
-        release(this.emitter);
-    };
 }

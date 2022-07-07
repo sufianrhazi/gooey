@@ -1,14 +1,17 @@
+import * as log from './log';
+
 export enum ArrayEventType {
     SPLICE,
     MOVE,
     SORT,
 }
+
 export type ArrayEvent<T> =
     | {
           type: ArrayEventType.SPLICE;
           index: number;
           count: number;
-          items: readonly T[];
+          items?: T[] | undefined;
       }
     | {
           type: ArrayEventType.MOVE;
@@ -19,8 +22,67 @@ export type ArrayEvent<T> =
     | {
           type: ArrayEventType.SORT;
           from: number;
-          indexes: readonly number[];
+          indexes: number[];
       };
+
+export function shiftEvent<T>(
+    slotSizes: number[],
+    slotIndex: number,
+    event: ArrayEvent<T>
+) {
+    let shiftAmount = 0;
+    for (let i = 0; i < slotIndex; ++i) {
+        shiftAmount += slotSizes[i];
+    }
+    switch (event.type) {
+        case ArrayEventType.SPLICE: {
+            slotSizes[slotIndex] += (event.items?.length ?? 0) - event.count;
+            event.index += shiftAmount;
+            break;
+        }
+        case ArrayEventType.SORT: {
+            event.from += shiftAmount;
+            for (let i = 0; i < event.indexes.length; ++i) {
+                event.indexes[i] += shiftAmount;
+            }
+            break;
+        }
+        case ArrayEventType.MOVE: {
+            event.from += shiftAmount;
+            event.to += shiftAmount;
+            break;
+        }
+        default:
+            log.assertExhausted(event);
+    }
+}
+
+export function applyEvent<T>(target: T[], event: ArrayEvent<T>) {
+    switch (event.type) {
+        case ArrayEventType.SPLICE: {
+            if (event.items) {
+                target.splice(event.index, event.count, ...event.items);
+            } else {
+                target.splice(event.index, event.count);
+            }
+            break;
+        }
+        case ArrayEventType.SORT: {
+            const duped = target.slice(event.from);
+            for (let i = 0; i < event.indexes.length; ++i) {
+                target[i] = duped[event.indexes[i] - event.from];
+            }
+            break;
+        }
+        case ArrayEventType.MOVE: {
+            const slice = target.splice(event.from, event.count);
+            target.splice(event.to, 0, ...slice);
+            break;
+        }
+        default:
+            log.assertExhausted(event);
+    }
+}
 
 export function* arrayEventFlatMap<T, V>(
     slotSizes: number[],
@@ -42,10 +104,12 @@ export function* arrayEventFlatMap<T, V>(
             }
             const slotItems: number[] = [];
             const items: V[] = [];
-            for (const item of event.items) {
-                const slot = flatMap(item);
-                slotItems.push(slot.length);
-                items.push(...slot);
+            if (event.items) {
+                for (const item of event.items) {
+                    const slot = flatMap(item);
+                    slotItems.push(slot.length);
+                    items.push(...slot);
+                }
             }
             target.splice(fromIndex, count, ...items);
             slotSizes.splice(event.index, event.count, ...slotItems);

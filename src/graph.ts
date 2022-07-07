@@ -899,6 +899,8 @@ export class Graph<TVertex> {
                     if (!this.vertexById[cycleId]) continue; // broken cycles may release vertices in cycle
                     this.propagateDirty(cycleId, toPropagate);
                 }
+            } else {
+                this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
             }
         }
 

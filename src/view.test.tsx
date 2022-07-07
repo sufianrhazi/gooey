@@ -733,12 +733,13 @@ suite('mount components', () => {
 
         const Child: Component<{ name: string }> = (
             { name },
-            { getContext }
+            { onContext }
         ) => {
-            const contextValue = getContext(Context);
+            const state = model({ value: 'wut' });
+            onContext(Context, (value) => (state.value = value));
             return (
                 <p>
-                    {contextValue}:{name}
+                    {calc(() => state.value)}:{name}
                 </p>
             );
         };
@@ -755,6 +756,8 @@ suite('mount components', () => {
                 )}
             </Parent>
         );
+
+        flush();
 
         assert.deepEqual(
             [
@@ -1057,6 +1060,7 @@ suite('mount collection mapped view', () => {
                 ))}
             </div>
         );
+        flush();
         const origSet: Element[] = [].slice.call(
             testRoot.querySelectorAll('[data-item]')
         );
@@ -1224,7 +1228,7 @@ suite('mount collection mapped view', () => {
         origSet[3].setAttribute('tagged', 'yes 3');
         origSet[4].setAttribute('tagged', 'yes 4');
         origSet[5].setAttribute('tagged', 'yes 5');
-        items.moveSlice(1, 2, 5);
+        items.moveSlice(1, 2, 3);
         // one four two three five
         flush();
         const newSet: Element[] = [].slice.call(
@@ -1556,18 +1560,32 @@ suite('createContext', () => {
         const CtxB = createContext<number>(42);
         const MyComponent: Component<{ id: string }> = (
             { id },
-            { getContext }
-        ) => (
-            <div id={id}>
-                CtxA={getContext(CtxA)}, CtxB={getContext(CtxB)}
-            </div>
-        );
+            { onContext }
+        ) => {
+            const state = model({
+                a: 'boop',
+                b: 0,
+            });
+            onContext(CtxA, (a) => {
+                state.a = a;
+            });
+            onContext(CtxB, (b) => {
+                state.b = b;
+            });
+
+            return (
+                <div id={id}>
+                    CtxA={calc(() => state.a)}, CtxB={calc(() => state.b)}
+                </div>
+            );
+        };
         mount(
             testRoot,
             <div>
                 <MyComponent id="neither" />
             </div>
         );
+        flush();
         assert.is(
             'CtxA=hello, CtxB=42',
             testRoot.querySelector('#neither')!.textContent
@@ -1579,12 +1597,24 @@ suite('createContext', () => {
         const CtxB = createContext<number>(42);
         const MyComponent: Component<{ id: string }> = (
             { id },
-            { getContext }
-        ) => (
-            <div id={id}>
-                CtxA={getContext(CtxA)}, CtxB={getContext(CtxB)}
-            </div>
-        );
+            { onContext }
+        ) => {
+            const state = model({
+                a: 'boop',
+                b: 0,
+            });
+            onContext(CtxA, (a) => {
+                state.a = a;
+            });
+            onContext(CtxB, (b) => {
+                state.b = b;
+            });
+            return (
+                <div id={id}>
+                    CtxA={calc(() => state.a)}, CtxB={calc(() => state.b)}
+                </div>
+            );
+        };
         mount(
             testRoot,
             <div>
@@ -1600,6 +1630,8 @@ suite('createContext', () => {
                 </CtxB>
             </div>
         );
+
+        flush();
 
         assert.is(
             'CtxA=outer, CtxB=999',
@@ -1978,10 +2010,10 @@ suite('LifecycleObserver component', () => {
         assert.is('remove', nodes[5].event);
     });
 
-    test('with collection children', () => {
+    test.only('with collection children', () => {
         const items = collection(['one', 'two', 'three']);
         const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
-        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const elements: { text: string; event: 'add' | 'remove' }[] = [];
         const unmount = mount(
             testRoot,
             <div>
@@ -1992,7 +2024,7 @@ suite('LifecycleObserver component', () => {
                     elementCallback={(
                         element: Element,
                         event: 'add' | 'remove'
-                    ) => elements.push({ element, event })}
+                    ) => elements.push({ text: element.textContent, event })}
                 >
                     {items.mapView((item) => (
                         <div id={item}>{item}</div>
@@ -2003,32 +2035,27 @@ suite('LifecycleObserver component', () => {
 
         assert.deepEqual(
             ['one:add', 'two:add', 'three:add'],
-            elements.map(
-                (item) =>
-                    `${(item.element as Element).textContent}:${item.event}`
-            )
+            elements.map((item) => `${item.text}:${item.event}`)
         );
 
         items.push('four');
+        console.group('flush push four');
         flush();
+        console.groupEnd();
 
         assert.deepEqual(
             ['one:add', 'two:add', 'three:add', 'four:add'],
-            elements.map(
-                (item) =>
-                    `${(item.element as Element).textContent}:${item.event}`
-            )
+            elements.map((item) => `${item.text}:${item.event}`)
         );
 
         items.shift();
+        console.group('flush shift');
         flush();
+        console.groupEnd();
 
         assert.deepEqual(
             ['one:add', 'two:add', 'three:add', 'four:add', 'one:remove'],
-            elements.map(
-                (item) =>
-                    `${(item.element as Element).textContent}:${item.event}`
-            )
+            elements.map((item) => `${item.text}:${item.event}`)
         );
 
         items.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
@@ -2037,10 +2064,7 @@ suite('LifecycleObserver component', () => {
         // Note: no changes triggered, despite sort order changing
         assert.deepEqual(
             ['one:add', 'two:add', 'three:add', 'four:add', 'one:remove'],
-            elements.map(
-                (item) =>
-                    `${(item.element as Element).textContent}:${item.event}`
-            )
+            elements.map((item) => `${item.text}:${item.event}`)
         );
 
         unmount();
@@ -2057,10 +2081,7 @@ suite('LifecycleObserver component', () => {
                 'three:remove',
                 'two:remove',
             ],
-            elements.map(
-                (item) =>
-                    `${(item.element as Element).textContent}:${item.event}`
-            )
+            elements.map((item) => `${item.text}:${item.event}`)
         );
     });
 });

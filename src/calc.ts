@@ -176,10 +176,23 @@ export enum CalculationErrorType {
     EXCEPTION,
 }
 
+const CalculationSymbol = Symbol('calculation');
+const CalculationUnsubscribeSymbol = Symbol('calculationUnsubscribe');
+
+type CalcSubscriptionHandler<T> = (val: T) => void;
+interface CalcUnsubscribe<T> {
+    (): void;
+    _type: typeof CalculationUnsubscribeSymbol;
+    calculation: Calculation<T>;
+}
+
 export interface Calculation<T> extends Retainable, Processable {
     (): T;
     onError: (handler: (errorType: CalculationErrorType) => T) => this;
     setCmp: (eq: (a: T, b: T) => boolean) => this;
+    onRecalc: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
+    _subscriptions?: Set<CalcSubscriptionHandler<T>>;
+    _type: typeof CalculationSymbol;
     _fn: () => T;
     _eq: (a: T, b: T) => boolean;
     _errorHandler?: (errorType: CalculationErrorType) => T;
@@ -188,6 +201,14 @@ export interface Calculation<T> extends Retainable, Processable {
     _retained?: Set<Processable & Retainable>;
     _val?: T;
     _error?: any;
+}
+
+export function isCalculation(val: any): val is Calculation<unknown> {
+    return val && val._type === CalculationSymbol;
+}
+
+export function isCalcUnsubscribe(val: any): val is CalcUnsubscribe<unknown> {
+    return val && val._type === CalculationUnsubscribeSymbol;
 }
 
 function strictEqual<T>(a: T, b: T) {
@@ -205,6 +226,24 @@ function calcSetError<T>(
 function calcSetCmp<T>(this: Calculation<T>, eq: (a: T, b: T) => boolean) {
     this._eq = eq;
     return this;
+}
+
+function calcOnRecalc<T>(
+    this: Calculation<T>,
+    handler: CalcSubscriptionHandler<T>
+): CalcUnsubscribe<T> {
+    if (!this._subscriptions) {
+        this._subscriptions = new Set();
+    }
+    this._subscriptions.add(handler);
+    const unsubscribe = () => {
+        this._subscriptions?.delete(handler);
+    };
+    const unsubscribeData = {
+        _type: CalculationUnsubscribeSymbol,
+        calculation: this,
+    } as const;
+    return Object.assign(unsubscribe, unsubscribeData);
 }
 
 class CycleError extends Error {
@@ -402,6 +441,11 @@ function calculationRecalculate<T>(this: Calculation<T>) {
                 this._val = priorResult;
                 return false;
             }
+            if (this._subscriptions) {
+                for (const subscription of this._subscriptions) {
+                    subscription(newResult);
+                }
+            }
             return true;
         }
         default:
@@ -460,6 +504,11 @@ function calculationCycle<T>(this: Calculation<T>) {
                 this._val = priorResult;
                 return false;
             }
+            if (this._subscriptions) {
+                for (const subscription of this._subscriptions) {
+                    subscription(this._val);
+                }
+            }
             return true;
         }
         default:
@@ -468,61 +517,67 @@ function calculationCycle<T>(this: Calculation<T>) {
 }
 
 export function calc<T>(fn: () => T, debugName?: string) {
+    const calculationData = {
+        // Dynamic members
+        _fn: fn,
+        _isEffect: false,
+        _state: CalculationState.DEAD,
+        _call: calculationCall,
+        _eq: strictEqual,
+
+        // Statically defined
+        _type: CalculationSymbol,
+        onError: calcSetError,
+        setCmp: calcSetCmp,
+        onRecalc: calcOnRecalc,
+
+        // Retainable
+        [SymAlive]: calculationAlive,
+        [SymDead]: calculationDead,
+        [SymRefcount]: 0,
+
+        // Processable
+        [SymDebugName]: debugName ?? fn.name,
+        [SymRecalculate]: calculationRecalculate,
+        [SymCycle]: calculationCycle,
+        [SymInvalidate]: calculationInvalidate,
+    } as const;
     const calculation: Calculation<T> = Object.assign(
         () => calculationCall(calculation),
-        {
-            // Dynamic members
-            _fn: fn,
-            _isEffect: false,
-            _state: CalculationState.DEAD,
-            _call: calculationCall,
-            _eq: strictEqual,
-
-            // Statically defined
-            onError: calcSetError,
-            setCmp: calcSetCmp,
-
-            // Retainable
-            [SymAlive]: calculationAlive,
-            [SymDead]: calculationDead,
-            [SymRefcount]: 0,
-
-            // Processable
-            [SymDebugName]: debugName ?? fn.name,
-            [SymRecalculate]: calculationRecalculate,
-            [SymCycle]: calculationCycle,
-            [SymInvalidate]: calculationInvalidate,
-        }
+        calculationData
     );
     return calculation;
 }
 
 export function effect<T>(fn: () => T, debugName?: string) {
+    const calculationData = {
+        // Dynamic members
+        _fn: fn,
+        _isEffect: true,
+        _state: CalculationState.DEAD,
+        _call: calculationCall,
+        _eq: strictEqual,
+
+        // Statically defined
+        _type: CalculationSymbol,
+        onError: calcSetError,
+        setCmp: calcSetCmp,
+        onRecalc: calcOnRecalc,
+
+        // Retainable
+        [SymAlive]: calculationAlive,
+        [SymDead]: calculationDead,
+        [SymRefcount]: 0,
+
+        // Processable
+        [SymDebugName]: debugName ?? fn.name,
+        [SymRecalculate]: calculationRecalculate,
+        [SymCycle]: calculationCycle,
+        [SymInvalidate]: calculationInvalidate,
+    } as const;
     const calculation: Calculation<T> = Object.assign(
         () => calculationCall(calculation),
-        {
-            // Dynamic members
-            _fn: fn,
-            _isEffect: true,
-            _state: CalculationState.DEAD,
-            _call: calculationCall,
-            _eq: strictEqual,
-
-            // Statically defined
-            onError: calcSetError,
-            setCmp: calcSetCmp,
-
-            // Retainable
-            [SymAlive]: calculationAlive,
-            [SymDead]: calculationDead,
-            [SymRefcount]: 0,
-
-            // Processable
-            [SymDebugName]: debugName ?? fn.name,
-            [SymRecalculate]: calculationRecalculate,
-            [SymCycle]: calculationCycle,
-            [SymInvalidate]: calculationInvalidate,
-        }
+        calculationData
     );
     return calculation;
 }
