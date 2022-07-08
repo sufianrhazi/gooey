@@ -5,6 +5,7 @@ import Gooey, {
     collection,
     flush,
     model,
+    Model,
     mount,
     reset,
     createContext,
@@ -238,12 +239,30 @@ suite('mount calculations', () => {
         );
     });
 
+    test('child calculations can unmount', () => {
+        const unmount = mount(
+            testRoot,
+            <div id="ok">{calc(() => 'hello', 'calctest')}</div>
+        );
+        unmount();
+        assert.is('', testRoot.innerHTML);
+    });
+
     test('renders attribute calculations as their raw value', () => {
         mount(testRoot, <div id="ok" data-whatever={calc(() => 'hello')} />);
         assert.deepEqual(
             testRoot.querySelector('#ok')!.getAttribute('data-whatever'),
             'hello'
         );
+    });
+
+    test('attribute calculations can unmount', () => {
+        const unmount = mount(
+            testRoot,
+            <div id="ok" data-whatever={calc(() => 'hello')} />
+        );
+        unmount();
+        assert.is('', testRoot.innerHTML);
     });
 
     test('rerenders child calculations on flush', () => {
@@ -314,6 +333,25 @@ suite('mount components', () => {
         );
         mount(testRoot, <Greet name="world!" />);
         assert.is(testRoot.innerHTML, '<p>Hello world!</p>');
+    });
+
+    test('components can unmount', () => {
+        const Greet: Component<{ name: string }> = ({ name }) => (
+            <p>Hello {name}</p>
+        );
+        const unmount = mount(testRoot, <Greet name="world!" />);
+        unmount();
+        assert.is(testRoot.innerHTML, '');
+    });
+
+    test('components with calculations can unmount', () => {
+        const Greet: Component<{ name: string }> = ({ name }) => {
+            const state = model({ name });
+            return <p>Hello {calc(() => state.name)}</p>;
+        };
+        const unmount = mount(testRoot, <Greet name="world!" />);
+        unmount();
+        assert.is(testRoot.innerHTML, '');
     });
 
     test('components can have calculations', () => {
@@ -1107,6 +1145,41 @@ suite('mount collection mapped view', () => {
         items.push('baz');
         flush();
         assert.is('foobarbazfoobarbaz', testRoot.textContent);
+    });
+
+    test('collection can unmount', () => {
+        const items = collection<string>(['hi']);
+        const unmount = mount(
+            testRoot,
+            <div>{calc(() => items.mapView((item) => <b>{item}</b>))}</div>
+        );
+        unmount();
+    });
+
+    test('add 1 item to end of 10 flat items', async () => {
+        const Item = ({ id }: { id: number }) => (
+            <a>
+                {calc(() => (
+                    <b>{id}</b>
+                ))}
+            </a>
+        );
+        const items = collection<Model<{ id: number }>>([], 'coll');
+        const Items = () => (
+            <div>
+                {calc(() => items.mapView((item) => <Item id={item.id} />))}
+            </div>
+        );
+
+        const unmount = mount(testRoot, <Items />);
+        flush();
+
+        items.push(model({ id: 1 }, 'new'));
+        flush();
+        items.pop();
+        flush();
+
+        unmount();
     });
 
     test('collection can remove items from start', () => {

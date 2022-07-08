@@ -702,6 +702,7 @@ export class CalculationRenderNode implements RenderNode {
     private context: ContextMap | null;
     private isMounted: boolean;
     private emitter: NodeEmitter | null;
+    private isCalculatedPendingAdd: boolean;
 
     constructor(calculation: Calculation<any>, debugName?: string) {
         this.calculation = calculation;
@@ -710,6 +711,7 @@ export class CalculationRenderNode implements RenderNode {
         this.context = null;
         this.isMounted = false;
         this.emitter = null;
+        this.isCalculatedPendingAdd = false;
 
         this[SymDebugName] =
             debugName ?? `rendercalc:${calculation[SymDebugName]}`;
@@ -723,27 +725,37 @@ export class CalculationRenderNode implements RenderNode {
     }
 
     attach(emitter: NodeEmitter) {
-        log.assert(this.renderNode, 'Invariant: missing calculation result');
+        log.assert(
+            this.renderNode || this.isCalculatedPendingAdd,
+            'Invariant: missing calculation result'
+        );
         this.emitter = emitter;
-        this.renderNode.attach(emitter);
+        if (this.renderNode) {
+            this.renderNode.attach(emitter);
+        }
     }
 
     setContext(context: ContextMap) {
         this.context = context;
-        if (!this.renderNode) {
+        if (!this.renderNode && !this.isCalculatedPendingAdd) {
             this.renderCalculation(this.calculation());
             this.calculationSubscription = this.calculation.onRecalc(
                 this.renderCalculation
             );
+        } else if (this.renderNode) {
+            this.renderNode.setContext(context);
         }
-        log.assert(this.renderNode, 'Invariant: missing calculation result');
-        this.renderNode.setContext(context);
     }
 
     onMount() {
-        log.assert(this.renderNode, 'Invariant: missing calculation result');
+        log.assert(
+            this.renderNode || this.isCalculatedPendingAdd,
+            'Invariant: missing calculation result'
+        );
         this.isMounted = true;
-        this.renderNode.onMount();
+        if (this.renderNode) {
+            this.renderNode.onMount();
+        }
     }
 
     onUnmount() {
@@ -767,15 +779,18 @@ export class CalculationRenderNode implements RenderNode {
                 this.renderNode.detach(this.emitter);
             }
             release(this.renderNode);
+            this.renderNode = null;
         }
     }
 
     renderCalculation = (val: any) => {
         this.cleanPrior();
         const renderNode = renderJSXNode(val);
-        this.renderNode = renderNode;
-        retain(this.renderNode);
+        this.isCalculatedPendingAdd = true;
         afterFlush(() => {
+            this.isCalculatedPendingAdd = false;
+            this.renderNode = renderNode;
+            retain(this.renderNode);
             if (this.context) {
                 renderNode.setContext(this.context);
             }
@@ -799,7 +814,6 @@ export class CalculationRenderNode implements RenderNode {
         unmarkRoot(this.calculation);
         release(this.calculation);
         this.cleanPrior();
-        this.renderNode = null;
         this.emitter = null;
     }
 }
