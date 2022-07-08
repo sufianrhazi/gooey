@@ -11,6 +11,7 @@ import Gooey, {
     subscribe,
     LifecycleObserver,
 } from './index';
+import { debugGetGraph } from './engine';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
@@ -3032,6 +3033,6 @@ suite('automatic memory management', () => {
         unmount();
 
         flush();
-        // TODO: assert global dependency graph is empty
+        assert.deepEqual([], debugGetGraph()._test_getVertices());
     });
 });

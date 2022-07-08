@@ -521,10 +521,10 @@ suite('perf tests', () => {
         }
         await assert.medianRuntimeLessThan(2, (measure) => {
             // Build a random graph of 10k nodes and edges all consolidating on a single destination node
-            const graph = new Graph();
+            const graph = new Graph(() => false);
             measure(() => {
                 for (let i = 0; i < COUNT; ++i) {
-                    graph.addNode(objects[i]);
+                    graph.addVertex(objects[i]);
                 }
             });
         });
@@ -538,9 +538,9 @@ suite('perf tests', () => {
         }
         await assert.medianRuntimeLessThan(1, (measure) => {
             // Build a random graph of 10k nodes and edges all consolidating on a single destination node
-            const graph = new Graph();
+            const graph = new Graph(() => false);
             for (let i = 0; i < COUNT; ++i) {
-                graph.addNode(objects[i]);
+                graph.addVertex(objects[i]);
             }
             const edges: [number, number][] = [];
             for (let i = 0; i < COUNT - 1; ++i) {
@@ -568,11 +568,11 @@ suite('perf tests', () => {
         await assert.medianRuntimeLessThan(20, (measure) => {
             // TODO: this should be much faster, it is slow due to topological sorting
             // Build a random graph of 10k nodes and edges all consolidating on a single destination node
-            const graph = new Graph();
+            const graph = new Graph(() => false);
             for (let i = 0; i < COUNT; ++i) {
-                graph.addNode(objects[i]);
+                graph.addVertex(objects[i]);
                 if (Math.random() < 0.1) {
-                    graph.markNodeDirty(objects[i]);
+                    graph.markVertexDirty(objects[i]);
                 }
             }
             for (let i = 0; i < COUNT - 1; ++i) {
@@ -580,7 +580,7 @@ suite('perf tests', () => {
                 graph.addEdge(objects[i], objects[candidate], Graph.EDGE_HARD);
             }
             measure(() => {
-                graph.process(() => false);
+                graph.process();
             });
         });
     });
@@ -593,24 +593,24 @@ suite('perf tests', () => {
         }
         await assert.medianRuntimeLessThan(4, (measure) => {
             // Build a random graph of 10k nodes and edges all consolidating on a single destination node
-            const graph = new Graph();
+            const graph = new Graph(() => false);
             for (let i = 0; i < COUNT; ++i) {
-                graph.addNode(objects[i]);
+                graph.addVertex(objects[i]);
             }
             for (let i = 0; i < COUNT - 1; ++i) {
                 const candidate = randint(i + 1, COUNT);
                 graph.addEdge(objects[i], objects[candidate], Graph.EDGE_HARD);
             }
-            graph.process(() => false);
+            graph.process();
 
             for (let i = 0; i < COUNT; ++i) {
                 if (Math.random() < 0.1) {
-                    graph.markNodeDirty(objects[i]);
+                    graph.markVertexDirty(objects[i]);
                 }
             }
 
             measure(() => {
-                graph.process(() => false);
+                graph.process();
             });
         });
     });

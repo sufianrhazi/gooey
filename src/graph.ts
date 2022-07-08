@@ -1057,6 +1057,7 @@ export class Graph<TVertex> {
  * Test-only interfaces; omitted in build
  */
 export interface Graph<TVertex> {
+    _test_getVertices(): TVertex[];
     _test_getDependencies(vertex: TVertex): TVertex[];
     _test_getVertexInfo(
         vertex: TVertex
@@ -1067,6 +1068,11 @@ export interface Graph<TVertex> {
  * Inject test-only interfaces if we are in a test environment
  */
 if (TEST) {
+    Graph.prototype._test_getVertices = function _test_getVertices<TVertex>(
+        this: Graph<TVertex>
+    ) {
+        return this.vertexById.filter((vertex) => !!vertex);
+    };
     Graph.prototype._test_getDependencies = function _test_getDependencies<
         TVertex
     >(this: Graph<TVertex>, vertex: TVertex) {

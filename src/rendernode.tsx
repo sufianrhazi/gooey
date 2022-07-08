@@ -393,6 +393,22 @@ export class IntrinsicRenderNode implements RenderNode {
         if (this.props) {
             for (const [prop, val] of Object.entries(this.props)) {
                 if (prop === 'ref') continue; // specially handled
+                if (prop.startsWith('on:capture:')) {
+                    element.addEventListener(prop.slice(3), val, {
+                        capture: true,
+                    });
+                    continue;
+                }
+                if (prop.startsWith('on:passive:')) {
+                    element.addEventListener(prop.slice(3), val, {
+                        passive: true,
+                    });
+                    continue;
+                }
+                if (prop.startsWith('on:')) {
+                    element.addEventListener(prop.slice(3), val);
+                    continue;
+                }
                 if (isCalcUnsubscribe(val) || isCalculation(val)) {
                     if (!this.calculations) {
                         this.calculations = new Map();
@@ -784,6 +800,7 @@ export class CalculationRenderNode implements RenderNode {
         release(this.calculation);
         this.cleanPrior();
         this.renderNode = null;
+        this.emitter = null;
     }
 }
 

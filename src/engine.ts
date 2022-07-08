@@ -286,3 +286,7 @@ export function debugSubscribe(fn: (label: string, graphviz: string) => void) {
         };
     }, fn);
 }
+
+export function debugGetGraph() {
+    return globalDependencyGraph;
+}
