@@ -10,6 +10,7 @@ import {
     untracked,
     markRoot,
     unmarkRoot,
+    afterFlush,
 } from './engine';
 import { RefObject } from './ref';
 import { effect } from './calc';
@@ -90,6 +91,8 @@ export interface RenderNode extends Retainable {
     setContext(context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
+    retain(): void;
+    release(): void;
 }
 
 /**
@@ -107,6 +110,12 @@ export class EmptyRenderNode implements RenderNode {
     setContext = noop;
     onMount = noop;
     onUnmount = noop;
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
+    }
 
     // Retainable
     [SymDebugName]: string;
@@ -142,7 +151,10 @@ export class TextRenderNode implements RenderNode {
     }
 
     attach(emitter: NodeEmitter) {
-        log.assert(!this.isAttached, 'Invariant: RenderNode 0 double attached');
+        log.assert(
+            !this.isAttached,
+            'Invariant: TextRenderNode 0 double attached'
+        );
         emitter({
             type: ArrayEventType.SPLICE,
             index: 0,
@@ -155,6 +167,12 @@ export class TextRenderNode implements RenderNode {
     setContext = noop;
     onMount = noop;
     onUnmount = noop;
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
+    }
 
     // Retainable
     [SymDebugName]: string;
@@ -193,6 +211,12 @@ export class ForeignRenderNode implements RenderNode {
     setContext = noop;
     onMount = noop;
     onUnmount = noop;
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
+    }
 
     // Retainable
     [SymDebugName]: string;
@@ -250,6 +274,12 @@ export class ArrayRenderNode implements RenderNode {
         for (const child of this.children) {
             child.onUnmount();
         }
+    }
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
     }
 
     // Retainable
@@ -319,6 +349,7 @@ export class IntrinsicRenderNode implements RenderNode {
     private tagName: string;
     private element: Element | null;
     private isPreexisting: boolean;
+    private isPreexistingPopulated: boolean;
     private emitter: NodeEmitter | null;
     private xmlNamespace: string | null;
     private childXmlNamespace: string | null;
@@ -339,11 +370,13 @@ export class IntrinsicRenderNode implements RenderNode {
         this.arrayRenderNode = new ArrayRenderNode(children);
         if (typeof elementOrTagName !== 'string') {
             this.isPreexisting = true;
+            this.isPreexistingPopulated = false;
             this.element = elementOrTagName;
             this.tagName = this.element.tagName;
             this.existingOffset = elementOrTagName.childNodes.length;
         } else {
             this.isPreexisting = false;
+            this.isPreexistingPopulated = false;
             this.element = null;
             this.tagName = elementOrTagName;
             this.existingOffset = 0;
@@ -568,13 +601,21 @@ export class IntrinsicRenderNode implements RenderNode {
             }
         }
 
-        let subContext = context;
-        if (parentXmlNamespace !== childXmlNamespace) {
-            subContext = new Map(context);
-            subContext.set(XmlNamespaceContext, childXmlNamespace);
+        if (
+            needsNewElement ||
+            (this.isPreexisting && !this.isPreexistingPopulated)
+        ) {
+            let subContext = context;
+            if (parentXmlNamespace !== childXmlNamespace) {
+                subContext = new Map(context);
+                subContext.set(XmlNamespaceContext, childXmlNamespace);
+            }
+            this.arrayRenderNode.setContext(subContext);
+            this.arrayRenderNode.attach(this.handleEvent);
+            if (this.isPreexisting) {
+                this.isPreexistingPopulated = true;
+            }
         }
-        this.arrayRenderNode.setContext(subContext);
-        this.arrayRenderNode.attach(this.handleEvent);
     }
 
     onMount() {
@@ -599,6 +640,12 @@ export class IntrinsicRenderNode implements RenderNode {
         }
         this.arrayRenderNode.onUnmount();
     }
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
+    }
 
     // Retainable
     [SymDebugName]: string;
@@ -622,6 +669,9 @@ export class IntrinsicRenderNode implements RenderNode {
 
         this.arrayRenderNode.detach(this.handleEvent);
         release(this.arrayRenderNode);
+        if (!this.isPreexisting) {
+            this.element = null;
+        }
     }
 }
 
@@ -685,6 +735,12 @@ export class CalculationRenderNode implements RenderNode {
         this.renderNode.onUnmount();
         this.isMounted = false;
     }
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
+    }
 
     cleanPrior() {
         if (this.renderNode) {
@@ -700,17 +756,20 @@ export class CalculationRenderNode implements RenderNode {
 
     renderCalculation = (val: any) => {
         this.cleanPrior();
-        this.renderNode = renderJSXNode(val);
+        const renderNode = renderJSXNode(val);
+        this.renderNode = renderNode;
         retain(this.renderNode);
-        if (this.context) {
-            this.renderNode.setContext(this.context);
-        }
-        if (this.emitter) {
-            this.renderNode.attach(this.emitter);
-        }
-        if (this.isMounted) {
-            this.renderNode.onMount();
-        }
+        afterFlush(() => {
+            if (this.context) {
+                renderNode.setContext(this.context);
+            }
+            if (this.emitter) {
+                renderNode.attach(this.emitter);
+            }
+            if (this.isMounted) {
+                renderNode.onMount();
+            }
+        });
     };
 
     // Retainable
@@ -777,7 +836,6 @@ export class CollectionRenderNode implements RenderNode {
         event: ArrayEvent<Node>,
         child: RenderNode
     ) {
-        console.log('HUH Collection handleChildEvent', { ...event });
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         const index = this.childIndex.get(child)!;
         shiftEvent(this.slotSizes, index, event);
@@ -814,9 +872,14 @@ export class CollectionRenderNode implements RenderNode {
         }
         this.isMounted = false;
     }
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
+    }
 
     private handleCollectionEvent = (event: ArrayEvent<any>) => {
-        console.log('HUH Collection handleCollectionEvent', { ...event });
         log.assert(this.context, 'Invariant: missing context');
         switch (event.type) {
             case ArrayEventType.SPLICE: {
@@ -894,11 +957,9 @@ export class CollectionRenderNode implements RenderNode {
                 applyEvent(this.slotSizes, event);
 
                 // Update and emit event
-                console.log('MOVE before', { ...event });
                 event.from = slotStartIndex[event.from];
                 event.count = realCount;
                 event.to = slotStartIndex[event.to];
-                console.log('MOVE after', { ...event });
                 this.emitter(event);
                 break;
             }
@@ -941,13 +1002,11 @@ export class CollectionRenderNode implements RenderNode {
     [SymDebugName]: string;
     [SymRefcount]: number;
     [SymAlive]() {
-        console.log('CollectionRenderNode ALIVE');
         this.unsubscribe = this.collection.subscribe(
             this.handleCollectionEvent
         );
     }
     [SymDead]() {
-        console.log('CollectionRenderNode DEAD');
         this.unsubscribe?.();
     }
 }
@@ -967,7 +1026,6 @@ function isRenderNode(val: any): val is RenderNode {
 }
 
 export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
-    console.log('renderJSXNode', jsxNode);
     if (isRenderNode(jsxNode)) {
         return jsxNode;
     }
@@ -1079,7 +1137,6 @@ export class LifecycleObserverRenderNode implements RenderNode {
     }
 
     handleEvent(emitter: NodeEmitter, event: ArrayEvent<Node>) {
-        console.log('WHAT', event);
         if (event.type === ArrayEventType.SPLICE) {
             for (let i = 0; i < event.count; ++i) {
                 const node = this.childNodes[event.index + i];
@@ -1129,6 +1186,12 @@ export class LifecycleObserverRenderNode implements RenderNode {
 
     onUnmount() {
         this.child.onUnmount();
+    }
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
     }
 
     // Retainable
@@ -1310,6 +1373,12 @@ export class ComponentRenderNode<TProps> implements RenderNode {
             }
         }
     }
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
+    }
 
     // Retainable
     [SymDebugName]: string;
@@ -1366,6 +1435,12 @@ export class ContextRenderNode<T> implements RenderNode {
 
     onUnmount() {
         this.child.onUnmount();
+    }
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
     }
 
     // Retainable

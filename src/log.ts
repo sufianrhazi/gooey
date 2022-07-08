@@ -44,6 +44,18 @@ export function error(...items: any[]) {
     }
 }
 
+export function group(...items: any[]) {
+    if (currentLevel >= levels.debug) {
+        console.group(...items);
+    }
+}
+
+export function groupEnd() {
+    if (currentLevel >= levels.debug) {
+        console.groupEnd();
+    }
+}
+
 export function exception(exception: any, ...items: any[]) {
     if (exception instanceof Error) {
         error(exception);

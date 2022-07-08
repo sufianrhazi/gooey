@@ -758,7 +758,6 @@ export class Graph<TVertex> {
                 );
             });
         }
-        console.log('PROCESS', vertex, ProcessAction[action]);
         return this._processHandler(vertex, action);
     }
 

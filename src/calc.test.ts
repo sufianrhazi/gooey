@@ -717,7 +717,6 @@ suite('cycles', () => {
             // B --> C --> D
             //
             calculations.a = calc(() => {
-                console.log('CALL a');
                 calls.push('a');
                 if (data.hasCycle > 0) {
                     return 'a' + calculations.c() + 'a';
@@ -726,17 +725,14 @@ suite('cycles', () => {
                 }
             }, 'a');
             calculations.b = calc(() => {
-                console.log('CALL b');
                 calls.push('b');
                 return 'b' + calculations.a() + 'b';
             }, 'b');
             calculations.c = calc(() => {
-                console.log('CALL c');
                 calls.push('c');
                 return 'c' + calculations.b() + 'c';
             }, 'c');
             calculations.d = calc(() => {
-                console.log('CALL d');
                 calls.push('d');
                 const result = 'd' + calculations.c() + 'd';
                 return result;

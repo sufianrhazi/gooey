@@ -246,7 +246,6 @@ function collectionSubscribe<T>(
     this: Collection<T> | View<T>,
     handler: (event: ArrayEvent<T>) => void
 ) {
-    console.log('SUFIAN collectionSubscribe', this);
     const tdHandle = getTrackedDataHandle(this);
     log.assert(tdHandle, 'subscribe missing tdHandle');
     retain(tdHandle.emitter);

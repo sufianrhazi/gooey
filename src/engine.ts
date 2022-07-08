@@ -26,6 +26,8 @@ export interface Processable {
 
 let globalDependencyGraph = new Graph<Processable>(processHandler);
 let activeCalculationReads: (Set<Retainable & Processable> | null)[] = [];
+let isFlushing = false;
+let afterFlushCallbacks: (() => void)[] = [];
 let needsFlush = false;
 let flushHandle: (() => void) | null = null;
 let flushScheduler = defaultScheduler;
@@ -42,6 +44,8 @@ function defaultScheduler(callback: () => void) {
 export function reset() {
     globalDependencyGraph = new Graph<Processable>(processHandler);
     activeCalculationReads = [];
+    isFlushing = false;
+    afterFlushCallbacks = [];
     needsFlush = false;
     if (flushHandle) flushHandle();
     flushHandle = null;
@@ -63,12 +67,13 @@ export function subscribe(scheduler?: (callback: () => void) => () => void) {
 }
 
 export function retain(retainable: Retainable) {
-    console.log(
-        'retain',
-        retainable[SymDebugName],
-        'was',
-        retainable[SymRefcount]
-    );
+    DEBUG &&
+        log.debug(
+            'retain',
+            retainable[SymDebugName],
+            'was',
+            retainable[SymRefcount]
+        );
     retainable[SymRefcount] += 1;
     if (retainable[SymRefcount] === 1) {
         retainable[SymAlive]();
@@ -76,12 +81,13 @@ export function retain(retainable: Retainable) {
 }
 
 export function release(retainable: Retainable) {
-    console.log(
-        'release',
-        retainable[SymDebugName],
-        'was',
-        retainable[SymRefcount]
-    );
+    DEBUG &&
+        log.debug(
+            'release',
+            retainable[SymDebugName],
+            'was',
+            retainable[SymRefcount]
+        );
     log.assert(retainable[SymRefcount] > 0, 'double release');
     if (retainable[SymRefcount] === 1) {
         retainable[SymDead]();
@@ -90,7 +96,13 @@ export function release(retainable: Retainable) {
 }
 
 function processHandler(vertex: Processable, action: ProcessAction) {
-    console.log('process', ProcessAction[action], vertex[SymDebugName], vertex);
+    DEBUG &&
+        log.debug(
+            'process',
+            ProcessAction[action],
+            vertex[SymDebugName],
+            vertex
+        );
     switch (action) {
         case ProcessAction.INVALIDATE:
             return vertex[SymInvalidate]?.() ?? false;
@@ -104,83 +116,100 @@ function processHandler(vertex: Processable, action: ProcessAction) {
 }
 
 export function flush() {
+    isFlushing = true;
     globalDependencyGraph.process();
-    console.log(debug(undefined, `flush complete`));
+    isFlushing = false;
+    for (const callback of afterFlushCallbacks) {
+        callback();
+    }
+    afterFlushCallbacks.splice(0, afterFlushCallbacks.length);
+}
+
+export function afterFlush(fn: () => void) {
+    if (isFlushing) {
+        afterFlushCallbacks.push(fn);
+    } else {
+        fn();
+    }
 }
 
 export function addVertex(vertex: Processable) {
-    console.log('addVertex', vertex[SymDebugName]);
+    DEBUG && log.debug('addVertex', vertex[SymDebugName]);
     globalDependencyGraph.addVertex(vertex);
 }
 
 export function removeVertex(vertex: Processable) {
-    console.log('removeVertex', vertex[SymDebugName]);
+    DEBUG && log.debug('removeVertex', vertex[SymDebugName]);
     globalDependencyGraph.removeVertex(vertex);
 }
 
 export function addHardEdge(fromVertex: Processable, toVertex: Processable) {
-    console.log(
-        'add edge:hard',
-        fromVertex[SymDebugName],
-        '->',
-        toVertex[SymDebugName]
-    );
+    DEBUG &&
+        log.debug(
+            'add edge:hard',
+            fromVertex[SymDebugName],
+            '->',
+            toVertex[SymDebugName]
+        );
     globalDependencyGraph.addEdge(fromVertex, toVertex, Graph.EDGE_HARD);
 }
 
 export function addSoftEdge(fromVertex: Processable, toVertex: Processable) {
-    console.log(
-        'add edge:soft',
-        fromVertex[SymDebugName],
-        '->',
-        toVertex[SymDebugName]
-    );
+    DEBUG &&
+        log.debug(
+            'add edge:soft',
+            fromVertex[SymDebugName],
+            '->',
+            toVertex[SymDebugName]
+        );
     globalDependencyGraph.addEdge(fromVertex, toVertex, Graph.EDGE_SOFT);
 }
 
 export function removeHardEdge(fromVertex: Processable, toVertex: Processable) {
-    console.log(
-        'del edge:hard',
-        fromVertex[SymDebugName],
-        '->',
-        toVertex[SymDebugName]
-    );
+    DEBUG &&
+        log.debug(
+            'del edge:hard',
+            fromVertex[SymDebugName],
+            '->',
+            toVertex[SymDebugName]
+        );
     globalDependencyGraph.removeEdge(fromVertex, toVertex, Graph.EDGE_HARD);
 }
 
 export function removeSoftEdge(fromVertex: Processable, toVertex: Processable) {
-    console.log(
-        'del edge:soft',
-        fromVertex[SymDebugName],
-        '->',
-        toVertex[SymDebugName]
-    );
+    DEBUG &&
+        log.debug(
+            'del edge:soft',
+            fromVertex[SymDebugName],
+            '->',
+            toVertex[SymDebugName]
+        );
     globalDependencyGraph.removeEdge(fromVertex, toVertex, Graph.EDGE_SOFT);
 }
 
 export function markDirty(vertex: Processable) {
-    console.log('dirty', vertex[SymDebugName]);
+    DEBUG && log.debug('dirty', vertex[SymDebugName]);
     globalDependencyGraph.markVertexDirty(vertex);
     scheduleFlush();
 }
 
 export function unmarkDirty(vertex: Processable) {
-    console.log('clean', vertex[SymDebugName]);
+    DEBUG && log.debug('clean', vertex[SymDebugName]);
     globalDependencyGraph.clearVertexDirty(vertex);
 }
 
 export function markRoot(vertex: Processable) {
-    console.log('mark root', vertex[SymDebugName]);
+    DEBUG && log.debug('mark root', vertex[SymDebugName]);
     globalDependencyGraph.markVertexRoot(vertex);
 }
 
 export function unmarkRoot(vertex: Processable) {
-    console.log('clear root', vertex[SymDebugName]);
+    DEBUG && log.debug('clear root', vertex[SymDebugName]);
     globalDependencyGraph.clearVertexRoot(vertex);
 }
 
 export function markCycleInformed(vertex: Processable) {
-    console.log('cycle informed', vertex[SymDebugName]);
+    DEBUG && log.debug('cycle informed', vertex[SymDebugName]);
     globalDependencyGraph.markVertexCycleInformed(vertex);
 }
 
@@ -189,12 +218,12 @@ export function tracked<T>(
     fn: () => T,
     debugName?: string
 ): T {
-    console.group('tracked', debugName ?? 'call');
+    DEBUG && log.group('tracked', debugName ?? 'call');
     activeCalculationReads.push(set);
     try {
         return fn();
     } finally {
-        console.groupEnd();
+        DEBUG && log.groupEnd();
         log.assert(
             set === activeCalculationReads.pop(),
             'Calculation tracking consistency error'
@@ -203,12 +232,12 @@ export function tracked<T>(
 }
 
 export function untracked<T>(fn: () => T, debugName?: string): T {
-    console.group('untracked', debugName ?? 'call');
+    DEBUG && log.group('untracked', debugName ?? 'call');
     activeCalculationReads.push(null);
     try {
         return fn();
     } finally {
-        console.groupEnd();
+        DEBUG && log.groupEnd();
         log.assert(
             null === activeCalculationReads.pop(),
             'Calculation tracking consistency error'
@@ -223,11 +252,12 @@ export function addDependencyToActiveCalculation(
     const calculationReads =
         activeCalculationReads[activeCalculationReads.length - 1];
     if (calculationReads) {
-        console.log(
-            'adding dependency',
-            dependency[SymDebugName],
-            'to active calculation'
-        );
+        DEBUG &&
+            log.debug(
+                'adding dependency',
+                dependency[SymDebugName],
+                'to active calculation'
+            );
         if (!calculationReads.has(dependency)) {
             retain(dependency);
             calculationReads.add(dependency);

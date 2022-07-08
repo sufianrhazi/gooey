@@ -2010,10 +2010,10 @@ suite('LifecycleObserver component', () => {
         assert.is('remove', nodes[5].event);
     });
 
-    test.only('with collection children', () => {
+    test('with collection children', () => {
         const items = collection(['one', 'two', 'three']);
         const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
-        const elements: { text: string; event: 'add' | 'remove' }[] = [];
+        const elements: { text: string | null; event: 'add' | 'remove' }[] = [];
         const unmount = mount(
             testRoot,
             <div>
@@ -2039,9 +2039,7 @@ suite('LifecycleObserver component', () => {
         );
 
         items.push('four');
-        console.group('flush push four');
         flush();
-        console.groupEnd();
 
         assert.deepEqual(
             ['one:add', 'two:add', 'three:add', 'four:add'],
@@ -2049,9 +2047,7 @@ suite('LifecycleObserver component', () => {
         );
 
         items.shift();
-        console.group('flush shift');
         flush();
-        console.groupEnd();
 
         assert.deepEqual(
             ['one:add', 'two:add', 'three:add', 'four:add', 'one:remove'],
