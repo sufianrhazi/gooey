@@ -442,7 +442,6 @@ export class IntrinsicRenderNode implements RenderNode {
     }
 
     private setProp(element: Element, prop: string, val: unknown) {
-        const attributeNamespace = attributeNamespaceMap[prop] ?? null; // TODO: XML namespacing
         const mapping = getElementTypeMapping(this.tagName, prop);
         if (mapping) {
             if (mapping.makeAttrValue !== null) {
@@ -456,26 +455,23 @@ export class IntrinsicRenderNode implements RenderNode {
                 ) {
                     element.removeAttribute(prop);
                 } else if (attributeValue === true) {
-                    element.setAttributeNS(attributeNamespace, prop, '');
+                    element.setAttribute(prop, '');
                 } else {
-                    element.setAttributeNS(
-                        attributeNamespace,
-                        prop,
-                        attributeValue
-                    );
+                    element.setAttribute(prop, attributeValue);
                 }
             }
             if (mapping.idlName !== null) {
-                (element as any)[mapping.idlName ?? prop] = mapping.makeIdlValue
+                const idlValue = mapping.makeIdlValue
                     ? mapping.makeIdlValue(val)
                     : val;
+                (element as any)[mapping.idlName ?? prop] = idlValue;
             }
         } else if (val === false || val === undefined || val === null) {
-            element.removeAttributeNS(attributeNamespace, prop);
+            element.removeAttribute(prop);
         } else if (val === true) {
-            element.setAttributeNS(attributeNamespace, prop, '');
+            element.setAttribute(prop, '');
         } else if (typeof val === 'string' || typeof val === 'number') {
-            element.setAttributeNS(attributeNamespace, prop, val.toString());
+            element.setAttribute(prop, val.toString());
         }
     }
 

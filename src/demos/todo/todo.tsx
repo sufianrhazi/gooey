@@ -8,8 +8,6 @@ import Gooey, {
     model,
     mount,
     ref,
-    retain,
-    release,
 } from '../../index';
 import { makeGraphvizDebuggerRef } from '../debug';
 
@@ -29,9 +27,7 @@ interface TodoList {
 }
 
 function makeTodoListItem(task: string): Model<TodoItem> {
-    const m = model({ done: false, task }, `TodoItem:${task}`);
-    retain(m);
-    return m;
+    return model({ done: false, task }, `TodoItem:${task}`);
 }
 
 const globalState: Model<TodoList> = model(
@@ -48,8 +44,6 @@ const globalState: Model<TodoList> = model(
     },
     'TodoList'
 );
-retain(globalState);
-retain(globalState.items);
 // Exported to window, so you can play with it in the console!
 (window as any).globalState = globalState;
 
@@ -119,10 +113,7 @@ const TodoControls: Component<{}> = (_props, { onMount }) => {
     };
 
     const onClickClear = () => {
-        const removed = globalState.items.reject((item) => item.done);
-        removed.forEach((removed) => {
-            release(removed);
-        });
+        globalState.items.reject((item) => item.done);
 
         if (inputRef.current) inputRef.current.focus();
     };

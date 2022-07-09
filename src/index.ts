@@ -7,7 +7,7 @@ export type { Model } from './model';
 export { model } from './model';
 export type { Collection, View } from './collection';
 export { collection } from './collection';
-export { calc, effect } from './calc';
+export { calc, effect, CalculationErrorType } from './calc';
 export type { Calculation } from './calc';
 export {
     reset,

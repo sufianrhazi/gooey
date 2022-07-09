@@ -162,7 +162,7 @@ interface DebugAttributes {
 }
 
 type DebugFormatter<TVertex> = (vertex: TVertex) => DebugAttributes;
-type DebugSubscription = (label: string, graphviz: string) => void;
+type DebugSubscription = (graphviz: string, label: string) => void;
 
 export class Graph<TVertex> {
     static EDGE_SOFT = EdgeColor.EDGE_SOFT;
@@ -747,14 +747,14 @@ export class Graph<TVertex> {
                 const name = formatter(vertex).name;
                 const label = `${ProcessAction[action]}: ${name}`;
                 subscription(
-                    label,
                     this.debug(
                         (v) => ({
                             ...formatter(v),
                             isActive: v === vertex,
                         }),
                         label
-                    )
+                    ),
+                    label
                 );
             });
         }
@@ -779,13 +779,13 @@ export class Graph<TVertex> {
             this.debugSubscriptions.forEach(({ subscription, formatter }) => {
                 const label = `Process start`;
                 subscription(
-                    label,
                     this.debug(
                         (v) => ({
                             ...formatter(v),
                         }),
                         label
-                    )
+                    ),
+                    label
                 );
             });
         }
@@ -907,13 +907,13 @@ export class Graph<TVertex> {
             this.debugSubscriptions.forEach(({ subscription, formatter }) => {
                 const label = `Process end`;
                 subscription(
-                    label,
                     this.debug(
                         (v) => ({
                             ...formatter(v),
                         }),
                         label
-                    )
+                    ),
+                    label
                 );
             });
         }
@@ -943,9 +943,9 @@ export class Graph<TVertex> {
     debug(getAttrs: DebugFormatter<TVertex>, label?: string) {
         const lines = [];
         lines.push('digraph dependencies {');
-        lines.push(`  graph [fontname="helvetica bold"];`);
-        lines.push(`  edge [fontname="helvetica bold",penwidth=2.0];`);
-        lines.push(`  node [fontname="helvetica bold",penwidth=2.0];`);
+        lines.push(`  graph [];`);
+        lines.push(`  edge [penwidth=2.0];`);
+        lines.push(`  node [penwidth=2.0];`);
         if (label) {
             lines.push(`  graph [label=${JSON.stringify(label)};]`);
         }
@@ -1040,7 +1040,7 @@ export class Graph<TVertex> {
 
     debugSubscribe(
         formatter: DebugFormatter<TVertex>,
-        subscription: (label: string, graphviz: string) => void
+        subscription: (graphviz: string, label: string) => void
     ) {
         const entry = {
             formatter,

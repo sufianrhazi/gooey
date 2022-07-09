@@ -12,7 +12,7 @@ import Gooey, {
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 const noop = () => {};
 
-subscribe(noop);
+subscribe(() => noop);
 
 const strings = [
     'goo',

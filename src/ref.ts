@@ -11,7 +11,7 @@ export class RefObject<T> {
 /**
  * Make a ref object that can be passed to native elements.
  */
-export function ref<T>(val?: T): Ref<T> {
+export function ref<T>(val?: T): RefObject<T> {
     return new RefObject(val);
 }
 

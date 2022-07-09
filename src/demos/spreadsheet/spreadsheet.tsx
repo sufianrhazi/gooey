@@ -1,4 +1,5 @@
 import Gooey, {
+    CalculationErrorType,
     Calculation,
     Component,
     Model,
@@ -266,7 +267,7 @@ const makeTable = ({ rows, cols }: { rows: number; cols: number }): Table => {
                 }
             }, `datacalc:${col}:${row}`).onError((type) => {
                 console.error('Cell', col, row, 'got error!');
-                if (type === 'cycle') {
+                if (type === CalculationErrorType.CYCLE) {
                     return { type: 'cycle' };
                 }
                 return {

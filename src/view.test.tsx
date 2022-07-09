@@ -1492,13 +1492,6 @@ suite('xml namespaces', () => {
             testRoot.children[0].children[0].getAttribute('viewBox'),
             '0 0 100 100'
         );
-        assert.is(
-            testRoot.children[0].children[0].getAttributeNS(
-                'http://www.w3.org/2000/xmlns/',
-                'xmlns'
-            ),
-            'http://www.w3.org/2000/svg'
-        );
         assert.isTruthy(
             testRoot.children[0].children[0].children[0] instanceof
                 SVGCircleElement

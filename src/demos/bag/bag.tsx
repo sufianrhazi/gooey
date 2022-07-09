@@ -1,14 +1,12 @@
 import { graphviz } from '@hpcc-js/wasm';
 import Gooey, {
     mount,
-    Model,
     model,
     collection,
     calc,
     setLogLevel,
     debug,
     subscribe,
-    flush,
     ref,
 } from '../../index';
 
@@ -22,11 +20,12 @@ function debugGraph() {
     });
 }
 
-subscribe(() => {
-    setTimeout(() => {
-        flush();
+subscribe((performFlush) => {
+    const handle = setTimeout(() => {
+        performFlush();
         debugGraph();
     }, 0);
+    return () => clearTimeout(handle);
 });
 setTimeout(() => {
     debugGraph();

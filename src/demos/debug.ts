@@ -1,5 +1,5 @@
 import { graphviz } from '@hpcc-js/wasm';
-import { debug, debugSubscribe, subscribe, flush } from '../index';
+import { debug, debugSubscribe, subscribe } from '../index';
 import { noop } from '../util';
 
 /**
@@ -111,9 +111,9 @@ export function makeGraphvizDebuggerRef() {
         updateGraphviz?.();
     });
 
-    subscribe(() => {
-        setTimeout(() => {
-            flush();
+    subscribe((performFlush) => {
+        const handle = setTimeout(() => {
+            performFlush();
             if (currentFrame >= debugData.length - 1) {
                 currentFrame = debugData.length;
             }
@@ -123,6 +123,9 @@ export function makeGraphvizDebuggerRef() {
             });
             updateGraphviz?.();
         }, 0);
+        return () => {
+            clearTimeout(handle);
+        };
     });
 
     return graphvizRef;
