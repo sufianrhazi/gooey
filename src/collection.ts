@@ -201,10 +201,14 @@ function collectionUnshift<T>(this: Collection<T>, ...items: T[]) {
     return this.length;
 }
 
-function collectionReject<T>(this: Collection<T>, pred: (val: T) => boolean) {
+function collectionReject<T>(
+    this: Collection<T>,
+    pred: (val: T) => boolean
+): T[] {
     let start: null | number = null;
     let length = this.length;
     let toRemove = false;
+    const removed: T[] = [];
     for (let i = 0; i < length; ++i) {
         toRemove = pred(this[i]);
         if (toRemove && start === null) {
@@ -212,7 +216,7 @@ function collectionReject<T>(this: Collection<T>, pred: (val: T) => boolean) {
         }
         if (!toRemove && start !== null) {
             const count = i - start;
-            this.splice(start, count);
+            removed.push(...this.splice(start, count));
             length -= count;
             i -= count;
             start = null;
@@ -220,8 +224,9 @@ function collectionReject<T>(this: Collection<T>, pred: (val: T) => boolean) {
     }
     if (start !== null) {
         const count = length - start;
-        this.splice(start, count);
+        removed.push(...this.splice(start, count));
     }
+    return removed;
 }
 
 function collectionMoveSlice<T>(

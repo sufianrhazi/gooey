@@ -77,6 +77,42 @@ suite('collection', () => {
         const all = collection([0, 1, 2, 3, 4, 5]);
         all.reject(() => true);
         assert.deepEqual([], all);
+
+        const none = collection([0, 1, 2, 3, 4, 5]);
+        all.reject(() => false);
+        assert.deepEqual([0, 1, 2, 3, 4, 5], none);
+    });
+
+    test('reject returns rejected values', () => {
+        const start = collection([0, 1, 2, 3, 4, 5]);
+        assert.deepEqual(
+            [0, 1, 2, 3],
+            start.reject((n) => n < 4)
+        );
+
+        const mid = collection([0, 1, 2, 3, 4, 5]);
+        assert.deepEqual(
+            [2, 3],
+            mid.reject((n) => n > 1 && n < 4)
+        );
+
+        const end = collection([0, 1, 2, 3, 4, 5]);
+        assert.deepEqual(
+            [2, 3, 4, 5],
+            end.reject((n) => n > 1)
+        );
+
+        const all = collection([0, 1, 2, 3, 4, 5]);
+        assert.deepEqual(
+            [0, 1, 2, 3, 4, 5],
+            all.reject(() => true)
+        );
+
+        const none = collection([0, 1, 2, 3, 4, 5]);
+        assert.deepEqual(
+            [],
+            none.reject(() => false)
+        );
     });
 
     test('moveSlice is an in-place movement of a slice (destination after move)', () => {
