@@ -782,8 +782,12 @@ const HTMLCanvasElementMap: PropertyMap<
     HTMLCanvasElement
 > = {
     ...HTMLElementMap,
-    width: {},
-    height: {},
+    width: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
+    height: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
 };
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
@@ -863,8 +867,12 @@ const HTMLEmbedElementMap: PropertyMap<
     ...HTMLElementMap,
     src: {},
     type: {},
-    width: {},
-    height: {},
+    width: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
+    height: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
 };
 
 interface JSXFieldSetElementInterface extends JSXElementInterface {
@@ -989,8 +997,12 @@ const HTMLIFrameElementMap: PropertyMap<
     allowfullscreen: {
         idlName: 'allowFullscreen',
     },
-    width: {},
-    height: {},
+    width: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
+    height: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
     referrerpolicy: {
         idlName: 'referrerPolicy',
     },
@@ -1013,9 +1025,9 @@ interface JSXImageElementInterface extends JSXElementInterface {
     /** Whether the image is a server-side image map */
     ismap?: boolean | undefined;
     /** Horizontal dimension */
-    width?: number | undefined;
+    width?: string | number | undefined;
     /** Vertical dimension */
-    height?: number | undefined;
+    height?: string | number | undefined;
     /** Referrer policy for fetches initiated by the element */
     referrerpolicy?: ReferrerPolicyValue | undefined;
     /** Decoding hint to use when processing this image for presentation */
@@ -1042,8 +1054,12 @@ const HTMLImageElementMap: PropertyMap<
     ismap: {
         idlName: 'isMap',
     },
-    width: {},
-    height: {},
+    width: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
+    height: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
     referrerpolicy: {
         idlName: 'referrerPolicy',
     },
@@ -1169,7 +1185,9 @@ const HTMLInputElementMap: PropertyMap<
     formtarget: {
         idlName: 'formTarget',
     },
-    height: {},
+    height: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
     indeterminate: {
         makeAttrValue: null, // TODO: what other IDL attributes don't set html attributes?
     },
@@ -1193,7 +1211,9 @@ const HTMLInputElementMap: PropertyMap<
     step: {},
     type: {},
     value: {},
-    width: {},
+    width: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
 };
 
 interface JSXModElementInterface extends JSXElementInterface {
@@ -1422,8 +1442,12 @@ const HTMLObjectElementMap: PropertyMap<
     form: {
         idlName: null,
     },
-    width: {},
-    height: {},
+    width: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
+    height: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
 };
 
 interface JSXOListElementInterface extends JSXElementInterface {
@@ -1697,8 +1721,12 @@ const HTMLSourceElementMap: PropertyMap<
     srcset: {},
     sizes: {},
     media: {},
-    width: {},
-    height: {},
+    width: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
+    height: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
 };
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
@@ -1775,6 +1803,24 @@ const HTMLTableCellElementMap: PropertyMap<
         idlName: 'rowSpan',
     },
     headers: {},
+};
+
+interface JSXTableHeaderElementInterface extends JSXTableCellElementInterface {
+    /** Specifies which cells the header cell applies to */
+    scope?: string | undefined;
+
+    /** Alternative label to use for the header cell when referencing the cell in other contexts */
+    abbr?: string | undefined;
+}
+
+const HTMLTableHeaderElementMap: PropertyMap<
+    JSXTableHeaderElementInterface,
+    HTMLTableCellElement
+> = {
+    ...HTMLTableCellElementMap,
+    scope: {
+        idlName: 'colSpan',
+    },
 };
 
 interface JSXTableColElementInterface extends JSXElementInterface {
@@ -1965,8 +2011,12 @@ const HTMLVideoElementMap: PropertyMap<
     playsinline: {
         idlName: 'playsInline',
     },
-    width: {},
-    height: {},
+    width: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
+    height: {
+        makeIdlValue: attrStringOrNumberToNumber,
+    },
 };
 
 export const ElementTypeMapping = {
@@ -2022,8 +2072,7 @@ export const ElementTypeMapping = {
     html: HTMLHtmlElementMap,
     i: HTMLElementMap,
     iframe: HTMLIFrameElementMap,
-    image: HTMLImageElementMap,
-    img: HTMLElementMap,
+    img: HTMLImageElementMap,
     input: HTMLInputElementMap,
     ins: HTMLModElementMap,
     kbd: HTMLElementMap,
@@ -2073,7 +2122,7 @@ export const ElementTypeMapping = {
     template: HTMLTemplateElementMap,
     textarea: HTMLTextAreaElementMap,
     tfoot: HTMLTableSectionElementMap,
-    th: HTMLElementMap,
+    th: HTMLTableHeaderElementMap,
     thead: HTMLTableSectionElementMap,
     time: HTMLTimeElementMap,
     title: HTMLTitleElementMap,
@@ -2547,7 +2596,7 @@ export interface KnownElements {
         true
     >;
     th: WithCalculationsAndRef<
-        JSXTableCellElementInterface,
+        JSXTableHeaderElementInterface,
         HTMLTableCellElement,
         true
     >;

@@ -1594,11 +1594,11 @@ suite('xml namespaces', () => {
             assert.isTruthy(
                 testRoot.children[0].children[0] instanceof HTMLDivElement
             );
-            assert.isTruthy(
+            assert.isFalsy(
                 testRoot.children[0].children[0].children[0] instanceof
                     MathMLElement
             );
-            assert.isTruthy(
+            assert.isFalsy(
                 testRoot.children[0].children[0].children[1] instanceof
                     MathMLElement
             );
