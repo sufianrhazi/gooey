@@ -63,7 +63,7 @@ function scheduleFlush() {
 }
 
 export function subscribe(scheduler?: (callback: () => void) => () => void) {
-    flushScheduler = scheduler ? scheduler : noopScheduler;
+    flushScheduler = scheduler ?? noopScheduler;
 }
 
 export function retain(retainable: Retainable) {
