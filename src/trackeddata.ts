@@ -269,7 +269,7 @@ declare const SymTag: unique symbol;
 export type TrackedData<TData, TMethods> = TData &
     TMethods & { [SymTag]: unknown };
 
-const tdHandleMap = new Map<any, TrackedDataHandle<any, any, any, any>>();
+const tdHandleMap = new WeakMap<any, TrackedDataHandle<any, any, any, any>>();
 
 export function getTrackedDataHandle(
     trackedData: TrackedData<any, any>
