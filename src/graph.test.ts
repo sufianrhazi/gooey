@@ -195,7 +195,6 @@ suite('Graph', () => {
             graph.addEdge(f, h, Graph.EDGE_HARD);
             graph.addEdge(g, i, Graph.EDGE_HARD);
 
-            graph.markVertexRoot(i); // the almost end node is root
             return graph;
         };
 
@@ -224,68 +223,6 @@ suite('Graph', () => {
 
                 // we visit all nodes
                 assert.arrayEqualsUnsorted([a, b, c, d, e, f, g, h, i], items);
-            });
-
-            test('nodes that do not lead to root nodes are not visited', () => {
-                const actionsPerNode: Record<string, ProcessAction[]> = {
-                    a: [],
-                    b: [],
-                    c: [],
-                    d: [],
-                    e: [],
-                    f: [],
-                    g: [],
-                    h: [],
-                    i: [],
-                };
-
-                const graph = setup((node, action) => {
-                    actionsPerNode[node.name].push(action);
-                    return true;
-                });
-                graph.clearVertexRoot(i); // no nodes are root now
-                graph.markVertexRoot(e);
-                graph.markVertexRoot(f);
-
-                graph.markVertexDirty(a);
-                graph.markVertexDirty(i);
-
-                graph.process();
-
-                // TODO: we invalidate upon dirtying... but can we avoid double-invalidating non reaches root vertices?
-                assert.deepEqual(
-                    {
-                        a: [
-                            ProcessAction.INVALIDATE,
-                            ProcessAction.RECALCULATE,
-                        ],
-                        b: [
-                            ProcessAction.INVALIDATE,
-                            ProcessAction.RECALCULATE,
-                        ],
-                        c: [
-                            ProcessAction.INVALIDATE,
-                            ProcessAction.RECALCULATE,
-                        ],
-                        d: [
-                            ProcessAction.INVALIDATE,
-                            ProcessAction.RECALCULATE,
-                        ],
-                        e: [
-                            ProcessAction.INVALIDATE,
-                            ProcessAction.RECALCULATE,
-                        ],
-                        f: [
-                            ProcessAction.INVALIDATE,
-                            ProcessAction.RECALCULATE,
-                        ],
-                        // non-root nodes that become dirtied are flushed, but not recalculated
-                        g: [ProcessAction.INVALIDATE, ProcessAction.INVALIDATE],
-                        h: [ProcessAction.INVALIDATE, ProcessAction.INVALIDATE],
-                        i: [ProcessAction.INVALIDATE, ProcessAction.INVALIDATE],
-                    },
-                    actionsPerNode
-                );
             });
 
             test('nodes can stop traversal by returning true', () => {
@@ -433,7 +370,6 @@ suite('Graph', () => {
             graph.addEdge(f, h, Graph.EDGE_HARD);
             graph.addEdge(g, i, Graph.EDGE_HARD);
 
-            graph.markVertexRoot(i);
             return graph;
         };
 
@@ -563,7 +499,6 @@ suite('Graph Cycles', () => {
         graph.addEdge(d, b, Graph.EDGE_HARD);
         graph.addEdge(c, e, Graph.EDGE_HARD);
         process(); // allow cycle to be detected here
-        graph.markVertexRoot(e);
         graph.markVertexDirty(a);
 
         assert.deepEqual(
@@ -615,7 +550,6 @@ suite('Graph Cycles', () => {
         graph.addEdge(d, b, Graph.EDGE_HARD);
         graph.addEdge(c, e, Graph.EDGE_HARD);
         process(); // allow cycle to be detected
-        graph.markVertexRoot(e);
         graph.markVertexDirty(a);
 
         assert.deepEqual(
@@ -689,8 +623,6 @@ suite('Graph Cycles', () => {
         graph.addEdge(d, b, Graph.EDGE_HARD);
         graph.addEdge(d, f, Graph.EDGE_HARD);
         process();
-        graph.markVertexRoot(e);
-        graph.markVertexRoot(f);
         graph.markVertexDirty(a);
 
         assert.deepEqual(
@@ -824,7 +756,6 @@ suite('Graph Cycles', () => {
 
         graph.addEdge(d, f, Graph.EDGE_HARD);
 
-        graph.markVertexRoot(f);
         graph.markVertexDirty(a);
 
         assert.deepEqual(
@@ -963,7 +894,6 @@ suite('Graph Cycles', () => {
         graph.addEdge(b, b, Graph.EDGE_HARD);
         graph.addEdge(b, c, Graph.EDGE_HARD);
 
-        graph.markVertexRoot(c);
         graph.markVertexDirty(a);
         graph.markVertexDirty(a);
 

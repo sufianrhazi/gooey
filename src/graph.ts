@@ -8,8 +8,6 @@
  *
  * Each vertex has a set of flags which may be set/cleared:
  * - "dirty": which is set when the vertex’s underlying data is modified/invalidated.
- * - "root": set when the vertex is actively used by the system
- * - "reaches root": set when it reaches a "root" vertex (all "root" vertices are also "reaches root")
  * - "cycle": set when the vertex is part of a cycle (more correctly: a strongly connected component with >1 vertex)
  * - "self cycle": set when the vertex has an edge pointing to itself (completely separate from "cycle")
  * - "cycle informed": set when the vertex has been processed as a cycle
@@ -92,7 +90,6 @@
  * which indicates whether or not dirtiness should be propagated.
  *
  * When visiting a dirty node, one of three things happens:
- * - If the vertex does not reach a root vertex, it emits an invalidation action.
  * - If the vertex is part of a cycle, it emits a cycle action.
  * - Otherwise, a recalculate action is emitted.
  *
@@ -105,22 +102,12 @@
  *
  * The naive procedure of processing the graph is to iterate through the dirty vertices in topological order of the graph.
  * Upon discovering a dirty vertex:
- * - If it cannot reach a root, emit an invalidation and propagate dirtiness
- * - If it reaches a root, is part of a cycle, and is not cycle informed, emit a cycle, mark as informed, and conditionally propagate dirtiness
- * - If it reaches a root and ((is not part of a cycle) or (is part of a cycle and is cycle informed)), emit a recalculation and conditionally propagate dirtiness
+ * - If it is part of a cycle, and is not cycle informed, emit a cycle, mark as informed, and conditionally propagate dirtiness
+ * - If it ((is not part of a cycle) or (is part of a cycle and is cycle informed)), emit a recalculation and conditionally propagate dirtiness
  *
  * After processing a dirty vertex, perform any pending vertex/edge additions and removals caused by processing while
  * maintaining topological order. Proceed to the dirty vertex with lowest priority order. This ordering of dirty vertices
  * can be maintained with a priority queue that supports reassigning weights.
- *
- * It is possible to pre-calculate and maintain the “reaches root” bit on all vertices:
- * - When a vertex is marked as root, mark the vertex also as reaching root. Mark all vertices reaching this vertex as
- *   reaching root via reverse DFS (abort if the DFS reaches a vertex that has the “reaches root” bit set)
- * - When a edge is added to a vertex marked as “reaches root”, perform the same mark as “reaches root” DFS.
- * - When a vertex is unmarked as root or an edge is removed from a vertex that reaches root. Perform the following:
- *     - If it is not “root” and none of the vertices it immediately reaches have “reaches root” set, clear the “reaches
- *       root” state. Repeat this recursively for all vertices that immediately reach that vertex.
- * - As a precaution, prevent vertices from being removed if they have the “root” bit set.
  *
  * Once all dirty vertices are processed, the operation is complete.
  *
@@ -148,12 +135,10 @@ export enum ProcessAction {
     CYCLE,
 }
 
-const VERTEX_BIT_DIRTY /* ********** */ = 0b000001;
-const VERTEX_BIT_ROOT /* *********** */ = 0b000010;
-const VERTEX_BIT_REACHES_ROOT /* *** */ = 0b000100;
-const VERTEX_BIT_CYCLE /* ********** */ = 0b001000;
-const VERTEX_BIT_SELF_CYCLE /* ***** */ = 0b010000;
-const VERTEX_BIT_CYCLE_INFORMED /* * */ = 0b100000;
+const VERTEX_BIT_DIRTY /* ********** */ = 0b0001;
+const VERTEX_BIT_CYCLE /* ********** */ = 0b0010;
+const VERTEX_BIT_SELF_CYCLE /* ***** */ = 0b0100;
+const VERTEX_BIT_CYCLE_INFORMED /* * */ = 0b1000;
 
 interface DebugAttributes {
     isActive: boolean;
@@ -300,12 +285,6 @@ export class Graph<TVertex> {
         const index = this.topologicalIndexById[id];
         log.assert(index !== undefined, 'malformed graph');
 
-        // TODO: do we need to confirm that you cannot remove a root vertex
-        log.assert(
-            (this.vertexBitsById[id] & VERTEX_BIT_ROOT) === 0,
-            'cannot remove root vertex'
-        );
-
         // Note: no need to clear edges as you can only remove vertices with no edges
         log.assert(
             this.forwardAdjacencyEither[id].length === 0,
@@ -365,60 +344,10 @@ export class Graph<TVertex> {
         }
     }
 
-    markVertexRoot(vertex: TVertex) {
-        const vertexId = this.vertexToId.get(vertex);
-        log.assert(vertexId, 'markVertexRoot on nonexistent vertex');
-        log.assert(
-            !(this.vertexBitsById[vertexId] & VERTEX_BIT_ROOT),
-            'markVertexRoot double marked'
-        );
-        this.vertexBitsById[vertexId] |= VERTEX_BIT_ROOT;
-        this.markReachesRootRecursive(vertexId);
-    }
-
     markVertexCycleInformed(vertex: TVertex) {
         const vertexId = this.vertexToId.get(vertex);
         log.assert(vertexId, 'markVertexCycleInformed on nonexistent vertex');
         this.vertexBitsById[vertexId] |= VERTEX_BIT_CYCLE_INFORMED;
-    }
-
-    private markReachesRootRecursive(vertexId: number) {
-        if (this.vertexBitsById[vertexId] & VERTEX_BIT_REACHES_ROOT) {
-            return;
-        }
-        this.vertexBitsById[vertexId] |= VERTEX_BIT_REACHES_ROOT;
-
-        // Recurse to forward edges
-        for (const fromId of this.reverseAdjacencyHard[vertexId]) {
-            this.markReachesRootRecursive(fromId);
-        }
-        for (const fromId of this.reverseAdjacencySoft[vertexId]) {
-            this.markReachesRootRecursive(fromId);
-        }
-    }
-
-    clearVertexRoot(vertex: TVertex) {
-        const vertexId = this.vertexToId.get(vertex);
-        log.assert(vertexId, 'clearVertexRoot on nonexistent vertex');
-        log.assert(
-            this.vertexBitsById[vertexId] & VERTEX_BIT_ROOT,
-            'clearVertexRoot on non-root vertex'
-        );
-        this.vertexBitsById[vertexId] &= ~VERTEX_BIT_ROOT;
-        this.checkReachesRootRecursive(vertexId);
-    }
-
-    private reachesRoot(vertexId: number) {
-        const cycleInfo = this.cycleInfoById[vertexId];
-        if (cycleInfo) {
-            for (const cycleId of cycleInfo.vertexIds) {
-                if (this.vertexBitsById[cycleId] & VERTEX_BIT_REACHES_ROOT) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        return !!(this.vertexBitsById[vertexId] & VERTEX_BIT_REACHES_ROOT);
     }
 
     private *cycleAwareAdjacency(
@@ -440,39 +369,6 @@ export class Graph<TVertex> {
         }
         for (const toId of adjacencyList[vertexId]) {
             if (toId !== vertexId) yield toId;
-        }
-    }
-
-    private checkReachesRootRecursive(vertexId: number) {
-        if (!this.reachesRoot(vertexId)) {
-            return;
-        }
-
-        const cycleInfo = this.cycleInfoById[vertexId];
-        for (const toId of this.cycleAwareAdjacency(
-            vertexId,
-            cycleInfo,
-            this.forwardAdjacencyEither
-        )) {
-            if (this.reachesRoot(toId)) return;
-        }
-
-        // This vertex no longer reaches root; clear
-        if (cycleInfo) {
-            for (const cycleId of cycleInfo.vertexIds) {
-                this.vertexBitsById[cycleId] &= ~VERTEX_BIT_REACHES_ROOT;
-            }
-        } else {
-            this.vertexBitsById[vertexId] &= ~VERTEX_BIT_REACHES_ROOT;
-        }
-
-        // Recurse to reverse edges
-        for (const fromId of this.cycleAwareAdjacency(
-            vertexId,
-            cycleInfo,
-            this.reverseAdjacencyEither
-        )) {
-            this.checkReachesRootRecursive(fromId);
         }
     }
 
@@ -521,14 +417,6 @@ export class Graph<TVertex> {
             } else {
                 this.vertexBitsById[fromId] |= VERTEX_BIT_SELF_CYCLE;
             }
-        }
-
-        // Adding an edge may mean fromVertex now reaches root
-        if (
-            (this.vertexBitsById[fromId] & VERTEX_BIT_REACHES_ROOT) === 0 &&
-            this.vertexBitsById[toId] & VERTEX_BIT_REACHES_ROOT
-        ) {
-            this.markReachesRootRecursive(fromId);
         }
 
         const fromIndex = this.topologicalIndexById[fromId];
@@ -597,9 +485,6 @@ export class Graph<TVertex> {
             this.toReorderIds.add(fromId);
             this.toReorderIds.add(toId);
         }
-
-        // Removing an edge may mean fromVertex no longer reaches root
-        this.checkReachesRootRecursive(fromId);
     }
 
     private visitDfsForwardRecurse(
@@ -762,15 +647,8 @@ export class Graph<TVertex> {
     }
 
     private processVertex(vertexId: number) {
-        const reachesRoot =
-            this.vertexBitsById[vertexId] & VERTEX_BIT_REACHES_ROOT;
         const vertex = this.vertexById[vertexId];
         log.assert(vertex, 'nonexistent vertex dirtied');
-        if (!reachesRoot) {
-            this.clearVertexDirtyInner(vertexId);
-            // TODO: we are already invalidating vertices actively, do we need to invalidate if they do not reach root?
-            return this.processHandler(vertex, ProcessAction.INVALIDATE);
-        }
         return this.processHandler(vertex, ProcessAction.RECALCULATE);
     }
 
@@ -960,13 +838,7 @@ export class Graph<TVertex> {
             };
 
             // Shapes:
-            // - normal: ellipse
-            // - root: box
-            if (this.vertexBitsById[id] & VERTEX_BIT_ROOT) {
-                attrs.shape = 'box';
-            } else {
-                attrs.shape = 'ellipse';
-            }
+            attrs.shape = 'ellipse';
 
             // Fill colors:
             // - dirty: black / #F9C784
@@ -982,11 +854,7 @@ export class Graph<TVertex> {
             }
 
             // Border:
-            // - detached: dashed
             // - active: #485696
-            if ((this.vertexBitsById[id] & VERTEX_BIT_REACHES_ROOT) === 0) {
-                attrs.style = 'filled,dashed';
-            }
             if (customAttrs.isActive) {
                 attrs.penwidth = 4.0;
                 attrs.pencolor = '#485696';

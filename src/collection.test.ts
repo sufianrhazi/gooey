@@ -2,7 +2,7 @@ import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
 import { collection } from './collection';
 import { calc } from './calc';
-import { reset, flush, retain, markRoot, subscribe } from './engine';
+import { reset, flush, retain, subscribe } from './engine';
 
 beforeEach(() => {
     reset();
@@ -137,11 +137,8 @@ suite('collection', () => {
         });
 
         retain(beforeSplice);
-        markRoot(beforeSplice);
         retain(inSplice);
-        markRoot(inSplice);
         retain(afterSplice);
-        markRoot(afterSplice);
 
         assert.is(1, beforeSplice());
         assert.is(3, inSplice());
@@ -181,11 +178,8 @@ suite('collection', () => {
         });
 
         retain(beforeSplice);
-        markRoot(beforeSplice);
         retain(inSplice);
-        markRoot(inSplice);
         retain(afterSplice);
-        markRoot(afterSplice);
 
         assert.is(1, beforeSplice());
         assert.is(3, inSplice());
@@ -225,11 +219,8 @@ suite('collection', () => {
         });
 
         retain(beforeSplice);
-        markRoot(beforeSplice);
         retain(inSplice);
-        markRoot(inSplice);
         retain(afterSplice);
-        markRoot(afterSplice);
 
         assert.is(1, beforeSplice());
         assert.is(3, inSplice());
@@ -269,11 +260,8 @@ suite('collection', () => {
         });
 
         retain(beforeSplice);
-        markRoot(beforeSplice);
         retain(inSplice);
-        markRoot(inSplice);
         retain(afterSplice);
-        markRoot(afterSplice);
 
         assert.is(1, beforeSplice());
         assert.is(3, inSplice());
@@ -342,7 +330,6 @@ suite('collection', () => {
         retain(view);
 
         retain(calculation);
-        markRoot(calculation);
         calculation();
 
         m.isActive = true;
@@ -651,7 +638,6 @@ suite('mapView', () => {
             return result;
         });
         retain(exclaimOne);
-        markRoot(exclaimOne);
         exclaimOne();
         phrases.sort();
         flush();

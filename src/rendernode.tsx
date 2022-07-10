@@ -9,8 +9,6 @@ import {
     release,
     trackCreates,
     untrackReads,
-    markRoot,
-    unmarkRoot,
     afterFlush,
 } from './engine';
 import { RefObject } from './ref';
@@ -415,7 +413,6 @@ export class IntrinsicRenderNode implements RenderNode {
                 }
                 for (const [prop, calculation] of this.calculations.entries()) {
                     retain(calculation);
-                    markRoot(calculation);
                     const currentVal = calculation();
                     this.setProp(element, prop, currentVal);
                     this.calculationSubscriptions.add(
@@ -656,7 +653,6 @@ export class IntrinsicRenderNode implements RenderNode {
     [SymDead]() {
         if (this.calculations) {
             for (const calculation of this.calculations.values()) {
-                unmarkRoot(calculation);
                 release(calculation);
             }
         }
@@ -792,10 +788,8 @@ export class CalculationRenderNode implements RenderNode {
     [SymRefcount]: number;
     [SymAlive]() {
         retain(this.calculation);
-        markRoot(this.calculation);
     }
     [SymDead]() {
-        unmarkRoot(this.calculation);
         release(this.calculation);
         this.cleanPrior();
         this.emitter = null;
@@ -1355,7 +1349,6 @@ export class ComponentRenderNode<TProps> implements RenderNode {
             }
             if (this.effects) {
                 for (const eff of this.effects) {
-                    markRoot(eff);
                     eff();
                 }
             }
@@ -1410,11 +1403,6 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     [SymDead]() {
         log.assert(this.result, 'Invariant: missing context');
         release(this.result);
-        if (this.effects) {
-            for (const eff of this.effects) {
-                unmarkRoot(eff);
-            }
-        }
         for (const item of this.owned) {
             release(item);
         }

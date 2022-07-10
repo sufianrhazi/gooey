@@ -9,8 +9,6 @@ import {
     removeSoftEdge,
     markDirty,
     addVertex,
-    markRoot,
-    unmarkRoot,
     retain,
     release,
     removeVertex,
@@ -112,9 +110,6 @@ export class SubscriptionEmitter<TEmitEvent>
     }
 
     subscribe(handler: SubscriptionEmitterHandler<TEmitEvent>) {
-        if (this.subscribers.length === 0) {
-            markRoot(this);
-        }
         this.subscribers.push(handler);
         this.subscriberOffset.push(this.events.length);
         return () => {
@@ -122,9 +117,6 @@ export class SubscriptionEmitter<TEmitEvent>
             if (index === -1) return;
             this.subscribers.splice(index, 1);
             this.subscriberOffset.splice(index, 1);
-            if (this.subscribers.length === 0) {
-                unmarkRoot(this);
-            }
         };
     }
 }
@@ -172,7 +164,6 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
     [SymAlive]() {
         this.isActive = true;
         addVertex(this);
-        markRoot(this);
         for (const field of this.fieldMap.values()) {
             retain(field);
             addSoftEdge(this, field);
@@ -197,7 +188,6 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
             removeSoftEdge(this, field);
             release(field);
         }
-        unmarkRoot(this);
         removeVertex(this);
         this.isActive = false;
     }

@@ -15,8 +15,6 @@ export {
     flush,
     retain,
     release,
-    markRoot,
-    unmarkRoot,
     debug,
     debugSubscribe,
 } from './engine';

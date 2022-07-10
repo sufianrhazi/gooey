@@ -206,16 +206,6 @@ export function unmarkDirty(vertex: Processable) {
     globalDependencyGraph.clearVertexDirty(vertex);
 }
 
-export function markRoot(vertex: Processable) {
-    DEBUG && log.debug('mark root', vertex[SymDebugName]);
-    globalDependencyGraph.markVertexRoot(vertex);
-}
-
-export function unmarkRoot(vertex: Processable) {
-    DEBUG && log.debug('clear root', vertex[SymDebugName]);
-    globalDependencyGraph.clearVertexRoot(vertex);
-}
-
 export function markCycleInformed(vertex: Processable) {
     DEBUG && log.debug('cycle informed', vertex[SymDebugName]);
     globalDependencyGraph.markVertexCycleInformed(vertex);

@@ -104,7 +104,6 @@ suite('behavior', () => {
 
         const app = makeTodoListRenderer(todoList);
         gooey.retain(app);
-        gooey.markRoot(app);
 
         return {
             model0,

@@ -11,8 +11,6 @@ import Gooey, {
     mount,
     release,
     retain,
-    unmarkRoot,
-    markRoot,
     setLogLevel,
     reset,
     subscribe,
@@ -434,7 +432,6 @@ suite('perf tests', () => {
             for (let i = 0; i < COUNT; ++i) {
                 const calculation = calc(() => i);
                 retain(calculation);
-                markRoot(calculation);
                 calculations.push(calculation);
             }
             measure(() => {
@@ -443,7 +440,6 @@ suite('perf tests', () => {
                 }
             });
             for (let i = 0; i < COUNT; ++i) {
-                unmarkRoot(calculations[i]);
                 release(calculations[i]);
             }
             calculations.splice(0, calculations.length);
@@ -458,7 +454,6 @@ suite('perf tests', () => {
                 for (let i = 0; i < COUNT; ++i) {
                     const calculation = calc(() => i);
                     retain(calculation);
-                    markRoot(calculation);
                     calculations.push(calculation);
                 }
             });
@@ -466,7 +461,6 @@ suite('perf tests', () => {
                 calculations[i]();
             }
             for (let i = 0; i < COUNT; ++i) {
-                unmarkRoot(calculations[i]);
                 release(calculations[i]);
             }
             calculations = [];
@@ -480,7 +474,6 @@ suite('perf tests', () => {
             for (let i = 0; i < COUNT; ++i) {
                 const calculation = calc(() => i);
                 retain(calculation);
-                markRoot(calculation);
                 calculations.push(calculation);
             }
             for (let i = 0; i < COUNT; ++i) {
@@ -488,7 +481,6 @@ suite('perf tests', () => {
             }
             measure(() => {
                 for (let i = 0; i < COUNT; ++i) {
-                    unmarkRoot(calculations[i]);
                     release(calculations[i]);
                 }
             });
@@ -505,7 +497,6 @@ suite('perf tests', () => {
                 return i + modelObj.num;
             });
             retain(calculation);
-            markRoot(calculation);
             calculation();
             calculations.push(calculation);
         }
@@ -516,7 +507,6 @@ suite('perf tests', () => {
             });
         });
         for (let i = 0; i < COUNT; ++i) {
-            unmarkRoot(calculations[i]);
             release(calculations[i]);
         }
     });
