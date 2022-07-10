@@ -118,9 +118,18 @@ const strings = [
 ];
 
 const snapshotMemory = () => {
-    (window as any).gc?.();
-    (window as any).gc?.();
-    return (performance as any).memory.usedJSHeapSize as number;
+    const mozMemory =
+        (performance as any).mozMemory?.gc || (performance as any).mozMemory;
+    if ((window as any).gc) {
+        (window as any).gc();
+        (window as any).gc();
+    }
+    if ((performance as any).memory) {
+        return (performance as any).memory.usedJSHeapSize as number;
+    } else if (mozMemory && 'gcBytes' in mozMemory) {
+        return mozMemory.gcBytes;
+    }
+    return 0;
 };
 
 const calcStats = (n: number[]) => {
@@ -214,8 +223,26 @@ const App = () => (
         <h1>Memory test</h1>
         <p>
             A number of test cases to ensure we are properly releasing allocated
-            memory
+            memory. To get non-zero numbers:
         </p>
+        <ul>
+            <li>
+                In Chrome, launch with{' '}
+                <code>
+                    --js-flags="--expose-gc" --enable-precise-memory-info
+                </code>
+            </li>
+            <li>
+                In Firefox, enable the <code>dom.enable_memory_stats</code>{' '}
+                config in <code>about:config</code>. There is no way (afaict) to
+                programmatically force gc, so this is less accurate than in
+                Chrome.
+            </li>
+            <li>
+                These numbers cannot be trusted -- only use as an easy check to
+                determine if leaks have occurred (i.e. use a memory profiler).
+            </li>
+        </ul>
         <div class="test-cases">
             <TestCase
                 name="Fragment of strings"
