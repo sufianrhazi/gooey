@@ -11,6 +11,7 @@ import Gooey, {
     mount,
     release,
     retain,
+    unmarkRoot,
     markRoot,
     setLogLevel,
     reset,
@@ -21,6 +22,9 @@ import { randint } from './util';
 import { suite, test, beforeEach, afterEach, assert } from '@srhazi/gooey-test';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
+const mrt = assert.medianRuntimeLessThan;
+assert.medianRuntimeLessThan = (ms: number, fn: any) =>
+    mrt.call(assert, ms * 1000, fn);
 
 beforeEach(() => {
     testRoot = document.getElementById('test-root')!;
@@ -439,6 +443,7 @@ suite('perf tests', () => {
                 }
             });
             for (let i = 0; i < COUNT; ++i) {
+                unmarkRoot(calculations[i]);
                 release(calculations[i]);
             }
             calculations.splice(0, calculations.length);
@@ -461,6 +466,7 @@ suite('perf tests', () => {
                 calculations[i]();
             }
             for (let i = 0; i < COUNT; ++i) {
+                unmarkRoot(calculations[i]);
                 release(calculations[i]);
             }
             calculations = [];
@@ -482,6 +488,7 @@ suite('perf tests', () => {
             }
             measure(() => {
                 for (let i = 0; i < COUNT; ++i) {
+                    unmarkRoot(calculations[i]);
                     release(calculations[i]);
                 }
             });
@@ -509,6 +516,7 @@ suite('perf tests', () => {
             });
         });
         for (let i = 0; i < COUNT; ++i) {
+            unmarkRoot(calculations[i]);
             release(calculations[i]);
         }
     });
