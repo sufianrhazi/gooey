@@ -24,6 +24,8 @@ import {
 import * as log from './log';
 import { field as makeField, Field } from './field';
 
+const SymTDHandle = Symbol('tdHandle');
+
 type FieldMap = Map<string, Field<any>>;
 
 export interface SubscribeHandler<TEmitEvent> {
@@ -264,17 +266,15 @@ interface TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent> {
     };
 }
 
-/** Unused, but avoids assigning TData to TrackedData<TData, {}> */
-declare const SymTag: unique symbol;
 export type TrackedData<TData, TMethods> = TData &
-    TMethods & { [SymTag]: unknown };
+    TMethods & {
+        [SymTDHandle]: TrackedDataHandle<TData, TMethods, unknown, unknown>;
+    };
 
-const tdHandleMap = new WeakMap<any, TrackedDataHandle<any, any, any, any>>();
-
-export function getTrackedDataHandle(
-    trackedData: TrackedData<any, any>
-): undefined | TrackedDataHandle<any, any, any, any> {
-    return tdHandleMap.get(trackedData);
+export function getTrackedDataHandle<TData, TMethods>(
+    trackedData: TrackedData<TData, TMethods>
+): undefined | TrackedDataHandle<TData, TMethods, any, any> {
+    return trackedData[SymTDHandle];
 }
 
 export interface DataAccessor {
@@ -358,6 +358,9 @@ export function makeTrackedData<
 
     const dataAccessor: DataAccessor = {
         get: (prop, receiver) => {
+            if (prop === SymTDHandle) {
+                return tdHandle;
+            }
             if (prop === SymRefcount || prop === SymAlive || prop === SymDead) {
                 return methods[
                     prop as
@@ -494,8 +497,6 @@ export function makeTrackedData<
         emitter,
         consumer,
     };
-    tdHandleMap.set(target, tdHandle);
-    tdHandleMap.set(revocable.proxy, tdHandle);
     notifyCreate(revocable.proxy);
     return tdHandle;
 }
