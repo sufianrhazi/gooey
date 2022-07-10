@@ -36,8 +36,11 @@ export interface ComponentLifecycle {
     ) => void;
 }
 
-export type Component<TProps> = (
-    props: TProps,
+// NOTE: UnusedSymbolForChildrenOmission is present solely for the typechecker to not allow assignment of { children?: JSXNode | JSXNode[] } to TProps if TProps is {}
+// Which allows components to flag type errors when they do not specify a `children` prop, but children are given
+declare const UnusedSymbolForChildrenOmission: unique symbol;
+export type Component<TProps = {}> = (
+    props: TProps & { [UnusedSymbolForChildrenOmission]?: boolean },
     lifecycle: ComponentLifecycle
 ) => JSX.Element | null;
 

@@ -365,10 +365,10 @@ const Cell: Component<{
                 return repr(result.result);
             }, `cell:${col}:${row}:display`).onError((type) => {
                 console.error('Display cell', col, row, 'got error');
-                if (type === 'error') {
+                if (type === CalculationErrorType.EXCEPTION) {
                     return <div title="Cell Display Catch Error">Err!</div>;
                 }
-                if (type === 'cycle') {
+                if (type === CalculationErrorType.CYCLE) {
                     return <div title="Cell Display Catch Cycle">Cycle!</div>;
                 }
             })}

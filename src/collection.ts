@@ -26,14 +26,23 @@ export interface CollectionImpl<T> extends Retainable {
     shift(): T | undefined;
     unshift(...items: T[]): number;
     sort(cmp?: ((a: T, b: T) => number) | undefined): this;
-    reverse(): Collection<T>;
+    reverse(): this;
 
     reject: (pred: (val: T) => boolean) => T[];
     moveSlice: (fromIndex: number, count: number, toIndex: number) => void;
 
-    mapView: <V>(fn: (val: T) => V) => View<V>;
-    filterView: (fn: (val: T) => boolean) => View<T>;
-    flatMapView: <V>(fn: (val: T) => V[]) => View<V>;
+    mapView: <V>(
+        fn: (val: T) => V,
+        debugName?: string | undefined
+    ) => View<V, ArrayEvent<T>>;
+    filterView: (
+        fn: (val: T) => boolean,
+        debugName?: string | undefined
+    ) => View<T, ArrayEvent<T>>;
+    flatMapView: <V>(
+        fn: (val: T) => V[],
+        debugName?: string | undefined
+    ) => View<V, ArrayEvent<T>>;
 
     subscribe: (handler: (event: ArrayEvent<T>) => void) => () => void;
 }
@@ -80,9 +89,18 @@ export interface ViewImpl<T> extends Retainable {
     sort(cmp?: ((a: T, b: T) => number) | undefined): never;
     reverse(): never;
 
-    mapView: <V>(fn: (val: T) => V) => View<V>;
-    filterView: (fn: (val: T) => boolean) => View<T>;
-    flatMapView: <V>(fn: (val: T) => V[]) => View<V>;
+    mapView: <V>(
+        fn: (val: T) => V,
+        debugName?: string | undefined
+    ) => View<V, ArrayEvent<T>>;
+    filterView: (
+        fn: (val: T) => boolean,
+        debugName?: string | undefined
+    ) => View<T, ArrayEvent<T>>;
+    flatMapView: <V>(
+        fn: (val: T) => V[],
+        debugName?: string | undefined
+    ) => View<V, ArrayEvent<T>>;
 
     subscribe: (handler: (event: ArrayEvent<T>) => void) => () => void;
 }
@@ -114,8 +132,18 @@ export function makeViewPrototype<T>(): ViewImpl<T> {
     };
 }
 
-export type Collection<T> = TrackedData<T[], CollectionImpl<T>>;
-export type View<T> = TrackedData<readonly T[], ViewImpl<T>>;
+export type Collection<T> = TrackedData<
+    T[],
+    CollectionImpl<T>,
+    ArrayEvent<T>,
+    ArrayEvent<T>
+>;
+export type View<T, TConsumeEvent = any> = TrackedData<
+    readonly T[],
+    ViewImpl<T>,
+    ArrayEvent<T>,
+    TConsumeEvent
+>;
 
 export function isCollection(val: any): val is Collection<any> {
     return val && val._type === 'collection';
@@ -324,7 +352,12 @@ function collectionSubscribe<T>(
     this: Collection<T> | View<T>,
     handler: (event: ArrayEvent<T>) => void
 ) {
-    const tdHandle = getTrackedDataHandle(this);
+    const tdHandle = getTrackedDataHandle<
+        readonly T[],
+        CollectionImpl<T> | ViewImpl<T>,
+        ArrayEvent<T>,
+        ArrayEvent<any>
+    >(this);
     log.assert(tdHandle, 'subscribe missing tdHandle');
     retain(tdHandle.emitter);
     const unsubscribe = tdHandle.emitter.subscribe((events, offset) => {
@@ -426,14 +459,14 @@ function mapView<T, V>(
     this: Collection<T> | View<T>,
     fn: (item: T) => V,
     debugName?: string
-) {
+): View<V, ArrayEvent<T>> {
     return makeFlatMapView(this, (item: T) => [fn(item)], debugName);
 }
 function filterView<T>(
     this: Collection<T> | View<T>,
     fn: (item: T) => boolean,
     debugName?: string
-) {
+): View<T, ArrayEvent<T>> {
     return makeFlatMapView(
         this,
         (item: T) => (fn(item) ? [item] : []),
@@ -444,7 +477,7 @@ function flatMapView<T, V>(
     this: Collection<T> | View<T>,
     fn: (item: T) => V[],
     debugName?: string
-) {
+): View<V, ArrayEvent<T>> {
     return makeFlatMapView(this, fn, debugName);
 }
 
@@ -452,8 +485,13 @@ function makeFlatMapView<T, V>(
     sourceCollection: Collection<T> | View<T>,
     flatMap: (item: T) => readonly V[],
     debugName?: string
-) {
-    const sourceTDHandle = getTrackedDataHandle(sourceCollection);
+): View<V, ArrayEvent<T>> {
+    const sourceTDHandle = getTrackedDataHandle<
+        readonly T[],
+        CollectionImpl<T> | ViewImpl<T>,
+        ArrayEvent<T>,
+        ArrayEvent<any>
+    >(sourceCollection);
     log.assert(sourceTDHandle, 'missing tdHandle');
     const slotSizes: number[] = [];
     const initialTransform: V[] = [];

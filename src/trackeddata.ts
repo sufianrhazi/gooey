@@ -28,14 +28,14 @@ const SymTDHandle = Symbol('tdHandle');
 
 type FieldMap = Map<string, Field<any>>;
 
-export interface SubscribeHandler<TEmitEvent> {
-    (events: TEmitEvent[], index: number): void;
-}
+type SubscriptionEmitterHandler<TEmitEvent> = {
+    bivarianceHack(events: TEmitEvent[], index: number): void;
+}['bivarianceHack'];
 
 export class SubscriptionEmitter<TEmitEvent>
     implements Processable, Retainable
 {
-    private subscribers: SubscribeHandler<TEmitEvent>[];
+    private subscribers: SubscriptionEmitterHandler<TEmitEvent>[];
     private subscriberOffset: number[];
     private events: TEmitEvent[];
     private fieldMap: FieldMap;
@@ -111,7 +111,7 @@ export class SubscriptionEmitter<TEmitEvent>
         }
     }
 
-    subscribe(handler: SubscribeHandler<TEmitEvent>) {
+    subscribe(handler: SubscriptionEmitterHandler<TEmitEvent>) {
         if (this.subscribers.length === 0) {
             markRoot(this);
         }
@@ -129,14 +129,22 @@ export class SubscriptionEmitter<TEmitEvent>
     }
 }
 
+type SubscriptionConsumerHandler<TData, TConsumeEvent, TEmitEvent> = {
+    bivarianceHack(
+        target: TData,
+        event: TConsumeEvent
+    ): IterableIterator<TEmitEvent>;
+}['bivarianceHack'];
+
 export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
     implements Processable, Retainable
 {
     private target: TData;
-    private handler: (
-        target: TData,
-        event: TConsumeEvent
-    ) => IterableIterator<TEmitEvent>;
+    private handler: SubscriptionConsumerHandler<
+        TData,
+        TConsumeEvent,
+        TEmitEvent
+    >;
     private events: TConsumeEvent[];
     private fieldMap: FieldMap;
     private isActive: boolean;
@@ -199,10 +207,7 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
         fieldMap: FieldMap,
         sourceEmitter: SubscriptionEmitter<TConsumeEvent>,
         transformEmitter: SubscriptionEmitter<TEmitEvent>,
-        handler: (
-            target: TData,
-            event: TConsumeEvent
-        ) => IterableIterator<TEmitEvent>,
+        handler: SubscriptionConsumerHandler<TData, TConsumeEvent, TEmitEvent>,
         debugName: string
     ) {
         this.target = target;
@@ -261,19 +266,29 @@ interface TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent> {
     consumer: null | SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>;
     target: any;
     revocable: {
-        proxy: TrackedData<TData, TMethods>;
+        proxy: TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>;
         revoke: () => void;
     };
 }
 
-export type TrackedData<TData, TMethods> = TData &
+export type TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent> = TData &
     TMethods & {
-        [SymTDHandle]: TrackedDataHandle<TData, TMethods, unknown, unknown>;
+        [SymTDHandle]: TrackedDataHandle<
+            TData,
+            TMethods,
+            TEmitEvent,
+            TConsumeEvent
+        >;
     };
 
-export function getTrackedDataHandle<TData, TMethods>(
-    trackedData: TrackedData<TData, TMethods>
-): undefined | TrackedDataHandle<TData, TMethods, any, any> {
+export function getTrackedDataHandle<
+    TData,
+    TMethods,
+    TEmitEvent,
+    TConsumeEvent
+>(
+    trackedData: TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>
+): undefined | TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent> {
     return trackedData[SymTDHandle];
 }
 
@@ -459,30 +474,22 @@ export function makeTrackedData<
         },
     };
 
-    const revocable = Proxy.revocable<TrackedData<TData, TMethods>>(
-        target as TrackedData<TData, TMethods>,
-        {
-            get: (target, prop, receiver) =>
-                proxyHandler.get(dataAccessor, emitEvent, prop, receiver),
-            has: (target, prop) =>
-                proxyHandler.has(dataAccessor, emitEvent, prop),
-            set: (target, prop, value, receiver) =>
-                proxyHandler.set(
-                    dataAccessor,
-                    emitEvent,
-                    prop,
-                    value,
-                    receiver
-                ),
-            deleteProperty: (target, prop) =>
-                proxyHandler.delete(dataAccessor, emitEvent, prop),
-            ownKeys: () => {
-                const keys = tdHandle.keys;
-                tdHandle.keysField.get(); // force a read to add a dependency on keys
-                return [...keys];
-            },
-        }
-    );
+    const revocable = Proxy.revocable<
+        TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>
+    >(target as TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>, {
+        get: (target, prop, receiver) =>
+            proxyHandler.get(dataAccessor, emitEvent, prop, receiver),
+        has: (target, prop) => proxyHandler.has(dataAccessor, emitEvent, prop),
+        set: (target, prop, value, receiver) =>
+            proxyHandler.set(dataAccessor, emitEvent, prop, value, receiver),
+        deleteProperty: (target, prop) =>
+            proxyHandler.delete(dataAccessor, emitEvent, prop),
+        ownKeys: () => {
+            const keys = tdHandle.keys;
+            tdHandle.keysField.get(); // force a read to add a dependency on keys
+            return [...keys];
+        },
+    });
     const tdHandle: TrackedDataHandle<
         TData,
         TMethods,

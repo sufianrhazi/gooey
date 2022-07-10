@@ -1,6 +1,7 @@
 import { Calculation } from './calc';
 import { Collection, View } from './collection';
 import { RenderNode } from './rendernode';
+import type { Ref } from './ref';
 
 /**
  * The core type that can be used as a child or root of a JSX expression
@@ -30,7 +31,7 @@ export interface JSXNodeCalculation extends Calculation<JSXNode> {}
 export interface JSXNodeCollection extends Collection<JSXNode> {}
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
-export interface JSXNodeView extends View<JSXNode> {}
+export interface JSXNodeView extends View<JSXNode, any> {}
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface JSXNodeArray extends Array<JSXNode> {}
@@ -73,11 +74,6 @@ declare global {
         type ElementClass = never;
     }
 }
-
-/**
- * The type returned by createElement
- */
-export type RenderedElement = Text | Element | RenderNode;
 
 /*
  * Interfaces adopted from HTML Living Standard Last Updated 30 November 2021: https://html.spec.whatwg.org/
@@ -1818,9 +1814,8 @@ const HTMLTableHeaderElementMap: PropertyMap<
     HTMLTableCellElement
 > = {
     ...HTMLTableCellElementMap,
-    scope: {
-        idlName: 'colSpan',
-    },
+    scope: {},
+    abbr: {},
 };
 
 interface JSXTableColElementInterface extends JSXElementInterface {

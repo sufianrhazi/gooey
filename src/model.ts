@@ -6,12 +6,7 @@ import {
     ProxyHandler,
 } from './trackeddata';
 import { SymDebugName, SymRefcount, SymAlive, SymDead } from './engine';
-import {
-    CollectionHandler,
-    ViewImpl,
-    makeViewPrototype,
-    View,
-} from './collection';
+import { ViewHandler, ViewImpl, makeViewPrototype, View } from './collection';
 import { noop } from './util';
 import { ArrayEvent, ArrayEventType } from './arrayevent';
 
@@ -33,7 +28,12 @@ type ModelEvent =
     | { type: ModelEventType.SET; prop: string; value: any }
     | { type: ModelEventType.DEL; prop: string };
 
-export type Model<T extends {}> = TrackedData<T, typeof ModelPrototype>;
+export type Model<T extends {}> = TrackedData<
+    T,
+    typeof ModelPrototype,
+    ModelEvent,
+    ModelEvent
+>;
 
 export function model<T extends {}>(target: T, debugName?: string): Model<T> {
     const proxyHandler: ProxyHandler<ModelEvent> = {
@@ -57,21 +57,19 @@ export function model<T extends {}>(target: T, debugName?: string): Model<T> {
             return dataAccessor.delete(prop);
         },
     };
-    const modelInterface = makeTrackedData(
-        target,
-        proxyHandler,
-        ModelPrototype,
-        null,
-        null,
-        debugName
-    );
+    const modelInterface = makeTrackedData<
+        T,
+        typeof ModelPrototype,
+        ModelEvent,
+        ModelEvent
+    >(target, proxyHandler, ModelPrototype, null, null, debugName);
     return modelInterface.revocable.proxy;
 }
 
 model.keys = function modelKeys<T extends {}>(
     sourceModel: Model<T>,
     debugName?: string
-): View<string> {
+): View<string, ModelEvent> {
     const sourceTDHandle = getTrackedDataHandle(sourceModel);
     log.assert(sourceTDHandle, 'missing tdHandle');
 
@@ -84,7 +82,7 @@ model.keys = function modelKeys<T extends {}>(
         ModelEvent
     >(
         initialKeys,
-        CollectionHandler,
+        ViewHandler,
         makeViewPrototype(),
         sourceTDHandle.emitter,
         keysHandler,
