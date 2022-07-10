@@ -9,6 +9,7 @@ export const SymDead = Symbol('dead');
 export const SymRecalculate = Symbol('recalculate');
 export const SymCycle = Symbol('cycle');
 export const SymInvalidate = Symbol('invalidate');
+export const SymProcessable = Symbol('processable');
 
 export interface Retainable {
     [SymDebugName]: string;
@@ -18,14 +19,20 @@ export interface Retainable {
 }
 
 export interface Processable {
+    [SymProcessable]: true;
     [SymDebugName]: string;
     [SymRecalculate]?: () => boolean;
     [SymCycle]?: () => boolean;
     [SymInvalidate]?: () => boolean;
 }
 
+export function isProcessable(val: any): val is Processable {
+    return val && val[SymProcessable] === true;
+}
+
 let globalDependencyGraph = new Graph<Processable>(processHandler);
-let activeCalculationReads: (Set<Retainable & Processable> | null)[] = [];
+let trackReadSets: (Set<Retainable | (Retainable & Processable)> | null)[] = [];
+let trackCreateSets: (Set<Retainable> | null)[] = [];
 let isFlushing = false;
 let afterFlushCallbacks: (() => void)[] = [];
 let needsFlush = false;
@@ -43,7 +50,8 @@ function defaultScheduler(callback: () => void) {
 
 export function reset() {
     globalDependencyGraph = new Graph<Processable>(processHandler);
-    activeCalculationReads = [];
+    trackReadSets = [];
+    trackCreateSets = [];
     isFlushing = false;
     afterFlushCallbacks = [];
     needsFlush = false;
@@ -213,44 +221,89 @@ export function markCycleInformed(vertex: Processable) {
     globalDependencyGraph.markVertexCycleInformed(vertex);
 }
 
-export function tracked<T>(
-    set: Set<Retainable & Processable>,
+export function trackReads<T>(
+    set: Set<Retainable | (Retainable & Processable)>,
     fn: () => T,
     debugName?: string
 ): T {
-    DEBUG && log.group('tracked', debugName ?? 'call');
-    activeCalculationReads.push(set);
+    DEBUG && log.group('trackReads', debugName ?? 'call');
+    trackReadSets.push(set);
     try {
         return fn();
     } finally {
         DEBUG && log.groupEnd();
         log.assert(
-            set === activeCalculationReads.pop(),
+            set === trackReadSets.pop(),
             'Calculation tracking consistency error'
         );
     }
 }
 
-export function untracked<T>(fn: () => T, debugName?: string): T {
-    DEBUG && log.group('untracked', debugName ?? 'call');
-    activeCalculationReads.push(null);
+export function untrackReads<T>(fn: () => T, debugName?: string): T {
+    DEBUG && log.group('untrackReads', debugName ?? 'call');
+    trackReadSets.push(null);
     try {
         return fn();
     } finally {
         DEBUG && log.groupEnd();
         log.assert(
-            null === activeCalculationReads.pop(),
+            null === trackReadSets.pop(),
             'Calculation tracking consistency error'
         );
     }
 }
 
-export function addDependencyToActiveCalculation(
-    dependency: Retainable & Processable
-) {
-    if (activeCalculationReads.length === 0) return;
-    const calculationReads =
-        activeCalculationReads[activeCalculationReads.length - 1];
+export function trackCreates<T>(
+    set: Set<Retainable | (Retainable & Processable)>,
+    fn: () => T,
+    debugName?: string
+): T {
+    DEBUG && log.group('trackCreates', debugName ?? 'call');
+    trackCreateSets.push(set);
+    try {
+        return fn();
+    } finally {
+        DEBUG && log.groupEnd();
+        log.assert(
+            set === trackCreateSets.pop(),
+            'Calculation tracking consistency error'
+        );
+    }
+}
+
+export function untrackCreates<T>(fn: () => T, debugName?: string): T {
+    DEBUG && log.group('untrackCreates', debugName ?? 'call');
+    trackCreateSets.push(null);
+    try {
+        return fn();
+    } finally {
+        DEBUG && log.groupEnd();
+        log.assert(
+            null === trackCreateSets.pop(),
+            'Calculation tracking consistency error'
+        );
+    }
+}
+
+export function notifyCreate(retainable: Retainable) {
+    if (trackCreateSets.length === 0) return;
+    const createSet = trackCreateSets[trackCreateSets.length - 1];
+    if (createSet) {
+        DEBUG &&
+            log.debug(
+                'notifying dependency',
+                retainable[SymDebugName],
+                'to was created'
+            );
+        if (!createSet.has(retainable)) {
+            createSet.add(retainable);
+        }
+    }
+}
+
+export function notifyRead(dependency: Retainable & Processable) {
+    if (trackReadSets.length === 0) return;
+    const calculationReads = trackReadSets[trackReadSets.length - 1];
     if (calculationReads) {
         DEBUG &&
             log.debug(

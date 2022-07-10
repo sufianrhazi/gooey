@@ -5,7 +5,8 @@ import {
     addVertex,
     markDirty,
     removeVertex,
-    addDependencyToActiveCalculation,
+    notifyRead,
+    SymProcessable,
     SymDebugName,
     SymDead,
     SymAlive,
@@ -36,6 +37,7 @@ export function field<T>(name: string, val: T, debugName?: string): Field<T> {
         update: fieldUpdate,
         observe: fieldObserve,
 
+        [SymProcessable]: true,
         [SymRefcount]: 0,
         [SymAlive]: fieldAlive,
         [SymDead]: fieldDead,
@@ -46,9 +48,9 @@ export function field<T>(name: string, val: T, debugName?: string): Field<T> {
 
     return field;
 }
-
+notifyRead;
 function fieldGet<T>(this: Field<T>): T {
-    addDependencyToActiveCalculation(this);
+    notifyRead(this);
     return this._val;
 }
 

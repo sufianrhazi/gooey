@@ -1,6 +1,6 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
-import { reset, flush, subscribe } from './engine';
+import { retain, release, reset, flush, subscribe } from './engine';
 
 beforeEach(() => {
     reset();
@@ -56,6 +56,7 @@ suite('model', () => {
     test('model.keys produces view of keys', () => {
         const simple = model<Record<string, any>>({}, 'model');
         const keys = model.keys(simple);
+        retain(keys);
         assert.arrayEqualsUnsorted([], keys);
         simple.foo = 'a';
         flush();
@@ -69,11 +70,13 @@ suite('model', () => {
         delete simple.bar;
         flush();
         assert.arrayEqualsUnsorted(['foo'], keys);
+        release(keys);
     });
 
     test('model.keys waits for flush', () => {
         const simple = model<Record<string, any>>({});
         const keys = model.keys(simple);
+        retain(keys);
         assert.arrayEqualsUnsorted([], keys);
         simple.foo = 'a';
         assert.arrayEqualsUnsorted([], keys);
@@ -85,11 +88,13 @@ suite('model', () => {
         assert.arrayEqualsUnsorted([], keys);
         flush();
         assert.arrayEqualsUnsorted(['foo'], keys);
+        release(keys);
     });
 
     test('model.keys does nothing after release', () => {
         const simple = model<Record<string, any>>({});
         const keys = model.keys(simple);
+        retain(keys);
         assert.arrayEqualsUnsorted([], keys);
         simple.foo = 'a';
         flush();
@@ -97,8 +102,7 @@ suite('model', () => {
         simple.bar = 'a';
         flush();
         assert.arrayEqualsUnsorted(['foo', 'bar'], keys);
-        // TODO: how to dispose of collection?
-        return;
+        release(keys);
 
         simple.baz = 'new';
         delete simple.foo;
@@ -111,6 +115,7 @@ suite('model', () => {
         const simple = model<Record<string, any>>({});
         simple.before = 'before';
         const keys = model.keys(simple);
+        retain(keys);
         simple.after = 'after';
 
         assert.arrayEqualsUnsorted(['before'], keys);
@@ -123,5 +128,6 @@ suite('model', () => {
         flush();
 
         assert.arrayEqualsUnsorted(['before', 'after', 'afterFlush'], keys);
+        release(keys);
     });
 });

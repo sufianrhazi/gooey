@@ -1,7 +1,8 @@
 import {
     Processable,
     Retainable,
-    addDependencyToActiveCalculation,
+    notifyCreate,
+    notifyRead,
     addHardEdge,
     removeHardEdge,
     addSoftEdge,
@@ -13,6 +14,7 @@ import {
     retain,
     release,
     removeVertex,
+    SymProcessable,
     SymDebugName,
     SymAlive,
     SymDead,
@@ -38,6 +40,7 @@ export class SubscriptionEmitter<TEmitEvent>
     private isActive: boolean;
 
     // Processable
+    [SymProcessable]: true;
     [SymDebugName]: string;
 
     [SymRecalculate]() {
@@ -73,8 +76,8 @@ export class SubscriptionEmitter<TEmitEvent>
         );
         this.events.splice(0, this.events.length);
         for (const field of this.fieldMap.values()) {
-            release(field);
             removeSoftEdge(field, this);
+            release(field);
         }
         removeVertex(this);
         this.isActive = false;
@@ -87,6 +90,7 @@ export class SubscriptionEmitter<TEmitEvent>
         this.fieldMap = fieldMap;
         this.isActive = false;
         this[SymRefcount] = 0;
+        this[SymProcessable] = true;
         this[SymDebugName] = `emitter:${debugName}`;
     }
 
@@ -139,6 +143,7 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
     private unsubscribe?: () => void;
 
     // Processable
+    [SymProcessable]: true;
     [SymDebugName]: string;
 
     [SymRecalculate]() {
@@ -162,6 +167,7 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
             retain(field);
             addSoftEdge(this, field);
         }
+        retain(this.sourceEmitter);
         addHardEdge(this.sourceEmitter, this);
         this.unsubscribe = this.sourceEmitter.subscribe((events, offset) => {
             for (let i = offset; i < events.length; ++i) {
@@ -174,6 +180,7 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
         if (this.unsubscribe) {
             this.unsubscribe();
             removeHardEdge(this.sourceEmitter, this);
+            release(this.sourceEmitter);
         }
         this.events.splice(0, this.events.length);
         for (const field of this.fieldMap.values()) {
@@ -204,8 +211,8 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
         this.sourceEmitter = sourceEmitter;
         this.transformEmitter = transformEmitter;
         this[SymRefcount] = 0;
+        this[SymProcessable] = true;
         this[SymDebugName] = `consumer:${debugName}`;
-        retain(sourceEmitter);
     }
 
     addEvent(event: TConsumeEvent) {
@@ -273,7 +280,6 @@ export function getTrackedDataHandle(
 export interface DataAccessor {
     get: (prop: string | symbol, receiver: any) => any;
     has: (prop: string | symbol) => any;
-    peek: (prop: string | symbol, receiver: any) => any;
     peekHas: (prop: string | symbol) => any;
     set: (prop: string | symbol, value: any, receiver: any) => any;
     delete: (prop: string | symbol) => boolean;
@@ -307,7 +313,7 @@ export interface ProxyHandler<TEmitEvent> {
 
 export function makeTrackedData<
     TData extends {},
-    TMethods,
+    TMethods extends Retainable,
     TEmitEvent,
     TConsumeEvent
 >(
@@ -344,7 +350,6 @@ export function makeTrackedData<
             handleEvent,
             debugName
         );
-        retain(consumer);
     }
 
     const emitEvent = (event: TEmitEvent) => {
@@ -353,6 +358,14 @@ export function makeTrackedData<
 
     const dataAccessor: DataAccessor = {
         get: (prop, receiver) => {
+            if (prop === SymRefcount || prop === SymAlive || prop === SymDead) {
+                return methods[
+                    prop as
+                        | typeof SymRefcount
+                        | typeof SymAlive
+                        | typeof SymDead
+                ];
+            }
             if (typeof prop === 'symbol') {
                 return Reflect.get(target, prop, receiver);
             }
@@ -368,16 +381,16 @@ export function makeTrackedData<
                 prop,
                 value
             );
-            addDependencyToActiveCalculation(field);
+            notifyRead(field);
             return value;
-        },
-        peek: (prop, receiver) => {
-            return Reflect.get(target, prop, receiver);
         },
         peekHas: (prop) => {
             return Reflect.has(target, prop);
         },
         has: (prop) => {
+            if (prop === SymRefcount || prop === SymAlive || prop === SymDead) {
+                return prop in methods;
+            }
             if (typeof prop === 'symbol') {
                 return Reflect.has(target, prop);
             }
@@ -393,10 +406,14 @@ export function makeTrackedData<
                 prop,
                 value
             );
-            addDependencyToActiveCalculation(field);
+            notifyRead(field);
             return value;
         },
         set: (prop, value, receiver) => {
+            if (prop === SymRefcount) {
+                methods[prop as typeof SymRefcount] = value;
+                return true;
+            }
             if (typeof prop === 'symbol') {
                 return Reflect.set(target, prop, value, receiver);
             }
@@ -420,6 +437,9 @@ export function makeTrackedData<
             return Reflect.set(target, prop, value, revocable.proxy);
         },
         delete: (prop) => {
+            if (prop === SymRefcount || prop === SymAlive || prop === SymDead) {
+                return false; // nope
+            }
             if (typeof prop === 'symbol') {
                 return Reflect.deleteProperty(target, prop);
             }
@@ -476,6 +496,7 @@ export function makeTrackedData<
     };
     tdHandleMap.set(target, tdHandle);
     tdHandleMap.set(revocable.proxy, tdHandle);
+    notifyCreate(revocable.proxy);
     return tdHandle;
 }
 

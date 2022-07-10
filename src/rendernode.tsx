@@ -7,7 +7,8 @@ import {
     SymDead,
     retain,
     release,
-    untracked,
+    trackCreates,
+    untrackReads,
     markRoot,
     unmarkRoot,
     afterFlush,
@@ -28,7 +29,7 @@ import { noop } from './util';
 export interface ComponentLifecycle {
     onMount: (callback: () => void) => void;
     onUnmount: (callback: () => void) => void;
-    onEffect: (callback: () => void) => void;
+    onEffect: (callback: () => void, debugName?: string) => void;
     onContext: <TContext>(
         context: Context<TContext>,
         handler: (val: TContext) => void
@@ -300,23 +301,7 @@ export class ArrayRenderNode implements RenderNode {
 const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const MATHML_NAMESPACE = 'http://www.w3.org/1998/Math/MathML';
-const XLINK_NAMESPACE = 'http://www.w3.org/1999/xlink';
-const XML_NAMESPACE = 'http://www.w3.org/XML/1998/namespace';
-const XMLNS_NAMESPACE = 'http://www.w3.org/2000/xmlns/';
 
-const attributeNamespaceMap: Record<string, string | undefined> = {
-    'xlink:actuate': XLINK_NAMESPACE,
-    'xlink:arcrole': XLINK_NAMESPACE,
-    'xlink:href': XLINK_NAMESPACE,
-    'xlink:role': XLINK_NAMESPACE,
-    'xlink:show': XLINK_NAMESPACE,
-    'xlink:title': XLINK_NAMESPACE,
-    'xlink:type': XLINK_NAMESPACE,
-    'xml:lang': XML_NAMESPACE,
-    'xml:space': XML_NAMESPACE,
-    xmlns: XMLNS_NAMESPACE,
-    'xmlns:xlink': XMLNS_NAMESPACE,
-};
 const elementNamespaceTransitionMap: Record<
     string,
     Record<string, { node: string; children: string } | undefined> | undefined
@@ -872,7 +857,7 @@ export class CollectionRenderNode implements RenderNode {
 
     setContext(context: ContextMap) {
         this.context = context;
-        untracked(() => {
+        untrackReads(() => {
             for (const [index, item] of this.collection.entries()) {
                 this.slotSizes.push(0);
                 const child = renderJSXNode(item);
@@ -1029,12 +1014,14 @@ export class CollectionRenderNode implements RenderNode {
     [SymDebugName]: string;
     [SymRefcount]: number;
     [SymAlive]() {
+        retain(this.collection);
         this.unsubscribe = this.collection.subscribe(
             this.handleCollectionEvent
         );
     }
     [SymDead]() {
         this.unsubscribe?.();
+        release(this.collection);
     }
 }
 
@@ -1257,6 +1244,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     onMountCallbacks?: (() => void)[];
     onUnmountCallbacks?: (() => void)[];
     onContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;
+    owned: Set<Retainable>;
     effects?: Calculation<void>[];
 
     constructor(
@@ -1268,6 +1256,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         this.Component = Component;
         this.props = props;
         this.children = children;
+        this.owned = new Set();
 
         this.result = null;
 
@@ -1309,13 +1298,13 @@ export class ComponentRenderNode<TProps> implements RenderNode {
                     if (!this.onUnmountCallbacks) this.onUnmountCallbacks = [];
                     this.onUnmountCallbacks.push(handler);
                 },
-                onEffect: (handler: () => void) => {
+                onEffect: (handler: () => void, debugName?: string) => {
                     log.assert(
                         callbacksAllowed,
                         'onUnmount must be called in component body'
                     );
                     if (!this.effects) this.effects = [];
-                    this.effects.push(effect(handler));
+                    this.effects.push(effect(handler, debugName));
                 },
                 // "extends unknown" needed to avoid syntax ambiguity with type parameter in jsx
                 // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-constraint
@@ -1351,14 +1340,18 @@ export class ComponentRenderNode<TProps> implements RenderNode {
             } else {
                 componentProps = props ? { ...props, children } : { children };
             }
-            const jsxResult =
-                Component(componentProps, lifecycle) || emptyRenderNode;
+            const jsxResult = trackCreates(
+                this.owned,
+                () => Component(componentProps, lifecycle) || emptyRenderNode
+            );
             callbacksAllowed = false;
             this.result = renderJSXNode(jsxResult);
             retain(this.result);
+            for (const item of this.owned) {
+                retain(item);
+            }
             if (this.effects) {
                 for (const eff of this.effects) {
-                    retain(eff);
                     markRoot(eff);
                     eff();
                 }
@@ -1417,8 +1410,10 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         if (this.effects) {
             for (const eff of this.effects) {
                 unmarkRoot(eff);
-                release(eff);
             }
+        }
+        for (const item of this.owned) {
+            release(item);
         }
     }
 }

@@ -3,56 +3,119 @@ import {
     makeTrackedData,
     getTrackedDataHandle,
     ProxyHandler,
-    SubscribeHandler,
 } from './trackeddata';
-import { untracked, retain, release, markRoot } from './engine';
+import {
+    untrackReads,
+    retain,
+    release,
+    SymRefcount,
+    SymAlive,
+    SymDead,
+    SymDebugName,
+    Retainable,
+} from './engine';
 import { ArrayEvent, ArrayEventType, arrayEventFlatMap } from './arrayevent';
 import * as log from './log';
 
-export const CollectionPrototype = {
-    _type: 'collection',
+export interface CollectionImpl<T> extends Retainable {
+    _type: 'collection';
+    splice(start: number, deleteCount?: number | undefined): T[];
+    splice(start: number, deleteCount: number, ...items: T[]): T[];
+    push(...items: T[]): number;
+    pop(): T | undefined;
+    shift(): T | undefined;
+    unshift(...items: T[]): number;
+    sort(cmp?: ((a: T, b: T) => number) | undefined): this;
+    reverse(): Collection<T>;
 
-    // Array mutation values
-    splice: collectionSplice,
-    push: collectionPush,
-    pop: collectionPop,
-    shift: collectionShift,
-    unshift: collectionUnshift,
-    sort: collectionSort,
-    reverse: collectionReverse,
+    reject: (pred: (val: T) => boolean) => T[];
+    moveSlice: (fromIndex: number, count: number, toIndex: number) => void;
 
-    // Handy API values
-    reject: collectionReject,
-    moveSlice: collectionMoveSlice,
+    mapView: <V>(fn: (val: T) => V) => View<V>;
+    filterView: (fn: (val: T) => boolean) => View<T>;
+    flatMapView: <V>(fn: (val: T) => V[]) => View<V>;
 
-    // View production
-    mapView,
-    filterView,
-    flatMapView,
-    subscribe: collectionSubscribe,
-} as const;
+    subscribe: (handler: (event: ArrayEvent<T>) => void) => () => void;
+}
 
-export const ViewPrototype = {
-    _type: 'view',
+export function makeCollectionPrototype<T>(): CollectionImpl<T> {
+    return {
+        _type: 'collection',
 
-    // Array mutation values
-    splice: viewSplice,
-    push: viewPush,
-    pop: viewPop,
-    shift: viewShift,
-    unshift: viewUnshift,
-    sort: viewSort,
-    reverse: viewReverse,
+        // Array mutation values
+        splice: collectionSplice,
+        push: collectionPush,
+        pop: collectionPop,
+        shift: collectionShift,
+        unshift: collectionUnshift,
+        sort: collectionSort,
+        reverse: collectionReverse,
 
-    // View production
-    mapView,
-    filterView,
-    flatMapView,
-    subscribe: collectionSubscribe,
-} as const;
+        // Handy API values
+        reject: collectionReject,
+        moveSlice: collectionMoveSlice,
 
-export type Collection<T> = TrackedData<T[], typeof CollectionPrototype>;
-export type View<T> = TrackedData<readonly T[], typeof ViewPrototype>;
+        // View production
+        mapView,
+        filterView,
+        flatMapView,
+        subscribe: collectionSubscribe,
+
+        // Retainable
+        [SymRefcount]: 0,
+        [SymAlive]: collectionAlive,
+        [SymDead]: collectionDead,
+        [SymDebugName]: 'collection',
+    };
+}
+
+export interface ViewImpl<T> extends Retainable {
+    _type: 'view';
+    splice(start: number, deleteCount?: number | undefined): never;
+    splice(start: number, deleteCount: number, ...items: T[]): never;
+    push(...items: T[]): never;
+    pop(): never;
+    shift(): never;
+    unshift(...items: T[]): never;
+    sort(cmp?: ((a: T, b: T) => number) | undefined): never;
+    reverse(): never;
+
+    mapView: <V>(fn: (val: T) => V) => View<V>;
+    filterView: (fn: (val: T) => boolean) => View<T>;
+    flatMapView: <V>(fn: (val: T) => V[]) => View<V>;
+
+    subscribe: (handler: (event: ArrayEvent<T>) => void) => () => void;
+}
+
+export function makeViewPrototype<T>(): ViewImpl<T> {
+    return {
+        _type: 'view',
+
+        // Array mutation values
+        splice: viewSplice,
+        push: viewPush,
+        pop: viewPop,
+        shift: viewShift,
+        unshift: viewUnshift,
+        sort: viewSort,
+        reverse: viewReverse,
+
+        // View production
+        mapView,
+        filterView,
+        flatMapView,
+        subscribe: collectionSubscribe,
+
+        // Retainable
+        [SymRefcount]: 0,
+        [SymAlive]: viewAlive,
+        [SymDead]: viewDead,
+        [SymDebugName]: 'collection',
+    };
+}
+
+export type Collection<T> = TrackedData<T[], CollectionImpl<T>>;
+export type View<T> = TrackedData<readonly T[], ViewImpl<T>>;
 
 export function isCollection(val: any): val is Collection<any> {
     return val && val._type === 'collection';
@@ -96,6 +159,9 @@ export const ViewHandler: ProxyHandler<ArrayEvent<any>> = {
         return dataAccessor.has(prop);
     },
     set: (dataAccessor, emitter, prop, value, receiver) => {
+        if (prop === SymRefcount) {
+            return dataAccessor.set(prop, value, receiver);
+        }
         log.fail('Cannot mutate readonly view');
     },
     delete: (dataAccessor, emitter, prop) => {
@@ -106,10 +172,17 @@ export const ViewHandler: ProxyHandler<ArrayEvent<any>> = {
 export function collection<T>(items: T[], debugName?: string): Collection<T> {
     const handle = makeTrackedData<
         T[],
-        typeof CollectionPrototype,
+        CollectionImpl<T>,
         ArrayEvent<T>,
         ArrayEvent<T>
-    >(items, CollectionHandler, CollectionPrototype, null, null, debugName);
+    >(
+        items,
+        CollectionHandler,
+        makeCollectionPrototype(),
+        null,
+        null,
+        debugName
+    );
     return handle.revocable.proxy;
 }
 
@@ -118,14 +191,14 @@ function viewSplice<T>(
     index: number,
     count: number,
     ...items: T[]
-) {
+): never {
     log.fail('Cannot mutate readonly view');
 }
 
 function collectionSplice<T>(
     this: Collection<T>,
     index: number,
-    count: number,
+    count = 0,
     ...items: T[]
 ) {
     const tdHandle = getTrackedDataHandle(this);
@@ -167,7 +240,7 @@ function collectionSplice<T>(
     return removed;
 }
 
-function viewPush<T>(this: View<T>, ...items: T[]) {
+function viewPush<T>(this: View<T>, ...items: T[]): never {
     log.fail('Cannot mutate readonly view');
 }
 
@@ -176,7 +249,7 @@ function collectionPush<T>(this: Collection<T>, ...items: T[]) {
     return this.length;
 }
 
-function viewPop<T>(this: View<T>) {
+function viewPop<T>(this: View<T>): never {
     log.fail('Cannot mutate readonly view');
 }
 
@@ -184,7 +257,7 @@ function collectionPop<T>(this: Collection<T>): T | undefined {
     return collectionSplice.call(this, this.length - 1, 1)[0];
 }
 
-function viewShift<T>(this: View<T>) {
+function viewShift<T>(this: View<T>): never {
     log.fail('Cannot mutate readonly view');
 }
 
@@ -192,7 +265,7 @@ function collectionShift<T>(this: Collection<T>): T | undefined {
     return collectionSplice.call(this, 0, 1)[0];
 }
 
-function viewUnshift<T>(this: View<T>, ...items: T[]) {
+function viewUnshift<T>(this: View<T>, ...items: T[]): never {
     log.fail('Cannot mutate readonly view');
 }
 
@@ -265,11 +338,22 @@ function collectionSubscribe<T>(
     };
 }
 
-function viewSort<T>(this: Collection<T>, sortFn?: (a: T, b: T) => number) {
+function collectionAlive() {
+    // TODO: what to do here?
+}
+
+function collectionDead() {
+    // TODO: what to do here?
+}
+
+function viewSort<T>(
+    this: Collection<T>,
+    sortFn?: (a: T, b: T) => number
+): never {
     log.fail('Cannot mutate readonly view');
 }
 
-function viewReverse<T>(this: Collection<T>) {
+function viewReverse<T>(this: Collection<T>): never {
     log.fail('Cannot mutate readonly view');
 }
 
@@ -374,7 +458,7 @@ function makeFlatMapView<T, V>(
     const slotSizes: number[] = [];
     const initialTransform: V[] = [];
 
-    untracked(() => {
+    untrackReads(() => {
         for (const item of sourceCollection) {
             const slot = flatMap(item);
             slotSizes.push(slot.length);
@@ -384,13 +468,13 @@ function makeFlatMapView<T, V>(
 
     const derivedCollection = makeTrackedData<
         readonly V[],
-        typeof ViewPrototype,
+        ViewImpl<V>,
         ArrayEvent<V>,
         ArrayEvent<T>
     >(
         initialTransform,
         ViewHandler,
-        ViewPrototype,
+        makeViewPrototype(),
         sourceTDHandle.emitter,
         (target, event) =>
             arrayEventFlatMap(slotSizes, flatMap, initialTransform, event),
@@ -398,4 +482,18 @@ function makeFlatMapView<T, V>(
     );
 
     return derivedCollection.revocable.proxy;
+}
+
+function viewAlive<T>(this: View<T>) {
+    const tdHandle = getTrackedDataHandle(this);
+    log.assert(tdHandle, 'missing tdHandle');
+    log.assert(tdHandle.consumer, 'missing tdHandle consumer');
+    retain(tdHandle.consumer);
+}
+
+function viewDead<T>(this: View<T>) {
+    const tdHandle = getTrackedDataHandle(this);
+    log.assert(tdHandle, 'missing tdHandle');
+    log.assert(tdHandle.consumer, 'missing tdHandle consumer');
+    release(tdHandle.consumer);
 }

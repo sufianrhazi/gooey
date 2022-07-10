@@ -4,17 +4,23 @@ import {
     TrackedData,
     makeTrackedData,
     ProxyHandler,
-    SubscriptionEmitter,
 } from './trackeddata';
+import { SymDebugName, SymRefcount, SymAlive, SymDead } from './engine';
 import {
-    Collection,
     CollectionHandler,
-    CollectionPrototype,
+    ViewImpl,
+    makeViewPrototype,
+    View,
 } from './collection';
+import { noop } from './util';
 import { ArrayEvent, ArrayEventType } from './arrayevent';
 
-// Note: this is unused in models, since models do not have methods
-const ModelPrototype = {};
+const ModelPrototype = {
+    [SymDebugName]: '',
+    [SymRefcount]: 0,
+    [SymAlive]: noop,
+    [SymDead]: noop,
+};
 
 export enum ModelEventType {
     ADD,
@@ -65,7 +71,7 @@ export function model<T extends {}>(target: T, debugName?: string): Model<T> {
 model.keys = function modelKeys<T extends {}>(
     sourceModel: Model<T>,
     debugName?: string
-): Collection<string> {
+): View<string> {
     const sourceTDHandle = getTrackedDataHandle(sourceModel);
     log.assert(sourceTDHandle, 'missing tdHandle');
 
@@ -73,13 +79,13 @@ model.keys = function modelKeys<T extends {}>(
 
     const derivedCollection = makeTrackedData<
         string[],
-        typeof CollectionPrototype,
+        ViewImpl<string>,
         ArrayEvent<string>,
         ModelEvent
     >(
         initialKeys,
         CollectionHandler,
-        CollectionPrototype,
+        makeViewPrototype(),
         sourceTDHandle.emitter,
         keysHandler,
         debugName

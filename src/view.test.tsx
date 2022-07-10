@@ -2984,7 +2984,7 @@ if (2 < 1) {
 }
 
 suite('automatic memory management', () => {
-    test('component with calculation, effect', () => {
+    test('component with calculation, effect leaves empty graph', () => {
         let effectHit = false;
         const Item: Component<{ name: string }> = (
             { name },
@@ -3098,7 +3098,25 @@ suite('automatic memory management', () => {
         assert.isTruthy(effectHit);
         unmount();
 
+        assert.deepEqual([], debugGetGraph()._test_getVertices());
+    });
+
+    test('component with mapView leaves empty graph', () => {
+        const items = collection(['foo', 'bar', 'baz']);
+        const Item: Component<{ name: string }> = ({ name }) => <li>{name}</li>;
+        const Items: Component<{}> = () => (
+            <ul>
+                {items.mapView((item) => (
+                    <Item name={item} />
+                ))}
+            </ul>
+        );
+        const unmount = mount(testRoot, <Items />);
         flush();
+        items.push('bum');
+        flush();
+        unmount();
+
         assert.deepEqual([], debugGetGraph()._test_getVertices());
     });
 });

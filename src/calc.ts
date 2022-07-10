@@ -143,17 +143,18 @@ import { Sentinel } from './sentinel';
 import {
     Processable,
     Retainable,
-    addDependencyToActiveCalculation,
+    notifyCreate,
+    notifyRead,
     addHardEdge,
     addVertex,
     release,
     removeHardEdge,
     removeVertex,
-    retain,
     markCycleInformed,
     unmarkDirty,
-    tracked,
-    untracked,
+    trackReads,
+    untrackReads,
+    SymProcessable,
     SymCycle,
     SymDebugName,
     SymAlive,
@@ -161,6 +162,7 @@ import {
     SymInvalidate,
     SymRecalculate,
     SymRefcount,
+    isProcessable,
 } from './engine';
 
 enum CalculationState {
@@ -198,7 +200,7 @@ export interface Calculation<T> extends Retainable, Processable {
     _errorHandler?: (errorType: CalculationErrorType) => T;
     _isEffect: boolean;
     _state: CalculationState;
-    _retained?: Set<Processable & Retainable>;
+    _retained?: Set<Retainable | (Processable & Retainable)>;
     _val?: T;
     _error?: any;
 }
@@ -257,7 +259,7 @@ class CycleError extends Error {
 
 function calculationCall<T>(calculation: Calculation<T>): T {
     if (!calculation._isEffect) {
-        addDependencyToActiveCalculation(calculation);
+        notifyRead(calculation);
     }
 
     const state = calculation._state;
@@ -284,12 +286,14 @@ function calculationCall<T>(calculation: Calculation<T>): T {
             }
             break;
         case CalculationState.READY: {
-            const calculationReads: Set<Retainable & Processable> = new Set();
+            const calculationReads: Set<
+                Retainable | (Retainable & Processable)
+            > = new Set();
             let result: T | Sentinel = Sentinel;
             let exception: any;
             calculation._state = CalculationState.CALLING;
             try {
-                result = tracked(
+                result = trackReads(
                     calculationReads,
                     () => calculation._fn(),
                     calculation[SymDebugName]
@@ -332,7 +336,7 @@ function calculationCall<T>(calculation: Calculation<T>): T {
                 }
                 const errorHandler = calculation._errorHandler;
                 if (errorHandler) {
-                    result = untracked(
+                    result = untrackReads(
                         () =>
                             errorHandler(
                                 isActiveCycle
@@ -365,7 +369,10 @@ function calculationCall<T>(calculation: Calculation<T>): T {
 
             if (calculation._retained) {
                 for (const priorDependency of calculation._retained) {
-                    if (!calculationReads.has(priorDependency)) {
+                    if (
+                        isProcessable(priorDependency) &&
+                        !calculationReads.has(priorDependency)
+                    ) {
                         removeHardEdge(priorDependency, calculation);
                     }
                     // XXX:AUTO_RETAIN: THIS IS SURPRISING
@@ -376,11 +383,13 @@ function calculationCall<T>(calculation: Calculation<T>): T {
                 }
             }
             for (const dependency of calculationReads) {
-                if (
-                    !calculation._retained ||
-                    !calculation._retained.has(dependency)
-                ) {
-                    addHardEdge(dependency, calculation);
+                if (isProcessable(dependency)) {
+                    if (
+                        !calculation._retained ||
+                        !calculation._retained.has(dependency)
+                    ) {
+                        addHardEdge(dependency, calculation);
+                    }
                 }
             }
             calculation._retained = calculationReads;
@@ -406,7 +415,9 @@ function calculationAlive<T>(this: Calculation<T>) {
 function calculationDead<T>(this: Calculation<T>) {
     if (this._retained) {
         for (const retained of this._retained) {
-            removeHardEdge(retained, this);
+            if (isProcessable(retained)) {
+                removeHardEdge(retained, this);
+            }
             release(retained);
         }
     }
@@ -489,7 +500,7 @@ function calculationCycle<T>(this: Calculation<T>) {
             this._state = CalculationState.READY;
             const errorHandler = this._errorHandler;
             if (errorHandler) {
-                this._val = untracked(
+                this._val = untrackReads(
                     () => errorHandler(CalculationErrorType.CYCLE),
                     this[SymDebugName]
                 );
@@ -537,6 +548,7 @@ export function calc<T>(fn: () => T, debugName?: string) {
         [SymRefcount]: 0,
 
         // Processable
+        [SymProcessable]: true,
         [SymDebugName]: debugName ?? fn.name,
         [SymRecalculate]: calculationRecalculate,
         [SymCycle]: calculationCycle,
@@ -546,6 +558,7 @@ export function calc<T>(fn: () => T, debugName?: string) {
         () => calculationCall(calculation),
         calculationData
     );
+    notifyCreate(calculation);
     return calculation;
 }
 
@@ -570,6 +583,7 @@ export function effect<T>(fn: () => T, debugName?: string) {
         [SymRefcount]: 0,
 
         // Processable
+        [SymProcessable]: true,
         [SymDebugName]: debugName ?? fn.name,
         [SymRecalculate]: calculationRecalculate,
         [SymCycle]: calculationCycle,
@@ -579,5 +593,6 @@ export function effect<T>(fn: () => T, debugName?: string) {
         () => calculationCall(calculation),
         calculationData
     );
+    notifyCreate(calculation);
     return calculation;
 }
