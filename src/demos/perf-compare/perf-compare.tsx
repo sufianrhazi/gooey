@@ -3,10 +3,10 @@ import Gooey, { calc, mount, model } from '../..';
 const app = document.getElementById('app');
 if (!app) throw new Error('app not found');
 
-const Result = ({ perfInfo }: { perfInfo: any[] }) => {
+const getResults = (perfInfo: any[]) => {
     const type = 'perf';
     const record = perfInfo.find((r) => r.type === type);
-    if (record === undefined) return <>Not found</>;
+    if (record === undefined) return { avg: NaN, median: NaN };
     const values = record.value;
     values.sort((a: number, b: number) => a - b);
     let total = 0;
@@ -16,6 +16,16 @@ const Result = ({ perfInfo }: { perfInfo: any[] }) => {
         (values[Math.floor(values.length / 2)] +
             values[Math.ceil(values.length / 2)]) /
         2;
+    return { avg, median };
+};
+
+const div = (num: any[], denom: any[]) => {
+    const a = getResults(num);
+    const b = getResults(denom);
+    return { avg: a.avg / b.avg, median: a.median / b.median };
+};
+
+const Result = ({ avg, median }: { avg: number; median: number }) => {
     return (
         <>
             <div>Average: {avg.toFixed(3)}</div>
@@ -47,6 +57,7 @@ const Results = ({ oneData, twoData }: { oneData: any; twoData: any }) => {
                 <td />
                 <th>Case One</th>
                 <th>Case Two</th>
+                <th>Two / One</th>
             </tr>
             {[...keys].map((key) => {
                 const one = oneParsed.get(key);
@@ -61,12 +72,17 @@ const Results = ({ oneData, twoData }: { oneData: any; twoData: any }) => {
                         </th>
                         <td>
                             {one?.perfInfo && (
-                                <Result perfInfo={one.perfInfo} />
+                                <Result {...getResults(one.perfInfo)} />
                             )}
                         </td>
                         <td>
                             {two?.perfInfo && (
-                                <Result perfInfo={two.perfInfo} />
+                                <Result {...getResults(two.perfInfo)} />
+                            )}
+                        </td>
+                        <td>
+                            {one?.perfInfo && two?.perfInfo && (
+                                <Result {...div(two.perfInfo, one.perfInfo)} />
                             )}
                         </td>
                     </tr>
