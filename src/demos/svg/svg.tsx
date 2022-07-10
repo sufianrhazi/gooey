@@ -1,4 +1,147 @@
-import Gooey, { mount } from '../../index';
+import Gooey, { Component, model, Calculation, calc, mount } from '../../index';
+
+const ClockHand: Component<{
+    cx: number;
+    cy: number;
+    radius: number;
+    strokeWidth: number;
+    angle: Calculation<number>;
+    stroke: string;
+}> = ({ cx, cy, radius, strokeWidth, stroke, angle }) => {
+    return (
+        <line
+            stroke-width={strokeWidth}
+            stroke={stroke}
+            stroke-linecap="round"
+            x1={cx}
+            y1={cy}
+            x2={calc(() => cx + radius * Math.cos((angle() * Math.PI) / 180))}
+            y2={calc(() => cy + radius * Math.sin((angle() * Math.PI) / 180))}
+        />
+    );
+};
+
+const Clock: Component = (_props, { onMount, onUnmount }) => {
+    let intervalHandle: number | null = null;
+    const now = new Date();
+    const state = model({
+        ticksPerSec: 1,
+        count:
+            now.getHours() * 60 * 60 + now.getMinutes() * 60 + now.getSeconds(),
+    });
+
+    const getSeconds = calc(() => state.count % 60);
+    const getMinutes = calc(() => (state.count / 60) % 60);
+    const getHours = calc(() => (state.count / 60 / 60) % 24);
+
+    const tick = () => {
+        state.count += 1;
+    };
+
+    const setRate = (ticksPerSec: number) => {
+        if (intervalHandle !== null) clearInterval(intervalHandle);
+        intervalHandle = setInterval(tick, 1000 / ticksPerSec);
+    };
+
+    const onInput = (e: InputEvent) => {
+        if (!(e.target instanceof HTMLInputElement)) return;
+        const value = parseInt(e.target.value);
+        if (isNaN(value)) return;
+        state.ticksPerSec = value;
+        setRate(value);
+    };
+
+    onMount(() => {
+        setRate(state.ticksPerSec);
+    });
+
+    onUnmount(() => {
+        if (intervalHandle !== null) clearInterval(intervalHandle);
+    });
+
+    return (
+        <>
+            <h1>Clock</h1>
+            <svg width="200" height="200" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="48" stroke="black" fill="#EEEEEE" />
+                {Array(60)
+                    .fill(0)
+                    .map((n, i) => {
+                        const x1 =
+                            50 +
+                            (i % 5 === 0 ? 44 : 46) *
+                                Math.cos((i * 2 * Math.PI) / 60);
+                        const x2 = 50 + 48 * Math.cos((i * 2 * Math.PI) / 60);
+                        const y1 =
+                            50 +
+                            (i % 5 === 0 ? 44 : 46) *
+                                Math.sin((i * 2 * Math.PI) / 60);
+                        const y2 = 50 + 48 * Math.sin((i * 2 * Math.PI) / 60);
+                        return (
+                            <line
+                                x1={x1}
+                                y1={y1}
+                                x2={x2}
+                                y2={y2}
+                                stroke="#000000"
+                                stroke-width={0.5}
+                            />
+                        );
+                    })}
+                <ClockHand
+                    cx={50}
+                    cy={50}
+                    radius={30}
+                    strokeWidth={5}
+                    stroke="#000000"
+                    angle={calc(() => (getHours() * 360) / 12 - 90)}
+                />
+                <ClockHand
+                    cx={50}
+                    cy={50}
+                    radius={40}
+                    strokeWidth={3}
+                    stroke="#444444"
+                    angle={calc(() => (getMinutes() * 360) / 60 - 90)}
+                />
+                <ClockHand
+                    cx={50}
+                    cy={50}
+                    radius={45}
+                    strokeWidth={1}
+                    stroke="#666666"
+                    angle={calc(() => (getSeconds() * 360) / 60 - 90)}
+                />
+            </svg>
+            <div class="clock">
+                <p>
+                    Current count:{' '}
+                    {calc(() => (
+                        <>
+                            {Math.floor(getHours()).toString().padStart(2, '0')}
+                            :
+                            {Math.floor(getMinutes())
+                                .toString()
+                                .padStart(2, '0')}
+                            :
+                            {Math.floor(getSeconds())
+                                .toString()
+                                .padStart(2, '0')}
+                        </>
+                    ))}
+                </p>
+                <p>Tick rate: {calc(() => state.ticksPerSec)} per second</p>
+                <input
+                    type="range"
+                    min={1}
+                    max={250}
+                    value={calc(() => state.ticksPerSec.toString())}
+                    on:input={onInput}
+                />
+            </div>
+        </>
+    );
+};
 
 const root = document.getElementById('app');
 if (root) {
@@ -16,6 +159,7 @@ if (root) {
                 <use href="#myCircle" x="10" fill="blue" />
                 <use href="#myCircle" x="20" fill="white" stroke="red" />
             </svg>
+            <Clock />
             <h1>One with embedded style</h1>
             <svg
                 width="50"
