@@ -1,5 +1,5 @@
 import { Graph, ProcessAction } from './graph';
-import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
+import { suite, test, assert } from '@srhazi/gooey-test';
 
 suite('Graph', () => {
     const a = { name: 'a' };
@@ -516,11 +516,6 @@ suite('Graph', () => {
             });
         });
     });
-
-    if (DEBUG) {
-        // TODO: fix this test
-        test('graphviz representation', () => {});
-    }
 });
 
 suite('Graph Cycles', () => {

@@ -17,6 +17,8 @@ fi
 # Start from a clean slate
 s/clean
 
+s/lint
+
 echo_warn "rm -rf build/"
 rm -rf build/
 

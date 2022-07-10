@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")/.."
+# shellcheck disable=SC1091
+source "s/_tools.sh"
+
+echo_info "Checking requirements..."
+s/check_requirements
+
+echo_info "Installing dependencies..."
+yarn
+
+find src -type f \( -name '*.ts' -o -name '*.tsx' \) -print0 | xargs -0 node_modules/.bin/eslint
