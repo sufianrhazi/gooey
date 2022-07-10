@@ -1,8 +1,19 @@
-import { Ref, Calculation, Collection, View, Context, NodeOrdering } from './types';
+import { Calculation } from './calc';
+import { Collection, View } from './collection';
+import { RenderNode } from './rendernode';
+import type { Ref } from './ref';
 /**
  * The core type that can be used as a child or root of a JSX expression
  */
-export declare type JSXNode = string | number | boolean | null | undefined | bigint | symbol | Function | Element | RenderNode | Calculation<JSXNode> | Collection<JSXNode> | View<JSXNode> | JSXNode[];
+export declare type JSXNode = string | number | boolean | null | undefined | bigint | symbol | Function | Element | RenderNode | JSXNodeCalculation | JSXNodeCollection | JSXNodeView | JSXNodeArray;
+export interface JSXNodeCalculation extends Calculation<JSXNode> {
+}
+export interface JSXNodeCollection extends Collection<JSXNode> {
+}
+export interface JSXNodeView extends View<JSXNode, any> {
+}
+export interface JSXNodeArray extends Array<JSXNode> {
+}
 declare global {
     namespace JSX {
         /**
@@ -36,139 +47,6 @@ declare global {
         type ElementClass = never;
     }
 }
-declare type OnUnmountCallback = () => void;
-declare type OnMountCallback = () => void;
-declare type EffectCallback = () => void;
-export declare type ComponentListeners = {
-    onUnmount: (callback: OnUnmountCallback) => void;
-    onMount: (callback: OnMountCallback) => void;
-    onEffect: (callback: EffectCallback) => void;
-    getContext: <TVal>(context: Context<TVal>) => TVal;
-};
-/**
- * This is a big ol hack that allows components which don't declare any props (const MyComponent: Component<{}> = ...) to enforce that no children can be passed.
- * Why does this work? {} types as function properties accept _any_ props
- *
- * See:
- * - https://www.typescriptlang.org/play?jsx=1#code/C4TwDgpgBAShB2ATCAnCiDCB7AtmL8CwUAvFAN5QDGWWANgFxQBGtdEAhvFAL4DcAKGRU6HNNQIBnYgFd4MyegDKIHK0ZQ5ASwCOM6JNXrBoSFGx4CRADwAVAAoosYSQD5SUABRgnLpg99JKAAyCigAbTkFZSN6AF0AfiZWek5uHgBKUnc4JFR0C3xCeGBBIQgRMWh4DhwISTAOKmgAKSUADQoBKB6oU2gASRKULXhJLSoAUXY6kqCycm7e5Yg8UCZF5eWeJa2oAC9ULA3dvd6AfXOoxUQkvpR9ABpT7ZfeqxOzraoACy06RBoeBMNrtAB001WREEXx4zy+VgA8mBgJ8vr1fv9AQg7qCITNoW8ejsvjgZHRgFo0ejqH8AUCQR18VCSuE4jCznCiVAyRStMjUV0aT1MfScYzwZDZsA2Ry9lyEYRESgALLkynU9Gi7HAqB4qVEKAAHz1TINrPZ3IVZyRqvV-JRmq+2qBuLNBJKxtNko9MstsPhZ3CVAUwFw5sF0hG8AA5nEnUGQ9Jw76AILAYAjZgyYAQJhR0ZxphcEByrb8U47U6jXMoABmTWgEYwdJ16czWmzuaFZxdCA2Fdep36UAjHgLsa98jUqC9KXYXC9cmQddG6Cn5LoXtyyDQmFwRUJVYA9MeBKeoEMO2MJlAIL7JOez0-R2sQFAfM4gp49PVKQQmAAdx+d9ECweo+j+IJmAgH4OAAN2gYAoKgQCOBABIMgEaxVhRd9j1cQQcLfVxrAADygAjrGPXDQEI7DaJAUiKKoljSJokiygvAAtI5aSxIFsMOJxKPo6xhKwZjROoiSxNk8jpLYmSjnol9EUIO8yKaYhtWwqxRKI-SpKo48rDEsyFNY6TTMIVSL3U6BnH-Got106wkRRAy9KVTzjPYjzgHMnzAssvzqICuzjygNU+TAdhNO0-ixXgbDeUpLzrDSrQoDC48srE-LQqKvL7Ui6LyS0OLHJRLQCA4VzW0EzL7QFDKsta3L2pRAqWu6oqlJKvkBTKyYtKoYA6HffSsBQHkZugPsUvcpU7T5DLbRi9Lco20rDJWzatDCgadr5MqBVqlzJqgabZpweakp1LwSygacYJQLDlogZUDtagi9q+1bKQ64qTqB7r-u+3qQqU479qhyKX0KKxPXvFlgEfC8BAEGgxmISY3yYJHimAaxyB4dwyE8LISHcTxKBoegmEzfReAyQQcekKBeKcQmD2RkmyYprxqdp+m2CZh5oEydmpGIBzecsYnSYehlvWZaVeCFqnsi8MXGfuFnpex2WoAcgUFcPEplcWt0fTRzWPG1mndYkfXmaltnjdx8q+Qt-nrca-s1YjNkHcpkWXYZjR3dZmXvZ+x1zD5pX6cD+BbfVohQ-Jx2I7p13o8l2Ovc5s3AapJPFZsVOBKD-VfS9eu0ezrW871wvDc9jm5bhobE6J6uVfFYOG5NJvpRb3OdfzqOJc7riovxvCP0CLxf2kC6gJAqAwIg5CtGg2CEKQlC0Iwj6l9ADLL6Y4qb7E+-+us++F65vjFuw7msAyr-ct-ojf5PxMv-LG9kNIQDGjpVs2EHIZVgblByYlEFAPYog1+sCnIXXqg9GBwU4F4IQcFJBRCUHUTNuDUBUUDpVQSuNIeS0DoZUYblA6YlWGkOPKw1+MVKrxUwXVBqtcGFQyYSIlh8MiIJ2hopayUiRqQKujdOa4gP7WDLowv6uCAbMOKuo3aWjIanQ4Xo066CaoCMURpGayiFppyevAd8r1UAfRMWDYgmi1G9zcTlXRXiHSBSIq4-xR1rJBOGgvRGydDSo2lEEUYdZUB7hfFjbul4b6O3OJ+PwFBMjT3bnPD2cdOYDC-o7LJkgNhQEuNcdAdx5xpFZnkguBTi6pIGLAym5TKmLQlJnT0uTnYz3FgbQpJdiDtLwZTTJgRulpwzmOAZotmkjNaSbAYjCpldLCD0kezc4iNMGfklZRs2lSIyVsmuyV5m+mzm3ZZMcTlrKCecmZ2y069LHGPd0eyDlLNnscruTy-GtU2a8y5Oprn2y+XbCe+zFmR2GQ8z2L50nlLXvoDeAFULb13kEfeh84KIUggfVC6FMLYQGOkjxlKSLFRpXhMS9K6IcKZUxV+pTVElL4tSwBA0uVOEZbymRJl+WSXQeAyBODrATOgNS+BdK0EUuQTDayMqzpWPMS5KVMrfqMvIcQXKOqKHSv1SEkVpruH2hoRAxKnKNGMp0XyrhFL2EqpFc6l8PCaH8K1XakR1KzmGrkURdZ8MWXBsoaOBRU0rG3Xupy55cq-E+L5UEvVfizXsR1eXM6mr6qWMcnGlRdjPDPSce9JVwLPJJu0WIhVVaAmVtrX3aRVlzUNsIkAA
- */
-declare const UnusedSymbol: unique symbol;
-export declare type Component<TProps extends {}> = (props: TProps & {
-    [UnusedSymbol]?: boolean;
-}, listeners: ComponentListeners) => JSX.Element | null;
-declare const RenderNodeTag: unique symbol;
-export declare type RenderEvent = {
-    type: 'splice';
-    index: number;
-    count: number;
-    nodes: (Text | Element)[];
-} | {
-    type: 'move';
-    fromIndex: number;
-    count: number;
-    toIndex: number;
-} | {
-    type: 'sort';
-    fromIndex: number;
-    /** Note: indexes are absolute, not relative from fromIndex */
-    indexes: number[];
-};
-export declare type RenderEventHandler = (event: RenderEvent) => void;
-export declare type RenderContext = {
-    nodeOrdering: NodeOrdering;
-    contextMap: Map<Context<any>, any>;
-};
-/**
- * The RenderNode lifecycle
- * ========================
- *
- * - Each RenderNode starts in the "inert" state, which is initialized
- *   via the call to the `init` function passed to `createRenderNode(type, metadata, init)`
- * - When a RenderNode is .retain()ed, its refcount increases; if the refcount is initialized for the first time, it
- *   creates/populates its persistent state data and becomes "alive" (ready to be attached)
- * - Intrinsic nodes should create their corresponding DOM nodes in persistent state initialization
- * - When a RenderNode is .release()d, causing its refcount to go to zero, it destroys its persistent state
- *   initialization and is "inert"
- * - It is possible for a RenderNode to transition between "alive" and "inert" multiple times.
- * - When a RenderNode is .attach(handler, callback)ed, it is "attached" to its parent node. It cannot be attached to
- *   multiple parent RenderNodes at the same time. When a node is "attached" it is not necessarily mounted to the DOM.
- * - Attached state is *separate* from mounted state
- *   - Immediately after a node is mounted, its .afterMount() should be called
- *   - Immediately before a node is unmounted, its .beforeUnmount() should be called
- *   - In either of these cases, a node should first call these methods on its children before performing actions.
- * - When a node becomes "alive" it should call attach() on all of its child nodes; when a node becomes "inert" it should call detach() on all of its child nodes
- *   - If a node is not mounted and gains responsibility for a child node, it should call childNode.attach()
- *   - If a node is mounted and releases responsibility for a child node, it should call childNode.beforeUnmount() followed by childNode.detach()
- *   - If a node is not mounted and releases responsibility for a child node, it should call childNode.detach()
- * - When a root node is mounted via mount(rootDomNode, rootRenderNode) and then unmounted, the following sequence of calls is performed:
- *   - On unmount = mount(rootDomNode, rootRenderNode):
- *     - rootRenderNode.retain()
- *     - rootRenderNode.attach(eventHandler, context)
- *     - (any nodes spliced in via the eventHandler are added to rootDomNode)
- *     - rootRenderNode.afterMount()
- *   - On unmount();
- *     - rootRenderNode.beforeUnmount()
- *     - rootRenderNode.detach(eventHandler, context)
- *     - rootRenderNode.release()
- *
- *
- *                                   Throw Error
- *                                 (double attach)
- *                                        ▲
- *                 attach()               │- attach()
- *           ┌─────┐  |               ┌───┴────┐
- *           │alive├─────────────────►│attached│
- *           └────┬┘                  └───────┬┘
- *            ▲   │- release()         ▲      │- detach()
- *            │   │                    │      │
- *            │   │                    │      │
- *            │   │                    │      │
- *            │   │                    │      │
- *            │   │                    │      │
- *            │   │                    │      │
- *  retain() -│   ▼          attach() -│      ▼
- *           ┌┴────┐                  ┌┴───────┐
- *           │inert│◄─────────────────┤detached│
- *           └─────┘             |    └────┬───┘
- *              ▲            release()     │- detach()
- *              │                          ▼
- *              │                     Throw Error
- *            start                 (double detach)
- *
- */
-interface RenderNodeLifecycle {
-    attach?: (handler: RenderEventHandler, context: RenderContext) => void;
-    detach?: (handler: RenderEventHandler, context: RenderContext) => void;
-    afterMount?: () => void;
-    beforeUnmount?: () => void;
-    destroy?: () => void;
-}
-export declare type RenderNode = {
-    [RenderNodeTag]: true;
-    type: string | RenderNodeType;
-    metadata: any;
-    retain: () => RenderNodeLifecycle;
-    release: () => void;
-    _lifecycle: null | RenderNodeLifecycle;
-};
-export declare function isRenderNode(obj: any): obj is RenderNode;
-export declare enum RenderNodeType {
-    empty = 0,
-    text = 1,
-    foreignElement = 2,
-    calculation = 3,
-    intrinsicElement = 4,
-    array = 5,
-    component = 6,
-    context = 7,
-    lifecycleObserver = 8,
-    collection = 9
-}
-export declare function makeRenderNode(type: RenderNodeType, metadata: {}, init: () => RenderNodeLifecycle): RenderNode;
-/**
- * The type returned by createElement
- */
-export declare type RenderedElement = Text | Element | RenderNode;
 interface MissingFromTypescriptHTMLElementProperties {
     ariaColIndexText?: string | undefined;
     ariaInvalid?: string | undefined;
@@ -443,9 +321,9 @@ interface JSXImageElementInterface extends JSXElementInterface {
     /** Whether the image is a server-side image map */
     ismap?: boolean | undefined;
     /** Horizontal dimension */
-    width?: number | undefined;
+    width?: string | number | undefined;
     /** Vertical dimension */
-    height?: number | undefined;
+    height?: string | number | undefined;
     /** Referrer policy for fetches initiated by the element */
     referrerpolicy?: ReferrerPolicyValue | undefined;
     /** Decoding hint to use when processing this image for presentation */
@@ -740,6 +618,12 @@ interface JSXTableCellElementInterface extends JSXElementInterface {
     /** The header cells for this cell */
     headers?: string | undefined;
 }
+interface JSXTableHeaderElementInterface extends JSXTableCellElementInterface {
+    /** Specifies which cells the header cell applies to */
+    scope?: string | undefined;
+    /** Alternative label to use for the header cell when referencing the cell in other contexts */
+    abbr?: string | undefined;
+}
 interface JSXTableColElementInterface extends JSXElementInterface {
     /** Number of columns spanned by the element */
     span?: number | undefined;
@@ -859,8 +743,7 @@ export declare const ElementTypeMapping: {
     readonly html: PropertyMap<JSXHtmlElementInterface, HTMLHtmlElement>;
     readonly i: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
     readonly iframe: PropertyMap<JSXIFrameElementInterface, HTMLIFrameElement & MissingFromTypescriptHTMLIframeElementProperties>;
-    readonly image: PropertyMap<JSXImageElementInterface, HTMLImageElement>;
-    readonly img: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
+    readonly img: PropertyMap<JSXImageElementInterface, HTMLImageElement>;
     readonly input: PropertyMap<JSXInputElementInterface, HTMLInputElement>;
     readonly ins: PropertyMap<JSXModElementInterface, HTMLModElement>;
     readonly kbd: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
@@ -910,7 +793,7 @@ export declare const ElementTypeMapping: {
     readonly template: PropertyMap<JSXTemplateElementInterface, HTMLTemplateElement>;
     readonly textarea: PropertyMap<JSXTextAreaElementInterface, HTMLTextAreaElement>;
     readonly tfoot: PropertyMap<JSXTableSectionElementInterface, HTMLTableSectionElement>;
-    readonly th: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
+    readonly th: PropertyMap<JSXTableHeaderElementInterface, HTMLTableCellElement>;
     readonly thead: PropertyMap<JSXTableSectionElementInterface, HTMLTableSectionElement>;
     readonly time: PropertyMap<JSXTimeElementInterface, HTMLTimeElement>;
     readonly title: PropertyMap<JSXTitleElementInterface, HTMLTitleElement>;
@@ -1125,7 +1008,7 @@ export interface KnownElements {
     template: WithCalculationsAndRef<JSXTemplateElementInterface, HTMLTemplateElement, true>;
     textarea: WithCalculationsAndRef<JSXTextAreaElementInterface, HTMLTextAreaElement, true>;
     tfoot: WithCalculationsAndRef<JSXTableSectionElementInterface, HTMLTableSectionElement, true>;
-    th: WithCalculationsAndRef<JSXTableCellElementInterface, HTMLTableCellElement, true>;
+    th: WithCalculationsAndRef<JSXTableHeaderElementInterface, HTMLTableCellElement, true>;
     thead: WithCalculationsAndRef<JSXTableSectionElementInterface, HTMLTableSectionElement, true>;
     time: WithCalculationsAndRef<JSXTimeElementInterface, HTMLTimeElement, true>;
     title: WithCalculationsAndRef<JSXTitleElementInterface, HTMLTitleElement, true>;

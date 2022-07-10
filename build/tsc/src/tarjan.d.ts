@@ -1,2 +1,2 @@
-export declare function tarjanStronglyConnected(graph: Record<string, Record<string, number>>, fromNodes: string[]): Set<string>[];
+export declare function tarjanStronglyConnected(reverseAdjacency: Readonly<Record<number, readonly number[]>>, topologicalIndexById: readonly (number | undefined)[], lowerBound: number, upperBound: number, fromNodes: Iterable<number>): number[][];
 //# sourceMappingURL=tarjan.d.ts.map

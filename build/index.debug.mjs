@@ -13,65 +13,6 @@ var InvariantError = class extends Error {
     this.detail = detail;
   }
 };
-var TypeTag = Symbol("typeTag");
-var ContextGetterTag = Symbol("contextGetter");
-var DataTypeTag = Symbol("dataTypeTag");
-var CalculationTypeTag = Symbol("calculationType");
-var CalculationRecalculateTag = Symbol("calculationRecalculate");
-var CalculationRecalculateCycleTag = Symbol("calculationRecalculateCycle");
-var CalculationInvalidateTag = Symbol("calculationInvalidate");
-var CalculationSetCycleTag = Symbol("calculationSetCycle");
-var ObserveKey = Symbol("observe");
-var GetSubscriptionNodeKey = Symbol("getSubscriptionNode");
-var MakeModelViewKey = Symbol("makeModelView");
-var DisposeKey = Symbol("dispose");
-var FlushKey = Symbol("flush");
-var AddDeferredWorkKey = Symbol("addDeferredWork");
-var NotifyKey = Symbol("notify");
-function isRef(ref2) {
-  return ref2 && ref2[TypeTag] === "ref";
-}
-function ref(val) {
-  return {
-    [TypeTag]: "ref",
-    current: val
-  };
-}
-function createContext(val) {
-  return Object.assign(() => {
-    throw new Error("Do not call contexts as functions");
-  }, {
-    [ContextGetterTag]: () => val,
-    [TypeTag]: "context"
-  });
-}
-function getContext(context) {
-  return context[ContextGetterTag]();
-}
-function isContext(val) {
-  return !!(val && val[TypeTag] === "context");
-}
-function isModel(thing) {
-  return !!(thing && thing[TypeTag] === "data" && thing[DataTypeTag] === "model");
-}
-function isModelField(thing) {
-  return !!(thing && !thing[TypeTag] && !!thing.model && !!thing.model[DataTypeTag]);
-}
-function isCollection(thing) {
-  return !!(thing && thing[TypeTag] === "data" && thing[DataTypeTag] === "collection");
-}
-function isCalculation(thing) {
-  return !!(thing && thing[TypeTag] === "calculation");
-}
-function isEffect(thing) {
-  return thing[CalculationTypeTag] === "effect";
-}
-function isSubscription(thing) {
-  return !!(thing && thing[TypeTag] === "subscription");
-}
-function isNodeOrdering(thing) {
-  return !!(thing && thing[TypeTag] === "nodeOrdering");
-}
 
 // src/log.ts
 var levels = {
@@ -109,18 +50,24 @@ function error(...items) {
     console.error(...items);
   }
 }
-function exception(exception2, ...items) {
-  if (exception2 instanceof Error) {
-    error(exception2);
-    error(...items);
-  } else {
-    error(exception2, ...items);
+function group(...items) {
+  if (currentLevel >= levels.debug) {
+    console.group(...items);
+  }
+}
+function groupEnd() {
+  if (currentLevel >= levels.debug) {
+    console.groupEnd();
   }
 }
 function invariant(check, ...items) {
   if (!check()) {
     error("Invariant error", check.toString(), "is not truthy", ...items);
   }
+}
+function fail(msg, ...items) {
+  error("Invariant error", msg, ...items);
+  throw new InvariantError(`Invariant error: ${msg}`);
 }
 function assert(check, msg) {
   if (!check) {
@@ -140,40 +87,20 @@ var uniqueid = (() => {
   let id = 1;
   return () => id++;
 })();
-function groupBy(items, grouper) {
-  const grouped = /* @__PURE__ */ new Map();
-  items.forEach((item) => {
-    const [key, val] = grouper(item);
-    let inner = grouped.get(key);
-    if (!inner) {
-      inner = [];
-      grouped.set(key, inner);
-    }
-    inner.push(val);
-  });
-  return grouped;
-}
-function alwaysTrue() {
-  return true;
-}
-function strictEqual(a, b) {
-  return a === b;
-}
 
 // src/tarjan.ts
-function tarjanStronglyConnected(graph, fromNodes) {
+function tarjanStronglyConnected(reverseAdjacency, topologicalIndexById, lowerBound, upperBound, fromNodes) {
   let index = 0;
   const nodeVertex = {};
   const stack = [];
   const reverseTopoSort = [];
-  function getDepenencies(nodeId) {
-    const dependencies = [];
-    Object.keys(graph[nodeId] || {}).forEach((toId) => {
-      if (graph[nodeId][toId]) {
-        dependencies.push(toId);
+  function* getDepenencies(nodeId) {
+    for (const toId of reverseAdjacency[nodeId]) {
+      const toIndex = topologicalIndexById[toId];
+      if (toIndex !== void 0 && lowerBound <= toIndex && toIndex <= upperBound) {
+        yield toId;
       }
-    });
-    return dependencies;
+    }
   }
   const strongconnect = (vertex) => {
     vertex.index = index;
@@ -181,7 +108,7 @@ function tarjanStronglyConnected(graph, fromNodes) {
     index = index + 1;
     stack.push(vertex);
     vertex.onStack = true;
-    getDepenencies(vertex.nodeId).forEach((toId) => {
+    for (const toId of getDepenencies(vertex.nodeId)) {
       if (!nodeVertex[toId]) {
         nodeVertex[toId] = {
           nodeId: toId
@@ -194,13 +121,13 @@ function tarjanStronglyConnected(graph, fromNodes) {
       } else if (toVertex.onStack) {
         vertex.lowlink = Math.min(vertex.lowlink, toVertex.index);
       }
-    });
+    }
     if (vertex.lowlink === vertex.index) {
       const component = [];
       for (; ; ) {
         const toVertex = stack.pop();
         toVertex.onStack = false;
-        component.push(toVertex);
+        component.push(toVertex.nodeId);
         if (toVertex === vertex) {
           break;
         }
@@ -208,1317 +135,1189 @@ function tarjanStronglyConnected(graph, fromNodes) {
       reverseTopoSort.push(component);
     }
   };
-  fromNodes.forEach((nodeId) => {
+  for (const nodeId of fromNodes) {
     if (!nodeVertex[nodeId]) {
       nodeVertex[nodeId] = {
         nodeId
       };
       strongconnect(nodeVertex[nodeId]);
     }
-  });
-  reverseTopoSort.reverse();
-  return reverseTopoSort.map((component) => new Set(component.map((vertex) => vertex.nodeId)));
+  }
+  return reverseTopoSort;
 }
 
 // src/graph.ts
-var VISITED_NO_CYCLE = 1;
-var VISITED_CYCLE = 2;
-function edgeMapToEdgeList(graph) {
-  const edgeList = [];
-  Object.entries(graph).forEach(([fromId, toIds]) => {
-    Object.entries(toIds).forEach(([toId, edgeKind]) => {
-      if (edgeKind > 0) {
-        edgeList.push([fromId, toId, edgeKind]);
-      }
-    });
-  });
-  return edgeList;
-}
-function edgeListToEdgeMap(edgeList) {
-  const graph = {};
-  edgeList.forEach(([fromId, toId, edgeKind]) => {
-    if (edgeKind > 0) {
-      if (!graph[fromId])
-        graph[fromId] = {};
-      graph[fromId][toId] = edgeKind;
+var ProcessAction = /* @__PURE__ */ ((ProcessAction2) => {
+  ProcessAction2[ProcessAction2["INVALIDATE"] = 0] = "INVALIDATE";
+  ProcessAction2[ProcessAction2["RECALCULATE"] = 1] = "RECALCULATE";
+  ProcessAction2[ProcessAction2["CYCLE"] = 2] = "CYCLE";
+  return ProcessAction2;
+})(ProcessAction || {});
+var VERTEX_BIT_DIRTY = 1;
+var VERTEX_BIT_ROOT = 2;
+var VERTEX_BIT_REACHES_ROOT = 4;
+var VERTEX_BIT_CYCLE = 8;
+var VERTEX_BIT_SELF_CYCLE = 16;
+var VERTEX_BIT_CYCLE_INFORMED = 32;
+var Graph = class {
+  constructor(processHandler2) {
+    __publicField(this, "availableIds");
+    __publicField(this, "availableIndices");
+    __publicField(this, "nextId");
+    __publicField(this, "vertexToId");
+    __publicField(this, "vertexById");
+    __publicField(this, "vertexBitsById");
+    __publicField(this, "cycleInfoById");
+    __publicField(this, "forwardAdjacencySoft");
+    __publicField(this, "forwardAdjacencyHard");
+    __publicField(this, "forwardAdjacencyEither");
+    __publicField(this, "reverseAdjacencySoft");
+    __publicField(this, "reverseAdjacencyHard");
+    __publicField(this, "reverseAdjacencyEither");
+    __publicField(this, "topologicalIndexById");
+    __publicField(this, "topologicalOrdering");
+    __publicField(this, "dirtyVertexIds");
+    __publicField(this, "toReorderIds");
+    __publicField(this, "debugSubscriptions");
+    __publicField(this, "_processHandler");
+    this._processHandler = processHandler2;
+    this.nextId = 1;
+    this.availableIds = [];
+    this.availableIndices = [];
+    this.vertexById = [];
+    this.vertexToId = /* @__PURE__ */ new Map();
+    this.vertexBitsById = [];
+    this.cycleInfoById = [];
+    this.topologicalIndexById = [];
+    this.topologicalOrdering = [];
+    this.forwardAdjacencySoft = [];
+    this.forwardAdjacencyHard = [];
+    this.forwardAdjacencyEither = [];
+    this.reverseAdjacencySoft = [];
+    this.reverseAdjacencyHard = [];
+    this.reverseAdjacencyEither = [];
+    this.dirtyVertexIds = [];
+    this.toReorderIds = /* @__PURE__ */ new Set();
+    this.debugSubscriptions = /* @__PURE__ */ new Set();
+  }
+  addVertex(vertex) {
+    assert(!this.vertexToId.has(vertex), "double vertex addition");
+    let id;
+    if (this.availableIds.length > 0) {
+      id = this.availableIds.pop();
+    } else {
+      id = this.nextId++;
     }
-  });
-  return graph;
-}
-var _Graph = class {
-  constructor() {
-    __publicField(this, "retained");
-    __publicField(this, "dirtyNodes");
-    __publicField(this, "recentDirtyNodes");
-    __publicField(this, "informedCycles");
-    __publicField(this, "knownCycles");
-    __publicField(this, "minCycleBrokenIndex");
-    __publicField(this, "pendingOperations");
-    __publicField(this, "pendingNodes");
-    __publicField(this, "topologicalIndex");
-    __publicField(this, "topologicallyOrderedNodes");
-    __publicField(this, "reorderingVisitedState");
-    __publicField(this, "graph");
-    __publicField(this, "reverseGraph");
-    this.topologicalIndex = {};
-    this.topologicallyOrderedNodes = [];
-    this.pendingOperations = [];
-    this.pendingNodes = {};
-    this.retained = {};
-    this.graph = {};
-    this.reverseGraph = {};
-    this.dirtyNodes = {};
-    this.recentDirtyNodes = void 0;
-    this.knownCycles = /* @__PURE__ */ new Map();
-    this.informedCycles = /* @__PURE__ */ new Map();
-    this.reorderingVisitedState = /* @__PURE__ */ new Map();
-    this.minCycleBrokenIndex = null;
+    this.vertexToId.set(vertex, id);
+    this.vertexById[id] = vertex;
+    this.vertexBitsById[id] = 0;
+    this.cycleInfoById[id] = void 0;
+    let index;
+    if (this.availableIndices.length > 0) {
+      index = this.availableIndices.pop();
+    } else {
+      index = this.topologicalOrdering.length;
+      this.topologicalOrdering.length += 1;
+    }
+    this.topologicalIndexById[id] = index;
+    this.topologicalOrdering[index] = id;
+    this.forwardAdjacencySoft[id] = [];
+    this.forwardAdjacencyHard[id] = [];
+    this.forwardAdjacencyEither[id] = [];
+    this.reverseAdjacencySoft[id] = [];
+    this.reverseAdjacencyHard[id] = [];
+    this.reverseAdjacencyEither[id] = [];
   }
-  getId(node) {
-    return node.$__id.toString();
+  removeVertex(vertex) {
+    const id = this.vertexToId.get(vertex);
+    assert(id, "double vertex removal");
+    const index = this.topologicalIndexById[id];
+    assert(index !== void 0, "malformed graph");
+    assert((this.vertexBitsById[id] & VERTEX_BIT_ROOT) === 0, "cannot remove root vertex");
+    assert(this.forwardAdjacencyEither[id].length === 0, "cannot remove vertex with forward edges");
+    assert(this.reverseAdjacencyEither[id].length === 0, "cannot remove vertex with reverse edges");
+    this.topologicalIndexById[id] = void 0;
+    this.topologicalOrdering[index] = void 0;
+    this.vertexBitsById[id] = 0;
+    this.cycleInfoById[id] = void 0;
+    this.vertexToId.delete(vertex);
+    this.vertexById[id] = void 0;
+    this.toReorderIds.delete(id);
+    this.availableIds.push(id);
+    this.availableIndices.push(index);
   }
-  hasNodeInner(nodeId) {
-    return this.topologicalIndex[nodeId] !== void 0 || this.pendingNodes[nodeId];
+  hasVertex(vertex) {
+    return this.vertexToId.has(vertex);
   }
-  addNode(node) {
-    const nodeId = this.getId(node);
-    if (this.hasNodeInner(nodeId))
+  markVertexDirty(vertex) {
+    const vertexId = this.vertexToId.get(vertex);
+    assert(vertexId, "markVertexDirty on nonexistent vertex");
+    this.markVertexDirtyInner(vertexId);
+  }
+  markVertexDirtyInner(vertexId) {
+    const vertex = this.vertexById[vertexId];
+    if (vertex && !(this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY)) {
+      this.vertexBitsById[vertexId] |= VERTEX_BIT_DIRTY;
+      this.dirtyVertexIds.push(vertexId);
+      this.processHandler(vertex, 0 /* INVALIDATE */);
+    }
+  }
+  clearVertexDirty(vertex) {
+    const vertexId = this.vertexToId.get(vertex);
+    assert(vertexId, "markVertexDirty on nonexistent vertex");
+    this.clearVertexDirtyInner(vertexId);
+  }
+  clearVertexDirtyInner(vertexId) {
+    if (this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY) {
+      this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
+      const index = this.dirtyVertexIds.indexOf(vertexId);
+      this.dirtyVertexIds[index] = this.dirtyVertexIds[this.dirtyVertexIds.length - 1];
+      this.dirtyVertexIds.pop();
+    }
+  }
+  markVertexRoot(vertex) {
+    const vertexId = this.vertexToId.get(vertex);
+    assert(vertexId, "markVertexRoot on nonexistent vertex");
+    assert(!(this.vertexBitsById[vertexId] & VERTEX_BIT_ROOT), "markVertexRoot double marked");
+    this.vertexBitsById[vertexId] |= VERTEX_BIT_ROOT;
+    this.markReachesRootRecursive(vertexId);
+  }
+  markVertexCycleInformed(vertex) {
+    const vertexId = this.vertexToId.get(vertex);
+    assert(vertexId, "markVertexCycleInformed on nonexistent vertex");
+    this.vertexBitsById[vertexId] |= VERTEX_BIT_CYCLE_INFORMED;
+  }
+  markReachesRootRecursive(vertexId) {
+    if (this.vertexBitsById[vertexId] & VERTEX_BIT_REACHES_ROOT) {
+      return;
+    }
+    this.vertexBitsById[vertexId] |= VERTEX_BIT_REACHES_ROOT;
+    for (const fromId of this.reverseAdjacencyHard[vertexId]) {
+      this.markReachesRootRecursive(fromId);
+    }
+    for (const fromId of this.reverseAdjacencySoft[vertexId]) {
+      this.markReachesRootRecursive(fromId);
+    }
+  }
+  clearVertexRoot(vertex) {
+    const vertexId = this.vertexToId.get(vertex);
+    assert(vertexId, "clearVertexRoot on nonexistent vertex");
+    assert(this.vertexBitsById[vertexId] & VERTEX_BIT_ROOT, "clearVertexRoot on non-root vertex");
+    this.vertexBitsById[vertexId] &= ~VERTEX_BIT_ROOT;
+    this.checkReachesRootRecursive(vertexId);
+  }
+  reachesRoot(vertexId) {
+    const cycleInfo = this.cycleInfoById[vertexId];
+    if (cycleInfo) {
+      for (const cycleId of cycleInfo.vertexIds) {
+        if (this.vertexBitsById[cycleId] & VERTEX_BIT_REACHES_ROOT) {
+          return true;
+        }
+      }
       return false;
-    this.pendingOperations.push({
-      type: 0 /* NODE_ADD */,
-      node
-    });
-    this.pendingNodes[nodeId] = true;
-    return true;
+    }
+    return !!(this.vertexBitsById[vertexId] & VERTEX_BIT_REACHES_ROOT);
   }
-  performAddNodeInner(node, nodeId) {
-    this.graph[nodeId] = {};
-    this.reverseGraph[nodeId] = {};
-    this.topologicalIndex[nodeId] = this.topologicallyOrderedNodes.length;
-    this.topologicallyOrderedNodes.push(node);
-    return true;
-  }
-  markNodeCycle(node) {
-    const nodeId = this.getId(node);
-    const cycleInfo = this.knownCycles.get(nodeId);
+  *cycleAwareAdjacency(vertexId, cycleInfo, adjacencyList) {
     if (cycleInfo) {
-      cycleInfo.isInformed = true;
+      const yielded = /* @__PURE__ */ new Set();
+      for (const cycleId of cycleInfo.vertexIds) {
+        for (const toId of adjacencyList[cycleId]) {
+          if (!cycleInfo.vertexIds.has(toId) && !yielded.has(toId)) {
+            yielded.add(toId);
+            yield toId;
+          }
+        }
+      }
+      return;
+    }
+    for (const toId of adjacencyList[vertexId]) {
+      if (toId !== vertexId)
+        yield toId;
+    }
+  }
+  checkReachesRootRecursive(vertexId) {
+    if (!this.reachesRoot(vertexId)) {
+      return;
+    }
+    const cycleInfo = this.cycleInfoById[vertexId];
+    for (const toId of this.cycleAwareAdjacency(vertexId, cycleInfo, this.forwardAdjacencyEither)) {
+      if (this.reachesRoot(toId))
+        return;
+    }
+    if (cycleInfo) {
+      for (const cycleId of cycleInfo.vertexIds) {
+        this.vertexBitsById[cycleId] &= ~VERTEX_BIT_REACHES_ROOT;
+      }
     } else {
-      this.informedCycles.set(this.getId(node), true);
+      this.vertexBitsById[vertexId] &= ~VERTEX_BIT_REACHES_ROOT;
+    }
+    for (const fromId of this.cycleAwareAdjacency(vertexId, cycleInfo, this.reverseAdjacencyEither)) {
+      this.checkReachesRootRecursive(fromId);
     }
   }
-  markNodeDirty(node) {
-    const nodeId = this.getId(node);
-    const cycleInfo = this.knownCycles.get(nodeId);
-    if (cycleInfo) {
-      cycleInfo.connectedComponentNodes.forEach((cycleId) => {
-        this.markNodeDirtyInner(cycleId);
-      });
-    } else {
-      this.markNodeDirtyInner(this.getId(node));
+  addEdge(fromVertex, toVertex, kind) {
+    const fromId = this.vertexToId.get(fromVertex);
+    const toId = this.vertexToId.get(toVertex);
+    assert(fromId, "addEdge from vertex not found");
+    assert(toId, "addEdge to vertex not found");
+    let forwardList;
+    let reverseList;
+    switch (kind) {
+      case 1 /* EDGE_SOFT */:
+        forwardList = this.forwardAdjacencySoft[fromId];
+        reverseList = this.reverseAdjacencySoft[toId];
+        break;
+      case 2 /* EDGE_HARD */:
+        forwardList = this.forwardAdjacencyHard[fromId];
+        reverseList = this.reverseAdjacencyHard[toId];
+        break;
+      default:
+        assertExhausted(kind, "invalid kind");
     }
-  }
-  markNodeDirtyInner(nodeId) {
-    this.dirtyNodes[nodeId] = true;
-    if (this.recentDirtyNodes)
-      this.recentDirtyNodes.push(nodeId);
-  }
-  markNodeCleanInner(nodeId) {
-    delete this.dirtyNodes[nodeId];
-    this.informedCycles.set(nodeId, false);
-  }
-  isNodeDirty(nodeId) {
-    return !!this.dirtyNodes[nodeId];
-  }
-  getUnorderedDirtyNodes() {
-    return Object.keys(this.dirtyNodes).filter((nodeId) => !!this.dirtyNodes[nodeId]);
-  }
-  hasDirtyNodes() {
-    return Object.keys(this.dirtyNodes).length > 0;
-  }
-  addEdge(fromNode, toNode, kind) {
-    const fromId = this.getId(fromNode);
-    const toId = this.getId(toNode);
-    this.addEdgeInner(fromId, toId, kind);
-  }
-  addEdgeInner(fromId, toId, kind) {
-    assert(this.hasNodeInner(fromId), "cannot add edge from node that does not exist");
-    assert(this.hasNodeInner(toId), "cannot add edge to node that does not exist");
-    this.pendingOperations.push({
-      type: 2 /* EDGE_ADD */,
-      fromId,
-      toId,
-      kind
-    });
-  }
-  performAddEdgeInner(fromId, toId, kind) {
-    this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) | kind;
-    this.reverseGraph[toId][fromId] = (this.reverseGraph[toId][fromId] || 0) | kind;
-  }
-  removeEdge(fromNode, toNode, kind) {
-    const fromId = this.getId(fromNode);
-    const toId = this.getId(toNode);
-    this.removeEdgeInner(fromId, toId, kind);
-  }
-  removeEdgeInner(fromId, toId, kind) {
-    assert(this.hasNodeInner(fromId), "cannot remove edge from node that does not exist");
-    assert(this.hasNodeInner(toId), "cannot remove edge to node that does not exist");
-    this.pendingOperations.push({
-      type: 3 /* EDGE_DELETE */,
-      fromId,
-      toId,
-      kind
-    });
-  }
-  performRemoveEdgeInner(fromId, toId, kind) {
-    this.graph[fromId][toId] = (this.graph[fromId][toId] || 0) & ~kind;
-    this.reverseGraph[toId][fromId] = (this.reverseGraph[toId][fromId] || 0) & ~kind;
-    const cycleInfo = this.knownCycles.get(fromId);
-    if (cycleInfo && cycleInfo.connectedComponentEdges[fromId]?.[toId]) {
-      cycleInfo.connectedComponentEdges[fromId][toId] = cycleInfo.connectedComponentEdges[fromId][toId] & ~kind;
-      const newComponents = tarjanStronglyConnected(this.graph, Array.from(cycleInfo.connectedComponentNodes));
-      const edgeList = edgeMapToEdgeList(cycleInfo.connectedComponentEdges);
-      const affectedIndexes = [];
-      const topologicallyCorrectNodes = [];
-      newComponents.forEach((component) => {
-        component.forEach((nodeId) => {
-          const nodeIndex = this.topologicalIndex[nodeId];
-          affectedIndexes.push(nodeIndex);
-          topologicallyCorrectNodes.push({
-            nodeId,
-            node: this.topologicallyOrderedNodes[nodeIndex]
-          });
-        });
-        const componentIntersection = new Set([...component].filter((nodeId) => cycleInfo.connectedComponentNodes.has(nodeId)));
-        const isCycle = componentIntersection.size > 1;
-        if (isCycle) {
-          const reducedConnectedComponentEdges = edgeListToEdgeMap(edgeList.filter(([fromId2, toId2, _edgeKind]) => componentIntersection.has(fromId2) && componentIntersection.has(toId2)));
-          componentIntersection.forEach((nodeId) => {
-            this.knownCycles.set(nodeId, {
-              connectedComponentEdges: reducedConnectedComponentEdges,
-              connectedComponentNodes: componentIntersection,
-              isInformed: !!this.knownCycles.get(nodeId)?.isInformed,
-              initiallyDirty: !!this.knownCycles.get(nodeId)?.initiallyDirty
-            });
-          });
-        } else {
-          componentIntersection.forEach((nodeId) => {
-            this.knownCycles.delete(nodeId);
-            this.markNodeDirtyInner(nodeId);
-          });
-        }
-      });
-      let needsResort = false;
-      for (let i = 1; i < affectedIndexes.length; ++i) {
-        if (affectedIndexes[i - 1] >= affectedIndexes[i]) {
-          needsResort = true;
-          break;
-        }
-      }
-      if (needsResort) {
-        affectedIndexes.sort((a, b) => a - b);
-        for (let i = 0; i < affectedIndexes.length; ++i) {
-          const entry = topologicallyCorrectNodes[i];
-          this.topologicalIndex[entry.nodeId] = affectedIndexes[i];
-          this.topologicallyOrderedNodes[affectedIndexes[i]] = entry.node;
-        }
-        this.minCycleBrokenIndex = this.minCycleBrokenIndex === null ? affectedIndexes[0] : Math.min(this.minCycleBrokenIndex, affectedIndexes[0]);
-      }
-    }
-  }
-  removeNode(node) {
-    const nodeId = this.getId(node);
-    this.removeNodeInner(nodeId);
-  }
-  removeNodeInner(nodeId) {
-    this.pendingOperations.push({
-      type: 1 /* NODE_DELETE */,
-      nodeId
-    });
-    this.pendingNodes[nodeId] = false;
-  }
-  performRemoveNodeInner(nodeId) {
-    assert(!this.retained[nodeId], "attempted to remove a retained node");
-    const toIds = this.getDependenciesInner(nodeId, _Graph.EDGE_ANY);
-    const fromIds = this.getReverseDependenciesInner(nodeId);
-    fromIds.forEach((fromId) => {
-      this.graph[fromId][nodeId] = 0;
-      this.reverseGraph[nodeId][fromId] = 0;
-    });
-    toIds.forEach((toId) => {
-      this.reverseGraph[toId][nodeId] = 0;
-      this.graph[nodeId][toId] = 0;
-    });
-    this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]] = void 0;
-    delete this.topologicalIndex[nodeId];
-    this.markNodeCleanInner(nodeId);
-    delete this.retained[nodeId];
-    const cycleInfo = this.knownCycles.get(nodeId);
-    if (cycleInfo) {
-      throw new Error("Not yet implemented");
-    }
-  }
-  retain(node) {
-    const nodeId = this.getId(node);
-    assert(!this.retained[nodeId], "double-retain");
-    this.retained[nodeId] = true;
-  }
-  release(node) {
-    const nodeId = this.getId(node);
-    assert(this.retained[nodeId], "double-release");
-    delete this.retained[nodeId];
-  }
-  replaceIncoming(node, newIncomingNodes) {
-    const toId = this.getId(node);
-    const beforeFromIds = this.getReverseDependenciesInner(toId, _Graph.EDGE_HARD);
-    const beforeFromSet = new Set(beforeFromIds);
-    const newFromIds = newIncomingNodes.map((fromNode) => this.getId(fromNode));
-    const newFromSet = new Set(newFromIds);
-    beforeFromIds.forEach((fromId) => {
-      if (!newFromSet.has(fromId)) {
-        this.removeEdgeInner(fromId, toId, _Graph.EDGE_HARD);
-      }
-    });
-    newFromIds.forEach((fromId) => {
-      if (!beforeFromSet.has(fromId)) {
-        this.addEdgeInner(fromId, toId, _Graph.EDGE_HARD);
-      }
-    });
-  }
-  removeIncoming(node) {
-    const toId = this.getId(node);
-    const fromIds = this.getReverseDependenciesInner(toId);
-    fromIds.forEach((fromId) => {
-      this.removeEdgeInner(fromId, toId, _Graph.EDGE_HARD);
-    });
-  }
-  getDependenciesInner(nodeId, edgeType) {
-    if (!this.graph[nodeId])
-      return [];
-    const dependencies = [];
-    Object.keys(this.graph[nodeId]).forEach((toId) => {
-      if ((this.graph[nodeId][toId] || 0) & edgeType) {
-        dependencies.push(toId);
-      }
-    });
-    return dependencies;
-  }
-  getReverseDependenciesInner(nodeId, edgeType = _Graph.EDGE_ANY) {
-    if (!this.reverseGraph[nodeId])
-      return [];
-    const dependencies = [];
-    Object.keys(this.reverseGraph[nodeId]).forEach((fromId) => {
-      if ((this.reverseGraph[nodeId][fromId] || 0) & edgeType) {
-        dependencies.push(fromId);
-      }
-    });
-    return dependencies;
-  }
-  _test_getDependencies(fromNode, edgeType = _Graph.EDGE_ANY) {
-    const nodeId = this.getId(fromNode);
-    return this.getDependenciesInner(nodeId, edgeType).map((toId) => this.topologicallyOrderedNodes[this.topologicalIndex[toId]]);
-  }
-  process(callback) {
-    const forwardSet = /* @__PURE__ */ new Set();
-    const reverseSet = /* @__PURE__ */ new Set();
-    let lowerBound = 0;
-    let upperBound = 0;
-    let reordered = false;
-    const connectedComponentNodes = /* @__PURE__ */ new Set();
-    const connectedComponentEdges = {};
-    const dfsF = (nodeId) => {
-      this.reorderingVisitedState.set(nodeId, false);
-      forwardSet.add(nodeId);
-      return this.getDependenciesInner(nodeId, _Graph.EDGE_ANY).some((toId) => {
-        if (this.topologicalIndex[toId] === upperBound) {
-          return true;
-        }
-        if (!this.reorderingVisitedState.has(toId) && (this.topologicalIndex[toId] < upperBound || this.knownCycles.has(toId))) {
-          if (dfsF(toId))
-            return true;
-        }
-        return false;
-      });
-    };
-    const dfsB = (nodeId) => {
-      this.reorderingVisitedState.set(nodeId, true);
-      reverseSet.add(nodeId);
-      this.getReverseDependenciesInner(nodeId, _Graph.EDGE_ANY).forEach((fromId) => {
-        if (!this.reorderingVisitedState.has(fromId) && (lowerBound < this.topologicalIndex[fromId] || this.knownCycles.has(fromId))) {
-          dfsB(fromId);
-        }
-      });
-    };
-    const stronglyConnectedVisited = /* @__PURE__ */ new Map();
-    const dfsStronglyConnected = (nodeId) => {
-      stronglyConnectedVisited.set(nodeId, VISITED_NO_CYCLE);
-      forwardSet.add(nodeId);
-      let reachesCycle = false;
-      this.getDependenciesInner(nodeId, _Graph.EDGE_ANY).forEach((toId) => {
-        if (this.topologicalIndex[toId] === upperBound) {
-          stronglyConnectedVisited.set(nodeId, VISITED_CYCLE);
-          connectedComponentNodes.add(nodeId);
-          stronglyConnectedVisited.set(toId, VISITED_CYCLE);
-          connectedComponentNodes.add(toId);
-          if (!connectedComponentEdges[nodeId]) {
-            connectedComponentEdges[nodeId] = {};
-          }
-          connectedComponentEdges[nodeId][toId] = this.graph[nodeId][toId];
-          reachesCycle = true;
-          return;
-        }
-        let partOfComponent = false;
-        if (!stronglyConnectedVisited.has(toId)) {
-          partOfComponent = dfsStronglyConnected(toId);
-        }
-        if (stronglyConnectedVisited.get(toId) === VISITED_CYCLE) {
-          partOfComponent = true;
-        }
-        if (partOfComponent) {
-          reachesCycle = true;
-          stronglyConnectedVisited.set(nodeId, VISITED_CYCLE);
-          connectedComponentNodes.add(nodeId);
-          if (!connectedComponentEdges[nodeId]) {
-            connectedComponentEdges[nodeId] = {};
-          }
-          connectedComponentEdges[nodeId][toId] = this.graph[nodeId][toId];
-        }
-      });
-      return reachesCycle;
-    };
-    const reorder = () => {
-      const sortedReverseSet = Array.from(reverseSet);
-      sortedReverseSet.sort((a, b) => this.topologicalIndex[a] - this.topologicalIndex[b]);
-      const sortedForwardSet = Array.from(forwardSet);
-      sortedForwardSet.sort((a, b) => this.topologicalIndex[a] - this.topologicalIndex[b]);
-      const correctOrderNodeIds = [
-        ...sortedReverseSet,
-        ...sortedForwardSet
-      ];
-      const affectedIndexes = correctOrderNodeIds.map((nodeId) => this.topologicalIndex[nodeId]).sort((a, b) => a - b);
-      const correctNodes = correctOrderNodeIds.map((nodeId) => this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]]);
-      affectedIndexes.forEach((affectedIndex, i) => {
-        this.topologicallyOrderedNodes[affectedIndex] = correctNodes[i];
-        this.topologicalIndex[correctOrderNodeIds[i]] = affectedIndex;
-      });
-    };
-    const addEdge = (fromId, toId) => {
-      const toCycleInfo = this.knownCycles.get(toId);
-      if (toCycleInfo) {
-        lowerBound = this.topologicallyOrderedNodes.length;
-        toCycleInfo.connectedComponentNodes.forEach((toCycleId) => {
-          lowerBound = Math.min(lowerBound, this.topologicalIndex[toCycleId]);
-        });
+    assert(!this.forwardAdjacencyEither[fromId].includes(toId), "addEdge duplicate");
+    this.forwardAdjacencyEither[fromId].push(toId);
+    forwardList.push(toId);
+    this.reverseAdjacencyEither[toId].push(fromId);
+    reverseList.push(fromId);
+    if (fromId === toId && (this.vertexBitsById[fromId] & VERTEX_BIT_SELF_CYCLE) === 0) {
+      const isInformed = this.vertexBitsById[fromId] & VERTEX_BIT_CYCLE_INFORMED;
+      if (!isInformed) {
+        const vertex = this.vertexById[fromId];
+        assert(vertex, "missing vertex in self-cycle");
+        this.processHandler(vertex, 2 /* CYCLE */);
+        this.vertexBitsById[fromId] |= VERTEX_BIT_CYCLE_INFORMED | VERTEX_BIT_SELF_CYCLE;
       } else {
-        lowerBound = this.topologicalIndex[toId];
-      }
-      const fromCycleInfo = this.knownCycles.get(fromId);
-      if (fromCycleInfo) {
-        upperBound = 0;
-        fromCycleInfo.connectedComponentNodes.forEach((fromCycleId) => {
-          upperBound = Math.max(upperBound, this.topologicalIndex[fromCycleId]);
-        });
-      } else {
-        upperBound = this.topologicalIndex[fromId];
-      }
-      if (lowerBound < upperBound) {
-        const isCycle = dfsF(toId);
-        if (isCycle) {
-          stronglyConnectedVisited.clear();
-          dfsStronglyConnected(toId);
-          if (!connectedComponentEdges[fromId]) {
-            connectedComponentEdges[fromId] = {};
-          }
-          connectedComponentEdges[fromId][toId] = this.graph[fromId][toId];
-          connectedComponentNodes.forEach((nodeId) => {
-            const cycleInfo = this.knownCycles.get(nodeId);
-            const isInformed = !!cycleInfo?.isInformed || !!this.informedCycles.get(nodeId);
-            const initiallyDirty = !!this.dirtyNodes[nodeId];
-            this.knownCycles.set(nodeId, {
-              connectedComponentEdges,
-              connectedComponentNodes,
-              isInformed,
-              initiallyDirty
-            });
-          });
-        } else {
-          dfsB(fromId);
-          reorder();
-          reordered = true;
-        }
-        forwardSet.clear();
-        reverseSet.clear();
-        this.reorderingVisitedState.clear();
-      }
-    };
-    const processPendingEdges = () => {
-      let minLowerBound = null;
-      const nodesToAdd = {};
-      const pendingGraph = {};
-      const filteredPendingOperations = this.pendingOperations.filter((pendingOperation) => {
-        switch (pendingOperation.type) {
-          case 0 /* NODE_ADD */:
-            nodesToAdd[this.getId(pendingOperation.node)] = pendingOperation.node;
-            return false;
-          case 1 /* NODE_DELETE */:
-            if (nodesToAdd[pendingOperation.nodeId]) {
-              delete nodesToAdd[pendingOperation.nodeId];
-              return false;
-            }
-            return true;
-          case 2 /* EDGE_ADD */:
-            if (!pendingGraph[pendingOperation.fromId]) {
-              pendingGraph[pendingOperation.fromId] = {};
-            }
-            pendingGraph[pendingOperation.fromId][pendingOperation.toId] = (pendingGraph[pendingOperation.fromId][pendingOperation.toId] || 0) | pendingOperation.kind;
-            return true;
-          case 3 /* EDGE_DELETE */:
-            if (!pendingGraph[pendingOperation.fromId]) {
-              pendingGraph[pendingOperation.fromId] = {};
-            }
-            pendingGraph[pendingOperation.fromId][pendingOperation.toId] = (pendingGraph[pendingOperation.fromId][pendingOperation.toId] || 0) & ~pendingOperation.kind;
-            return true;
-          default:
-            assertExhausted(pendingOperation, "unexpected pending operation");
-        }
-      });
-      this.pendingOperations = [];
-      const visited = {};
-      const pendingNodeIdIndex = {};
-      let assignedIndex = 0;
-      const assignIndex = (nodeId) => {
-        if (visited[nodeId])
-          return;
-        visited[nodeId] = true;
-        const toEdges = pendingGraph[nodeId] || {};
-        Object.keys(toEdges).forEach((toId) => {
-          if (toEdges[toId] > 0) {
-            assignIndex(toId);
-          }
-        });
-        pendingNodeIdIndex[nodeId] = assignedIndex;
-        assignedIndex += 1;
-      };
-      const pendingNodeIds = [];
-      Object.keys(nodesToAdd).forEach((nodeId) => {
-        assignIndex(nodeId);
-        pendingNodeIds.push(nodeId);
-      });
-      pendingNodeIds.sort((a, b) => pendingNodeIdIndex[b] - pendingNodeIdIndex[a]);
-      pendingNodeIds.forEach((nodeId) => {
-        const node = nodesToAdd[nodeId];
-        if (node) {
-          this.performAddNodeInner(node, nodeId);
-        }
-      });
-      filteredPendingOperations.forEach((pendingOperation) => {
-        switch (pendingOperation.type) {
-          case 0 /* NODE_ADD */:
-            assert(false, "Incorrectly adding nodes twice");
-            break;
-          case 1 /* NODE_DELETE */:
-            this.performRemoveNodeInner(pendingOperation.nodeId);
-            break;
-          case 2 /* EDGE_ADD */:
-            this.performAddEdgeInner(pendingOperation.fromId, pendingOperation.toId, pendingOperation.kind);
-            addEdge(pendingOperation.fromId, pendingOperation.toId);
-            minLowerBound = minLowerBound === null ? lowerBound : Math.min(minLowerBound, lowerBound);
-            break;
-          case 3 /* EDGE_DELETE */:
-            this.performRemoveEdgeInner(pendingOperation.fromId, pendingOperation.toId, pendingOperation.kind);
-            break;
-          default:
-            assertExhausted(pendingOperation, "unexpected pending operation");
-        }
-      });
-      return minLowerBound || 0;
-    };
-    let reachesRetainedCache = {};
-    const reachesRetained = (nodeId) => {
-      const visited = {};
-      const visit = (id) => {
-        if (this.retained[id]) {
-          reachesRetainedCache[id] = true;
-        }
-        if (reachesRetainedCache[id]) {
-          return true;
-        }
-        if (visited[id])
-          return false;
-        visited[id] = true;
-        return this.getDependenciesInner(id, _Graph.EDGE_ANY).some((toId) => visit(toId));
-      };
-      return visit(nodeId);
-    };
-    processPendingEdges();
-    for (let index = 0; index < this.topologicallyOrderedNodes.length; ++index) {
-      const node = this.topologicallyOrderedNodes[index];
-      if (!node) {
-        continue;
-      }
-      const nodeId = this.getId(node);
-      if (!this.dirtyNodes[nodeId]) {
-        continue;
-      }
-      if (!reachesRetained(nodeId)) {
-        continue;
-      }
-      let done = false;
-      const dirtyNodesUnknownPosition = /* @__PURE__ */ new Set();
-      this.minCycleBrokenIndex = null;
-      const processedNodeIds = /* @__PURE__ */ new Set();
-      while (!done) {
-        const cycleUnconfirmedNodes = /* @__PURE__ */ new Set();
-        this.recentDirtyNodes = [];
-        const cycleInfo = this.knownCycles.get(nodeId);
-        if (cycleInfo) {
-          let anyPropagate = false;
-          cycleInfo.connectedComponentNodes.forEach((cycleId) => {
-            const cycleNode = this.topologicallyOrderedNodes[this.topologicalIndex[cycleId]];
-            if (cycleNode) {
-              callback(cycleNode, "invalidate");
-            }
-          });
-          cycleInfo.connectedComponentNodes.forEach((cycleId) => {
-            const cycleNode = this.topologicallyOrderedNodes[this.topologicalIndex[cycleId]];
-            const currentCycleInfo = this.knownCycles.get(cycleId);
-            assert(currentCycleInfo, "missing cycleInfo for node in strongly connected component");
-            let action;
-            if (!currentCycleInfo.isInformed && currentCycleInfo.initiallyDirty) {
-              action = "recalculate";
-              currentCycleInfo.initiallyDirty = false;
-              cycleUnconfirmedNodes.add(cycleId);
-            } else if (currentCycleInfo.isInformed) {
-              action = "recalculate-cycle";
-            } else {
-              action = "cycle";
-              currentCycleInfo.isInformed = true;
-            }
-            if (cycleNode && callback(cycleNode, action)) {
-              anyPropagate = true;
-            }
-          });
-          this.recentDirtyNodes.forEach((nodeId2) => dirtyNodesUnknownPosition.add(nodeId2));
-          this.recentDirtyNodes = void 0;
-          if (anyPropagate) {
-            cycleInfo.connectedComponentNodes.forEach((cycleId) => {
-              this.getDependenciesInner(cycleId, _Graph.EDGE_HARD).forEach((toId) => {
-                if (!cycleInfo.connectedComponentNodes.has(toId)) {
-                  const toCycleInfo = this.knownCycles.get(toId);
-                  if (toCycleInfo) {
-                    toCycleInfo.connectedComponentNodes.forEach((toCycleId) => {
-                      this.markNodeDirtyInner(toCycleId);
-                    });
-                  } else {
-                    this.markNodeDirtyInner(toId);
-                  }
-                }
-              });
-            });
-          }
-          cycleInfo.connectedComponentNodes.forEach((cycleId) => {
-            processedNodeIds.add(cycleId);
-          });
-        } else {
-          const hasSelfEdge = (this.graph[nodeId]?.[nodeId] ?? 0) > 0;
-          if (hasSelfEdge) {
-            callback(node, "invalidate");
-          }
-          const shouldPropagate = callback(node, hasSelfEdge ? "cycle" : "recalculate");
-          this.recentDirtyNodes.forEach((nodeId2) => dirtyNodesUnknownPosition.add(nodeId2));
-          this.recentDirtyNodes = void 0;
-          if (shouldPropagate) {
-            this.getDependenciesInner(nodeId, _Graph.EDGE_HARD).forEach((toId) => {
-              const toCycleInfo = this.knownCycles.get(toId);
-              if (toCycleInfo) {
-                toCycleInfo.connectedComponentNodes.forEach((toCycleId) => {
-                  this.markNodeDirtyInner(toCycleId);
-                });
-              } else {
-                this.markNodeDirtyInner(toId);
-              }
-            });
-          }
-          processedNodeIds.add(nodeId);
-        }
-        reordered = false;
-        processPendingEdges();
-        cycleUnconfirmedNodes.forEach((cycleId) => {
-          const cycleNode = this.topologicallyOrderedNodes[this.topologicalIndex[cycleId]];
-          const newCycleInfo2 = this.knownCycles.get(cycleId);
-          if (cycleNode && newCycleInfo2) {
-            const shouldPropagate = callback(cycleNode, "cycle");
-            newCycleInfo2.isInformed = true;
-            if (shouldPropagate) {
-              this.getDependenciesInner(cycleId, _Graph.EDGE_HARD).forEach((toId) => {
-                const toCycleInfo = this.knownCycles.get(toId);
-                if (toCycleInfo) {
-                  toCycleInfo.connectedComponentNodes.forEach((toCycleId) => {
-                    this.markNodeDirtyInner(toCycleId);
-                  });
-                } else {
-                  this.markNodeDirtyInner(toId);
-                }
-              });
-            }
-          }
-        });
-        processedNodeIds.forEach((nodeId2) => {
-          this.markNodeCleanInner(nodeId2);
-        });
-        if (reordered || this.minCycleBrokenIndex !== null) {
-          reachesRetainedCache = {};
-          this.getUnorderedDirtyNodes().forEach((nodeId2) => dirtyNodesUnknownPosition.add(nodeId2));
-        }
-        const newCycleInfo = this.knownCycles.get(nodeId);
-        if (newCycleInfo && !cycleInfo) {
-          done = false;
-        } else if (!newCycleInfo && cycleInfo) {
-          done = false;
-        } else {
-          done = true;
-        }
-      }
-      if (dirtyNodesUnknownPosition.size > 0 || this.minCycleBrokenIndex !== null) {
-        let minDirtyOrd = this.topologicallyOrderedNodes.length;
-        dirtyNodesUnknownPosition.forEach((dirtyNodeId) => {
-          minDirtyOrd = Math.min(minDirtyOrd, this.topologicalIndex[dirtyNodeId]);
-        });
-        if (this.minCycleBrokenIndex !== null) {
-          minDirtyOrd = Math.min(this.minCycleBrokenIndex, minDirtyOrd);
-        }
-        if (minDirtyOrd <= index) {
-          index = minDirtyOrd - 1;
-        }
+        this.vertexBitsById[fromId] |= VERTEX_BIT_SELF_CYCLE;
       }
     }
-    const flushed = {};
-    const transitiveFlush = (nodeId) => {
-      const node = this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]];
-      assert(node, "transitiveFlush consistency error");
-      callback(node, "invalidate");
-      flushed[nodeId] = true;
-      this.getDependenciesInner(nodeId, _Graph.EDGE_HARD).forEach((toId) => {
-        if (!flushed[toId]) {
-          transitiveFlush(toId);
-        }
-      });
-    };
-    this.getUnorderedDirtyNodes().forEach((nodeId) => {
-      if (!flushed[nodeId]) {
-        transitiveFlush(nodeId);
-      }
-      this.markNodeCleanInner(nodeId);
-    });
+    if ((this.vertexBitsById[fromId] & VERTEX_BIT_REACHES_ROOT) === 0 && this.vertexBitsById[toId] & VERTEX_BIT_REACHES_ROOT) {
+      this.markReachesRootRecursive(fromId);
+    }
+    const fromIndex = this.topologicalIndexById[fromId];
+    const toIndex = this.topologicalIndexById[toId];
+    assert(toIndex !== void 0, "malformed graph");
+    assert(fromIndex !== void 0, "malformed graph");
+    const badOrder = fromIndex > toIndex;
+    if (badOrder) {
+      this.toReorderIds.add(fromId);
+      this.toReorderIds.add(toId);
+    }
   }
-  graphviz(getAttributes) {
-    const lines = [
-      "digraph debug {",
-      'node [style="filled", fillcolor="#DDDDDD"];'
-    ];
-    const nodeIds = Object.keys(this.topologicalIndex).filter((nodeId) => !!this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]]);
-    const nodeAttributes = {};
-    nodeIds.forEach((nodeId) => {
-      const node = this.topologicallyOrderedNodes[this.topologicalIndex[nodeId]];
-      if (node) {
-        nodeAttributes[nodeId] = getAttributes(nodeId, node);
+  hasEdge(fromVertex, toVertex, kind) {
+    const fromId = this.vertexToId.get(fromVertex);
+    const toId = this.vertexToId.get(toVertex);
+    assert(fromId, "addEdge from vertex not found");
+    assert(toId, "addEdge to vertex not found");
+    return this.forwardAdjacencyEither[fromId].includes(toId);
+  }
+  removeEdge(fromVertex, toVertex, kind) {
+    const fromId = this.vertexToId.get(fromVertex);
+    const toId = this.vertexToId.get(toVertex);
+    assert(fromId, "removeEdge from vertex not found");
+    assert(toId, "removeEdge to vertex not found");
+    let forwardList;
+    let reverseList;
+    switch (kind) {
+      case 1 /* EDGE_SOFT */:
+        forwardList = this.forwardAdjacencySoft[fromId];
+        reverseList = this.reverseAdjacencySoft[toId];
+        break;
+      case 2 /* EDGE_HARD */:
+        forwardList = this.forwardAdjacencyHard[fromId];
+        reverseList = this.reverseAdjacencyHard[toId];
+        break;
+      default:
+        assertExhausted(kind, "invalid kind");
+    }
+    assert(this.forwardAdjacencyEither[fromId].includes(toId), "removeEdge on edge that does not exist");
+    this.forwardAdjacencyEither[fromId].splice(this.forwardAdjacencyEither[fromId].indexOf(toId), 1);
+    forwardList.splice(forwardList.indexOf(toId), 1);
+    this.reverseAdjacencyEither[toId].splice(this.reverseAdjacencyEither[toId].indexOf(fromId), 1);
+    reverseList.splice(reverseList.indexOf(fromId), 1);
+    const fromCycleInfo = this.cycleInfoById[fromId];
+    const toCycleInfo = this.cycleInfoById[toId];
+    if (fromCycleInfo && toCycleInfo && fromCycleInfo === toCycleInfo) {
+      this.toReorderIds.add(fromId);
+      this.toReorderIds.add(toId);
+    }
+    this.checkReachesRootRecursive(fromId);
+  }
+  visitDfsForwardRecurse(vertexId, lowerBound, upperBound, visited) {
+    if (visited.has(vertexId))
+      return;
+    visited.add(vertexId);
+    for (const toId of this.forwardAdjacencyEither[vertexId]) {
+      const toIndex = this.topologicalIndexById[toId];
+      assert(toIndex !== void 0, "malformed graph");
+      if (lowerBound <= toIndex && toIndex <= upperBound) {
+        this.visitDfsForwardRecurse(toId, lowerBound, upperBound, visited);
       }
-    });
-    const groupedNodes = groupBy(nodeIds, (nodeId) => {
-      return [nodeAttributes[nodeId].subgraph, nodeId];
-    });
-    let clusterId = 0;
-    groupedNodes.forEach((nodeIds2, group) => {
-      if (group)
-        lines.push(`subgraph cluster_${clusterId++} {`, 'style="filled";', 'color="#AAAAAA";');
-      nodeIds2.forEach((nodeId) => {
-        const props = {
-          shape: this.retained[nodeId] ? "box" : "ellipse",
-          label: nodeAttributes[nodeId]?.label,
-          penwidth: nodeAttributes[nodeId]?.penwidth,
-          fillcolor: this.isNodeDirty(nodeId) ? "#FFDDDD" : "#DDDDDD"
+    }
+  }
+  visitDfsForward(startVertices, lowerBound, upperBound) {
+    const visited = /* @__PURE__ */ new Set();
+    for (const vertexId of startVertices) {
+      this.visitDfsForwardRecurse(vertexId, lowerBound, upperBound, visited);
+    }
+    return visited;
+  }
+  resort(toReorder) {
+    let lowerBound = Infinity;
+    let upperBound = -Infinity;
+    for (const vertexId of toReorder) {
+      const cycleInfo = this.cycleInfoById[vertexId];
+      if (cycleInfo) {
+        if (cycleInfo.lowerBound < lowerBound)
+          lowerBound = cycleInfo.lowerBound;
+        if (cycleInfo.upperBound > upperBound)
+          upperBound = cycleInfo.upperBound;
+      } else {
+        const index = this.topologicalIndexById[vertexId];
+        assert(index !== void 0, "malformed graph");
+        if (index < lowerBound)
+          lowerBound = index;
+        if (index > upperBound)
+          upperBound = index;
+      }
+    }
+    const seedVertices = this.visitDfsForward(toReorder, lowerBound, upperBound);
+    const components = tarjanStronglyConnected(this.reverseAdjacencyEither, this.topologicalIndexById, lowerBound, upperBound, seedVertices);
+    const allocatedIndexes = [];
+    for (const component of components) {
+      let cycle;
+      if (component.length > 1) {
+        cycle = {
+          upperBound: -Infinity,
+          lowerBound: Infinity,
+          vertexIds: new Set(component)
         };
-        lines.push(`  item_${nodeId} [${Object.entries(props).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join(",")}];`);
-      });
-      if (group)
-        lines.push("}");
-    });
-    nodeIds.forEach((fromId) => {
-      const allDestinations = Array.from(new Set(Object.keys(this.graph[fromId])));
-      allDestinations.forEach((toId) => {
-        if (this.graph[fromId][toId] & _Graph.EDGE_HARD) {
-          lines.push(`  item_${fromId} -> item_${toId} [style="solid"];`);
+      }
+      for (const vertexId of component) {
+        const index = this.topologicalIndexById[vertexId];
+        assert(index !== void 0, "malformed graph");
+        if (cycle) {
+          if (index < cycle.lowerBound)
+            cycle.lowerBound = index;
+          if (index > cycle.upperBound)
+            cycle.upperBound = index;
+          if (!(this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE)) {
+            this.vertexBitsById[vertexId] |= VERTEX_BIT_CYCLE;
+          }
+          if (!(this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE_INFORMED)) {
+            const vertex = this.vertexById[vertexId];
+            assert(vertex, "uninformed vertex missing");
+            this.processHandler(vertex, 2 /* CYCLE */);
+            this.vertexBitsById[vertexId] |= VERTEX_BIT_CYCLE_INFORMED;
+          }
+          this.cycleInfoById[vertexId] = cycle;
+        } else if (this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE) {
+          this.vertexBitsById[vertexId] = this.vertexBitsById[vertexId] & ~(VERTEX_BIT_CYCLE | VERTEX_BIT_CYCLE_INFORMED);
+          this.cycleInfoById[vertexId] = void 0;
+          this.markVertexDirtyInner(vertexId);
         }
-        if (this.graph[fromId][toId] & _Graph.EDGE_SOFT) {
-          lines.push(`  item_${fromId} -> item_${toId} [style="dashed"];`);
-        }
+        allocatedIndexes.push(index);
+      }
+    }
+    allocatedIndexes.sort((a, b) => a - b);
+    let i = 0;
+    for (const component of components) {
+      for (const vertexId of component) {
+        const index = allocatedIndexes[i];
+        this.topologicalOrdering[index] = vertexId;
+        this.topologicalIndexById[vertexId] = index;
+        i += 1;
+      }
+    }
+    return lowerBound;
+  }
+  processHandler(vertex, action) {
+    if (true) {
+      this.debugSubscriptions.forEach(({ subscription, formatter }) => {
+        const name = formatter(vertex).name;
+        const label = `${ProcessAction[action]}: ${name}`;
+        subscription(this.debug((v) => ({
+          ...formatter(v),
+          isActive: v === vertex
+        }), label), label);
       });
-    });
+    }
+    return this._processHandler(vertex, action);
+  }
+  processVertex(vertexId) {
+    const reachesRoot = this.vertexBitsById[vertexId] & VERTEX_BIT_REACHES_ROOT;
+    const vertex = this.vertexById[vertexId];
+    assert(vertex, "nonexistent vertex dirtied");
+    if (!reachesRoot) {
+      this.clearVertexDirtyInner(vertexId);
+      return this.processHandler(vertex, 0 /* INVALIDATE */);
+    }
+    return this.processHandler(vertex, 1 /* RECALCULATE */);
+  }
+  process() {
+    if (true) {
+      this.debugSubscriptions.forEach(({ subscription, formatter }) => {
+        const label = `Process start`;
+        subscription(this.debug((v) => ({
+          ...formatter(v)
+        }), label), label);
+      });
+    }
+    if (this.toReorderIds.size > 0) {
+      this.resort(this.toReorderIds);
+      this.toReorderIds.clear();
+    }
+    for (let i = 0; i < this.topologicalOrdering.length; ++i) {
+      const vertexId = this.topologicalOrdering[i];
+      if (vertexId === void 0)
+        continue;
+      const isDirty = this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY;
+      if (!isDirty)
+        continue;
+      const vertex = this.vertexById[vertexId];
+      assert(vertex, "nonexistent vertex dirtied");
+      const cycleInfo = this.cycleInfoById[vertexId];
+      let shouldPropagate = false;
+      const recheckIds = cycleInfo || this.vertexBitsById[vertexId] & VERTEX_BIT_SELF_CYCLE ? [] : null;
+      if (cycleInfo) {
+        for (const cycleId of cycleInfo.vertexIds) {
+          if (!this.vertexById[cycleId])
+            continue;
+          const isInformed = this.vertexBitsById[cycleId] & VERTEX_BIT_CYCLE_INFORMED;
+          if (isInformed) {
+            recheckIds.push(cycleId);
+          }
+          shouldPropagate = this.processVertex(cycleId) || shouldPropagate;
+        }
+      } else {
+        const isInformed = this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE_INFORMED;
+        if (isInformed && recheckIds) {
+          recheckIds.push(vertexId);
+        }
+        shouldPropagate = this.processVertex(vertexId) || shouldPropagate;
+      }
+      if (this.toReorderIds.size > 0) {
+        i = this.resort(this.toReorderIds) - 1;
+        this.toReorderIds.clear();
+      }
+      if (cycleInfo || this.vertexBitsById[vertexId] & VERTEX_BIT_SELF_CYCLE) {
+        for (const cycleId of recheckIds) {
+          const isStillCycle = this.vertexBitsById[cycleId] & (VERTEX_BIT_CYCLE | VERTEX_BIT_SELF_CYCLE);
+          if (isStillCycle) {
+            const cycleVertex = this.vertexById[cycleId];
+            assert(cycleVertex, "nonexistent vertex in cycle");
+            shouldPropagate = this.processHandler(cycleVertex, 2 /* CYCLE */) || shouldPropagate;
+          }
+        }
+      }
+      const newCycleInfo = this.cycleInfoById[vertexId];
+      if (!cycleInfo && newCycleInfo) {
+        shouldPropagate = true;
+      }
+      if (cycleInfo && newCycleInfo && newCycleInfo.vertexIds !== cycleInfo.vertexIds) {
+        shouldPropagate = true;
+      }
+      if (shouldPropagate) {
+        const toPropagate = /* @__PURE__ */ new Set();
+        toPropagate.add(vertexId);
+        if (cycleInfo) {
+          for (const oldVertexId of cycleInfo.vertexIds) {
+            toPropagate.add(oldVertexId);
+          }
+        }
+        if (newCycleInfo) {
+          for (const newVertexId of newCycleInfo.vertexIds) {
+            toPropagate.add(newVertexId);
+          }
+        }
+        for (const cycleId of toPropagate) {
+          if (!this.vertexById[cycleId])
+            continue;
+          this.propagateDirty(cycleId, toPropagate);
+        }
+      } else {
+        this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
+      }
+    }
+    if (true) {
+      this.debugSubscriptions.forEach(({ subscription, formatter }) => {
+        const label = `Process end`;
+        subscription(this.debug((v) => ({
+          ...formatter(v)
+        }), label), label);
+      });
+    }
+  }
+  propagateDirty(vertexId, cycleVertexIds) {
+    this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
+    for (const toId of this.forwardAdjacencyHard[vertexId]) {
+      const toCycleInfo = this.cycleInfoById[toId];
+      if (toCycleInfo) {
+        for (const toCycleId of toCycleInfo.vertexIds) {
+          if (!cycleVertexIds || !cycleVertexIds.has(toCycleId)) {
+            this.markVertexDirtyInner(toCycleId);
+          }
+        }
+      } else {
+        if (!cycleVertexIds || !cycleVertexIds.has(toId)) {
+          this.markVertexDirtyInner(toId);
+        }
+      }
+    }
+  }
+  debug(getAttrs, label) {
+    const lines = [];
+    lines.push("digraph dependencies {");
+    lines.push(`  graph [];`);
+    lines.push(`  edge [penwidth=2.0];`);
+    lines.push(`  node [penwidth=2.0];`);
+    if (label) {
+      lines.push(`  graph [label=${JSON.stringify(label)};]`);
+    }
+    const emitVertex = (id) => {
+      const vertex = this.vertexById[id];
+      if (!vertex)
+        return;
+      const customAttrs = getAttrs(vertex);
+      const attrs = {
+        style: "filled",
+        label: `${id}
+${customAttrs.name}`
+      };
+      if (this.vertexBitsById[id] & VERTEX_BIT_ROOT) {
+        attrs.shape = "box";
+      } else {
+        attrs.shape = "ellipse";
+      }
+      if (this.vertexBitsById[id] & VERTEX_BIT_DIRTY) {
+        attrs.style = "filled";
+        attrs.fontcolor = "#FFFFFF";
+        attrs.fillcolor = "#FC7A1E";
+      } else {
+        attrs.style = "filled";
+        attrs.fontcolor = "#000000";
+        attrs.fillcolor = "#FFFFFF";
+      }
+      if ((this.vertexBitsById[id] & VERTEX_BIT_REACHES_ROOT) === 0) {
+        attrs.style = "filled,dashed";
+      }
+      if (customAttrs.isActive) {
+        attrs.penwidth = 4;
+        attrs.pencolor = "#485696";
+      }
+      const labelItems = [];
+      for (const [attrName, attrVal] of Object.entries(attrs)) {
+        labelItems.push(`${attrName}=${JSON.stringify(attrVal)}`);
+      }
+      lines.push(`  v_${id} [${labelItems.join(",")}]`);
+    };
+    const cycles = /* @__PURE__ */ new Set();
+    for (let id = 0; id < this.vertexById.length; ++id) {
+      const cycleInfo = this.cycleInfoById[id];
+      if (cycleInfo) {
+        cycles.add(cycleInfo);
+      }
+    }
+    for (const cycle of cycles) {
+      lines.push("  subgraph cluster_cycle {");
+      lines.push(`  graph [label="cycle";]`);
+      for (const cycleId of cycle.vertexIds) {
+        emitVertex(cycleId);
+      }
+      lines.push("  }");
+    }
+    for (let id = 0; id < this.vertexById.length; ++id) {
+      const cycleInfo = this.cycleInfoById[id];
+      if (cycleInfo)
+        continue;
+      emitVertex(id);
+    }
+    for (let id = 0; id < this.vertexById.length; ++id) {
+      if (this.forwardAdjacencySoft[id]) {
+        for (const toId of this.forwardAdjacencySoft[id]) {
+          lines.push(`  v_${id} -> v_${toId} [style="dotted"];`);
+        }
+      }
+      if (this.forwardAdjacencyHard[id]) {
+        for (const toId of this.forwardAdjacencyHard[id]) {
+          lines.push(`  v_${id} -> v_${toId};`);
+        }
+      }
+    }
     lines.push("}");
     return lines.join("\n");
   }
-};
-var Graph = _Graph;
-__publicField(Graph, "EDGE_NONE", 0);
-__publicField(Graph, "EDGE_SOFT", 1);
-__publicField(Graph, "EDGE_HARD", 2);
-__publicField(Graph, "EDGE_ANY", 3);
-
-// src/debug.ts
-var nameMap = /* @__PURE__ */ new WeakMap();
-function clearNames() {
-  nameMap = /* @__PURE__ */ new WeakMap();
-}
-function debugNameFor(item) {
-  if (false) {
-    return "";
-  }
-  const id = item.$__id;
-  if (isCollection(item)) {
-    return `${id}:collection:${nameMap.get(item) ?? "?"}`;
-  }
-  if (isCalculation(item)) {
-    return `${id}:${isEffect(item) ? "effect" : "calc"}:${nameMap.get(item) ?? "?"}`;
-  }
-  if (isModel(item)) {
-    return `${id}:model:${nameMap.get(item) ?? "?"}`;
-  }
-  if (isSubscription(item)) {
-    return `${id}:sub:${nameMap.get(item) ?? "?"}`;
-  }
-  if (isNodeOrdering(item)) {
-    return `${id}:ord:${nameMap.get(item) ?? "?"}`;
-  }
-  if (isModelField(item)) {
-    return `${id}:field:${nameMap.get(item.model) ?? "?"}:${String(item.key)}`;
-  }
-  return `${id}:unknown`;
-}
-function name(item, name2) {
-  if (false)
-    return item;
-  nameMap.set(item, name2);
-  return item;
-}
-
-// src/calc.ts
-var activeCalculations = [];
-var globalDependencyGraph = new Graph();
-var refcountMap = {};
-function reset() {
-  activeCalculations = [];
-  globalDependencyGraph = new Graph();
-  refcountMap = {};
-  clearNames();
-}
-var createdCalculations;
-function trackCreatedCalculations(fn) {
-  const before = createdCalculations;
-  createdCalculations = [];
-  try {
-    fn();
-    const toReturn = createdCalculations;
-    return toReturn;
-  } finally {
-    createdCalculations = before;
-  }
-}
-function calc(func, isEqual, debugName) {
-  if (typeof isEqual === "string")
-    debugName = isEqual;
-  if (typeof isEqual !== "function")
-    isEqual = strictEqual;
-  if (typeof debugName !== "string")
-    debugName = void 0;
-  const calculation = makeCalculation(func, isEqual, false);
-  if (debugName)
-    name(calculation, debugName);
-  if (createdCalculations)
-    createdCalculations.push(calculation);
-  return calculation;
-}
-function effect(func, debugName) {
-  const calculation = makeCalculation(func, alwaysTrue, true);
-  if (debugName)
-    name(calculation, debugName);
-  if (createdCalculations)
-    createdCalculations.push(calculation);
-  return calculation;
-}
-function untracked(func) {
-  activeCalculations.push({ calc: null, deps: [] });
-  try {
-    return func();
-  } finally {
-    activeCalculations.pop();
-  }
-}
-var CalculationError = class extends Error {
-  constructor(msg, originalError) {
-    super(msg);
-    __publicField(this, "originalError");
-    this.originalError = originalError;
-  }
-};
-var CycleAbortError = class extends Error {
-};
-function makeCalculation(calculationFunc, isEqual, isEffect2) {
-  if (typeof calculationFunc !== "function") {
-    throw new InvariantError("calculation must be provided a function");
-  }
-  let result = void 0;
-  let state = 0 /* STATE_FLUSHED */;
-  let errorHandler = void 0;
-  let isDisposed = false;
-  const calculation = Object.assign(calculationBody, {
-    $__id: uniqueid(),
-    [TypeTag]: "calculation",
-    [CalculationTypeTag]: isEffect2 ? "effect" : "calculation",
-    [CalculationSetCycleTag]: calculationSetCycle,
-    [CalculationRecalculateTag]: calculationRecalculate,
-    [CalculationRecalculateCycleTag]: calculationRecalculateCycle,
-    [CalculationInvalidateTag]: calculationInvalidate,
-    onError: calculationOnError,
-    dispose: calculationDispose
-  });
-  globalDependencyGraph.addNode(calculation);
-  function calculationBody() {
-    assert(!isDisposed, "calculation already disposed");
-    if (!isEffect2) {
-      addDepToCurrentCalculation(calculation);
-    }
-    switch (state) {
-      case 0 /* STATE_FLUSHED */: {
-        state = 1 /* STATE_TRACKING */;
-        activeCalculations.push({ calc: calculation, deps: [] });
-        const prevResult = result;
-        try {
-          result = { result: calculationFunc() };
-        } catch (e) {
-          const calcRecord2 = activeCalculations.pop();
-          assert(calcRecord2?.calc === calculation, "calculation stack inconsistency");
-          globalDependencyGraph.replaceIncoming(calculation, calcRecord2.deps);
-          const isCycle = e instanceof CycleAbortError;
-          if (isCycle) {
-            globalDependencyGraph.markNodeCycle(calculation);
-          }
-          state = isCycle ? 3 /* STATE_CYCLE */ : 4 /* STATE_ERROR */;
-          if (errorHandler) {
-            result = {
-              result: errorHandler(isCycle ? "cycle" : "error")
-            };
-          } else {
-            result = void 0;
-          }
-          if (result && activeCalculations.length === 0) {
-            return prevResult && isEqual(prevResult.result, result.result) ? prevResult.result : result.result;
-          }
-          if (isCycle) {
-            throw e;
-          }
-          throw new CalculationError("Calculation error: calculation threw error while being called", e);
-        }
-        state = 2 /* STATE_CACHED */;
-        const calcRecord = activeCalculations.pop();
-        assert(calcRecord?.calc === calculation, "calculation stack inconsistency");
-        globalDependencyGraph.replaceIncoming(calculation, calcRecord.deps);
-        return prevResult && isEqual(prevResult.result, result.result) ? prevResult.result : result.result;
-      }
-      case 1 /* STATE_TRACKING */:
-        state = 4 /* STATE_ERROR */;
-        if (errorHandler) {
-          result = {
-            result: errorHandler("cycle")
-          };
-          globalDependencyGraph.markNodeCycle(calculation);
-          if (activeCalculations.length === 0) {
-            return result.result;
-          }
-        }
-        throw new CycleAbortError("Cycle reached: calculation is part of a cycle");
-        break;
-      case 2 /* STATE_CACHED */:
-        if (result) {
-          return result.result;
-        }
-        throw new InvariantError("Calculation in cached state missing result value");
-      case 3 /* STATE_CYCLE */:
-        if (result) {
-          return result.result;
-        }
-        throw new Error("Cycle reached: calculation is part of a cycle");
-      case 4 /* STATE_ERROR */:
-        if (result) {
-          return result.result;
-        }
-        throw new Error("Calculation in error state");
-      default:
-        assertExhausted(state, "Unexpected calculation state");
-    }
-  }
-  function calculationInvalidate() {
-    assert(!isDisposed, "calculation already disposed");
-    switch (state) {
-      case 1 /* STATE_TRACKING */:
-        throw new InvariantError("Cannot invalidate a calculation while being tracked");
-      case 0 /* STATE_FLUSHED */:
-        return;
-      case 3 /* STATE_CYCLE */:
-        state = 0 /* STATE_FLUSHED */;
-        break;
-      case 2 /* STATE_CACHED */:
-      case 4 /* STATE_ERROR */: {
-        debug("Invalidating node", debugNameFor(calculation));
-        state = 0 /* STATE_FLUSHED */;
-        break;
-      }
-      default:
-        assertExhausted(state, "Unexpected calculation state");
-    }
-  }
-  function calculationSetCycle() {
-    assert(!isDisposed, "calculation already disposed");
-    switch (state) {
-      case 1 /* STATE_TRACKING */:
-        throw new InvariantError("Cannot mark calculation as being a cycle while it is being calculated");
-        break;
-      case 0 /* STATE_FLUSHED */:
-      case 2 /* STATE_CACHED */:
-      case 3 /* STATE_CYCLE */:
-      case 4 /* STATE_ERROR */: {
-        state = 3 /* STATE_CYCLE */;
-        if (errorHandler) {
-          let isResultEqual = false;
-          const newResult = errorHandler("cycle");
-          if (result) {
-            isResultEqual = isEqual(result.result, newResult);
-          }
-          if (!isResultEqual) {
-            result = { result: newResult };
-          }
-          return !isResultEqual;
-        } else {
-          if (result) {
-            result = void 0;
-            return true;
-          }
-          return false;
-        }
-      }
-      default:
-        assertExhausted(state, "Unexpected calculation state");
-    }
-  }
-  function calculationRecalculate() {
-    assert(!isDisposed, "calculation already disposed");
-    switch (state) {
-      case 1 /* STATE_TRACKING */:
-        throw new InvariantError("Cannot recalculate calculation while it is being calculated");
-        break;
-      case 0 /* STATE_FLUSHED */:
-      case 4 /* STATE_ERROR */:
-      case 2 /* STATE_CACHED */: {
-        const priorResult = result;
-        try {
-          calculationBody();
-        } catch (e) {
-        }
-        if (priorResult && result && isEqual(priorResult.result, result.result)) {
-          result = priorResult;
-          return false;
-        }
-        return true;
-      }
-      case 3 /* STATE_CYCLE */:
-        throw new InvariantError("Cannot recalculate calculation in cycle state without flushing");
-      default:
-        assertExhausted(state, "Unexpected calculation state");
-    }
-  }
-  function calculationRecalculateCycle() {
-    assert(!isDisposed, "calculation already disposed");
-    switch (state) {
-      case 1 /* STATE_TRACKING */:
-        throw new InvariantError("Cannot recalculate calculation while it is being calculated");
-        break;
-      case 0 /* STATE_FLUSHED */:
-      case 4 /* STATE_ERROR */:
-      case 2 /* STATE_CACHED */: {
-        const priorResult = result;
-        try {
-          calculationBody();
-        } catch (e) {
-        }
-        if (priorResult && result && isEqual(priorResult.result, result.result)) {
-          result = priorResult;
-          return false;
-        }
-        return true;
-      }
-      case 3 /* STATE_CYCLE */:
-        return calculationSetCycle();
-      default:
-        assertExhausted(state, "Unexpected calculation state");
-    }
-  }
-  function calculationOnError(handler) {
-    assert(!isDisposed, "calculation already disposed");
-    errorHandler = handler;
-    return calculation;
-  }
-  function calculationDispose() {
-    assert(!isDisposed, "calculation already disposed");
-    globalDependencyGraph.removeNode(calculation);
-    result = void 0;
-    errorHandler = void 0;
-    isDisposed = true;
-  }
-  return calculation;
-}
-function addDepToCurrentCalculation(item) {
-  if (activeCalculations.length === 0)
-    return;
-  const dependentCalculation = activeCalculations[activeCalculations.length - 1];
-  dependentCalculation.deps.push(item);
-  debug("New global dependency", debugNameFor(item), "->", dependentCalculation.calc ? debugNameFor(dependentCalculation.calc) : "<untracked>");
-}
-function addManualDep(fromNode, toNode) {
-  globalDependencyGraph.addNode(fromNode);
-  globalDependencyGraph.addNode(toNode);
-  globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_HARD);
-  scheduleFlush();
-  debug("New manual dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
-}
-function registerNode(node) {
-  globalDependencyGraph.addNode(node);
-}
-function disposeNode(node) {
-  globalDependencyGraph.removeNode(node);
-}
-function addOrderingDep(fromNode, toNode) {
-  globalDependencyGraph.addEdge(fromNode, toNode, Graph.EDGE_SOFT);
-  scheduleFlush();
-  debug("New manual ordering dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
-}
-function removeManualDep(fromNode, toNode) {
-  globalDependencyGraph.removeEdge(fromNode, toNode, Graph.EDGE_HARD);
-  debug("Removed manual dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
-}
-function removeOrderingDep(fromNode, toNode) {
-  globalDependencyGraph.removeEdge(fromNode, toNode, Graph.EDGE_SOFT);
-  debug("Removed manual ordering dependency", debugNameFor(fromNode), "->", debugNameFor(toNode));
-}
-function markDirty(item) {
-  debug("Dirtying", debugNameFor(item));
-  globalDependencyGraph.addNode(item);
-  globalDependencyGraph.markNodeDirty(item);
-  scheduleFlush();
-}
-var needsFlush = false;
-var isFlushing = false;
-var afterFlushCallbacks = /* @__PURE__ */ new Set();
-var flushPromise = Promise.resolve();
-var resolveFlushPromise = noop;
-var subscribeListener = () => setTimeout(() => flush(), 0);
-function afterFlush(callback) {
-  if (isFlushing) {
-    afterFlushCallbacks.add(callback);
-  } else {
-    callback();
-  }
-}
-function nextFlush() {
-  if (!needsFlush)
-    return Promise.resolve();
-  return flushPromise;
-}
-function subscribe(listener = noop) {
-  subscribeListener = listener;
-  if (needsFlush) {
-    subscribeListener();
-  }
-}
-function scheduleFlush() {
-  if (!needsFlush) {
-    needsFlush = true;
-    notify();
-  }
-}
-function notify() {
-  try {
-    flushPromise = new Promise((resolve) => {
-      resolveFlushPromise = resolve;
-    });
-    subscribeListener();
-  } catch (e) {
-    exception(e, "uncaught exception in notify");
-  }
-}
-var debugSubscription = null;
-function flush() {
-  if (!needsFlush) {
-    return;
-  }
-  needsFlush = false;
-  assert(!isFlushing, "Invariant: flush called recursively");
-  isFlushing = true;
-  debugSubscription && debugSubscription(debug2(), "0: flush start");
-  globalDependencyGraph.process((item, action) => {
-    let shouldPropagate = true;
-    switch (action) {
-      case "cycle":
-        if (isCalculation(item)) {
-          shouldPropagate = item[CalculationSetCycleTag]();
-        } else {
-          throw new Error("Unexpected dependency on cycle");
-        }
-        break;
-      case "invalidate":
-        if (isCalculation(item)) {
-          item[CalculationInvalidateTag]();
-        }
-        break;
-      case "recalculate-cycle":
-        if (isCalculation(item)) {
-          shouldPropagate = item[CalculationRecalculateCycleTag]();
-        } else if (isCollection(item) || isModel(item) || isSubscription(item)) {
-          shouldPropagate = item[FlushKey]();
-        }
-        break;
-      case "recalculate":
-        if (isCalculation(item)) {
-          item[CalculationInvalidateTag]();
-          shouldPropagate = item[CalculationRecalculateTag]();
-        } else if (isCollection(item) || isModel(item) || isSubscription(item)) {
-          shouldPropagate = item[FlushKey]();
-        }
-        break;
-      default:
-        assertExhausted(action);
-    }
-    if (true) {
-      debug(`process:${action}`, debugNameFor(item), `shouldPropagate=${shouldPropagate}`);
-      debugSubscription && debugSubscription(debug2(item), `process:${action}:shouldPropagate=${shouldPropagate}`);
-    }
-    return shouldPropagate;
-  });
-  assert(!globalDependencyGraph.hasDirtyNodes(), "Graph contained dirty nodes post-flush");
-  debugSubscription && debugSubscription(debug2(), `2: after visit`);
-  afterFlushCallbacks.forEach((callback) => callback());
-  afterFlushCallbacks.clear();
-  isFlushing = false;
-  resolveFlushPromise();
-}
-function retain(item) {
-  const refcount = refcountMap[item.$__id] ?? 0;
-  const newRefcount = refcount + 1;
-  if (refcount === 0) {
-    debug(`retain ${debugNameFor(item)} retained; refcount ${refcount} -> ${newRefcount}`);
-    globalDependencyGraph.addNode(item);
-    globalDependencyGraph.retain(item);
-  } else {
-    debug(`retain ${debugNameFor(item)} incremented; refcount ${refcount} -> ${newRefcount}`);
-  }
-  refcountMap[item.$__id] = newRefcount;
-}
-function release(item) {
-  const refcount = refcountMap[item.$__id] ?? 0;
-  const newRefcount = Math.min(refcount - 1, 0);
-  if (refcount < 1) {
-    error(`release called on unretained item ${debugNameFor(item)}`, item);
-  }
-  if (newRefcount < 1) {
-    debug(`release ${debugNameFor(item)} released; refcount ${refcount} -> ${newRefcount}`);
-    globalDependencyGraph.release(item);
-  } else {
-    debug(`release ${debugNameFor(item)} decremented; refcount ${refcount} -> ${newRefcount}`);
-  }
-  refcountMap[item.$__id] = newRefcount;
-}
-function debug2(activeItem) {
-  return globalDependencyGraph.graphviz((id, item) => {
-    let subgraph = void 0;
-    if (isModel(item)) {
-      subgraph = item;
-    }
-    if (isCollection(item)) {
-      subgraph = item;
-    }
-    if (isModelField(item)) {
-      subgraph = item.model;
-    }
-    if (isSubscription(item)) {
-      subgraph = item.item;
-    }
-    return {
-      label: `${id}
-${debugNameFor(item)}`,
-      subgraph,
-      penwidth: activeItem === item ? "5.0" : "1.0"
+  debugSubscribe(formatter, subscription) {
+    const entry = {
+      formatter,
+      subscription
     };
-  });
-}
-function debugState() {
-  return {
-    globalDependencyGraph,
-    activeCalculations,
-    refcountMap,
-    needsFlush,
-    flushPromise,
-    resolveFlushPromise,
-    subscribeListener
+    this.debugSubscriptions.add(entry);
+    return () => {
+      this.debugSubscriptions.delete(entry);
+    };
+  }
+};
+__publicField(Graph, "EDGE_SOFT", 1 /* EDGE_SOFT */);
+__publicField(Graph, "EDGE_HARD", 2 /* EDGE_HARD */);
+if (false) {
+  Graph.prototype._test_getVertices = function _test_getVertices() {
+    return this.vertexById.filter((vertex) => !!vertex);
+  };
+  Graph.prototype._test_getDependencies = function _test_getDependencies(vertex) {
+    const id = this.vertexToId.get(vertex);
+    assert(id, "getDependencies on nonexistent vertex");
+    return this.forwardAdjacencyEither[id].map((toId) => this.vertexById[toId]);
+  };
+  Graph.prototype._test_getVertexInfo = function _test_getVertexInfo(vertex) {
+    const id = this.vertexToId.get(vertex);
+    if (id === void 0)
+      return void 0;
+    const index = this.topologicalIndexById[id];
+    assert(index !== void 0, "malformed graph");
+    const bits = this.vertexBitsById[id];
+    return {
+      id,
+      index,
+      bits
+    };
   };
 }
-function debugSubscribe(callback) {
-  debugSubscription = callback;
+
+// src/engine.ts
+var SymDebugName = Symbol("debugName");
+var SymRefcount = Symbol("refcount");
+var SymAlive = Symbol("alive");
+var SymDead = Symbol("dead");
+var SymRecalculate = Symbol("recalculate");
+var SymCycle = Symbol("cycle");
+var SymInvalidate = Symbol("invalidate");
+var SymProcessable = Symbol("processable");
+function isProcessable(val) {
+  return val && val[SymProcessable] === true;
+}
+var globalDependencyGraph = new Graph(processHandler);
+var trackReadSets = [];
+var trackCreateSets = [];
+var isFlushing = false;
+var afterFlushCallbacks = [];
+var needsFlush = false;
+var flushHandle = null;
+var flushScheduler = defaultScheduler;
+function noopScheduler(callback) {
+  return noop;
+}
+function defaultScheduler(callback) {
+  const handle = setTimeout(callback, 0);
+  return () => clearTimeout(handle);
+}
+function reset() {
+  globalDependencyGraph = new Graph(processHandler);
+  trackReadSets = [];
+  trackCreateSets = [];
+  isFlushing = false;
+  afterFlushCallbacks = [];
+  needsFlush = false;
+  if (flushHandle)
+    flushHandle();
+  flushHandle = null;
+  flushScheduler = defaultScheduler;
+}
+function scheduleFlush() {
+  if (needsFlush)
+    return;
+  needsFlush = true;
+  flushHandle = flushScheduler(() => {
+    needsFlush = false;
+    flushHandle = null;
+    flush();
+  });
+}
+function subscribe(scheduler) {
+  flushScheduler = scheduler ?? noopScheduler;
+}
+function retain(retainable) {
+  debug("retain", retainable[SymDebugName], "was", retainable[SymRefcount]);
+  retainable[SymRefcount] += 1;
+  if (retainable[SymRefcount] === 1) {
+    retainable[SymAlive]();
+  }
+}
+function release(retainable) {
+  debug("release", retainable[SymDebugName], "was", retainable[SymRefcount]);
+  assert(retainable[SymRefcount] > 0, "double release");
+  if (retainable[SymRefcount] === 1) {
+    retainable[SymDead]();
+  }
+  retainable[SymRefcount] -= 1;
+}
+function processHandler(vertex, action) {
+  debug("process", ProcessAction[action], vertex[SymDebugName], vertex);
+  switch (action) {
+    case 0 /* INVALIDATE */:
+      return vertex[SymInvalidate]?.() ?? false;
+    case 1 /* RECALCULATE */:
+      return vertex[SymRecalculate]?.() ?? false;
+    case 2 /* CYCLE */:
+      return vertex[SymCycle]?.() ?? false;
+    default:
+      assertExhausted(action, "unknown action");
+  }
+}
+function flush() {
+  isFlushing = true;
+  globalDependencyGraph.process();
+  isFlushing = false;
+  for (const callback of afterFlushCallbacks) {
+    callback();
+  }
+  afterFlushCallbacks.splice(0, afterFlushCallbacks.length);
+}
+function afterFlush(fn) {
+  if (isFlushing) {
+    afterFlushCallbacks.push(fn);
+  } else {
+    fn();
+  }
+}
+function addVertex(vertex) {
+  debug("addVertex", vertex[SymDebugName]);
+  globalDependencyGraph.addVertex(vertex);
+}
+function removeVertex(vertex) {
+  debug("removeVertex", vertex[SymDebugName]);
+  globalDependencyGraph.removeVertex(vertex);
+}
+function addHardEdge(fromVertex, toVertex) {
+  debug("add edge:hard", fromVertex[SymDebugName], "->", toVertex[SymDebugName]);
+  globalDependencyGraph.addEdge(fromVertex, toVertex, Graph.EDGE_HARD);
+}
+function addSoftEdge(fromVertex, toVertex) {
+  debug("add edge:soft", fromVertex[SymDebugName], "->", toVertex[SymDebugName]);
+  globalDependencyGraph.addEdge(fromVertex, toVertex, Graph.EDGE_SOFT);
+}
+function removeHardEdge(fromVertex, toVertex) {
+  debug("del edge:hard", fromVertex[SymDebugName], "->", toVertex[SymDebugName]);
+  globalDependencyGraph.removeEdge(fromVertex, toVertex, Graph.EDGE_HARD);
+}
+function removeSoftEdge(fromVertex, toVertex) {
+  debug("del edge:soft", fromVertex[SymDebugName], "->", toVertex[SymDebugName]);
+  globalDependencyGraph.removeEdge(fromVertex, toVertex, Graph.EDGE_SOFT);
+}
+function markDirty(vertex) {
+  debug("dirty", vertex[SymDebugName]);
+  globalDependencyGraph.markVertexDirty(vertex);
+  scheduleFlush();
+}
+function unmarkDirty(vertex) {
+  debug("clean", vertex[SymDebugName]);
+  globalDependencyGraph.clearVertexDirty(vertex);
+}
+function markRoot(vertex) {
+  debug("mark root", vertex[SymDebugName]);
+  globalDependencyGraph.markVertexRoot(vertex);
+}
+function unmarkRoot(vertex) {
+  debug("clear root", vertex[SymDebugName]);
+  globalDependencyGraph.clearVertexRoot(vertex);
+}
+function markCycleInformed(vertex) {
+  debug("cycle informed", vertex[SymDebugName]);
+  globalDependencyGraph.markVertexCycleInformed(vertex);
+}
+function trackReads(set, fn, debugName) {
+  group("trackReads", debugName ?? "call");
+  trackReadSets.push(set);
+  try {
+    return fn();
+  } finally {
+    groupEnd();
+    assert(set === trackReadSets.pop(), "Calculation tracking consistency error");
+  }
+}
+function untrackReads(fn, debugName) {
+  group("untrackReads", debugName ?? "call");
+  trackReadSets.push(null);
+  try {
+    return fn();
+  } finally {
+    groupEnd();
+    assert(trackReadSets.pop() === null, "Calculation tracking consistency error");
+  }
+}
+function trackCreates(set, fn, debugName) {
+  group("trackCreates", debugName ?? "call");
+  trackCreateSets.push(set);
+  try {
+    return fn();
+  } finally {
+    groupEnd();
+    assert(set === trackCreateSets.pop(), "Calculation tracking consistency error");
+  }
+}
+function notifyCreate(retainable) {
+  if (trackCreateSets.length === 0)
+    return;
+  const createSet = trackCreateSets[trackCreateSets.length - 1];
+  if (createSet) {
+    debug("notifying dependency", retainable[SymDebugName], "to was created");
+    if (!createSet.has(retainable)) {
+      createSet.add(retainable);
+    }
+  }
+}
+function notifyRead(dependency) {
+  if (trackReadSets.length === 0)
+    return;
+  const calculationReads = trackReadSets[trackReadSets.length - 1];
+  if (calculationReads) {
+    debug("adding dependency", dependency[SymDebugName], "to active calculation");
+    if (!calculationReads.has(dependency)) {
+      retain(dependency);
+      calculationReads.add(dependency);
+    }
+  }
+}
+function debug2(activeVertex, label) {
+  return globalDependencyGraph.debug((vertex) => {
+    return {
+      isActive: vertex === activeVertex,
+      group: void 0,
+      name: `${vertex[SymDebugName]} (rc=${vertex[SymRefcount]})`
+    };
+  }, label);
+}
+function debugSubscribe(fn) {
+  return globalDependencyGraph.debugSubscribe((vertex) => {
+    return {
+      isActive: false,
+      group: void 0,
+      name: vertex[SymDebugName]
+    };
+  }, fn);
+}
+
+// src/ref.ts
+var RefObject = class {
+  constructor(current) {
+    __publicField(this, "current");
+    this.current = current;
+  }
+};
+function ref(val) {
+  return new RefObject(val);
+}
+
+// src/sentinel.ts
+var Sentinel = Symbol("sentinel");
+
+// src/calc.ts
+var CalculationErrorType = /* @__PURE__ */ ((CalculationErrorType2) => {
+  CalculationErrorType2[CalculationErrorType2["CYCLE"] = 0] = "CYCLE";
+  CalculationErrorType2[CalculationErrorType2["EXCEPTION"] = 1] = "EXCEPTION";
+  return CalculationErrorType2;
+})(CalculationErrorType || {});
+var CalculationSymbol = Symbol("calculation");
+var CalculationUnsubscribeSymbol = Symbol("calculationUnsubscribe");
+function isCalculation(val) {
+  return val && val._type === CalculationSymbol;
+}
+function isCalcUnsubscribe(val) {
+  return val && val._type === CalculationUnsubscribeSymbol;
+}
+function strictEqual(a, b) {
+  return a === b;
+}
+function calcSetError(handler) {
+  this._errorHandler = handler;
+  return this;
+}
+function calcSetCmp(eq) {
+  this._eq = eq;
+  return this;
+}
+function calcOnRecalc(handler) {
+  if (!this._subscriptions) {
+    this._subscriptions = /* @__PURE__ */ new Set();
+  }
+  this._subscriptions.add(handler);
+  const unsubscribe = () => {
+    this._subscriptions?.delete(handler);
+  };
+  const unsubscribeData = {
+    _type: CalculationUnsubscribeSymbol,
+    calculation: this
+  };
+  return Object.assign(unsubscribe, unsubscribeData);
+}
+var CycleError = class extends Error {
+  constructor(msg, sourceCalculation) {
+    super(msg);
+    __publicField(this, "sourceCalculation");
+    this.sourceCalculation = sourceCalculation;
+  }
+};
+function calculationCall(calculation) {
+  if (!calculation._isEffect) {
+    notifyRead(calculation);
+  }
+  const state = calculation._state;
+  switch (state) {
+    case 4 /* DEAD */:
+      return calculation._fn();
+    case 2 /* CACHED */:
+      return calculation._val;
+    case 1 /* CALLING */:
+      calculation._state = 3 /* ERROR */;
+      calculation._error = new CycleError("Cycle reached: calculation reached itself", calculation);
+      throw calculation._error;
+    case 3 /* ERROR */:
+      if (calculation._error === Sentinel) {
+        throw new Error("Cycle reached: calculation reached itself");
+      } else {
+        throw new Error("Calculation in error state: " + calculation._error.message);
+      }
+      break;
+    case 0 /* READY */: {
+      const calculationReads = /* @__PURE__ */ new Set();
+      let result = Sentinel;
+      let exception;
+      calculation._state = 1 /* CALLING */;
+      try {
+        result = trackReads(calculationReads, () => calculation._fn(), calculation[SymDebugName]);
+      } catch (e) {
+        exception = e;
+      }
+      if (calculation._state === 4 /* DEAD */) {
+        for (const retained of calculationReads) {
+          release(retained);
+        }
+        if (result === Sentinel)
+          throw exception;
+        return result;
+      }
+      if (calculation._state === 3 /* ERROR */) {
+        exception = calculation._error;
+      }
+      let isActiveCycle = false;
+      let isActiveCycleRoot = false;
+      if (exception) {
+        if (exception instanceof CycleError) {
+          isActiveCycle = true;
+          isActiveCycleRoot = exception.sourceCalculation === calculation;
+        }
+        const errorHandler = calculation._errorHandler;
+        if (errorHandler) {
+          result = untrackReads(() => errorHandler(isActiveCycle ? 0 /* CYCLE */ : 1 /* EXCEPTION */), calculation[SymDebugName]);
+        }
+        if (isActiveCycle) {
+          markCycleInformed(calculation);
+        }
+      }
+      if (result === Sentinel) {
+        if ("_val" in calculation) {
+          delete calculation._val;
+        }
+        calculation._error = exception;
+        calculation._state = 3 /* ERROR */;
+      } else {
+        calculation._val = result;
+        if ("_error" in calculation) {
+          delete calculation._error;
+        }
+        calculation._state = 2 /* CACHED */;
+        unmarkDirty(calculation);
+      }
+      if (calculation._retained) {
+        for (const priorDependency of calculation._retained) {
+          if (isProcessable(priorDependency) && !calculationReads.has(priorDependency)) {
+            removeHardEdge(priorDependency, calculation);
+          }
+          release(priorDependency);
+        }
+      }
+      for (const dependency of calculationReads) {
+        if (isProcessable(dependency)) {
+          if (!calculation._retained || !calculation._retained.has(dependency)) {
+            addHardEdge(dependency, calculation);
+          }
+        }
+      }
+      calculation._retained = calculationReads;
+      if (result === Sentinel) {
+        throw exception;
+      } else if (isActiveCycle && !isActiveCycleRoot) {
+        throw exception;
+      } else {
+        return result;
+      }
+    }
+    default:
+      assertExhausted(state, "Calculation in unknown state");
+  }
+}
+function calculationAlive() {
+  addVertex(this);
+  this._state = 0 /* READY */;
+}
+function calculationDead() {
+  if (this._retained) {
+    for (const retained of this._retained) {
+      if (isProcessable(retained)) {
+        removeHardEdge(retained, this);
+      }
+      release(retained);
+    }
+  }
+  delete this._retained;
+  removeVertex(this);
+  this._state = 4 /* DEAD */;
+  delete this._val;
+}
+function calculationRecalculate() {
+  switch (this._state) {
+    case 4 /* DEAD */:
+      fail("cannot recalculate dead calculation");
+      break;
+    case 1 /* CALLING */:
+      fail("cannot recalculate calculation being tracked");
+      break;
+    case 0 /* READY */:
+    case 3 /* ERROR */:
+    case 2 /* CACHED */: {
+      const priorResult = "_val" in this ? this._val : Sentinel;
+      this._state = 0 /* READY */;
+      let newResult;
+      try {
+        newResult = calculationCall(this);
+      } catch (e) {
+        this._state = 3 /* ERROR */;
+        this._error = e;
+        return true;
+      }
+      if (priorResult !== Sentinel && this._eq(priorResult, newResult)) {
+        this._val = priorResult;
+        return false;
+      }
+      if (this._subscriptions) {
+        for (const subscription of this._subscriptions) {
+          subscription(newResult);
+        }
+      }
+      return true;
+    }
+    default:
+      assertExhausted(this._state, "Calculation in unknown state");
+  }
+}
+function calculationInvalidate() {
+  switch (this._state) {
+    case 4 /* DEAD */:
+      fail("cannot invalidate dead calculation");
+      break;
+    case 1 /* CALLING */:
+      fail("cannot invalidate calculation being tracked");
+      break;
+    case 0 /* READY */:
+      return false;
+    case 3 /* ERROR */:
+      this._state = 0 /* READY */;
+      return false;
+    case 2 /* CACHED */:
+      this._state = 0 /* READY */;
+      return true;
+    default:
+      assertExhausted(this._state, "Calculation in unknown state");
+  }
+}
+function calculationCycle() {
+  switch (this._state) {
+    case 4 /* DEAD */:
+      fail("cannot trigger cycle on dead calculation");
+      break;
+    case 1 /* CALLING */:
+      fail("cannot trigger cycle on calculation being tracked");
+      break;
+    case 3 /* ERROR */:
+    case 2 /* CACHED */:
+    case 0 /* READY */: {
+      const priorResult = "_val" in this ? this._val : Sentinel;
+      this._state = 0 /* READY */;
+      const errorHandler = this._errorHandler;
+      if (errorHandler) {
+        this._val = untrackReads(() => errorHandler(0 /* CYCLE */), this[SymDebugName]);
+        this._state = 2 /* CACHED */;
+        unmarkDirty(this);
+      } else {
+        this._state = 3 /* ERROR */;
+        this._error = Sentinel;
+        return true;
+      }
+      if (priorResult !== Sentinel && this._eq(priorResult, this._val)) {
+        this._val = priorResult;
+        return false;
+      }
+      if (this._subscriptions) {
+        for (const subscription of this._subscriptions) {
+          subscription(this._val);
+        }
+      }
+      return true;
+    }
+    default:
+      assertExhausted(this._state, "Calculation in unknown state");
+  }
+}
+function calc(fn, debugName) {
+  const calculationData = {
+    _fn: fn,
+    _isEffect: false,
+    _state: 4 /* DEAD */,
+    _call: calculationCall,
+    _eq: strictEqual,
+    _type: CalculationSymbol,
+    onError: calcSetError,
+    setCmp: calcSetCmp,
+    onRecalc: calcOnRecalc,
+    [SymAlive]: calculationAlive,
+    [SymDead]: calculationDead,
+    [SymRefcount]: 0,
+    [SymProcessable]: true,
+    [SymDebugName]: debugName ?? fn.name,
+    [SymRecalculate]: calculationRecalculate,
+    [SymCycle]: calculationCycle,
+    [SymInvalidate]: calculationInvalidate
+  };
+  const calculation = Object.assign(() => calculationCall(calculation), calculationData);
+  notifyCreate(calculation);
+  return calculation;
+}
+function effect(fn, debugName) {
+  const calculationData = {
+    _fn: fn,
+    _isEffect: true,
+    _state: 4 /* DEAD */,
+    _call: calculationCall,
+    _eq: strictEqual,
+    _type: CalculationSymbol,
+    onError: calcSetError,
+    setCmp: calcSetCmp,
+    onRecalc: calcOnRecalc,
+    [SymAlive]: calculationAlive,
+    [SymDead]: calculationDead,
+    [SymRefcount]: 0,
+    [SymProcessable]: true,
+    [SymDebugName]: debugName ?? fn.name,
+    [SymRecalculate]: calculationRecalculate,
+    [SymCycle]: calculationCycle,
+    [SymInvalidate]: calculationInvalidate
+  };
+  const calculation = Object.assign(() => calculationCall(calculation), calculationData);
+  notifyCreate(calculation);
+  return calculation;
 }
 
 // src/jsx.ts
-var UnusedSymbol = Symbol("unused");
-var RenderNodeTag = Symbol("renderNodeTag");
-function isRenderNode(obj) {
-  return obj && obj[RenderNodeTag] === true;
-}
-var RenderNodeType = /* @__PURE__ */ ((RenderNodeType2) => {
-  RenderNodeType2[RenderNodeType2["empty"] = 0] = "empty";
-  RenderNodeType2[RenderNodeType2["text"] = 1] = "text";
-  RenderNodeType2[RenderNodeType2["foreignElement"] = 2] = "foreignElement";
-  RenderNodeType2[RenderNodeType2["calculation"] = 3] = "calculation";
-  RenderNodeType2[RenderNodeType2["intrinsicElement"] = 4] = "intrinsicElement";
-  RenderNodeType2[RenderNodeType2["array"] = 5] = "array";
-  RenderNodeType2[RenderNodeType2["component"] = 6] = "component";
-  RenderNodeType2[RenderNodeType2["context"] = 7] = "context";
-  RenderNodeType2[RenderNodeType2["lifecycleObserver"] = 8] = "lifecycleObserver";
-  RenderNodeType2[RenderNodeType2["collection"] = 9] = "collection";
-  return RenderNodeType2;
-})(RenderNodeType || {});
-function makeRenderNode(type, metadata, init) {
-  let refcount = 0;
-  const renderNode = {
-    [RenderNodeTag]: true,
-    type: true ? RenderNodeType[type] : type,
-    metadata,
-    retain() {
-      if (refcount === 0) {
-        assert(this._lifecycle === null, "refcount inconsistency on release");
-        this._lifecycle = init();
-      }
-      refcount += 1;
-      return this._lifecycle;
-    },
-    release() {
-      assert(refcount > 0, "refcount double release");
-      refcount -= 1;
-      if (refcount === 0) {
-        assert(this._lifecycle !== null, "refcount inconsistency on release");
-        this._lifecycle.destroy?.();
-        this._lifecycle = null;
-      }
-    },
-    _lifecycle: null
-  };
-  return renderNode;
-}
 function attrBooleanToEmptyString(val) {
   if (!val)
     return void 0;
@@ -1771,8 +1570,12 @@ var HTMLButtonElementMap = {
 };
 var HTMLCanvasElementMap = {
   ...HTMLElementMap,
-  width: {},
-  height: {}
+  width: {
+    makeIdlValue: attrStringOrNumberToNumber
+  },
+  height: {
+    makeIdlValue: attrStringOrNumberToNumber
+  }
 };
 var HTMLDListElementMap = {
   ...HTMLElementMap
@@ -1799,8 +1602,12 @@ var HTMLEmbedElementMap = {
   ...HTMLElementMap,
   src: {},
   type: {},
-  width: {},
-  height: {}
+  width: {
+    makeIdlValue: attrStringOrNumberToNumber
+  },
+  height: {
+    makeIdlValue: attrStringOrNumberToNumber
+  }
 };
 var HTMLFieldSetElementMap = {
   ...HTMLElementMap,
@@ -1846,8 +1653,12 @@ var HTMLIFrameElementMap = {
   allowfullscreen: {
     idlName: "allowFullscreen"
   },
-  width: {},
-  height: {},
+  width: {
+    makeIdlValue: attrStringOrNumberToNumber
+  },
+  height: {
+    makeIdlValue: attrStringOrNumberToNumber
+  },
   referrerpolicy: {
     idlName: "referrerPolicy"
   },
@@ -1868,8 +1679,12 @@ var HTMLImageElementMap = {
   ismap: {
     idlName: "isMap"
   },
-  width: {},
-  height: {},
+  width: {
+    makeIdlValue: attrStringOrNumberToNumber
+  },
+  height: {
+    makeIdlValue: attrStringOrNumberToNumber
+  },
   referrerpolicy: {
     idlName: "referrerPolicy"
   },
@@ -1902,7 +1717,9 @@ var HTMLInputElementMap = {
   formtarget: {
     idlName: "formTarget"
   },
-  height: {},
+  height: {
+    makeIdlValue: attrStringOrNumberToNumber
+  },
   indeterminate: {
     makeAttrValue: null
   },
@@ -1926,7 +1743,9 @@ var HTMLInputElementMap = {
   step: {},
   type: {},
   value: {},
-  width: {}
+  width: {
+    makeIdlValue: attrStringOrNumberToNumber
+  }
 };
 var HTMLModElementMap = {
   ...HTMLElementMap,
@@ -2011,8 +1830,12 @@ var HTMLObjectElementMap = {
   form: {
     idlName: null
   },
-  width: {},
-  height: {}
+  width: {
+    makeIdlValue: attrStringOrNumberToNumber
+  },
+  height: {
+    makeIdlValue: attrStringOrNumberToNumber
+  }
 };
 var HTMLOListElementMap = {
   ...HTMLElementMap,
@@ -2102,8 +1925,12 @@ var HTMLSourceElementMap = {
   srcset: {},
   sizes: {},
   media: {},
-  width: {},
-  height: {}
+  width: {
+    makeIdlValue: attrStringOrNumberToNumber
+  },
+  height: {
+    makeIdlValue: attrStringOrNumberToNumber
+  }
 };
 var HTMLSpanElementMap = {
   ...HTMLElementMap
@@ -2130,6 +1957,11 @@ var HTMLTableCellElementMap = {
     idlName: "rowSpan"
   },
   headers: {}
+};
+var HTMLTableHeaderElementMap = {
+  ...HTMLTableCellElementMap,
+  scope: {},
+  abbr: {}
 };
 var HTMLTableColElementMap = {
   ...HTMLElementMap,
@@ -2202,8 +2034,12 @@ var HTMLVideoElementMap = {
   playsinline: {
     idlName: "playsInline"
   },
-  width: {},
-  height: {}
+  width: {
+    makeIdlValue: attrStringOrNumberToNumber
+  },
+  height: {
+    makeIdlValue: attrStringOrNumberToNumber
+  }
 };
 var ElementTypeMapping = {
   a: HTMLAnchorElementMap,
@@ -2258,8 +2094,7 @@ var ElementTypeMapping = {
   html: HTMLHtmlElementMap,
   i: HTMLElementMap,
   iframe: HTMLIFrameElementMap,
-  image: HTMLImageElementMap,
-  img: HTMLElementMap,
+  img: HTMLImageElementMap,
   input: HTMLInputElementMap,
   ins: HTMLModElementMap,
   kbd: HTMLElementMap,
@@ -2309,7 +2144,7 @@ var ElementTypeMapping = {
   template: HTMLTemplateElementMap,
   textarea: HTMLTextAreaElementMap,
   tfoot: HTMLTableSectionElementMap,
-  th: HTMLElementMap,
+  th: HTMLTableHeaderElementMap,
   thead: HTMLTableSectionElementMap,
   time: HTMLTimeElementMap,
   title: HTMLTitleElementMap,
@@ -2325,328 +2160,997 @@ function getElementTypeMapping(elementName, property) {
   return ElementTypeMapping[elementName]?.[property];
 }
 
-// src/view.ts
-var Fragment = ({ children }) => children;
-var LifecycleObserver = (_props) => {
-  return null;
-};
-function getExpandedSortIndexes(indexes, childInfo) {
-  const nestedCurrentIndexes = [];
-  let n = 0;
-  for (let i = 0; i < childInfo.length; ++i) {
-    const arr = [];
-    for (let j = 0; j < childInfo[i].size; ++j) {
-      arr.push(n);
-      n += 1;
+// src/arrayevent.ts
+function shiftEvent(slotSizes, slotIndex, event) {
+  let shiftAmount = 0;
+  for (let i = 0; i < slotIndex; ++i) {
+    shiftAmount += slotSizes[i];
+  }
+  switch (event.type) {
+    case 0 /* SPLICE */: {
+      slotSizes[slotIndex] += (event.items?.length ?? 0) - event.count;
+      event.index += shiftAmount;
+      break;
     }
-    nestedCurrentIndexes.push(arr);
-  }
-  const nestedSortedIndexes = [];
-  for (let i = 0; i < indexes.length; ++i) {
-    const newIndex = indexes[i];
-    nestedSortedIndexes.push(nestedCurrentIndexes[newIndex]);
-  }
-  return Array().concat(...nestedSortedIndexes);
-}
-function isCalculationOfJsxNode(obj) {
-  return isCalculation(obj);
-}
-var emptyLifecycle = {};
-function createEmptyRenderNode() {
-  return makeRenderNode(0 /* empty */, {}, () => emptyLifecycle);
-}
-function createTextRenderNode(text) {
-  let textNode = null;
-  let isAttached = false;
-  const type = 1 /* text */;
-  return makeRenderNode(type, { text }, () => {
-    textNode = document.createTextNode(text);
-    return {
-      attach: (handler, context) => {
-        assert(textNode, "operation on dead node");
-        assert(!isAttached, `Invariant: RenderNode ${type} double attached`);
-        isAttached = true;
-        handler({
-          type: "splice",
-          index: 0,
-          count: 0,
-          nodes: [textNode]
-        });
-      },
-      detach: (handler, context) => {
-        assert(isAttached, `Invariant: RenderNode ${type} double detached`);
-        isAttached = false;
-        handler({
-          type: "splice",
-          index: 0,
-          count: 1,
-          nodes: []
-        });
-      },
-      destroy: () => {
-        textNode = null;
-        isAttached = false;
+    case 2 /* SORT */: {
+      event.from += shiftAmount;
+      for (let i = 0; i < event.indexes.length; ++i) {
+        event.indexes[i] += shiftAmount;
       }
-    };
-  });
+      break;
+    }
+    case 1 /* MOVE */: {
+      event.from += shiftAmount;
+      event.to += shiftAmount;
+      break;
+    }
+    default:
+      assertExhausted(event);
+  }
 }
-function createForeignElementRenderNode(node) {
-  const type = 2 /* foreignElement */;
-  let isAttached = false;
-  return makeRenderNode(type, { node }, () => {
-    return {
-      attach: (handler, context) => {
-        assert(!isAttached, `Invariant: RenderNode ${type} double attached`);
-        isAttached = true;
-        handler({
-          type: "splice",
-          index: 0,
-          count: 0,
-          nodes: [node]
-        });
-      },
-      detach: (handler, context) => {
-        assert(isAttached, `Invariant: RenderNode ${type} double detached`);
-        isAttached = false;
-        handler({
-          type: "splice",
-          index: 0,
-          count: 1,
-          nodes: []
-        });
-      },
-      destroy: () => {
-        isAttached = false;
+function applyEvent(target, event) {
+  switch (event.type) {
+    case 0 /* SPLICE */: {
+      if (event.items) {
+        target.splice(event.index, event.count, ...event.items);
+      } else {
+        target.splice(event.index, event.count);
       }
-    };
-  });
+      break;
+    }
+    case 2 /* SORT */: {
+      const duped = target.slice(event.from);
+      for (let i = 0; i < event.indexes.length; ++i) {
+        target[i] = duped[event.indexes[i] - event.from];
+      }
+      break;
+    }
+    case 1 /* MOVE */: {
+      const slice = target.splice(event.from, event.count);
+      target.splice(event.to, 0, ...slice);
+      break;
+    }
+    default:
+      assertExhausted(event);
+  }
 }
-function createCalculationRenderNode(calculation) {
-  const type = 3 /* calculation */;
-  let attachedState = null;
-  let isMounted = false;
-  return makeRenderNode(type, { calculation }, () => {
-    let child = null;
-    const maintenanceEffect = effect(() => {
-      const jsxNode = calculation();
-      const newChild = jsxNodeToRenderNode(jsxNode);
-      if (child === newChild)
+function* arrayEventFlatMap(slotSizes, flatMap, target, event) {
+  switch (event.type) {
+    case 0 /* SPLICE */: {
+      let fromIndex = 0;
+      let count = 0;
+      for (let i = 0; i < event.index; ++i) {
+        fromIndex += i < slotSizes.length ? slotSizes[i] : 0;
+      }
+      for (let i = 0; i < event.count; ++i) {
+        const slotIndex = event.index + i;
+        count += slotIndex < slotSizes.length ? slotSizes[slotIndex] : 0;
+      }
+      const slotItems = [];
+      const items = [];
+      if (event.items) {
+        for (const item of event.items) {
+          const slot = flatMap(item);
+          slotItems.push(slot.length);
+          items.push(...slot);
+        }
+      }
+      target.splice(fromIndex, count, ...items);
+      slotSizes.splice(event.index, event.count, ...slotItems);
+      yield {
+        type: 0 /* SPLICE */,
+        index: fromIndex,
+        count,
+        items
+      };
+      break;
+    }
+    case 2 /* SORT */: {
+      const slotStartIndex = [];
+      let realIndex = 0;
+      for (const slotSize of slotSizes) {
+        slotStartIndex.push(realIndex);
+        realIndex += slotSize;
+      }
+      const copiedSlotSizes = slotSizes.slice();
+      const copiedSource = target.slice();
+      const newIndexes = [];
+      let destSlotIndex = 0;
+      let destIndex = 0;
+      for (const sourceIndex of event.indexes) {
+        const realCount = copiedSlotSizes[sourceIndex];
+        const realIndex2 = slotStartIndex[sourceIndex];
+        for (let i = 0; i < realCount; ++i) {
+          newIndexes.push(realIndex2 + i);
+          target[destIndex] = copiedSource[realIndex2 + i];
+          destIndex += 1;
+        }
+        slotSizes[destSlotIndex] = copiedSlotSizes[sourceIndex];
+        destSlotIndex += 1;
+      }
+      yield {
+        type: 2 /* SORT */,
+        from: slotStartIndex[event.from],
+        indexes: newIndexes
+      };
+      break;
+    }
+    case 1 /* MOVE */: {
+      let fromIndex = 0;
+      let toIndex = 0;
+      let count = 0;
+      for (let i = 0; i < event.from; ++i) {
+        fromIndex += slotSizes[i];
+      }
+      for (let i = 0; i < event.count; ++i) {
+        count += slotSizes[event.from + i];
+      }
+      const movedSlots = slotSizes.splice(event.from, event.count);
+      const movedItems = target.splice(fromIndex, count);
+      for (let i = 0; i < event.to; ++i) {
+        toIndex += slotSizes[i];
+      }
+      slotSizes.splice(event.to, 0, ...movedSlots);
+      target.splice(toIndex, 0, ...movedItems);
+      yield {
+        type: 1 /* MOVE */,
+        from: fromIndex,
+        count,
+        to: toIndex
+      };
+      break;
+    }
+    default:
+      assertExhausted(event);
+  }
+}
+
+// src/field.ts
+function field(name, val, debugName) {
+  const field2 = {
+    _name: name,
+    _val: val,
+    _isAlive: false,
+    get: fieldGet,
+    set: fieldSet,
+    update: fieldUpdate,
+    observe: fieldObserve,
+    [SymProcessable]: true,
+    [SymRefcount]: 0,
+    [SymAlive]: fieldAlive,
+    [SymDead]: fieldDead,
+    [SymDebugName]: debugName ?? name,
+    [SymRecalculate]: fieldFlush
+  };
+  return field2;
+}
+function fieldGet() {
+  notifyRead(this);
+  return this._val;
+}
+function fieldSet(newVal) {
+  if (newVal !== this._val) {
+    this._val = newVal;
+    if (this._isAlive) {
+      markDirty(this);
+    }
+  }
+}
+function fieldUpdate(updater) {
+  const newVal = updater(this._val);
+  if (newVal !== this._val) {
+    this._val = newVal;
+    if (this._isAlive) {
+      markDirty(this);
+    }
+  }
+}
+function fieldObserve(observer) {
+  if (!this._observers)
+    this._observers = /* @__PURE__ */ new Set();
+  this._observers.add(observer);
+  return () => this._observers?.delete(observer);
+}
+function fieldAlive() {
+  this._isAlive = true;
+  addVertex(this);
+}
+function fieldDead() {
+  removeVertex(this);
+  this._isAlive = false;
+}
+function fieldFlush() {
+  assert(this._isAlive, "cannot flush dead field");
+  if (this._observers) {
+    for (const observer of this._observers) {
+      observer(this._val);
+    }
+  }
+  return true;
+}
+
+// src/trackeddata.ts
+var SymTDHandle = Symbol("tdHandle");
+var _a, _b, _c;
+var SubscriptionEmitter = class {
+  constructor(fieldMap, debugName) {
+    __publicField(this, "subscribers");
+    __publicField(this, "subscriberOffset");
+    __publicField(this, "events");
+    __publicField(this, "fieldMap");
+    __publicField(this, "isActive");
+    __publicField(this, _a);
+    __publicField(this, _b);
+    __publicField(this, _c);
+    this.subscribers = [];
+    this.subscriberOffset = [];
+    this.events = [];
+    this.fieldMap = fieldMap;
+    this.isActive = false;
+    this[SymRefcount] = 0;
+    this[SymProcessable] = true;
+    this[SymDebugName] = `emitter:${debugName}`;
+  }
+  [(_a = SymProcessable, _b = SymDebugName, SymRecalculate)]() {
+    for (let i = 0; i < this.subscribers.length; ++i) {
+      const subscriber = this.subscribers[i];
+      subscriber(this.events, this.subscriberOffset[i]);
+      this.subscriberOffset[i] = 0;
+    }
+    this.events.splice(0, this.events.length);
+    return true;
+  }
+  [(_c = SymRefcount, SymAlive)]() {
+    this.isActive = true;
+    addVertex(this);
+    for (const field2 of this.fieldMap.values()) {
+      retain(field2);
+      addSoftEdge(field2, this);
+    }
+  }
+  [SymDead]() {
+    assert(this.subscribers.length === 0, "released subscription emitter that had subscribers");
+    assert(this.subscriberOffset.length === 0, "released subscription emitter that had subscribers");
+    this.events.splice(0, this.events.length);
+    for (const field2 of this.fieldMap.values()) {
+      removeSoftEdge(field2, this);
+      release(field2);
+    }
+    removeVertex(this);
+    this.isActive = false;
+  }
+  addEvent(event) {
+    if (!this.isActive)
+      return;
+    const length = this.events.push(event);
+    if (length === 1) {
+      markDirty(this);
+    }
+  }
+  addField(field2) {
+    if (this.isActive) {
+      retain(field2);
+      addSoftEdge(field2, this);
+    }
+  }
+  subscribe(handler) {
+    if (this.subscribers.length === 0) {
+      markRoot(this);
+    }
+    this.subscribers.push(handler);
+    this.subscriberOffset.push(this.events.length);
+    return () => {
+      const index = this.subscribers.indexOf(handler);
+      if (index === -1)
         return;
-      newChild.retain();
-      if (child) {
-        if (attachedState) {
-          if (isMounted) {
-            child._lifecycle?.beforeUnmount?.();
-          }
-          child._lifecycle?.detach?.(attachedState.handler, attachedState.context);
-        }
-        child.release();
-        child = null;
-      }
-      afterFlush(() => {
-        if (attachedState) {
-          newChild._lifecycle?.attach?.(attachedState.handler, attachedState.context);
-          if (isMounted) {
-            newChild._lifecycle?.afterMount?.();
-          }
-        }
-        child = newChild;
-      });
-    }, true ? `render:effect->${debugNameFor(calculation)}` : "render:effect");
-    return {
-      attach: (handler, context) => {
-        assert(attachedState === null, `Invariant: RenderNode ${type} double attached`);
-        attachedState = { handler, context };
-        addOrderingDep(attachedState.context.nodeOrdering, maintenanceEffect);
-        retain(maintenanceEffect);
-        maintenanceEffect();
-      },
-      detach: (handler, context) => {
-        assert(attachedState !== null, `Invariant: RenderNode ${type} double detached`);
-        removeOrderingDep(attachedState.context.nodeOrdering, maintenanceEffect);
-        release(maintenanceEffect);
-        if (child) {
-          if (attachedState) {
-            child._lifecycle?.detach?.(attachedState.handler, attachedState.context);
-          }
-          child.release();
-          child = null;
-        }
-        attachedState = null;
-      },
-      afterMount: () => {
-        isMounted = true;
-        child?._lifecycle?.afterMount?.();
-      },
-      beforeUnmount: () => {
-        child?._lifecycle?.beforeUnmount?.();
-        isMounted = false;
-      },
-      destroy: () => {
-        child?.release();
-        child = null;
-        isMounted = false;
-        attachedState = null;
+      this.subscribers.splice(index, 1);
+      this.subscriberOffset.splice(index, 1);
+      if (this.subscribers.length === 0) {
+        unmarkRoot(this);
       }
     };
-  });
-}
-function createArrayRenderNode(children) {
-  if (children.length === 0) {
-    return createEmptyRenderNode();
   }
-  if (children.length === 1) {
-    return jsxNodeToRenderNode(children[0]);
+};
+var _a2, _b2, _c2;
+var SubscriptionConsumer = class {
+  constructor(target, fieldMap, sourceEmitter, transformEmitter, handler, debugName) {
+    __publicField(this, "target");
+    __publicField(this, "handler");
+    __publicField(this, "events");
+    __publicField(this, "fieldMap");
+    __publicField(this, "isActive");
+    __publicField(this, "sourceEmitter");
+    __publicField(this, "transformEmitter");
+    __publicField(this, "unsubscribe");
+    __publicField(this, _a2);
+    __publicField(this, _b2);
+    __publicField(this, _c2);
+    this.target = target;
+    this.handler = handler;
+    this.events = [];
+    this.fieldMap = fieldMap;
+    this.isActive = false;
+    this.sourceEmitter = sourceEmitter;
+    this.transformEmitter = transformEmitter;
+    this[SymRefcount] = 0;
+    this[SymProcessable] = true;
+    this[SymDebugName] = `consumer:${debugName}`;
   }
-  const type = 5 /* array */;
-  const childRenderNodes = children.map((jsxNode) => jsxNodeToRenderNode(jsxNode));
-  let childInfo = [];
-  let attachedState = null;
-  let isMounted = false;
-  const childEventHandler = (event, childRenderNode) => {
-    assert(attachedState, "Array RenderNode got event when detached");
-    let insertionIndex = 0;
-    let infoRecord = null;
-    for (const info of childInfo) {
-      if (info.renderNode === childRenderNode) {
-        infoRecord = info;
-        break;
+  [(_a2 = SymProcessable, _b2 = SymDebugName, SymRecalculate)]() {
+    for (const event of this.events) {
+      for (const emitEvent of this.handler(this.target, event)) {
+        this.transformEmitter.addEvent(emitEvent);
       }
-      insertionIndex += info.size;
     }
-    assert(infoRecord, "event on removed child");
-    switch (event.type) {
-      case "splice": {
-        attachedState.handler({
-          type: "splice",
-          index: event.index + insertionIndex,
-          count: event.count,
-          nodes: event.nodes
-        });
-        infoRecord.size = infoRecord.size - event.count + event.nodes.length;
-        break;
+    this.events.splice(0, this.events.length);
+    return false;
+  }
+  [(_c2 = SymRefcount, SymAlive)]() {
+    this.isActive = true;
+    addVertex(this);
+    markRoot(this);
+    for (const field2 of this.fieldMap.values()) {
+      retain(field2);
+      addSoftEdge(this, field2);
+    }
+    retain(this.sourceEmitter);
+    addHardEdge(this.sourceEmitter, this);
+    this.unsubscribe = this.sourceEmitter.subscribe((events, offset) => {
+      for (let i = offset; i < events.length; ++i) {
+        this.addEvent(events[i]);
       }
-      case "move": {
-        attachedState.handler({
-          type: "move",
-          fromIndex: event.fromIndex + insertionIndex,
-          count: event.count,
-          toIndex: event.toIndex + insertionIndex
-        });
-        break;
+    });
+  }
+  [SymDead]() {
+    if (this.unsubscribe) {
+      this.unsubscribe();
+      removeHardEdge(this.sourceEmitter, this);
+      release(this.sourceEmitter);
+    }
+    this.events.splice(0, this.events.length);
+    for (const field2 of this.fieldMap.values()) {
+      removeSoftEdge(this, field2);
+      release(field2);
+    }
+    unmarkRoot(this);
+    removeVertex(this);
+    this.isActive = false;
+  }
+  addEvent(event) {
+    if (!this.isActive)
+      return;
+    const length = this.events.push(event);
+    if (length === 1) {
+      markDirty(this);
+    }
+  }
+  addField(field2) {
+    if (this.isActive) {
+      retain(field2);
+      addSoftEdge(this, field2);
+    }
+  }
+};
+function getTrackedDataHandle(trackedData) {
+  return trackedData[SymTDHandle];
+}
+function makeTrackedData(target, proxyHandler, methods, derivedEmitter, handleEvent, _debugName) {
+  const debugName = _debugName ?? "trackeddata";
+  const fieldMap = /* @__PURE__ */ new Map();
+  const keys = new Set(Object.keys(target));
+  const keysField = field(`${debugName}:@keys`, keys.size);
+  const emitter = new SubscriptionEmitter(fieldMap, debugName);
+  let consumer = null;
+  if (derivedEmitter && handleEvent) {
+    consumer = new SubscriptionConsumer(target, fieldMap, derivedEmitter, emitter, handleEvent, debugName);
+  }
+  const emitEvent = (event) => {
+    emitter.addEvent(event);
+  };
+  const dataAccessor = {
+    get: (prop, receiver) => {
+      if (prop === SymTDHandle) {
+        return tdHandle;
       }
-      case "sort": {
-        attachedState.handler({
-          type: "sort",
-          fromIndex: insertionIndex + event.fromIndex,
-          indexes: event.indexes.map((index) => index + insertionIndex)
-        });
-        break;
+      if (prop === SymRefcount || prop === SymAlive || prop === SymDead) {
+        return methods[prop];
       }
-      default:
-        assertExhausted(event, "unexpected render event");
+      if (typeof prop === "symbol") {
+        return Reflect.get(target, prop, receiver);
+      }
+      if (prop in methods) {
+        return methods[prop];
+      }
+      const value = Reflect.get(target, prop, receiver);
+      const field2 = getOrMakeField(debugName, fieldMap, consumer, emitter, prop, value);
+      notifyRead(field2);
+      return value;
+    },
+    peekHas: (prop) => {
+      return Reflect.has(target, prop);
+    },
+    has: (prop) => {
+      if (prop === SymRefcount || prop === SymAlive || prop === SymDead) {
+        return prop in methods;
+      }
+      if (typeof prop === "symbol") {
+        return Reflect.has(target, prop);
+      }
+      if (prop in methods) {
+        return true;
+      }
+      const value = Reflect.has(target, prop);
+      const field2 = getOrMakeField(debugName, fieldMap, consumer, emitter, prop, value);
+      notifyRead(field2);
+      return value;
+    },
+    set: (prop, value, receiver) => {
+      if (prop === SymRefcount) {
+        methods[prop] = value;
+        return true;
+      }
+      if (typeof prop === "symbol") {
+        return Reflect.set(target, prop, value, receiver);
+      }
+      if (prop in methods) {
+        return false;
+      }
+      const hadProp = Reflect.has(target, prop);
+      const field2 = getOrMakeField(debugName, fieldMap, consumer, emitter, prop, value);
+      field2.set(value);
+      if (!hadProp) {
+        keys.add(prop);
+        keysField.set(keys.size);
+      }
+      return Reflect.set(target, prop, value, revocable.proxy);
+    },
+    delete: (prop) => {
+      if (prop === SymRefcount || prop === SymAlive || prop === SymDead) {
+        return false;
+      }
+      if (typeof prop === "symbol") {
+        return Reflect.deleteProperty(target, prop);
+      }
+      if (prop in methods) {
+        return false;
+      }
+      const hadProp = Reflect.has(target, prop);
+      const result = Reflect.deleteProperty(target, prop);
+      if (hadProp) {
+        keys.delete(prop);
+        keysField.set(keys.size);
+      }
+      return result;
     }
   };
-  return makeRenderNode(type, { array: children }, () => {
-    childInfo = childRenderNodes.map((renderNode, childIndex) => {
-      renderNode.retain();
-      return {
-        renderNode,
-        handler: (event) => {
-          childEventHandler(event, renderNode);
-        },
-        size: 0
-      };
-    });
-    return {
-      attach: (handler, context) => {
-        assert(attachedState === null, `Invariant: RenderNode ${type} double attached`);
-        attachedState = { handler, context };
-        for (const info of childInfo) {
-          info.renderNode._lifecycle?.attach?.(info.handler, context);
-        }
-      },
-      detach: (handler, context) => {
-        assert(attachedState !== null, `Invariant: RenderNode ${type} double detached`);
-        for (const info of childInfo) {
-          info.renderNode._lifecycle?.detach?.(info.handler, context);
-        }
-        attachedState = null;
-      },
-      afterMount: () => {
-        isMounted = true;
-        for (const info of childInfo) {
-          if (isMounted) {
-            info.renderNode._lifecycle?.afterMount?.();
-          }
-        }
-      },
-      beforeUnmount: () => {
-        for (const info of childInfo) {
-          if (isMounted) {
-            info.renderNode._lifecycle?.beforeUnmount?.();
-          }
-        }
-        isMounted = false;
-      },
-      destroy: () => {
-        childRenderNodes.forEach((renderNode) => {
-          renderNode.release();
+  const revocable = Proxy.revocable(target, {
+    get: (target2, prop, receiver) => proxyHandler.get(dataAccessor, emitEvent, prop, receiver),
+    has: (target2, prop) => proxyHandler.has(dataAccessor, emitEvent, prop),
+    set: (target2, prop, value, receiver) => proxyHandler.set(dataAccessor, emitEvent, prop, value, receiver),
+    deleteProperty: (target2, prop) => proxyHandler.delete(dataAccessor, emitEvent, prop),
+    ownKeys: () => {
+      const keys2 = tdHandle.keys;
+      tdHandle.keysField.get();
+      return [...keys2];
+    }
+  });
+  const tdHandle = {
+    fieldMap,
+    keysField,
+    keys,
+    target,
+    revocable,
+    emitter,
+    consumer
+  };
+  notifyCreate(revocable.proxy);
+  return tdHandle;
+}
+function getOrMakeField(debugPrefix, fieldMap, consumer, emitter, prop, value) {
+  let field2 = fieldMap.get(prop);
+  if (!field2) {
+    field2 = field(`${debugPrefix}:${prop}`, value);
+    fieldMap.set(prop, field2);
+    consumer?.addField(field2);
+    emitter.addField(field2);
+  }
+  return field2;
+}
+
+// src/collection.ts
+function makeCollectionPrototype() {
+  return {
+    _type: "collection",
+    splice: collectionSplice,
+    push: collectionPush,
+    pop: collectionPop,
+    shift: collectionShift,
+    unshift: collectionUnshift,
+    sort: collectionSort,
+    reverse: collectionReverse,
+    reject: collectionReject,
+    moveSlice: collectionMoveSlice,
+    mapView,
+    filterView,
+    flatMapView,
+    subscribe: collectionSubscribe,
+    [SymRefcount]: 0,
+    [SymAlive]: collectionAlive,
+    [SymDead]: collectionDead,
+    [SymDebugName]: "collection"
+  };
+}
+function makeViewPrototype() {
+  return {
+    _type: "view",
+    splice: viewSplice,
+    push: viewPush,
+    pop: viewPop,
+    shift: viewShift,
+    unshift: viewUnshift,
+    sort: viewSort,
+    reverse: viewReverse,
+    mapView,
+    filterView,
+    flatMapView,
+    subscribe: collectionSubscribe,
+    [SymRefcount]: 0,
+    [SymAlive]: viewAlive,
+    [SymDead]: viewDead,
+    [SymDebugName]: "collection"
+  };
+}
+function isCollection(val) {
+  return val && val._type === "collection";
+}
+function isView(val) {
+  return val && val._type === "view";
+}
+var CollectionHandler = {
+  get: (dataAccessor, emitter, prop, receiver) => {
+    return dataAccessor.get(prop, receiver);
+  },
+  has: (dataAccessor, emitter, prop) => {
+    return dataAccessor.has(prop);
+  },
+  set: (dataAccessor, emitter, prop, value, receiver) => {
+    if (typeof prop === "string") {
+      const numericProp = parseInt(prop, 10);
+      if (!isNaN(numericProp)) {
+        emitter({
+          type: 0 /* SPLICE */,
+          index: numericProp,
+          count: 1,
+          items: [value]
         });
-        childInfo = [];
-        isMounted = false;
-        attachedState = null;
       }
-    };
+    }
+    return dataAccessor.set(prop, value, receiver);
+  },
+  delete: (dataAccessor, emitter, prop) => {
+    return dataAccessor.delete(prop);
+  }
+};
+var ViewHandler = {
+  get: (dataAccessor, emitter, prop, receiver) => {
+    return dataAccessor.get(prop, receiver);
+  },
+  has: (dataAccessor, emitter, prop) => {
+    return dataAccessor.has(prop);
+  },
+  set: (dataAccessor, emitter, prop, value, receiver) => {
+    if (prop === SymRefcount) {
+      return dataAccessor.set(prop, value, receiver);
+    }
+    fail("Cannot mutate readonly view");
+  },
+  delete: (dataAccessor, emitter, prop) => {
+    fail("Cannot mutate readonly view");
+  }
+};
+function collection(items, debugName) {
+  const handle = makeTrackedData(items, CollectionHandler, makeCollectionPrototype(), null, null, debugName);
+  return handle.revocable.proxy;
+}
+function viewSplice(index, count, ...items) {
+  fail("Cannot mutate readonly view");
+}
+function collectionSplice(index, count = 0, ...items) {
+  const tdHandle = getTrackedDataHandle(this);
+  assert(tdHandle, "splice operation lacking tdHandle");
+  const startLength = this.length;
+  const removed = Array.prototype.splice.call(tdHandle.target, index, count, ...items);
+  const endLength = this.length;
+  if (startLength === endLength) {
+    for (let i = index; i < index + items.length; ++i) {
+      const field2 = tdHandle.fieldMap.get(i.toString());
+      field2?.set(tdHandle.target[i]);
+    }
+  } else {
+    for (let i = index; i < endLength; ++i) {
+      const field3 = tdHandle.fieldMap.get(i.toString());
+      field3?.set(tdHandle.target[i]);
+    }
+    for (let i = endLength; i < startLength; ++i) {
+      const field3 = tdHandle.fieldMap.get(i.toString());
+      field3?.set(void 0);
+    }
+    const field2 = tdHandle.fieldMap.get("length");
+    field2?.set(endLength);
+  }
+  tdHandle.emitter.addEvent({
+    type: 0 /* SPLICE */,
+    index,
+    count,
+    items
+  });
+  return removed;
+}
+function viewPush(...items) {
+  fail("Cannot mutate readonly view");
+}
+function collectionPush(...items) {
+  collectionSplice.call(this, this.length, 0, ...items);
+  return this.length;
+}
+function viewPop() {
+  fail("Cannot mutate readonly view");
+}
+function collectionPop() {
+  return collectionSplice.call(this, this.length - 1, 1)[0];
+}
+function viewShift() {
+  fail("Cannot mutate readonly view");
+}
+function collectionShift() {
+  return collectionSplice.call(this, 0, 1)[0];
+}
+function viewUnshift(...items) {
+  fail("Cannot mutate readonly view");
+}
+function collectionUnshift(...items) {
+  collectionSplice.call(this, 0, 0, ...items);
+  return this.length;
+}
+function collectionReject(pred) {
+  let start = null;
+  let length = this.length;
+  let toRemove = false;
+  const removed = [];
+  for (let i = 0; i < length; ++i) {
+    toRemove = pred(this[i]);
+    if (toRemove && start === null) {
+      start = i;
+    }
+    if (!toRemove && start !== null) {
+      const count = i - start;
+      removed.push(...this.splice(start, count));
+      length -= count;
+      i -= count;
+      start = null;
+    }
+  }
+  if (start !== null) {
+    const count = length - start;
+    removed.push(...this.splice(start, count));
+  }
+  return removed;
+}
+function collectionMoveSlice(fromIndex, count, toIndex) {
+  const tdHandle = getTrackedDataHandle(this);
+  assert(tdHandle, "moveSlice missing tdHandle");
+  const removed = tdHandle.target.splice(fromIndex, count);
+  tdHandle.target.splice(toIndex, 0, ...removed);
+  tdHandle.emitter.addEvent({
+    type: 1 /* MOVE */,
+    from: fromIndex,
+    count,
+    to: toIndex
   });
 }
-function jsxNodeToRenderNode(child) {
-  if (typeof child === "string") {
-    return createTextRenderNode(child);
-  } else if (typeof child === "number" || typeof child === "bigint") {
-    return createTextRenderNode(child.toString());
-  } else if (typeof child === "boolean" || child === null || child === void 0) {
-    return createEmptyRenderNode();
-  } else if (child instanceof Element || child instanceof Text) {
-    return createForeignElementRenderNode(child);
-  } else if (isCalculationOfJsxNode(child)) {
-    return createCalculationRenderNode(child);
-  } else if (isCollection(child) || isCollectionView(child)) {
-    return createCollectionRenderNode(child);
-  } else if (Array.isArray(child)) {
-    return createArrayRenderNode(child);
-  } else if (isRenderNode(child)) {
-    return child;
-  } else if (typeof child === "symbol") {
-    warn("Attempted to render JSX node that was a symbol, not rendering anything");
-    return createEmptyRenderNode();
-  } else if (typeof child === "function") {
-    warn("Attempted to render JSX node that was a function, not rendering anything");
-    return createEmptyRenderNode();
-  } else {
-    assertExhausted(child, "Attempted to render unexpected value", child);
-  }
-  return createEmptyRenderNode();
+function collectionSubscribe(handler) {
+  const tdHandle = getTrackedDataHandle(this);
+  assert(tdHandle, "subscribe missing tdHandle");
+  retain(tdHandle.emitter);
+  const unsubscribe = tdHandle.emitter.subscribe((events, offset) => {
+    for (let i = offset; i < events.length; ++i) {
+      handler(events[i]);
+    }
+  });
+  return () => {
+    unsubscribe();
+    release(tdHandle.emitter);
+  };
 }
+function collectionAlive() {
+}
+function collectionDead() {
+}
+function viewSort(sortFn) {
+  fail("Cannot mutate readonly view");
+}
+function viewReverse() {
+  fail("Cannot mutate readonly view");
+}
+function defaultSort(x, y) {
+  if (x === void 0 && y === void 0)
+    return 0;
+  if (x === void 0)
+    return 1;
+  if (y === void 0)
+    return -1;
+  const xStr = "" + x;
+  const yStr = "" + y;
+  if (xStr < yStr)
+    return -1;
+  if (xStr > yStr)
+    return 1;
+  return 0;
+}
+function collectionSort(sortFn = defaultSort) {
+  const tdHandle = getTrackedDataHandle(this);
+  assert(tdHandle, "collectionSort missing tdHandle");
+  let indexes = null;
+  if (tdHandle.emitter) {
+    indexes = tdHandle.target.map((_unused, index) => index).sort((a, b) => sortFn(tdHandle.target[a], tdHandle.target[b]));
+  }
+  tdHandle.target.sort(sortFn);
+  if (indexes) {
+    tdHandle.emitter.addEvent({
+      type: 2 /* SORT */,
+      from: 0,
+      indexes
+    });
+  }
+  for (let i = 0; i < tdHandle.target.length; ++i) {
+    const field2 = tdHandle.fieldMap.get(i.toString());
+    field2?.set(tdHandle.target[i]);
+  }
+  return this;
+}
+function collectionReverse() {
+  const tdHandle = getTrackedDataHandle(this);
+  assert(tdHandle, "collectionReverse missing tdHandle");
+  tdHandle.target.reverse();
+  if (tdHandle.emitter) {
+    const indexes = [];
+    for (let i = tdHandle.target.length - 1; i >= 0; --i) {
+      indexes.push(i);
+    }
+    tdHandle.emitter.addEvent({
+      type: 2 /* SORT */,
+      from: 0,
+      indexes
+    });
+  }
+  for (let i = 0; i < tdHandle.target.length; ++i) {
+    const field2 = tdHandle.fieldMap.get(i.toString());
+    field2?.set(tdHandle.target[i]);
+  }
+  return this;
+}
+function mapView(fn, debugName) {
+  return makeFlatMapView(this, (item) => [fn(item)], debugName);
+}
+function filterView(fn, debugName) {
+  return makeFlatMapView(this, (item) => fn(item) ? [item] : [], debugName);
+}
+function flatMapView(fn, debugName) {
+  return makeFlatMapView(this, fn, debugName);
+}
+function makeFlatMapView(sourceCollection, flatMap, debugName) {
+  const sourceTDHandle = getTrackedDataHandle(sourceCollection);
+  assert(sourceTDHandle, "missing tdHandle");
+  const slotSizes = [];
+  const initialTransform = [];
+  untrackReads(() => {
+    for (const item of sourceCollection) {
+      const slot = flatMap(item);
+      slotSizes.push(slot.length);
+      initialTransform.push(...slot);
+    }
+  });
+  const derivedCollection = makeTrackedData(initialTransform, ViewHandler, makeViewPrototype(), sourceTDHandle.emitter, (target, event) => arrayEventFlatMap(slotSizes, flatMap, initialTransform, event), debugName ?? "derived");
+  return derivedCollection.revocable.proxy;
+}
+function viewAlive() {
+  const tdHandle = getTrackedDataHandle(this);
+  assert(tdHandle, "missing tdHandle");
+  assert(tdHandle.consumer, "missing tdHandle consumer");
+  retain(tdHandle.consumer);
+}
+function viewDead() {
+  const tdHandle = getTrackedDataHandle(this);
+  assert(tdHandle, "missing tdHandle");
+  assert(tdHandle.consumer, "missing tdHandle consumer");
+  release(tdHandle.consumer);
+}
+
+// src/rendernode.tsx
+var ContextType = Symbol("context");
+function createContext(val) {
+  const contextBody = {
+    _type: ContextType,
+    _get: () => val
+  };
+  const context = Object.assign(({
+    value,
+    children
+  }) => {
+    return new ContextRenderNode(context, value, renderJSXChildren(children));
+  }, contextBody);
+  return context;
+}
+function readContext(contextMap, context) {
+  if (contextMap.has(context))
+    return contextMap.get(context);
+  return context._get();
+}
+var RenderNodeType = Symbol("rendernode");
+var _a3, _b3, _c3, _d;
+var EmptyRenderNode = class {
+  constructor() {
+    __publicField(this, "_type", RenderNodeType);
+    __publicField(this, "detach", noop);
+    __publicField(this, "attach", noop);
+    __publicField(this, "setContext", noop);
+    __publicField(this, "onMount", noop);
+    __publicField(this, "onUnmount", noop);
+    __publicField(this, _a3);
+    __publicField(this, _b3);
+    __publicField(this, _c3, noop);
+    __publicField(this, _d, noop);
+    this[SymDebugName] = "empty";
+    this[SymRefcount] = 0;
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+};
+_a3 = SymDebugName, _b3 = SymRefcount, _c3 = SymAlive, _d = SymDead;
+var emptyRenderNode = new EmptyRenderNode();
+var _a4, _b4, _c4, _d2;
+var TextRenderNode = class {
+  constructor(string, debugName) {
+    __publicField(this, "_type", RenderNodeType);
+    __publicField(this, "text");
+    __publicField(this, "isAttached");
+    __publicField(this, "setContext", noop);
+    __publicField(this, "onMount", noop);
+    __publicField(this, "onUnmount", noop);
+    __publicField(this, _a4);
+    __publicField(this, _b4);
+    __publicField(this, _c4, noop);
+    __publicField(this, _d2, noop);
+    this.text = document.createTextNode(string);
+    this.isAttached = false;
+    this[SymDebugName] = debugName ?? "text";
+    this[SymRefcount] = 0;
+  }
+  detach(emitter) {
+    emitter({ type: 0 /* SPLICE */, index: 0, count: 1 });
+    this.isAttached = false;
+  }
+  attach(emitter) {
+    assert(!this.isAttached, "Invariant: TextRenderNode 0 double attached");
+    emitter({
+      type: 0 /* SPLICE */,
+      index: 0,
+      count: 0,
+      items: [this.text]
+    });
+    this.isAttached = true;
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+};
+_a4 = SymDebugName, _b4 = SymRefcount, _c4 = SymAlive, _d2 = SymDead;
+var _a5, _b5, _c5, _d3;
+var ForeignRenderNode = class {
+  constructor(node, debugName) {
+    __publicField(this, "_type", RenderNodeType);
+    __publicField(this, "node");
+    __publicField(this, "setContext", noop);
+    __publicField(this, "onMount", noop);
+    __publicField(this, "onUnmount", noop);
+    __publicField(this, _a5);
+    __publicField(this, _b5);
+    __publicField(this, _c5, noop);
+    __publicField(this, _d3, noop);
+    this.node = node;
+    this[SymDebugName] = debugName ?? "foreign";
+    this[SymRefcount] = 0;
+  }
+  detach(emitter) {
+    emitter({ type: 0 /* SPLICE */, index: 0, count: 1 });
+  }
+  attach(emitter) {
+    emitter({
+      type: 0 /* SPLICE */,
+      index: 0,
+      count: 0,
+      items: [this.node]
+    });
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+};
+_a5 = SymDebugName, _b5 = SymRefcount, _c5 = SymAlive, _d3 = SymDead;
+var _a6, _b6;
+var ArrayRenderNode = class {
+  constructor(children, debugName) {
+    __publicField(this, "_type", RenderNodeType);
+    __publicField(this, "children");
+    __publicField(this, "slotSizes");
+    __publicField(this, _a6);
+    __publicField(this, _b6);
+    this.children = children;
+    this.slotSizes = children.map(() => 0);
+    this[SymDebugName] = debugName ?? "array";
+    this[SymRefcount] = 0;
+  }
+  detach(emitter) {
+    for (const [index, child] of this.children.entries()) {
+      child.detach((event) => {
+        shiftEvent(this.slotSizes, index, event);
+        emitter(event);
+      });
+    }
+  }
+  attach(emitter) {
+    for (const [index, child] of this.children.entries()) {
+      child.attach((event) => {
+        shiftEvent(this.slotSizes, index, event);
+        emitter(event);
+      });
+    }
+  }
+  setContext(context) {
+    for (const child of this.children) {
+      child.setContext(context);
+    }
+  }
+  onMount() {
+    for (const child of this.children) {
+      child.onMount();
+    }
+  }
+  onUnmount() {
+    for (const child of this.children) {
+      child.onUnmount();
+    }
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  [(_a6 = SymDebugName, _b6 = SymRefcount, SymAlive)]() {
+    for (const child of this.children) {
+      retain(child);
+    }
+  }
+  [SymDead]() {
+    for (const child of this.children) {
+      release(child);
+    }
+  }
+};
 var HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 var SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 var MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML";
-var XLINK_NAMESPACE = "http://www.w3.org/1999/xlink";
-var XML_NAMESPACE = "http://www.w3.org/XML/1998/namespace";
-var XMLNS_NAMESPACE = "http://www.w3.org/2000/xmlns/";
-var attributeNamespaceMap = {
-  "xlink:actuate": XLINK_NAMESPACE,
-  "xlink:arcrole": XLINK_NAMESPACE,
-  "xlink:href": XLINK_NAMESPACE,
-  "xlink:role": XLINK_NAMESPACE,
-  "xlink:show": XLINK_NAMESPACE,
-  "xlink:title": XLINK_NAMESPACE,
-  "xlink:type": XLINK_NAMESPACE,
-  "xml:lang": XML_NAMESPACE,
-  "xml:space": XML_NAMESPACE,
-  xmlns: XMLNS_NAMESPACE,
-  "xmlns:xlink": XMLNS_NAMESPACE
-};
 var elementNamespaceTransitionMap = {
   [HTML_NAMESPACE]: {
     svg: {
@@ -2666,1290 +3170,992 @@ var elementNamespaceTransitionMap = {
   }
 };
 var XmlNamespaceContext = createContext(HTML_NAMESPACE);
-function createIntrinsicRenderNode(elementType, props, children) {
-  const type = 4 /* intrinsicElement */;
-  let renderNodeElement = null;
-  let xmlNamespaceTransition;
-  const elementBoundEvents = {};
-  const onMountActions = /* @__PURE__ */ new Set();
-  const onUnmountActions = /* @__PURE__ */ new Set();
-  let nodeOrdering = null;
-  const initOrdering = () => {
-    if (!nodeOrdering) {
-      nodeOrdering = makeNodeOrdering("intrinsic:${elementType}:order");
-      registerNode(nodeOrdering);
-    }
-  };
-  const boundEffects = [];
-  let isAttached = false;
-  let isMounted = false;
-  const childrenRenderNode = createArrayRenderNode(children);
-  const childEventHandler = (event) => {
-    assert(renderNodeElement, "IntrinsicRenderNode received child event prior to attaching");
-    const element = renderNodeElement;
-    switch (event.type) {
-      case "splice": {
-        for (let i = 0; i < event.count; ++i) {
-          const toRemove = element.childNodes[event.index];
-          element.removeChild(toRemove);
-        }
-        const referenceElement = element.childNodes[event.index];
-        event.nodes.forEach((node) => {
-          element.insertBefore(node, referenceElement);
-        });
-        break;
-      }
-      case "move": {
-        const removed = [];
-        for (let i = 0; i < event.count; ++i) {
-          const toRemove = element.childNodes[event.fromIndex];
-          removed.push(toRemove);
-          element.removeChild(toRemove);
-        }
-        const referenceNode = element.childNodes[event.toIndex];
-        removed.forEach((node) => {
-          element.insertBefore(node, referenceNode);
-        });
-        break;
-      }
-      case "sort": {
-        const toReorder = [];
-        for (const sortedIndex of event.indexes) {
-          toReorder.push(element.childNodes[sortedIndex]);
-        }
-        toReorder.forEach((node) => element.removeChild(node));
-        const referenceNode = element.childNodes[event.fromIndex];
-        for (const node of toReorder) {
-          element.insertBefore(node, referenceNode);
-        }
-        break;
-      }
-      default:
-        assertExhausted(event, "unexpected render event");
-    }
-  };
-  return makeRenderNode(type, { elementType, props, childrenRenderNode }, () => {
-    const lifecycle = childrenRenderNode.retain();
-    return {
-      attach: (handler, context) => {
-        assert(!isAttached, `Invariant: RenderNode ${type} double attached`);
-        isAttached = true;
-        if (!renderNodeElement) {
-          const parentXmlNamespace = readContext(context.contextMap, XmlNamespaceContext);
-          xmlNamespaceTransition = elementNamespaceTransitionMap[parentXmlNamespace]?.[elementType];
-          const elementXMLNamespace = elementNamespaceTransitionMap[parentXmlNamespace]?.[elementType]?.node ?? readContext(context.contextMap, XmlNamespaceContext);
-          renderNodeElement = document.createElementNS(elementXMLNamespace, elementType);
-          const createdElement = renderNodeElement;
-          Object.entries(props || {}).forEach(([key, value]) => {
-            if (key === "ref") {
-              if (isRef(value)) {
-                value.current = createdElement;
-                return;
-              }
-              if (typeof value === "function" && !isCalculation(value)) {
-                onMountActions.add(() => value(createdElement));
-                onUnmountActions.add(() => value(void 0));
-                return;
-              }
-            }
-            if (isCalculation(value)) {
-              const boundEffect = effect(() => {
-                const computedValue = value();
-                setAttributeValue(elementType, createdElement, key, computedValue, elementBoundEvents);
-              }, `viewattr:${key}`);
-              boundEffects.push(boundEffect);
-              initOrdering();
-            } else {
-              setAttributeValue(elementType, createdElement, key, value, elementBoundEvents);
-            }
-          });
-          let subContext = context;
-          if (nodeOrdering) {
-            subContext = {
-              ...context,
-              nodeOrdering
-            };
-          }
-          if (xmlNamespaceTransition) {
-            const subContextMap = new Map(context.contextMap);
-            subContextMap.set(XmlNamespaceContext, xmlNamespaceTransition.children);
-            subContext = {
-              ...context,
-              contextMap: subContextMap
-            };
-          }
-          if (nodeOrdering) {
-            addOrderingDep(nodeOrdering, context.nodeOrdering);
-            for (const boundEffect of boundEffects) {
-              addOrderingDep(boundEffect, nodeOrdering);
-              boundEffect();
-            }
-          }
-          lifecycle.attach?.(childEventHandler, subContext);
-        }
-        handler({
-          type: "splice",
-          index: 0,
-          count: 0,
-          nodes: [renderNodeElement]
-        });
-        if (isMounted) {
-          lifecycle.afterMount?.();
-        }
-      },
-      detach: (handler, context) => {
-        assert(isAttached, `Invariant: RenderNode ${type} double detached`);
-        isAttached = false;
-        if (nodeOrdering) {
-          for (const boundEffect of boundEffects) {
-            removeOrderingDep(boundEffect, nodeOrdering);
-          }
-          removeOrderingDep(nodeOrdering, context.nodeOrdering);
-        }
-        handler({
-          type: "splice",
-          index: 0,
-          count: 1,
-          nodes: []
-        });
-      },
-      afterMount: () => {
-        isMounted = true;
-        lifecycle.afterMount?.();
-        onMountActions.forEach((action) => action());
-      },
-      beforeUnmount: () => {
-        lifecycle.beforeUnmount?.();
-        onUnmountActions.forEach((action) => action());
-        isMounted = false;
-      },
-      destroy: () => {
-        childrenRenderNode.release();
-        renderNodeElement = null;
-        onMountActions.clear();
-        onUnmountActions.clear();
-        isAttached = false;
-        isMounted = false;
-      }
-    };
-  });
-}
-function createComponentRenderNode(Component2, props, children) {
-  const type = 6 /* component */;
-  const mountHandlers = /* @__PURE__ */ new Set();
-  const unmountHandlers = /* @__PURE__ */ new Set();
-  const createdEffects = [];
-  const createdCalculations2 = [];
-  let isInitialized = false;
-  let componentRenderNode = null;
-  let isMounted = false;
-  return makeRenderNode(type, { Component: Component2, props, children }, () => {
-    return {
-      attach: (handler, context) => {
-        if (!componentRenderNode) {
-          const listeners = {
-            onMount: (handler2) => {
-              assert(!isInitialized, "Component cannot call onMount after render");
-              mountHandlers.add(handler2);
-            },
-            onUnmount: (handler2) => {
-              assert(!isInitialized, "Component cannot call onUnmount after render");
-              unmountHandlers.add(handler2);
-            },
-            onEffect: (effectCallback, debugName) => {
-              assert(!isInitialized, "Component cannot call onEffect after render");
-              const effectCalc = effect(effectCallback, `componenteffect:${Component2.name}:${debugName ?? "?"}`);
-              createdEffects.push(effectCalc);
-            },
-            getContext: (targetContext) => {
-              return readContext(context.contextMap, targetContext);
-            }
-          };
-          const propsObj = props || {};
-          let propsWithChildren;
-          if (children.length === 0) {
-            propsWithChildren = propsObj;
-          } else if (children.length === 1) {
-            propsWithChildren = {
-              ...propsObj,
-              children: children[0]
-            };
-          } else {
-            propsWithChildren = { ...propsObj, children };
-          }
-          componentRenderNode = untracked(() => {
-            let jsxNode = null;
-            createdCalculations2.push(...trackCreatedCalculations(() => {
-              jsxNode = Component2(propsWithChildren, listeners);
-            }));
-            return jsxNodeToRenderNode(jsxNode);
-          });
-          isInitialized = true;
-          componentRenderNode.retain();
-        }
-        createdEffects.forEach((eff) => {
-          addOrderingDep(context.nodeOrdering, eff);
-          retain(eff);
-          eff();
-        });
-        createdCalculations2.forEach((calculation) => {
-          retain(calculation);
-          calculation();
-        });
-        componentRenderNode._lifecycle?.attach?.(handler, context);
-        if (isMounted) {
-          mountHandlers.forEach((handler2) => handler2());
-        }
-      },
-      detach: (handler, context) => {
-        componentRenderNode?._lifecycle?.detach?.(handler, context);
-        createdEffects.forEach((eff) => {
-          removeOrderingDep(context.nodeOrdering, eff);
-          release(eff);
-        });
-        createdCalculations2.forEach((calculation) => {
-          release(calculation);
-        });
-      },
-      afterMount: () => {
-        isMounted = true;
-        componentRenderNode?._lifecycle?.afterMount?.();
-        mountHandlers.forEach((handler) => handler());
-      },
-      beforeUnmount: () => {
-        componentRenderNode?._lifecycle?.beforeUnmount?.();
-        unmountHandlers.forEach((handler) => handler());
-        isMounted = false;
-      },
-      destroy: () => {
-        mountHandlers.clear();
-        unmountHandlers.clear();
-        createdEffects.splice(0, createdEffects.length);
-        createdCalculations2.splice(0, createdEffects.length);
-        isInitialized = false;
-        componentRenderNode?.release();
-        componentRenderNode = null;
-        isMounted = false;
-      }
-    };
-  });
-}
-function createContextRenderNode(Context2, value, children) {
-  const childrenRenderNode = createArrayRenderNode(children);
-  const type = 7 /* context */;
-  return makeRenderNode(type, { Context: Context2, value, childrenRenderNode }, () => {
-    const lifecycle = childrenRenderNode.retain();
-    let subContext = null;
-    return {
-      attach: (handler, context) => {
-        const contextMap = new Map(context.contextMap);
-        contextMap.set(Context2, value);
-        subContext = { ...context, contextMap };
-        childrenRenderNode._lifecycle?.attach?.(handler, subContext);
-      },
-      detach: (handler, context) => {
-        assert(subContext, `RenderNode ${type} detach without attach?`);
-        childrenRenderNode._lifecycle?.detach?.(handler, subContext);
-        subContext = null;
-      },
-      destroy: () => {
-        childrenRenderNode.release();
-      },
-      afterMount: lifecycle.afterMount,
-      beforeUnmount: lifecycle.beforeUnmount
-    };
-  });
-}
-function createLifecycleObserverRenderNode({
-  nodeCallback,
-  elementCallback
-}, children) {
-  const type = 8 /* lifecycleObserver */;
-  let attachedState = null;
-  const childrenRenderNode = createArrayRenderNode(children);
-  let isMounted = false;
-  return makeRenderNode(type, { nodeCallback, elementCallback, childrenRenderNode }, () => {
-    const lifecycle = childrenRenderNode.retain();
-    let childNodes = [];
-    const childLifecycleHandler = (event) => {
-      assert(attachedState, "LifecycleObserver RenderNode got event when detached");
+var _a7, _b7;
+var IntrinsicRenderNode = class {
+  constructor(elementOrTagName, props, children, debugName) {
+    __publicField(this, "_type", RenderNodeType);
+    __publicField(this, "tagName");
+    __publicField(this, "element");
+    __publicField(this, "isPreexisting");
+    __publicField(this, "isPreexistingPopulated");
+    __publicField(this, "emitter");
+    __publicField(this, "xmlNamespace");
+    __publicField(this, "childXmlNamespace");
+    __publicField(this, "existingOffset");
+    __publicField(this, "props");
+    __publicField(this, "arrayRenderNode");
+    __publicField(this, "calculations");
+    __publicField(this, "calculationSubscriptions");
+    __publicField(this, "handleEvent", (event) => {
+      assert(this.element, "missing element");
       switch (event.type) {
-        case "splice": {
-          const removed = childNodes.splice(event.index, event.count, ...event.nodes);
-          if (isMounted) {
-            removed.forEach((node) => {
-              nodeCallback?.(node, "remove");
-              if (node instanceof Element) {
-                elementCallback?.(node, "remove");
-              }
-            });
+        case 0 /* SPLICE */: {
+          for (let i = 0; i < event.count; ++i) {
+            this.element.removeChild(this.element.childNodes[this.existingOffset + event.index]);
           }
-          attachedState.handler(event);
-          if (isMounted) {
-            event.nodes.forEach((node) => {
-              nodeCallback?.(node, "add");
-              if (node instanceof Element) {
-                elementCallback?.(node, "add");
-              }
-            });
+          const referenceNode = event.index < this.element.childNodes.length ? this.element.childNodes[this.existingOffset + event.index] : null;
+          if (event.items) {
+            for (let i = event.items.length - 1; i >= 0; --i) {
+              this.element.insertBefore(event.items[i], referenceNode);
+            }
           }
           break;
         }
-        case "move": {
-          const removed = childNodes.splice(event.fromIndex, event.count);
-          let adjustedToIndex;
-          if (event.toIndex > event.fromIndex + event.count) {
-            adjustedToIndex = event.toIndex - event.count;
-          } else if (event.toIndex > event.fromIndex) {
-            adjustedToIndex = event.fromIndex;
-          } else {
-            adjustedToIndex = event.toIndex;
+        case 1 /* MOVE */: {
+          const toMove = [];
+          for (let i = 0; i < event.count; ++i) {
+            const node = this.element.childNodes[this.existingOffset + event.from];
+            this.element.removeChild(node);
+            toMove.push(node);
           }
-          childNodes.splice(adjustedToIndex, 0, ...removed);
-          attachedState.handler(event);
+          const referenceNode = event.to < this.element.childNodes.length ? this.element.childNodes[this.existingOffset + event.to] : null;
+          for (const node of toMove) {
+            this.element.insertBefore(node, referenceNode);
+          }
           break;
         }
-        case "sort": {
-          const sortedSlice = Array(event.indexes.length);
+        case 2 /* SORT */: {
+          const unsorted = [];
           for (let i = 0; i < event.indexes.length; ++i) {
-            sortedSlice[i] = childNodes[event.indexes[i]];
+            const node = this.element.childNodes[this.existingOffset + event.from];
+            this.element.removeChild(node);
+            unsorted.push(node);
           }
-          childNodes.splice(event.fromIndex, event.indexes.length, ...sortedSlice);
-          attachedState.handler(event);
+          const referenceNode = event.from < this.element.childNodes.length ? this.element.childNodes[this.existingOffset + event.from] : null;
+          for (const index of event.indexes) {
+            this.element.insertBefore(unsorted[index - event.from], referenceNode);
+          }
           break;
         }
         default:
-          assertExhausted(event, "LifecycleObserver RenderNode got unexpected event");
+          assertExhausted(event);
       }
-    };
-    return {
-      attach: (handler, context) => {
-        assert(attachedState === null, `Invariant: RenderNode ${type} double attached`);
-        attachedState = { handler, context };
-        lifecycle.attach?.(childLifecycleHandler, context);
-      },
-      detach: (handler, context) => {
-        assert(attachedState !== null, `Invariant: RenderNode ${type} double detached`);
-        lifecycle.detach?.(childLifecycleHandler, context);
-        assert(childNodes.length === 0, "LifecycleObserver had leftover nodes after detach");
-        attachedState = null;
-      },
-      afterMount: () => {
-        isMounted = true;
-        lifecycle.afterMount?.();
-        childNodes.forEach((node) => {
-          nodeCallback?.(node, "add");
-          if (node instanceof Element) {
-            elementCallback?.(node, "add");
-          }
-        });
-      },
-      beforeUnmount: () => {
-        lifecycle.beforeUnmount?.();
-        isMounted = false;
-        childNodes.forEach((node) => {
-          nodeCallback?.(node, "remove");
-          if (node instanceof Element) {
-            elementCallback?.(node, "remove");
-          }
-        });
-      },
-      destroy: () => {
-        childNodes = [];
-        attachedState = null;
-        childrenRenderNode.release();
-        isMounted = false;
-      }
-    };
-  });
-}
-function createElement(Constructor, props, ...children) {
-  if (typeof Constructor === "string") {
-    return createIntrinsicRenderNode(Constructor, props, children.map((child) => jsxNodeToRenderNode(child)));
-  }
-  if (isContext(Constructor)) {
-    return createContextRenderNode(Constructor, props.value, children.map((child) => jsxNodeToRenderNode(child)));
-  }
-  if (Constructor === LifecycleObserver) {
-    return createLifecycleObserverRenderNode(props, children.map((child) => jsxNodeToRenderNode(child)));
-  }
-  return createComponentRenderNode(Constructor, props, children);
-}
-createElement.Fragment = Fragment;
-function setAttributeValue(elementType, element, key, value, boundEvents) {
-  if (key.startsWith("on:") && typeof value === "function") {
-    const eventName = key.slice(3);
-    if (boundEvents[key]) {
-      element.removeEventListener(eventName, boundEvents[key]);
+    });
+    __publicField(this, _a7);
+    __publicField(this, _b7);
+    this.emitter = null;
+    this.props = props;
+    this.arrayRenderNode = new ArrayRenderNode(children);
+    if (typeof elementOrTagName !== "string") {
+      this.isPreexisting = true;
+      this.isPreexistingPopulated = false;
+      this.element = elementOrTagName;
+      this.tagName = this.element.tagName;
+      this.existingOffset = elementOrTagName.childNodes.length;
+    } else {
+      this.isPreexisting = false;
+      this.isPreexistingPopulated = false;
+      this.element = null;
+      this.tagName = elementOrTagName;
+      this.existingOffset = 0;
     }
-    element.addEventListener(eventName, value);
-    boundEvents[key] = value;
-  } else {
-    const attributeNamespace = attributeNamespaceMap[key] || null;
-    const mapping = getElementTypeMapping(elementType, key);
+    this.xmlNamespace = null;
+    this.childXmlNamespace = null;
+    this[SymDebugName] = debugName ?? `intrinsic:${this.tagName}`;
+    this[SymRefcount] = 0;
+  }
+  createElement(xmlNamespace) {
+    const element = document.createElementNS(xmlNamespace, this.tagName);
+    if (this.props) {
+      for (const [prop, val] of Object.entries(this.props)) {
+        if (prop === "ref")
+          continue;
+        if (prop.startsWith("on:capture:")) {
+          element.addEventListener(prop.slice(3), val, {
+            capture: true
+          });
+          continue;
+        }
+        if (prop.startsWith("on:passive:")) {
+          element.addEventListener(prop.slice(3), val, {
+            passive: true
+          });
+          continue;
+        }
+        if (prop.startsWith("on:")) {
+          element.addEventListener(prop.slice(3), val);
+          continue;
+        }
+        if (isCalcUnsubscribe(val) || isCalculation(val)) {
+          if (!this.calculations) {
+            this.calculations = /* @__PURE__ */ new Map();
+          }
+          this.calculations.set(prop, isCalculation(val) ? val : val.calculation);
+        } else {
+          this.setProp(element, prop, val);
+        }
+      }
+      if (this.calculations) {
+        if (!this.calculationSubscriptions) {
+          this.calculationSubscriptions = /* @__PURE__ */ new Set();
+        }
+        for (const [prop, calculation] of this.calculations.entries()) {
+          retain(calculation);
+          markRoot(calculation);
+          const currentVal = calculation();
+          this.setProp(element, prop, currentVal);
+          this.calculationSubscriptions.add(calculation.onRecalc((updatedVal) => {
+            this.setProp(element, prop, updatedVal);
+          }));
+        }
+      }
+    }
+    return element;
+  }
+  setProp(element, prop, val) {
+    const mapping = getElementTypeMapping(this.tagName, prop);
     if (mapping) {
       if (mapping.makeAttrValue !== null) {
-        const attributeValue = mapping.makeAttrValue ? mapping.makeAttrValue(value) : value;
+        const attributeValue = mapping.makeAttrValue ? mapping.makeAttrValue(val) : val;
         if (attributeValue === void 0 || attributeValue === null || attributeValue === false) {
-          element.removeAttribute(key);
+          element.removeAttribute(prop);
         } else if (attributeValue === true) {
-          element.setAttributeNS(attributeNamespace, key, "");
+          element.setAttribute(prop, "");
         } else {
-          element.setAttributeNS(attributeNamespace, key, attributeValue);
+          element.setAttribute(prop, attributeValue);
         }
       }
       if (mapping.idlName !== null) {
-        element[mapping.idlName ?? key] = mapping.makeIdlValue ? mapping.makeIdlValue(value) : value;
+        const idlValue = mapping.makeIdlValue ? mapping.makeIdlValue(val) : val;
+        element[mapping.idlName ?? prop] = idlValue;
       }
-    } else if (value === false || value === void 0 || value === null) {
-      element.removeAttributeNS(attributeNamespace, key);
-    } else if (value === true) {
-      element.setAttributeNS(attributeNamespace, key, "");
-    } else if (typeof value === "string" || typeof value === "number") {
-      element.setAttributeNS(attributeNamespace, key, value.toString());
+    } else if (val === false || val === void 0 || val === null) {
+      element.removeAttribute(prop);
+    } else if (val === true) {
+      element.setAttribute(prop, "");
+    } else if (typeof val === "string" || typeof val === "number") {
+      element.setAttribute(prop, val.toString());
     }
   }
-}
-function isCollectionView(thing) {
-  return isCollection(thing);
-}
-function readContext(contextMap, context) {
-  if (contextMap.has(context)) {
-    return contextMap.get(context);
+  detach(emitter) {
+    emitter({
+      type: 0 /* SPLICE */,
+      index: 0,
+      count: 1
+    });
+    this.emitter = null;
   }
-  return getContext(context);
-}
-function createCollectionRenderNode(collection2) {
-  const type = 9 /* collection */;
-  let attachedState = null;
-  let isMounted = false;
-  return makeRenderNode(type, { collection: collection2 }, () => {
-    const collectionNodeOrdering = makeNodeOrdering(true ? `viewcoll:${debugNameFor(collection2) ?? "node"}:order` : "viewcoll:order");
-    registerNode(collectionNodeOrdering);
-    let childInfo = [];
-    const childEventHandler = (event, childNode) => {
-      assert(attachedState, "Collection RenderNode got event when detached");
-      let insertionIndex = 0;
-      let infoRecord = null;
-      for (const info of childInfo) {
-        if (info.renderNode === childNode) {
-          infoRecord = info;
-          break;
-        }
-        insertionIndex += info.size;
-      }
-      assert(infoRecord, "Collection RenderNode got event for unknown node");
-      switch (event.type) {
-        case "splice": {
-          attachedState.handler({
-            type: "splice",
-            index: event.index + insertionIndex,
-            count: event.count,
-            nodes: event.nodes
-          });
-          infoRecord.size = infoRecord.size - event.count + event.nodes.length;
-          break;
-        }
-        case "move": {
-          attachedState.handler({
-            type: "move",
-            fromIndex: event.fromIndex + insertionIndex,
-            count: event.count,
-            toIndex: event.toIndex + insertionIndex
-          });
-          break;
-        }
-        case "sort": {
-          attachedState.handler({
-            type: "sort",
-            fromIndex: insertionIndex + event.fromIndex,
-            indexes: event.indexes.map((index) => index + insertionIndex)
-          });
-          break;
-        }
-        default:
-          assertExhausted(event, "unexpected render event");
-      }
-    };
-    const subscriptionNode = collection2[GetSubscriptionNodeKey]();
-    registerNode(subscriptionNode);
-    let unobserve = null;
-    return {
-      attach: (handler, context) => {
-        assert(attachedState === null, `Invariant: RenderNode ${type} double attached`);
-        attachedState = { handler, context };
-        addOrderingDep(subscriptionNode, collectionNodeOrdering);
-        addOrderingDep(collectionNodeOrdering, context.nodeOrdering);
-        untracked(() => {
-          childInfo = collection2.map((child, childIndex) => {
-            const childNode = jsxNodeToRenderNode(child);
-            return {
-              renderNode: childNode,
-              handler: (event) => childEventHandler(event, childNode),
-              size: 0
-            };
-          });
-          childInfo.forEach((infoRecord) => {
-            infoRecord.renderNode.retain();
-            infoRecord.renderNode._lifecycle?.attach?.(infoRecord.handler, context);
-            if (isMounted) {
-              infoRecord.renderNode._lifecycle?.afterMount?.();
-            }
-          });
-        });
-        unobserve = collection2[ObserveKey]((events) => {
-          events.forEach((event) => {
-            if (event.type === "splice") {
-              untracked(() => {
-                const { count, index, items } = event;
-                for (let i = index; i < index + count; ++i) {
-                  const infoRecord = childInfo[i];
-                  if (isMounted) {
-                    infoRecord.renderNode._lifecycle?.beforeUnmount?.();
-                  }
-                  infoRecord.renderNode._lifecycle?.detach?.(infoRecord.handler, context);
-                  infoRecord.renderNode.release();
-                }
-                const newInfo = items.map((child, itemIndex) => {
-                  const childNode = jsxNodeToRenderNode(child);
-                  return {
-                    renderNode: childNode,
-                    handler: (event2) => childEventHandler(event2, childNode),
-                    size: 0
-                  };
-                });
-                childInfo.splice(index, count, ...newInfo);
-                newInfo.forEach((infoRecord) => {
-                  infoRecord.renderNode.retain();
-                  infoRecord.renderNode._lifecycle?.attach?.(infoRecord.handler, context);
-                  if (isMounted) {
-                    infoRecord.renderNode._lifecycle?.afterMount?.();
-                  }
-                });
-              });
-            } else if (event.type === "move") {
-              const { fromIndex, fromCount, toIndex } = event;
-              let realFromIndex = 0;
-              for (let i = 0; i < fromIndex; ++i) {
-                realFromIndex += childInfo[i].size;
-              }
-              let size = 0;
-              for (let i = fromIndex; i < fromIndex + fromCount; ++i) {
-                size += childInfo[i].size;
-              }
-              const removed = childInfo.splice(fromIndex, fromCount);
-              let adjustedToIndex;
-              if (toIndex > fromIndex + fromCount) {
-                adjustedToIndex = toIndex - fromCount;
-              } else if (toIndex > fromIndex) {
-                adjustedToIndex = fromIndex;
-              } else {
-                adjustedToIndex = toIndex;
-              }
-              let realToIndex = 0;
-              for (let i = 0; i < adjustedToIndex; ++i) {
-                realToIndex += childInfo[i].size;
-              }
-              childInfo.splice(adjustedToIndex, 0, ...removed);
-              handler({
-                type: "move",
-                fromIndex: realFromIndex,
-                count: size,
-                toIndex: realToIndex
-              });
-            } else if (event.type === "sort") {
-              const { indexes } = event;
-              const realIndexes = getExpandedSortIndexes(indexes, childInfo);
-              const oldChildInfo = childInfo;
-              childInfo = Array(oldChildInfo.length);
-              for (let i = 0; i < indexes.length; ++i) {
-                childInfo[i] = oldChildInfo[indexes[i]];
-              }
-              handler({
-                type: "sort",
-                fromIndex: 0,
-                indexes: realIndexes
-              });
-            } else {
-              assertExhausted(event, "unhandled collection event");
-            }
-          });
-        });
-      },
-      detach: (handler, context) => {
-        assert(attachedState !== null, `Invariant: RenderNode ${type} double detached`);
-        removeOrderingDep(collectionNodeOrdering, context.nodeOrdering);
-        removeOrderingDep(subscriptionNode, collectionNodeOrdering);
-        unobserve?.();
-        childInfo.forEach((infoRecord) => {
-          if (isMounted) {
-            infoRecord.renderNode._lifecycle?.beforeUnmount?.();
-          }
-          infoRecord.renderNode._lifecycle?.detach?.(infoRecord.handler, context);
-          infoRecord.renderNode.release();
-        });
-        childInfo = [];
-        attachedState = null;
-      },
-      afterMount: () => {
-        isMounted = true;
-        childInfo.forEach((info) => info.renderNode._lifecycle?.afterMount?.());
-      },
-      beforeUnmount: () => {
-        childInfo.forEach((info) => info.renderNode._lifecycle?.beforeUnmount?.());
-        isMounted = false;
-      },
-      destroy: () => {
-        childInfo.forEach((info) => info.renderNode.release());
-        childInfo = [];
-        attachedState = null;
-      }
-    };
-  });
-}
-function makeNodeOrdering(debugName) {
-  const nodeOrdering = {
-    $__id: uniqueid(),
-    [TypeTag]: "nodeOrdering"
-  };
-  if (debugName)
-    name(nodeOrdering, debugName);
-  return nodeOrdering;
-}
-function mount(parentElement, jsxNode) {
-  if (jsxNode instanceof Text || jsxNode instanceof Element) {
-    parentElement.appendChild(jsxNode);
-    return () => {
-      parentElement.removeChild(jsxNode);
-    };
+  attach(emitter) {
+    assert(!this.emitter, "Invariant: RenderNode 0 double attached");
+    this.emitter = emitter;
+    assert(this.element, "Invariant: attached without context");
+    emitter({
+      type: 0 /* SPLICE */,
+      index: 0,
+      count: 0,
+      items: [this.element]
+    });
   }
-  let mountNode = document.createDocumentFragment();
-  let insertionIndex = 0;
-  const contextMap = /* @__PURE__ */ new Map();
-  const nodeOrdering = makeNodeOrdering("root:mount");
-  registerNode(nodeOrdering);
-  retain(nodeOrdering);
-  const nodes = /* @__PURE__ */ new Set();
-  const renderEventHandler = (event) => {
-    switch (event.type) {
-      case "splice": {
-        const modificationIndex = insertionIndex + event.index;
-        for (let i = 0; i < event.count; ++i) {
-          const toRemove = mountNode.childNodes[modificationIndex];
-          if (toRemove instanceof Text || toRemove instanceof Element) {
-            if (nodes.has(toRemove)) {
-              nodes.delete(toRemove);
-            } else {
-              warn("Root mount inconsistency error, removed a child it did not create", toRemove);
-            }
-          } else {
-            warn("Root mount removed unexpected node", toRemove);
-          }
-          mountNode.removeChild(toRemove);
+  setContext(context) {
+    const parentXmlNamespace = readContext(context, XmlNamespaceContext);
+    const namespaceTransition = elementNamespaceTransitionMap[parentXmlNamespace]?.[this.tagName];
+    const xmlNamespace = namespaceTransition?.node ?? parentXmlNamespace;
+    const childXmlNamespace = namespaceTransition?.children ?? parentXmlNamespace;
+    const needsNewElement = !this.isPreexisting && (!this.element || xmlNamespace !== this.xmlNamespace);
+    if (needsNewElement) {
+      this.xmlNamespace = xmlNamespace;
+      const element = this.createElement(xmlNamespace);
+      if (this.element) {
+        const length = this.element.childNodes.length;
+        for (let i = this.existingOffset; i < length; ++i) {
+          const node = this.element.childNodes[i];
+          this.element.removeChild(node);
+          element.appendChild(node);
         }
-        const referenceElement = mountNode.childNodes[modificationIndex];
-        event.nodes.forEach((node, i) => {
-          mountNode.insertBefore(node, referenceElement);
-          nodes.add(node);
-        });
-        break;
-      }
-      case "move": {
-        const removed = [];
-        for (let i = 0; i < event.count; ++i) {
-          const toRemove = mountNode.childNodes[event.fromIndex];
-          removed.push(toRemove);
-          mountNode.removeChild(toRemove);
+        if (this.emitter) {
+          this.emitter({
+            type: 0 /* SPLICE */,
+            index: 0,
+            count: 1
+          });
         }
-        const referenceNode = mountNode.childNodes[event.toIndex];
-        removed.forEach((node) => {
-          mountNode.insertBefore(node, referenceNode);
-        });
-        break;
       }
-      case "sort": {
-        const removed = [];
-        for (let i = event.fromIndex; i < event.indexes.length; ++i) {
-          const toRemove = mountNode.childNodes[event.fromIndex];
-          removed.push(toRemove);
-          mountNode.removeChild(toRemove);
-        }
-        const referenceNode = mountNode.childNodes[event.fromIndex];
-        event.indexes.forEach((newIndex) => {
-          mountNode.insertBefore(removed[newIndex], referenceNode);
+      this.element = element;
+      this.existingOffset = 0;
+      if (this.emitter) {
+        this.emitter({
+          type: 0 /* SPLICE */,
+          index: 0,
+          count: 0,
+          items: [this.element]
         });
-        break;
       }
-      default:
-        assertExhausted(event, "unexpected render event");
     }
-  };
-  const subContext = { contextMap, nodeOrdering };
-  const renderNode = jsxNodeToRenderNode(jsxNode);
-  const lifecycle = renderNode.retain();
-  lifecycle.attach?.(renderEventHandler, subContext);
-  insertionIndex = parentElement.childNodes.length;
-  parentElement.appendChild(mountNode);
-  mountNode = parentElement;
-  lifecycle.afterMount?.();
-  return () => {
-    lifecycle.beforeUnmount?.();
-    lifecycle.detach?.(renderEventHandler, subContext);
-    renderNode.release();
-    if (nodes.size > 0) {
-      error("Internal consistency error: nodes remain after unmounting!", nodes);
+    if (needsNewElement || this.isPreexisting && !this.isPreexistingPopulated) {
+      let subContext = context;
+      if (parentXmlNamespace !== childXmlNamespace) {
+        subContext = new Map(context);
+        subContext.set(XmlNamespaceContext, childXmlNamespace);
+      }
+      this.arrayRenderNode.setContext(subContext);
+      this.arrayRenderNode.attach(this.handleEvent);
+      if (this.isPreexisting) {
+        this.isPreexistingPopulated = true;
+      }
     }
-  };
-}
-
-// src/collection.ts
-function defaultSort(x, y) {
-  if (x === void 0 && y === void 0)
-    return 0;
-  if (x === void 0)
-    return 1;
-  if (y === void 0)
-    return -1;
-  const xStr = "" + x;
-  const yStr = "" + y;
-  if (xStr < yStr)
-    return -1;
-  if (xStr > yStr)
-    return 1;
-  return 0;
-}
-function collection(array, debugName) {
-  if (!Array.isArray(array)) {
-    throw new InvariantError("collection must be provided an array");
   }
-  return trackedData(array, "collection", {
-    get(notify2, target, key) {
-      return target[key];
-    },
-    has(notify2, target, key) {
-      return key in target;
-    },
-    set(notify2, target, key, value) {
-      if (key === "length" && typeof value === "number" && value < target.length) {
-        this.splice(value, target.length - value);
-        return true;
+  onMount() {
+    this.arrayRenderNode.onMount();
+    const ref2 = this.props?.ref;
+    if (ref2) {
+      if (ref2 instanceof RefObject) {
+        ref2.current = this.element;
+      } else if (typeof ref2 === "function") {
+        ref2(this.element);
       }
-      const numericKey = Number(key);
-      if (!isNaN(numericKey) && numericKey <= array.length) {
-        this.splice(numericKey, 1, value);
-      } else {
-        target[key] = value;
-      }
-      return true;
-    },
-    deleteProperty(notify2, target, key) {
-      delete target[key];
-      return true;
     }
-  }, ({
-    notify: notify2,
-    subscriptionNode,
-    makeView,
-    processFieldChange,
-    processFieldDelete
-  }) => ({
-    splice: function splice(index, count, ...items) {
-      if (count < 1 && items.length === 0)
-        return [];
-      const origLength = array.length;
-      const removed = array.splice(index, count, ...items);
-      const newLength = array.length;
-      notify2({
-        type: "splice",
-        index,
-        count,
-        items,
-        removed
-      });
-      if (origLength === newLength) {
-        for (let i = index; i < index + count; ++i) {
-          processFieldChange(i.toString());
-        }
-      } else {
-        for (let i = index; i < Math.max(newLength, origLength); ++i) {
-          const key = i.toString();
-          if (i >= newLength) {
-            processFieldDelete(key);
-          } else {
-            processFieldChange(key);
-          }
-        }
-        processFieldChange("length");
+  }
+  onUnmount() {
+    const ref2 = this.props?.ref;
+    if (ref2) {
+      if (ref2 instanceof RefObject) {
+        ref2.current = void 0;
+      } else if (typeof ref2 === "function") {
+        ref2(void 0);
       }
-      return removed;
-    },
-    pop: function pop() {
-      const removed = this.splice(array.length - 1, 1);
-      return removed[0];
-    },
-    shift: function shift() {
-      const removed = this.splice(0, 1);
-      return removed[0];
-    },
-    push: function push(...items) {
-      this.splice(array.length, 0, ...items);
-      return array.length;
-    },
-    unshift: function unshift(...items) {
-      this.splice(0, 0, ...items);
-      return array.length;
-    },
-    reject: function reject(func) {
-      const removed = [];
-      for (let i = array.length - 1; i >= 0; --i) {
-        if (func(this[i], i)) {
-          removed.push(...this.splice(i, 1));
-        }
-      }
-      return removed;
-    },
-    moveSlice: function moveSlice(fromIndex, fromCount, toIndex) {
-      if (fromCount <= 0)
-        return;
-      if (toIndex >= fromIndex && toIndex < fromIndex + fromCount)
-        return;
-      const moved = array.splice(fromIndex, fromCount);
-      if (toIndex < fromIndex) {
-        array.splice(toIndex, 0, ...moved);
-      } else {
-        array.splice(toIndex - fromCount, 0, ...moved);
-      }
-      notify2({
-        type: "move",
-        fromIndex,
-        fromCount,
-        toIndex,
-        moved
-      });
-    },
-    sort: function sort(sorter = defaultSort) {
-      const arrayWithIndexes = array.map((item, index) => [item, index]);
-      array.sort(sorter);
-      arrayWithIndexes.sort((ai, bi) => sorter(ai[0], bi[0]));
-      notify2({
-        type: "sort",
-        indexes: arrayWithIndexes.map((pair) => pair[1])
-      });
-      return this;
-    },
-    reverse: function reverse(sorter = defaultSort) {
-      if (array.length === 0)
-        return this;
-      array.reverse();
-      const indexes = [];
-      for (let i = array.length - 1; i >= 0; --i) {
-        indexes.push(i);
-      }
-      notify2({
-        type: "sort",
-        indexes
-      });
-      return this;
-    },
-    makeView,
-    mapView: function mapView(mapper, debugName2) {
-      return mapViewImplementation(this, mapper, debugName2);
-    },
-    filterView: function filterView(filterFn, debugName2) {
-      return filterViewImplementation(this, filterFn, debugName2);
-    },
-    flatMapView: function flatMapView(fn, debugName2) {
-      return flatMapViewImplementation(this, fn, debugName2);
     }
-  }), debugName);
-}
-collection.dispose = function dispose(c) {
-  c[DisposeKey]();
+    this.arrayRenderNode.onUnmount();
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  [(_a7 = SymDebugName, _b7 = SymRefcount, SymAlive)]() {
+    retain(this.arrayRenderNode);
+  }
+  [SymDead]() {
+    if (this.calculations) {
+      for (const calculation of this.calculations.values()) {
+        unmarkRoot(calculation);
+        release(calculation);
+      }
+    }
+    if (this.calculationSubscriptions) {
+      for (const unsubscribe of this.calculationSubscriptions) {
+        unsubscribe();
+      }
+      this.calculationSubscriptions.clear();
+    }
+    this.arrayRenderNode.detach(this.handleEvent);
+    release(this.arrayRenderNode);
+    if (!this.isPreexisting) {
+      this.element = null;
+    }
+  }
 };
-function mapViewImplementation(sourceCollection, mapper, debugName) {
-  return flatMapViewImplementation(sourceCollection, (item) => [mapper(item)], debugName);
-}
-function filterViewImplementation(sourceCollection, filterFn, debugName) {
-  return flatMapViewImplementation(sourceCollection, (item) => filterFn(item) ? [item] : [], debugName);
-}
-function flatMapViewImplementation(sourceCollection, fn, debugName) {
-  const flatMapCount = [];
-  return sourceCollection.makeView({
-    initialize: (items) => {
-      const flatMapItems = [];
-      items.forEach((value) => {
-        const chunk = fn(value);
-        flatMapItems.push(...chunk);
-        flatMapCount.push(chunk.length);
+var _a8, _b8;
+var CalculationRenderNode = class {
+  constructor(calculation, debugName) {
+    __publicField(this, "_type", RenderNodeType);
+    __publicField(this, "renderNode");
+    __publicField(this, "calculation");
+    __publicField(this, "calculationSubscription");
+    __publicField(this, "context");
+    __publicField(this, "isMounted");
+    __publicField(this, "emitter");
+    __publicField(this, "isCalculatedPendingAdd");
+    __publicField(this, "renderCalculation", (val) => {
+      this.cleanPrior();
+      const renderNode = renderJSXNode(val);
+      this.isCalculatedPendingAdd = true;
+      afterFlush(() => {
+        this.isCalculatedPendingAdd = false;
+        this.renderNode = renderNode;
+        retain(this.renderNode);
+        if (this.context) {
+          renderNode.setContext(this.context);
+        }
+        if (this.emitter) {
+          renderNode.attach(this.emitter);
+        }
+        if (this.isMounted) {
+          renderNode.onMount();
+        }
       });
-      return flatMapItems;
-    },
-    processEvent: (view, event, rawArray) => {
-      if (event.type === "splice") {
-        const { index, count, items } = event;
-        let realIndex = 0;
-        for (let i = 0; i < index; ++i) {
-          realIndex += flatMapCount[i];
-        }
-        let realCount = 0;
-        for (let i = index; i < index + count; ++i) {
-          realCount += flatMapCount[i];
-        }
-        const realItems = [];
-        const realItemCount = [];
-        items.forEach((itemValue) => {
-          const chunk = fn(itemValue);
-          realItems.push(...chunk);
-          realItemCount.push(chunk.length);
-        });
-        view.splice(realIndex, realCount, ...realItems);
-        flatMapCount.splice(index, count, ...realItemCount);
-      } else if (event.type === "move") {
-        const { fromIndex, fromCount, toIndex } = event;
-        let realFromCount = 0;
-        for (let i = fromIndex; i < fromIndex + fromCount; ++i) {
-          realFromCount += flatMapCount[i];
-        }
-        if (realFromCount > 0) {
-          let realFromIndex = 0;
-          let realToIndex = 0;
-          const lastIndex = Math.max(fromIndex, toIndex);
-          let count = 0;
-          for (let i = 0; i <= lastIndex; ++i) {
-            if (i === fromIndex)
-              realFromIndex = count;
-            if (i === toIndex)
-              realToIndex = count;
-            count += flatMapCount[i];
+    });
+    __publicField(this, _a8);
+    __publicField(this, _b8);
+    this.calculation = calculation;
+    this.calculationSubscription = null;
+    this.renderNode = null;
+    this.context = null;
+    this.isMounted = false;
+    this.emitter = null;
+    this.isCalculatedPendingAdd = false;
+    this[SymDebugName] = debugName ?? `rendercalc:${calculation[SymDebugName]}`;
+    this[SymRefcount] = 0;
+  }
+  detach(emitter) {
+    assert(this.renderNode, "Invariant: missing calculation result");
+    this.renderNode.detach(emitter);
+    this.emitter = null;
+  }
+  attach(emitter) {
+    assert(this.renderNode || this.isCalculatedPendingAdd, "Invariant: missing calculation result");
+    this.emitter = emitter;
+    if (this.renderNode) {
+      this.renderNode.attach(emitter);
+    }
+  }
+  setContext(context) {
+    this.context = context;
+    if (!this.renderNode && !this.isCalculatedPendingAdd) {
+      this.renderCalculation(this.calculation());
+      this.calculationSubscription = this.calculation.onRecalc(this.renderCalculation);
+    } else if (this.renderNode) {
+      this.renderNode.setContext(context);
+    }
+  }
+  onMount() {
+    assert(this.renderNode || this.isCalculatedPendingAdd, "Invariant: missing calculation result");
+    this.isMounted = true;
+    if (this.renderNode) {
+      this.renderNode.onMount();
+    }
+  }
+  onUnmount() {
+    assert(this.renderNode, "Invariant: missing calculation result");
+    this.renderNode.onUnmount();
+    this.isMounted = false;
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  cleanPrior() {
+    if (this.renderNode) {
+      if (this.isMounted) {
+        this.renderNode.onUnmount();
+      }
+      if (this.emitter) {
+        this.renderNode.detach(this.emitter);
+      }
+      release(this.renderNode);
+      this.renderNode = null;
+    }
+  }
+  [(_a8 = SymDebugName, _b8 = SymRefcount, SymAlive)]() {
+    retain(this.calculation);
+    markRoot(this.calculation);
+  }
+  [SymDead]() {
+    unmarkRoot(this.calculation);
+    release(this.calculation);
+    this.cleanPrior();
+    this.emitter = null;
+  }
+};
+var _a9, _b9;
+var CollectionRenderNode = class {
+  constructor(collection2, debugName) {
+    __publicField(this, "_type", RenderNodeType);
+    __publicField(this, "children");
+    __publicField(this, "childIndex");
+    __publicField(this, "childrenNodes");
+    __publicField(this, "slotSizes");
+    __publicField(this, "collection");
+    __publicField(this, "unsubscribe");
+    __publicField(this, "context");
+    __publicField(this, "isMounted");
+    __publicField(this, "emitter");
+    __publicField(this, "handleCollectionEvent", (event) => {
+      assert(this.context, "Invariant: missing context");
+      switch (event.type) {
+        case 0 /* SPLICE */: {
+          const newChildren = [];
+          if (event.items) {
+            for (const [index, item] of event.items.entries()) {
+              const child = renderJSXNode(item);
+              newChildren.push(child);
+              this.childIndex.set(child, event.index + index);
+            }
           }
-          view.moveSlice(realFromIndex, realFromCount, realToIndex);
+          const removed = this.children.splice(event.index, event.count, ...newChildren);
+          for (const child of removed) {
+            if (this.isMounted) {
+              child.onUnmount();
+            }
+            if (this.emitter) {
+              const emitter = this.emitter;
+              child.detach((event2) => this.handleChildEvent(emitter, event2, child));
+            }
+            release(child);
+          }
+          this.slotSizes.splice(event.index, event.count, ...newChildren.map(() => 0));
+          for (const child of newChildren) {
+            retain(child);
+            if (this.emitter) {
+              const emitter = this.emitter;
+              child.setContext(this.context);
+              child.attach((event2) => this.handleChildEvent(emitter, event2, child));
+            }
+            if (this.isMounted) {
+              child.onMount();
+            }
+          }
+          if (newChildren.length !== event.count) {
+            for (let i = event.index + newChildren.length; i < this.children.length; ++i) {
+              this.childIndex.set(this.children[i], i);
+            }
+          }
+          break;
         }
-        flatMapCount.splice(toIndex, 0, ...flatMapCount.splice(fromIndex, fromCount));
-      } else if (event.type === "sort") {
-        const { indexes } = event;
-        const flatMapIndexes = [];
-        let accumulatorIndex = 0;
-        for (let i = 0; i < flatMapCount.length; ++i) {
-          flatMapIndexes.push(accumulatorIndex);
-          accumulatorIndex += flatMapCount[i];
-        }
-        const copiedSource = rawArray.slice();
-        const newIndexes = [];
-        let destIndex = 0;
-        indexes.forEach((sourceIndex) => {
-          const realCount = flatMapCount[sourceIndex];
-          if (realCount === 0)
+        case 1 /* MOVE */: {
+          if (!this.emitter)
             return;
-          const realIndex = flatMapIndexes[sourceIndex];
-          for (let i = 0; i < realCount; ++i) {
-            newIndexes.push(realIndex + i);
-            rawArray[destIndex] = copiedSource[realIndex + i];
-            destIndex += 1;
+          const slotStartIndex = [];
+          let realIndex = 0;
+          for (const slotSize of this.slotSizes) {
+            slotStartIndex.push(realIndex);
+            realIndex += slotSize;
           }
-        });
-        view[NotifyKey]({
-          type: "sort",
-          indexes: newIndexes
-        });
-      } else {
-        assertExhausted(event, "unhandled collection event type");
-      }
-    }
-  }, debugName);
-}
-
-// src/trackeddata.ts
-function trackedData(initialValue, typeTag, implSpec, bindMethods, debugName) {
-  const fieldRecords = /* @__PURE__ */ new Map();
-  let subscriptionEvents = /* @__PURE__ */ new Map();
-  let observers = [];
-  let isDisposed = false;
-  let deferredTasks = [];
-  const subscriptionNode = {
-    $__id: uniqueid(),
-    [TypeTag]: "subscription",
-    [FlushKey]: flushSubscription,
-    item: null
-  };
-  name(subscriptionNode, `${debugName || "?"}:sub`);
-  function flushSubscription() {
-    assert(!isDisposed, "data already disposed");
-    let processed = false;
-    const toProcess = subscriptionEvents;
-    subscriptionEvents = /* @__PURE__ */ new Map();
-    toProcess.forEach((events, observer) => {
-      processed = true;
-      observer(events);
-    });
-    return processed;
-  }
-  function flush2() {
-    assert(!isDisposed, "data already disposed");
-    const toProcess = deferredTasks;
-    let processed = false;
-    deferredTasks = [];
-    toProcess.forEach((task) => {
-      processed = true;
-      task();
-    });
-    return processed;
-  }
-  function addDeferredTask(task) {
-    assert(!isDisposed, "data already disposed");
-    deferredTasks.push(task);
-    markDirty(proxy);
-  }
-  function notify2(event) {
-    assert(!isDisposed, "data already disposed");
-    if (observers.length > 0) {
-      observers.forEach((observer) => {
-        let observerEvents = subscriptionEvents.get(observer);
-        if (!observerEvents) {
-          observerEvents = [];
-          subscriptionEvents.set(observer, observerEvents);
+          let realCount = 0;
+          for (let i = 0; i < event.count; ++i) {
+            realCount += this.slotSizes[event.from + i];
+          }
+          applyEvent(this.slotSizes, event);
+          event.from = slotStartIndex[event.from];
+          event.count = realCount;
+          event.to = slotStartIndex[event.to];
+          this.emitter(event);
+          break;
         }
-        observerEvents.push(event);
-      });
-      markDirty(subscriptionNode);
-    }
-  }
-  function getSubscriptionNode() {
-    assert(!isDisposed, "data already disposed");
-    return subscriptionNode;
-  }
-  function observe(observer) {
-    assert(!isDisposed, "data already disposed");
-    if (observers.length === 0) {
-      registerNode(proxy);
-      registerNode(subscriptionNode);
-      addManualDep(proxy, subscriptionNode);
-      fieldRecords.forEach((field) => {
-        addOrderingDep(field, subscriptionNode);
-      });
-    }
-    observers.push(observer);
-    return () => {
-      observers = observers.filter((obs) => obs !== observer);
-      if (observers.length === 0) {
-        removeManualDep(proxy, subscriptionNode);
-        fieldRecords.forEach((field) => {
-          removeOrderingDep(field, subscriptionNode);
-        });
+        case 2 /* SORT */: {
+          if (!this.emitter)
+            return;
+          let realFrom = 0;
+          for (let i = 0; i < event.from; ++i) {
+            realFrom += this.slotSizes[i];
+          }
+          const nestedIndexes = [];
+          let index = 0;
+          for (let i = 0; i < this.slotSizes.length; ++i) {
+            const slotIndexes = [];
+            for (let j = 0; j < this.slotSizes[i]; ++j) {
+              slotIndexes.push(index);
+              index += 1;
+            }
+            nestedIndexes.push(slotIndexes);
+          }
+          applyEvent(this.slotSizes, event);
+          applyEvent(nestedIndexes, event);
+          const sortedIndexes = nestedIndexes.slice(event.from).flat();
+          event.from = realFrom;
+          event.indexes = sortedIndexes;
+          this.emitter(event);
+          break;
+        }
       }
-    };
-  }
-  function makeView(spec, viewDebugName) {
-    assert(!isDisposed, "data already disposed");
-    const viewArray = untracked(() => spec.initialize(initialValue));
-    const view = collection(viewArray, viewDebugName);
-    observe((events) => {
-      view[AddDeferredWorkKey](() => {
-        events.forEach((event) => {
-          spec.processEvent(view, event, viewArray);
-        });
-      });
     });
-    addManualDep(subscriptionNode, view);
-    return view;
+    __publicField(this, _a9);
+    __publicField(this, _b9);
+    this.collection = collection2;
+    this.children = [];
+    this.childIndex = /* @__PURE__ */ new Map();
+    this.childrenNodes = [];
+    this.slotSizes = [];
+    this.context = null;
+    this.isMounted = false;
+    this.emitter = null;
+    this[SymDebugName] = debugName ?? `rendercoll`;
+    this[SymRefcount] = 0;
   }
-  function processFieldChange(key) {
-    assert(!isDisposed, "data already disposed");
-    const field = getField(key);
-    markDirty(field);
-  }
-  function processFieldDelete(key) {
-    assert(!isDisposed, "data already disposed");
-    const field = getField(key);
-    markDirty(field);
-  }
-  function dispose3() {
-    assert(!isDisposed, "data already disposed");
-    fieldRecords.forEach((field) => {
-      removeOrderingDep(proxy, field);
-      if (observers.length > 0) {
-        removeOrderingDep(field, subscriptionNode);
-      }
-      disposeNode(field);
-    });
-    fieldRecords.clear();
-    disposeNode(proxy);
-    disposeNode(subscriptionNode);
-    observers.splice(0, observers.length);
-    subscriptionEvents.clear();
-    deferredTasks.splice(0, deferredTasks.length);
-    nextFlush().then(() => {
-      revokableProxy.revoke();
-    });
-    isDisposed = true;
-  }
-  const pseudoPrototype = {
-    $__id: uniqueid(),
-    [TypeTag]: "data",
-    [DataTypeTag]: typeTag,
-    [FlushKey]: flush2,
-    [AddDeferredWorkKey]: addDeferredTask,
-    [ObserveKey]: observe,
-    [NotifyKey]: notify2,
-    [GetSubscriptionNodeKey]: getSubscriptionNode,
-    [DisposeKey]: dispose3,
-    ...bindMethods({
-      observe,
-      notify: notify2,
-      makeView,
-      subscriptionNode,
-      processFieldChange,
-      processFieldDelete
-    })
-  };
-  function getField(key) {
-    let field = fieldRecords.get(key);
-    if (!field) {
-      field = {
-        model: proxy,
-        key,
-        $__id: uniqueid()
-      };
-      if (debugName)
-        name(field, debugName);
-      fieldRecords.set(key, field);
-      registerNode(field);
-      addOrderingDep(proxy, field);
-      if (observers.length > 0) {
-        addOrderingDep(field, subscriptionNode);
-      }
+  detach(emitter) {
+    for (const child of this.children) {
+      child.detach((event) => {
+        this.handleChildEvent(emitter, event, child);
+      });
     }
-    return field;
+    this.emitter = null;
   }
-  const revokableProxy = Proxy.revocable(initialValue, {
-    get(target, key) {
-      if (key in pseudoPrototype) {
-        return pseudoPrototype[key];
-      }
-      const field = getField(key);
-      addDepToCurrentCalculation(field);
-      return implSpec.get.call(proxy, notify2, target, key);
-    },
-    has(target, key) {
-      if (key in pseudoPrototype) {
-        return true;
-      }
-      const field = getField(key);
-      addDepToCurrentCalculation(field);
-      return implSpec.has.call(proxy, notify2, target, key);
-    },
-    set(target, key, value) {
-      if (key in pseudoPrototype) {
-        error(`Overriding ${String(key)} not supported`, key);
-        return false;
-      }
-      const changed = implSpec.set.call(proxy, notify2, target, key, value);
-      if (changed) {
-        const field = getField(key);
-        markDirty(field);
-      }
-      return changed;
-    },
-    deleteProperty(target, key) {
-      if (key in pseudoPrototype) {
-        error(`Deleting ${String(key)} not supported`, key);
-        return false;
-      }
-      const changed = implSpec.deleteProperty.call(proxy, notify2, target, key);
-      if (changed) {
-        const field = getField(key);
-        markDirty(field);
-      }
-      return changed;
+  attach(emitter) {
+    this.emitter = emitter;
+    for (const child of this.children) {
+      child.attach((event) => {
+        this.handleChildEvent(emitter, event, child);
+      });
     }
-  });
-  const proxy = revokableProxy.proxy;
-  subscriptionNode.item = proxy;
-  if (debugName)
-    name(proxy, debugName);
-  registerNode(proxy);
-  return proxy;
+  }
+  handleChildEvent(emitter, event, child) {
+    const index = this.childIndex.get(child);
+    shiftEvent(this.slotSizes, index, event);
+    applyEvent(this.childrenNodes, event);
+    emitter(event);
+  }
+  setContext(context) {
+    this.context = context;
+    untrackReads(() => {
+      for (const [index, item] of this.collection.entries()) {
+        this.slotSizes.push(0);
+        const child = renderJSXNode(item);
+        retain(child);
+        this.children.push(child);
+        this.childIndex.set(child, index);
+      }
+    });
+    for (const child of this.children) {
+      child.setContext(context);
+    }
+  }
+  onMount() {
+    this.isMounted = true;
+    for (const child of this.children) {
+      child.onMount();
+    }
+  }
+  onUnmount() {
+    for (const child of this.children) {
+      child.onUnmount();
+    }
+    this.isMounted = false;
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  [(_a9 = SymDebugName, _b9 = SymRefcount, SymAlive)]() {
+    retain(this.collection);
+    this.unsubscribe = this.collection.subscribe(this.handleCollectionEvent);
+  }
+  [SymDead]() {
+    this.unsubscribe?.();
+    release(this.collection);
+  }
+};
+function isCalculationRenderNode(val) {
+  return isCalculation(val);
 }
+function isCollectionOrViewRenderNode(val) {
+  return isCollection(val) || isView(val);
+}
+function isRenderNode(val) {
+  return val && val._type === RenderNodeType;
+}
+function renderJSXNode(jsxNode) {
+  if (isRenderNode(jsxNode)) {
+    return jsxNode;
+  }
+  if (isCalculationRenderNode(jsxNode)) {
+    return new CalculationRenderNode(jsxNode);
+  }
+  if (isCollectionOrViewRenderNode(jsxNode)) {
+    return new CollectionRenderNode(jsxNode);
+  }
+  if (jsxNode instanceof Element) {
+    return new ForeignRenderNode(jsxNode);
+  }
+  if (Array.isArray(jsxNode)) {
+    return new ArrayRenderNode(jsxNode.map((item) => renderJSXNode(item)));
+  }
+  if (jsxNode === null || jsxNode === void 0 || typeof jsxNode === "boolean") {
+    return emptyRenderNode;
+  }
+  if (typeof jsxNode === "function") {
+    warn("Rendering a function as JSX renders to nothing");
+    return emptyRenderNode;
+  }
+  if (typeof jsxNode === "symbol") {
+    warn("Rendering a symbol as JSX renders to nothing");
+    return emptyRenderNode;
+  }
+  if (typeof jsxNode === "string") {
+    return new TextRenderNode(jsxNode);
+  }
+  if (typeof jsxNode === "number" || typeof jsxNode === "bigint") {
+    return new TextRenderNode(jsxNode.toString());
+  }
+  warn("Unexpected JSX node type, rendering nothing", jsxNode);
+  return emptyRenderNode;
+}
+function renderJSXChildren(children) {
+  const childRenderNodes = [];
+  if (children) {
+    if (Array.isArray(children) && !isCollection(children) && !isView(children)) {
+      for (const child of children) {
+        childRenderNodes.push(renderJSXNode(child));
+      }
+    } else {
+      childRenderNodes.push(renderJSXNode(children));
+    }
+  }
+  return childRenderNodes;
+}
+function mount(target, node) {
+  const root = new IntrinsicRenderNode(target, void 0, [node], "root");
+  const context = /* @__PURE__ */ new Map();
+  retain(root);
+  root.setContext(context);
+  root.attach(noop);
+  root.onMount();
+  return () => {
+    root.onUnmount();
+    root.detach(noop);
+    release(root);
+  };
+}
+var _a10, _b10;
+var LifecycleObserverRenderNode = class {
+  constructor(nodeCallback, elementCallback, children, debugName) {
+    __publicField(this, "_type", RenderNodeType);
+    __publicField(this, "nodeCallback");
+    __publicField(this, "elementCallback");
+    __publicField(this, "child");
+    __publicField(this, "childNodes");
+    __publicField(this, _a10);
+    __publicField(this, _b10);
+    this.nodeCallback = nodeCallback;
+    this.elementCallback = elementCallback;
+    this.child = new ArrayRenderNode(children);
+    this.childNodes = [];
+    this[SymDebugName] = debugName ?? `lifecycleobserver`;
+    this[SymRefcount] = 0;
+  }
+  handleEvent(emitter, event) {
+    if (event.type === 0 /* SPLICE */) {
+      for (let i = 0; i < event.count; ++i) {
+        const node = this.childNodes[event.index + i];
+        this.nodeCallback?.(node, "remove" /* REMOVE */);
+        if (node instanceof Element) {
+          this.elementCallback?.(node, "remove" /* REMOVE */);
+        }
+      }
+      if (event.items) {
+        for (const node of event.items) {
+          this.nodeCallback?.(node, "add" /* ADD */);
+          if (node instanceof Element) {
+            this.elementCallback?.(node, "add" /* ADD */);
+          }
+        }
+      }
+    }
+    applyEvent(this.childNodes, event);
+    emitter(event);
+  }
+  detach(emitter) {
+    this.child.detach((event) => {
+      this.handleEvent(emitter, event);
+    });
+  }
+  attach(emitter) {
+    this.child.attach((event) => {
+      this.handleEvent(emitter, event);
+    });
+  }
+  setContext(context) {
+    this.child.setContext(context);
+  }
+  onMount() {
+    this.child.onMount();
+  }
+  onUnmount() {
+    this.child.onUnmount();
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  [(_a10 = SymDebugName, _b10 = SymRefcount, SymAlive)]() {
+    retain(this.child);
+  }
+  [SymDead]() {
+    release(this.child);
+  }
+};
+function LifecycleObserver({
+  nodeCallback,
+  elementCallback,
+  children
+}) {
+  return new LifecycleObserverRenderNode(nodeCallback, elementCallback, renderJSXChildren(children));
+}
+var _a11, _b11, _c6;
+var ComponentRenderNode = class {
+  constructor(Component2, props, children, debugName) {
+    __publicField(this, "_type", RenderNodeType);
+    __publicField(this, "Component");
+    __publicField(this, "props");
+    __publicField(this, "children");
+    __publicField(this, "result");
+    __publicField(this, "onMountCallbacks");
+    __publicField(this, "onUnmountCallbacks");
+    __publicField(this, "onContextCallbacks");
+    __publicField(this, "owned");
+    __publicField(this, "effects");
+    __publicField(this, _a11);
+    __publicField(this, _b11);
+    __publicField(this, _c6, noop);
+    this.Component = Component2;
+    this.props = props;
+    this.children = children;
+    this.owned = /* @__PURE__ */ new Set();
+    this.result = null;
+    this[SymDebugName] = debugName ?? `component`;
+    this[SymRefcount] = 0;
+  }
+  detach(emitter) {
+    assert(this.result, "Invariant: missing context");
+    this.result.detach(emitter);
+  }
+  attach(emitter) {
+    assert(this.result, "Invariant: missing context");
+    this.result.attach(emitter);
+  }
+  setContext(contextMap) {
+    assert(this[SymRefcount] > 0, "Invariant: dead ComponentRenderNode called setContext");
+    if (!this.result) {
+      let callbacksAllowed = true;
+      const lifecycle = {
+        onMount: (handler) => {
+          assert(callbacksAllowed, "onMount must be called in component body");
+          if (!this.onMountCallbacks)
+            this.onMountCallbacks = [];
+          this.onMountCallbacks.push(handler);
+        },
+        onUnmount: (handler) => {
+          assert(callbacksAllowed, "onUnmount must be called in component body");
+          if (!this.onUnmountCallbacks)
+            this.onUnmountCallbacks = [];
+          this.onUnmountCallbacks.push(handler);
+        },
+        onEffect: (handler, debugName) => {
+          assert(callbacksAllowed, "onUnmount must be called in component body");
+          if (!this.effects)
+            this.effects = [];
+          this.effects.push(effect(handler, debugName));
+        },
+        onContext: (context, handler) => {
+          assert(callbacksAllowed, "onContext must be called in component body");
+          if (!this.onContextCallbacks)
+            this.onContextCallbacks = /* @__PURE__ */ new Map();
+          let callbacks = this.onContextCallbacks.get(context);
+          if (!callbacks) {
+            callbacks = [];
+            this.onContextCallbacks.set(context, callbacks);
+          }
+          callbacks.push(handler);
+        }
+      };
+      let componentProps;
+      const Component2 = this.Component;
+      const children = this.children;
+      const props = this.props;
+      if (children.length === 0) {
+        componentProps = props || {};
+      } else if (children.length === 1) {
+        componentProps = props ? { ...props, children: children[0] } : { children: children[0] };
+      } else {
+        componentProps = props ? { ...props, children } : { children };
+      }
+      const jsxResult = trackCreates(this.owned, () => Component2(componentProps, lifecycle) || emptyRenderNode);
+      callbacksAllowed = false;
+      this.result = renderJSXNode(jsxResult);
+      retain(this.result);
+      for (const item of this.owned) {
+        retain(item);
+      }
+      if (this.effects) {
+        for (const eff of this.effects) {
+          markRoot(eff);
+          eff();
+        }
+      }
+    }
+    this.result.setContext(contextMap);
+    if (this.onContextCallbacks) {
+      for (const [
+        Context,
+        callbacks
+      ] of this.onContextCallbacks.entries()) {
+        const value = contextMap.has(Context) ? contextMap.get(Context) : Context._get();
+        for (const callback of callbacks) {
+          callback(value);
+        }
+      }
+    }
+  }
+  onMount() {
+    assert(this.result, "Invariant: missing context");
+    this.result.onMount();
+    if (this.onMountCallbacks) {
+      for (const callback of this.onMountCallbacks) {
+        callback();
+      }
+    }
+  }
+  onUnmount() {
+    assert(this.result, "Invariant: missing context");
+    this.result.onUnmount();
+    if (this.onUnmountCallbacks) {
+      for (const callback of this.onUnmountCallbacks) {
+        callback();
+      }
+    }
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  [(_a11 = SymDebugName, _b11 = SymRefcount, _c6 = SymAlive, SymDead)]() {
+    assert(this.result, "Invariant: missing context");
+    release(this.result);
+    if (this.effects) {
+      for (const eff of this.effects) {
+        unmarkRoot(eff);
+      }
+    }
+    for (const item of this.owned) {
+      release(item);
+    }
+  }
+};
+var _a12, _b12;
+var ContextRenderNode = class {
+  constructor(context, value, children, debugName) {
+    __publicField(this, "_type", RenderNodeType);
+    __publicField(this, "child");
+    __publicField(this, "context");
+    __publicField(this, "value");
+    __publicField(this, _a12);
+    __publicField(this, _b12);
+    this.context = context;
+    this.value = value;
+    this.child = new ArrayRenderNode(children);
+    this[SymDebugName] = debugName ?? `context`;
+    this[SymRefcount] = 0;
+  }
+  detach(emitter) {
+    this.child.detach(emitter);
+  }
+  attach(emitter) {
+    this.child.attach(emitter);
+  }
+  setContext(context) {
+    const derivedContext = new Map(context);
+    derivedContext.set(this.context, this.value);
+    this.child.setContext(derivedContext);
+  }
+  onMount() {
+    this.child.onMount();
+  }
+  onUnmount() {
+    this.child.onUnmount();
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  [(_a12 = SymDebugName, _b12 = SymRefcount, SymAlive)]() {
+    retain(this.child);
+  }
+  [SymDead]() {
+    release(this.child);
+  }
+};
+
+// src/view.ts
+var Fragment = ({
+  children
+}) => new ArrayRenderNode(renderJSXChildren(children));
+function createElement(type, props, ...children) {
+  if (typeof type === "string") {
+    const childNodes = [];
+    for (const jsxNode of children) {
+      childNodes.push(renderJSXNode(jsxNode));
+    }
+    return new IntrinsicRenderNode(type, props, childNodes);
+  }
+  return new ComponentRenderNode(type, props, children);
+}
+createElement.Fragment = Fragment;
 
 // src/model.ts
-function model(obj, debugName) {
-  if (typeof obj !== "object" || !obj) {
-    throw new InvariantError("model must be provided an object");
-  }
-  const knownFields = new Set(Object.keys(obj));
-  return trackedData(obj, "model", {
-    get: (_notify, target, key) => {
-      return target[key];
-    },
-    has: (notify2, target, key) => {
-      return knownFields.has(key);
-    },
-    set: (notify2, target, key, value) => {
-      const changed = !knownFields.has(key) || target[key] !== value;
-      target[key] = value;
-      if (changed) {
-        if (!knownFields.has(key)) {
-          knownFields.add(key);
-          notify2({ type: "add", key });
+var ModelPrototype = {
+  [SymDebugName]: "",
+  [SymRefcount]: 0,
+  [SymAlive]: noop,
+  [SymDead]: noop
+};
+function model(target, debugName) {
+  const proxyHandler = {
+    get: (dataAccessor, emitter, prop, receiver) => dataAccessor.get(prop, receiver),
+    has: (dataAccessor, emitter, prop) => dataAccessor.has(prop),
+    set: (dataAccessor, emitter, prop, value, receiver) => {
+      if (typeof prop === "string") {
+        if (dataAccessor.peekHas(prop)) {
+          emitter({ type: 1 /* SET */, prop, value });
+        } else {
+          emitter({ type: 0 /* ADD */, prop, value });
         }
-        notify2({ type: "set", key, value });
       }
-      return true;
+      return dataAccessor.set(prop, value, receiver);
     },
-    deleteProperty: (notify2, target, key) => {
-      const changed = knownFields.has(key);
-      delete target[key];
-      if (changed) {
-        knownFields.delete(key);
-        notify2({ type: "delete", key });
+    delete: (dataAccessor, emitter, prop) => {
+      if (typeof prop === "string" && dataAccessor.peekHas(prop)) {
+        emitter({ type: 2 /* DEL */, prop });
       }
-      return true;
+      return dataAccessor.delete(prop);
     }
-  }, ({ makeView, notify: notify2, observe, subscriptionNode }) => {
-    return {
-      [MakeModelViewKey]: makeView
-    };
-  }, debugName);
+  };
+  const modelInterface = makeTrackedData(target, proxyHandler, ModelPrototype, null, null, debugName);
+  return modelInterface.revocable.proxy;
 }
-model.keys = function keys(target, debugName) {
-  const keysSet = /* @__PURE__ */ new Set();
-  const view = target[MakeModelViewKey]({
-    initialize: (obj) => {
-      const keys2 = Object.keys(obj);
-      keys2.forEach((key) => keysSet.add(key));
-      return keys2;
-    },
-    processEvent: (modelView, event) => {
-      if (event.type === "add") {
-        const { key } = event;
-        if (typeof key === "number" || typeof key === "string") {
-          const stringKey = key.toString();
-          if (!keysSet.has(stringKey)) {
-            keysSet.add(stringKey);
-            modelView.push(stringKey);
-          }
-        }
-      } else if (event.type === "delete") {
-        const { key } = event;
-        if (typeof key === "number" || typeof key === "string") {
-          const stringKey = key.toString();
-          if (keysSet.has(stringKey)) {
-            keysSet.delete(stringKey);
-            modelView.reject((k) => k === stringKey);
-          }
-        }
+model.keys = function modelKeys(sourceModel, debugName) {
+  const sourceTDHandle = getTrackedDataHandle(sourceModel);
+  assert(sourceTDHandle, "missing tdHandle");
+  const initialKeys = Object.keys(sourceModel);
+  const derivedCollection = makeTrackedData(initialKeys, ViewHandler, makeViewPrototype(), sourceTDHandle.emitter, keysHandler, debugName);
+  return derivedCollection.revocable.proxy;
+};
+function* keysHandler(target, event) {
+  switch (event.type) {
+    case 2 /* DEL */: {
+      const index = target.indexOf(event.prop);
+      if (index !== -1) {
+        target.splice(index, 1);
+        yield {
+          type: 0 /* SPLICE */,
+          index,
+          count: 1,
+          items: []
+        };
       }
+      break;
     }
-  }, debugName);
-  return view;
-};
-model.dispose = function dispose2(m) {
-  m[DisposeKey]();
-};
+    case 0 /* ADD */: {
+      const length = target.length;
+      target.push(event.prop);
+      yield {
+        type: 0 /* SPLICE */,
+        index: length,
+        count: 0,
+        items: [event.prop]
+      };
+      break;
+    }
+    case 1 /* SET */:
+      break;
+    default:
+      assertExhausted(event);
+  }
+}
 
 // src/index.ts
 var src_default = createElement;
 var VERSION = true ? "0.6.6" : "development";
 export {
+  CalculationErrorType,
   Fragment,
   InvariantError,
   LifecycleObserver,
@@ -3957,21 +4163,22 @@ export {
   calc,
   collection,
   createContext,
+  createElement,
   debug2 as debug,
-  debugState,
   debugSubscribe,
   src_default as default,
   effect,
   flush,
   getLogLevel,
+  markRoot,
   model,
   mount,
-  nextFlush,
   ref,
   release,
   reset,
   retain,
   setLogLevel,
-  subscribe
+  subscribe,
+  unmarkRoot
 };
 //# sourceMappingURL=index.debug.mjs.map
