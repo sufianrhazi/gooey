@@ -1,6 +1,6 @@
 import {
     TrackedData,
-    makeTrackedData,
+    TrackedDataHandle,
     getTrackedDataHandle,
     ProxyHandler,
 } from './trackeddata';
@@ -198,7 +198,7 @@ export const ViewHandler: ProxyHandler<ArrayEvent<any>> = {
 };
 
 export function collection<T>(items: T[], debugName?: string): Collection<T> {
-    const handle = makeTrackedData<
+    const handle = new TrackedDataHandle<
         T[],
         CollectionImpl<T>,
         ArrayEvent<T>,
@@ -512,7 +512,7 @@ function makeFlatMapView<T, V>(
         }
     });
 
-    const derivedCollection = makeTrackedData<
+    const derivedCollection = new TrackedDataHandle<
         readonly V[],
         ViewImpl<V>,
         ArrayEvent<V>,

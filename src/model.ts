@@ -2,7 +2,7 @@ import * as log from './log';
 import {
     getTrackedDataHandle,
     TrackedData,
-    makeTrackedData,
+    TrackedDataHandle,
     ProxyHandler,
 } from './trackeddata';
 import { SymDebugName, SymRefcount, SymAlive, SymDead } from './engine';
@@ -57,7 +57,7 @@ export function model<T extends {}>(target: T, debugName?: string): Model<T> {
             return dataAccessor.delete(prop);
         },
     };
-    const modelInterface = makeTrackedData<
+    const modelInterface = new TrackedDataHandle<
         T,
         typeof ModelPrototype,
         ModelEvent,
@@ -75,7 +75,7 @@ model.keys = function modelKeys<T extends {}>(
 
     const initialKeys = Object.keys(sourceModel);
 
-    const derivedCollection = makeTrackedData<
+    const derivedCollection = new TrackedDataHandle<
         string[],
         ViewImpl<string>,
         ArrayEvent<string>,
