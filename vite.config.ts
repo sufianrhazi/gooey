@@ -23,7 +23,7 @@ export default defineConfig({
         },
     },
     define: {
-        DEBUG: false,
+        DEBUG: true,
         TEST: true,
         LIB_VERSION: '"development"',
     },
