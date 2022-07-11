@@ -674,10 +674,14 @@ export class Graph<TVertex> {
 
         for (let i = 0; i < this.topologicalOrdering.length; ++i) {
             const vertexId = this.topologicalOrdering[i];
-            if (vertexId === undefined) continue; // vertex was deleted
+            if (vertexId === undefined) {
+                continue; // vertex was deleted
+            }
 
             const isDirty = this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY;
-            if (!isDirty) continue;
+            if (!isDirty) {
+                continue;
+            }
 
             const vertex = this.vertexById[vertexId];
             log.assert(vertex, 'nonexistent vertex dirtied');
@@ -714,7 +718,10 @@ export class Graph<TVertex> {
             }
 
             if (this.toReorderIds.size > 0) {
-                i = this.resort(this.toReorderIds) - 1;
+                const reorderLowerBound = this.resort(this.toReorderIds);
+                if (reorderLowerBound < i) {
+                    i = reorderLowerBound;
+                }
                 this.toReorderIds.clear();
             }
 

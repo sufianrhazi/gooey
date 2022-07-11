@@ -1123,16 +1123,22 @@ suite('mount collection mapped view', () => {
     });
 
     test('collection can add items', () => {
-        const items = collection<string>([]);
+        const items = collection<string>([], 'source');
         mount(
             testRoot,
             <div>
-                {items.mapView((item) => (
-                    <span data-item>{item}</span>
-                ))}
-                {items.mapView((item) => (
-                    <span data-item>{item}</span>
-                ))}
+                {items.mapView(
+                    (item) => (
+                        <span data-item>{item}</span>
+                    ),
+                    'first'
+                )}
+                {items.mapView(
+                    (item) => (
+                        <span data-item>{item}</span>
+                    ),
+                    'second'
+                )}
             </div>
         );
         assert.is('', testRoot.textContent);

@@ -242,22 +242,18 @@ function collectionSplice<T>(
     if (startLength === endLength) {
         // invalidate fields affected by splice
         for (let i = index; i < index + items.length; ++i) {
-            const field = tdHandle.fieldMap.get(i.toString());
-            field?.set(tdHandle.target[i]);
+            tdHandle.fieldMap.set(i.toString(), tdHandle.target[i]);
         }
     } else {
         // invalidate fields affected by splice
         for (let i = index; i < endLength; ++i) {
-            const field = tdHandle.fieldMap.get(i.toString());
-            field?.set(tdHandle.target[i]);
+            tdHandle.fieldMap.set(i.toString(), tdHandle.target[i]);
         }
         // destroy any dead fields
         for (let i = endLength; i < startLength; ++i) {
-            const field = tdHandle.fieldMap.get(i.toString());
-            field?.set(undefined);
+            tdHandle.fieldMap.delete(i.toString());
         }
-        const field = tdHandle.fieldMap.get('length');
-        field?.set(endLength);
+        tdHandle.fieldMap.set('length', endLength);
     }
     tdHandle.emitter.addEvent({
         type: ArrayEventType.SPLICE,
@@ -371,12 +367,26 @@ function collectionSubscribe<T>(
     };
 }
 
-function collectionAlive() {
-    // TODO: what to do here?
+function collectionAlive<T>(this: Collection<T>) {
+    const tdHandle = getTrackedDataHandle<
+        T[],
+        CollectionImpl<T>,
+        ArrayEvent<T>,
+        ArrayEvent<T>
+    >(this);
+    log.assert(tdHandle, 'missing tdHandle');
+    retain(tdHandle.fieldMap);
 }
 
-function collectionDead() {
-    // TODO: what to do here?
+function collectionDead<T>(this: Collection<T>) {
+    const tdHandle = getTrackedDataHandle<
+        T[],
+        CollectionImpl<T>,
+        ArrayEvent<T>,
+        ArrayEvent<T>
+    >(this);
+    log.assert(tdHandle, 'missing tdHandle');
+    release(tdHandle.fieldMap);
 }
 
 function viewSort<T>(
@@ -425,8 +435,7 @@ function collectionSort<T>(
 
     // Invalidate sorted fields
     for (let i = 0; i < tdHandle.target.length; ++i) {
-        const field = tdHandle.fieldMap.get(i.toString());
-        field?.set(tdHandle.target[i]);
+        tdHandle.fieldMap.set(i.toString(), tdHandle.target[i]);
     }
     return this;
 }
@@ -449,8 +458,7 @@ function collectionReverse<T>(this: Collection<T>) {
 
     // Invalidate sorted fields
     for (let i = 0; i < tdHandle.target.length; ++i) {
-        const field = tdHandle.fieldMap.get(i.toString());
-        field?.set(tdHandle.target[i]);
+        tdHandle.fieldMap.set(i.toString(), tdHandle.target[i]);
     }
     return this;
 }
@@ -514,8 +522,71 @@ function makeFlatMapView<T, V>(
         ViewHandler,
         makeViewPrototype(),
         sourceTDHandle.emitter,
-        (target, event) =>
-            arrayEventFlatMap(slotSizes, flatMap, initialTransform, event),
+        function* (target, event) {
+            const lengthStart = initialTransform.length;
+            yield* arrayEventFlatMap(
+                slotSizes,
+                flatMap,
+                initialTransform,
+                event
+            );
+            // Invalidate affected ranges
+            switch (event.type) {
+                case ArrayEventType.SPLICE: {
+                    const lengthEnd = initialTransform.length;
+                    if (lengthStart === lengthEnd) {
+                        for (
+                            let i = event.index;
+                            i < event.index + event.count;
+                            ++i
+                        ) {
+                            derivedCollection.fieldMap.set(
+                                i.toString(),
+                                initialTransform[i]
+                            );
+                        }
+                    } else {
+                        for (let i = event.index; i < lengthEnd; ++i) {
+                            derivedCollection.fieldMap.set(
+                                i.toString(),
+                                initialTransform[i]
+                            );
+                        }
+                        for (let i = lengthEnd; i < lengthStart; ++i) {
+                            derivedCollection.fieldMap.delete(i.toString());
+                        }
+                        derivedCollection.fieldMap.set('length', lengthEnd);
+                    }
+                    break;
+                }
+                case ArrayEventType.MOVE: {
+                    const lowerBound = Math.min(event.from, event.to);
+                    const upperBound = Math.max(
+                        event.from + event.count,
+                        event.to + event.count
+                    );
+                    for (let i = lowerBound; i < upperBound; ++i) {
+                        derivedCollection.fieldMap.set(
+                            i.toString(),
+                            initialTransform[i]
+                        );
+                    }
+                    break;
+                }
+                case ArrayEventType.SORT:
+                    for (
+                        let i = event.from;
+                        i < event.from + event.indexes.length;
+                        ++i
+                    ) {
+                        derivedCollection.fieldMap.set(
+                            i.toString(),
+                            initialTransform[i]
+                        );
+                    }
+                    break;
+            }
+        },
         debugName ?? 'derived'
     );
 
@@ -525,13 +596,11 @@ function makeFlatMapView<T, V>(
 function viewAlive<T>(this: View<T>) {
     const tdHandle = getTrackedDataHandle(this);
     log.assert(tdHandle, 'missing tdHandle');
-    log.assert(tdHandle.consumer, 'missing tdHandle consumer');
-    retain(tdHandle.consumer);
+    retain(tdHandle.fieldMap);
 }
 
 function viewDead<T>(this: View<T>) {
     const tdHandle = getTrackedDataHandle(this);
     log.assert(tdHandle, 'missing tdHandle');
-    log.assert(tdHandle.consumer, 'missing tdHandle consumer');
-    release(tdHandle.consumer);
+    release(tdHandle.fieldMap);
 }

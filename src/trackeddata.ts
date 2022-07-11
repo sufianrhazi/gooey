@@ -19,12 +19,11 @@ import {
     SymRecalculate,
     SymRefcount,
 } from './engine';
+import { FieldMap } from './fieldmap';
 import * as log from './log';
 import { field as makeField, Field } from './field';
 
 const SymTDHandle = Symbol('tdHandle');
-
-type FieldMap = Map<string, Field<any>>;
 
 type SubscriptionEmitterHandler<TEmitEvent> = {
     bivarianceHack(events: TEmitEvent[], index: number): void;
@@ -36,7 +35,6 @@ export class SubscriptionEmitter<TEmitEvent>
     private subscribers: SubscriptionEmitterHandler<TEmitEvent>[];
     private subscriberOffset: number[];
     private events: TEmitEvent[];
-    private fieldMap: FieldMap;
     private isActive: boolean;
 
     // Processable
@@ -59,10 +57,6 @@ export class SubscriptionEmitter<TEmitEvent>
     [SymAlive]() {
         this.isActive = true;
         addVertex(this);
-        for (const field of this.fieldMap.values()) {
-            retain(field);
-            addSoftEdge(field, this);
-        }
     }
 
     [SymDead]() {
@@ -75,19 +69,14 @@ export class SubscriptionEmitter<TEmitEvent>
             'released subscription emitter that had subscribers'
         );
         this.events.splice(0, this.events.length);
-        for (const field of this.fieldMap.values()) {
-            removeSoftEdge(field, this);
-            release(field);
-        }
         removeVertex(this);
         this.isActive = false;
     }
 
-    constructor(fieldMap: FieldMap, debugName: string) {
+    constructor(debugName: string) {
         this.subscribers = [];
         this.subscriberOffset = [];
         this.events = [];
-        this.fieldMap = fieldMap;
         this.isActive = false;
         this[SymRefcount] = 0;
         this[SymProcessable] = true;
@@ -106,6 +95,13 @@ export class SubscriptionEmitter<TEmitEvent>
         if (this.isActive) {
             retain(field);
             addSoftEdge(field, this);
+        }
+    }
+
+    removeField(field: Field<any>) {
+        if (this.isActive) {
+            removeSoftEdge(field, this);
+            release(field);
         }
     }
 
@@ -138,7 +134,6 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
         TEmitEvent
     >;
     private events: TConsumeEvent[];
-    private fieldMap: FieldMap;
     private isActive: boolean;
     private sourceEmitter: SubscriptionEmitter<TConsumeEvent>;
     private transformEmitter: SubscriptionEmitter<TEmitEvent>;
@@ -164,10 +159,6 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
     [SymAlive]() {
         this.isActive = true;
         addVertex(this);
-        for (const field of this.fieldMap.values()) {
-            retain(field);
-            addSoftEdge(this, field);
-        }
         retain(this.sourceEmitter);
         addHardEdge(this.sourceEmitter, this);
         this.unsubscribe = this.sourceEmitter.subscribe((events, offset) => {
@@ -184,17 +175,12 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
             release(this.sourceEmitter);
         }
         this.events.splice(0, this.events.length);
-        for (const field of this.fieldMap.values()) {
-            removeSoftEdge(this, field);
-            release(field);
-        }
         removeVertex(this);
         this.isActive = false;
     }
 
     constructor(
         target: TData,
-        fieldMap: FieldMap,
         sourceEmitter: SubscriptionEmitter<TConsumeEvent>,
         transformEmitter: SubscriptionEmitter<TEmitEvent>,
         handler: SubscriptionConsumerHandler<TData, TConsumeEvent, TEmitEvent>,
@@ -203,7 +189,6 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
         this.target = target;
         this.handler = handler;
         this.events = [];
-        this.fieldMap = fieldMap;
         this.isActive = false;
         this.sourceEmitter = sourceEmitter;
         this.transformEmitter = transformEmitter;
@@ -224,6 +209,13 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
         if (this.isActive) {
             retain(field);
             addSoftEdge(this, field);
+        }
+    }
+
+    removeField(field: Field<any>) {
+        if (this.isActive) {
+            removeSoftEdge(this, field);
+            release(field);
         }
     }
 }
@@ -252,6 +244,7 @@ interface TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent> {
     fieldMap: FieldMap;
     keys: Set<string>;
     keysField: Field<number>;
+    dataAccessor: DataAccessor;
     emitter: SubscriptionEmitter<TEmitEvent>;
     consumer: null | SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>;
     target: any;
@@ -335,11 +328,10 @@ export function makeTrackedData<
     _debugName?: string
 ): TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent> {
     const debugName = _debugName ?? 'trackeddata';
-    const fieldMap: FieldMap = new Map();
+
     const keys = new Set<string>(Object.keys(target));
     const keysField = makeField(`${debugName}:@keys`, keys.size);
-
-    const emitter = new SubscriptionEmitter<TEmitEvent>(fieldMap, debugName);
+    const emitter = new SubscriptionEmitter<TEmitEvent>(debugName);
 
     let consumer: null | SubscriptionConsumer<
         TData,
@@ -349,13 +341,14 @@ export function makeTrackedData<
     if (derivedEmitter && handleEvent) {
         consumer = new SubscriptionConsumer(
             target,
-            fieldMap,
             derivedEmitter,
             emitter,
             handleEvent,
             debugName
         );
     }
+
+    const fieldMap = new FieldMap(consumer, emitter, debugName);
 
     const emitEvent = (event: TEmitEvent) => {
         emitter.addEvent(event);
@@ -381,14 +374,7 @@ export function makeTrackedData<
                 return (methods as any)[prop];
             }
             const value = Reflect.get(target, prop, receiver);
-            const field = getOrMakeField(
-                debugName,
-                fieldMap,
-                consumer,
-                emitter,
-                prop,
-                value
-            );
+            const field = fieldMap.getOrMake(prop, value);
             notifyRead(field);
             return value;
         },
@@ -406,14 +392,7 @@ export function makeTrackedData<
                 return true;
             }
             const value = Reflect.has(target, prop);
-            const field = getOrMakeField(
-                debugName,
-                fieldMap,
-                consumer,
-                emitter,
-                prop,
-                value
-            );
+            const field = fieldMap.getOrMake(prop, value);
             notifyRead(field);
             return value;
         },
@@ -429,14 +408,7 @@ export function makeTrackedData<
                 return false; // Prevent writes to owned methods
             }
             const hadProp = Reflect.has(target, prop);
-            const field = getOrMakeField(
-                debugName,
-                fieldMap,
-                consumer,
-                emitter,
-                prop,
-                value
-            );
+            const field = fieldMap.getOrMake(prop, value);
             field.set(value);
             if (!hadProp) {
                 keys.add(prop);
@@ -459,6 +431,7 @@ export function makeTrackedData<
             if (hadProp) {
                 keys.delete(prop);
                 keysField.set(keys.size);
+                fieldMap.delete(prop);
             }
             return result;
         },
@@ -487,6 +460,7 @@ export function makeTrackedData<
         TConsumeEvent
     > = {
         fieldMap: fieldMap,
+        dataAccessor,
         keysField: keysField,
         keys: keys,
         target,
@@ -496,22 +470,4 @@ export function makeTrackedData<
     };
     notifyCreate(revocable.proxy);
     return tdHandle;
-}
-
-function getOrMakeField(
-    debugPrefix: string,
-    fieldMap: FieldMap,
-    consumer: null | SubscriptionConsumer<any, any, any>,
-    emitter: SubscriptionEmitter<any>,
-    prop: string,
-    value: any
-) {
-    let field = fieldMap.get(prop);
-    if (!field) {
-        field = makeField(`${debugPrefix}:${prop}`, value);
-        fieldMap.set(prop, field);
-        consumer?.addField(field);
-        emitter.addField(field);
-    }
-    return field;
 }
