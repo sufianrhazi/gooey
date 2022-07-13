@@ -3,8 +3,7 @@ import Gooey, { calc, mount, model } from '../..';
 const app = document.getElementById('app');
 if (!app) throw new Error('app not found');
 
-const getResults = (perfInfo: any[]) => {
-    const type = 'perf';
+const getResults = (perfInfo: any[], type: 'perf' | 'used') => {
     const record = perfInfo.find((r) => r.type === type);
     if (record === undefined) return { avg: NaN, median: NaN };
     const values = record.value;
@@ -19,9 +18,9 @@ const getResults = (perfInfo: any[]) => {
     return { avg, median };
 };
 
-const div = (num: any[], denom: any[]) => {
-    const a = getResults(num);
-    const b = getResults(denom);
+const div = (num: any[], denom: any[], type: 'perf' | 'used') => {
+    const a = getResults(num, type);
+    const b = getResults(denom, type);
     return { avg: a.avg / b.avg, median: a.median / b.median };
 };
 
@@ -55,9 +54,12 @@ const Results = ({ oneData, twoData }: { oneData: any; twoData: any }) => {
             <tr>
                 <td />
                 <td />
-                <th>Case One</th>
-                <th>Case Two</th>
-                <th>Two / One</th>
+                <th>Clock One</th>
+                <th>Clock Two</th>
+                <th>Clock Two / One</th>
+                <th>Memory One</th>
+                <th>Memory Two</th>
+                <th>Memory Two / One</th>
             </tr>
             {[...keys].map((key) => {
                 const one = oneParsed.get(key);
@@ -72,17 +74,36 @@ const Results = ({ oneData, twoData }: { oneData: any; twoData: any }) => {
                         </th>
                         <td>
                             {one?.perfInfo && (
-                                <Result {...getResults(one.perfInfo)} />
+                                <Result {...getResults(one.perfInfo, 'perf')} />
                             )}
                         </td>
                         <td>
                             {two?.perfInfo && (
-                                <Result {...getResults(two.perfInfo)} />
+                                <Result {...getResults(two.perfInfo, 'perf')} />
                             )}
                         </td>
                         <td>
                             {one?.perfInfo && two?.perfInfo && (
-                                <Result {...div(two.perfInfo, one.perfInfo)} />
+                                <Result
+                                    {...div(two.perfInfo, one.perfInfo, 'perf')}
+                                />
+                            )}
+                        </td>
+                        <td>
+                            {one?.perfInfo && (
+                                <Result {...getResults(one.perfInfo, 'used')} />
+                            )}
+                        </td>
+                        <td>
+                            {two?.perfInfo && (
+                                <Result {...getResults(two.perfInfo, 'used')} />
+                            )}
+                        </td>
+                        <td>
+                            {one?.perfInfo && two?.perfInfo && (
+                                <Result
+                                    {...div(two.perfInfo, one.perfInfo, 'used')}
+                                />
                             )}
                         </td>
                     </tr>
