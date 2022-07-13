@@ -1,7 +1,7 @@
 export declare enum ArrayEventType {
-    SPLICE = 0,
-    MOVE = 1,
-    SORT = 2
+    SPLICE = "splice",
+    MOVE = "move",
+    SORT = "sort"
 }
 export declare type ArrayEvent<T> = {
     type: ArrayEventType.SPLICE;

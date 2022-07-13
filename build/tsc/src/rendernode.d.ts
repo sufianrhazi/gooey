@@ -5,7 +5,7 @@ import { Collection, View } from './collection';
 export interface ComponentLifecycle {
     onMount: (callback: () => void) => void;
     onUnmount: (callback: () => void) => void;
-    onEffect: (callback: () => void, debugName?: string) => void;
+    onDestroy: (callback: () => void) => void;
     onContext: <TContext>(context: Context<TContext>, handler: (val: TContext) => void) => void;
 }
 declare const UnusedSymbolForChildrenOmission: unique symbol;
@@ -243,9 +243,9 @@ export declare class ComponentRenderNode<TProps> implements RenderNode {
     result: RenderNode | null;
     onMountCallbacks?: (() => void)[];
     onUnmountCallbacks?: (() => void)[];
+    onDestroyCallbacks?: (() => void)[];
     onContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;
     owned: Set<Retainable>;
-    effects?: Calculation<void>[];
     constructor(Component: Component<TProps>, props: TProps | null | undefined, children: JSX.Node[], debugName?: string);
     detach(emitter: NodeEmitter): void;
     attach(emitter: NodeEmitter): void;

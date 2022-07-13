@@ -8,11 +8,11 @@ declare const ModelPrototype: {
     [SymDead]: () => void;
 };
 export declare enum ModelEventType {
-    ADD = 0,
-    SET = 1,
-    DEL = 2
+    ADD = "add",
+    SET = "set",
+    DEL = "del"
 }
-declare type ModelEvent = {
+export declare type ModelEvent = {
     type: ModelEventType.ADD;
     prop: string;
     value: any;
@@ -23,10 +23,12 @@ declare type ModelEvent = {
 } | {
     type: ModelEventType.DEL;
     prop: string;
+    value?: undefined;
 };
 export declare type Model<T extends {}> = TrackedData<T, typeof ModelPrototype, ModelEvent, ModelEvent>;
 export declare function model<T extends {}>(target: T, debugName?: string): Model<T>;
 export declare namespace model {
+    var subscribe: <T extends {}>(sourceModel: Model<T>, handler: (event: ModelEvent[]) => void, debugName?: string | undefined) => () => void;
     var keys: <T extends {}>(sourceModel: Model<T>, debugName?: string | undefined) => View<string, ModelEvent>;
 }
 export {};

@@ -1,9 +1,9 @@
 import * as log from './log';
 
 export enum ArrayEventType {
-    SPLICE,
-    MOVE,
-    SORT,
+    SPLICE = 'splice',
+    MOVE = 'move',
+    SORT = 'sort',
 }
 
 export type ArrayEvent<T> =

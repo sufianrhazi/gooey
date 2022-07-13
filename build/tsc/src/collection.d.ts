@@ -16,7 +16,7 @@ export interface CollectionImpl<T> extends Retainable {
     mapView: <V>(fn: (val: T) => V, debugName?: string | undefined) => View<V, ArrayEvent<T>>;
     filterView: (fn: (val: T) => boolean, debugName?: string | undefined) => View<T, ArrayEvent<T>>;
     flatMapView: <V>(fn: (val: T) => V[], debugName?: string | undefined) => View<V, ArrayEvent<T>>;
-    subscribe: (handler: (event: ArrayEvent<T>) => void) => () => void;
+    subscribe: (handler: (event: ArrayEvent<T>[]) => void) => () => void;
 }
 export declare function makeCollectionPrototype<T>(): CollectionImpl<T>;
 export interface ViewImpl<T> extends Retainable {
@@ -32,7 +32,7 @@ export interface ViewImpl<T> extends Retainable {
     mapView: <V>(fn: (val: T) => V, debugName?: string | undefined) => View<V, ArrayEvent<T>>;
     filterView: (fn: (val: T) => boolean, debugName?: string | undefined) => View<T, ArrayEvent<T>>;
     flatMapView: <V>(fn: (val: T) => V[], debugName?: string | undefined) => View<V, ArrayEvent<T>>;
-    subscribe: (handler: (event: ArrayEvent<T>) => void) => () => void;
+    subscribe: (handler: (event: ArrayEvent<T>[]) => void) => () => void;
 }
 export declare function makeViewPrototype<T>(): ViewImpl<T>;
 export declare type Collection<T> = TrackedData<T[], CollectionImpl<T>, ArrayEvent<T>, ArrayEvent<T>>;

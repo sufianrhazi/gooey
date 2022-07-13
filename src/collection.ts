@@ -44,7 +44,7 @@ export interface CollectionImpl<T> extends Retainable {
         debugName?: string | undefined
     ) => View<V, ArrayEvent<T>>;
 
-    subscribe: (handler: (event: ArrayEvent<T>) => void) => () => void;
+    subscribe: (handler: (event: ArrayEvent<T>[]) => void) => () => void;
 }
 
 export function makeCollectionPrototype<T>(): CollectionImpl<T> {
@@ -102,7 +102,7 @@ export interface ViewImpl<T> extends Retainable {
         debugName?: string | undefined
     ) => View<V, ArrayEvent<T>>;
 
-    subscribe: (handler: (event: ArrayEvent<T>) => void) => () => void;
+    subscribe: (handler: (event: ArrayEvent<T>[]) => void) => () => void;
 }
 
 export function makeViewPrototype<T>(): ViewImpl<T> {
@@ -223,22 +223,25 @@ function viewSplice<T>(
     log.fail('Cannot mutate readonly view');
 }
 
-function collectionSplice<T>(
-    this: Collection<T>,
+function spliceInner<T>(
+    tdHandle: TrackedDataHandle<
+        T[],
+        CollectionImpl<T>,
+        ArrayEvent<T>,
+        ArrayEvent<T>
+    >,
     index: number,
-    count = 0,
+    count: number,
     ...items: T[]
 ) {
-    const tdHandle = getTrackedDataHandle(this);
-    log.assert(tdHandle, 'splice operation lacking tdHandle');
-    const startLength = this.length;
+    const startLength = tdHandle.target.length;
     const removed = Array.prototype.splice.call(
         tdHandle.target,
         index,
         count,
         ...items
     );
-    const endLength = this.length;
+    const endLength = tdHandle.target.length;
     if (startLength === endLength) {
         // invalidate fields affected by splice
         for (let i = index; i < index + items.length; ++i) {
@@ -264,13 +267,26 @@ function collectionSplice<T>(
     return removed;
 }
 
+function collectionSplice<T>(
+    this: Collection<T>,
+    index: number,
+    count = 0,
+    ...items: T[]
+) {
+    const tdHandle = getTrackedDataHandle(this);
+    log.assert(tdHandle, 'missing tdHandle');
+    return spliceInner(tdHandle, index, count, ...items);
+}
+
 function viewPush<T>(this: View<T>, ...items: T[]): never {
     log.fail('Cannot mutate readonly view');
 }
 
 function collectionPush<T>(this: Collection<T>, ...items: T[]) {
-    collectionSplice.call(this, this.length, 0, ...items);
-    return this.length;
+    const tdHandle = getTrackedDataHandle(this);
+    log.assert(tdHandle, 'missing tdHandle');
+    spliceInner(tdHandle, tdHandle.target.length, 0, ...items);
+    return tdHandle.target.length;
 }
 
 function viewPop<T>(this: View<T>): never {
@@ -278,7 +294,9 @@ function viewPop<T>(this: View<T>): never {
 }
 
 function collectionPop<T>(this: Collection<T>): T | undefined {
-    return collectionSplice.call(this, this.length - 1, 1)[0];
+    const tdHandle = getTrackedDataHandle(this);
+    log.assert(tdHandle, 'missing tdHandle');
+    return spliceInner(tdHandle, tdHandle.target.length - 1, 1)[0];
 }
 
 function viewShift<T>(this: View<T>): never {
@@ -286,7 +304,9 @@ function viewShift<T>(this: View<T>): never {
 }
 
 function collectionShift<T>(this: Collection<T>): T | undefined {
-    return collectionSplice.call(this, 0, 1)[0];
+    const tdHandle = getTrackedDataHandle(this);
+    log.assert(tdHandle, 'missing tdHandle');
+    return spliceInner(tdHandle, 0, 1)[0];
 }
 
 function viewUnshift<T>(this: View<T>, ...items: T[]): never {
@@ -294,26 +314,31 @@ function viewUnshift<T>(this: View<T>, ...items: T[]): never {
 }
 
 function collectionUnshift<T>(this: Collection<T>, ...items: T[]) {
-    collectionSplice.call(this, 0, 0, ...items);
-    return this.length;
+    const tdHandle = getTrackedDataHandle(this);
+    log.assert(tdHandle, 'missing tdHandle');
+    spliceInner(tdHandle, 0, 0, ...items);
+    return tdHandle.target.length;
 }
 
 function collectionReject<T>(
     this: Collection<T>,
     pred: (val: T) => boolean
 ): T[] {
+    const tdHandle = getTrackedDataHandle(this);
+    log.assert(tdHandle, 'missing tdHandle');
+
     let start: null | number = null;
-    let length = this.length;
+    let length = tdHandle.target.length;
     let toRemove = false;
     const removed: T[] = [];
     for (let i = 0; i < length; ++i) {
-        toRemove = pred(this[i]);
+        toRemove = pred(tdHandle.target[i]);
         if (toRemove && start === null) {
             start = i;
         }
         if (!toRemove && start !== null) {
             const count = i - start;
-            removed.push(...this.splice(start, count));
+            removed.push(...spliceInner(tdHandle, start, count));
             length -= count;
             i -= count;
             start = null;
@@ -321,7 +346,7 @@ function collectionReject<T>(
     }
     if (start !== null) {
         const count = length - start;
-        removed.push(...this.splice(start, count));
+        removed.push(...spliceInner(tdHandle, start, count));
     }
     return removed;
 }
@@ -346,7 +371,7 @@ function collectionMoveSlice<T>(
 
 function collectionSubscribe<T>(
     this: Collection<T> | View<T>,
-    handler: (event: ArrayEvent<T>) => void
+    handler: (event: ArrayEvent<T>[]) => void
 ) {
     const tdHandle = getTrackedDataHandle<
         readonly T[],
@@ -357,9 +382,7 @@ function collectionSubscribe<T>(
     log.assert(tdHandle, 'subscribe missing tdHandle');
     retain(tdHandle.emitter);
     const unsubscribe = tdHandle.emitter.subscribe((events, offset) => {
-        for (let i = offset; i < events.length; ++i) {
-            handler(events[i]);
-        }
+        handler(offset > 0 ? events.slice(offset) : events);
     });
     return () => {
         unsubscribe();

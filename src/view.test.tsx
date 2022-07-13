@@ -1,7 +1,6 @@
 import Gooey, {
     Component,
     calc,
-    ref,
     collection,
     flush,
     model,
@@ -482,96 +481,6 @@ suite('mount components', () => {
         assert.is(child, queried);
     });
 
-    test('components are provided an onEffect callback which is called only while component is mounted', () => {
-        const state = model({
-            showingChild: false,
-            counter: 0,
-        });
-        const sequence: string[] = [];
-        const Child: Component<{}> = (
-            props,
-            { onMount, onUnmount, onEffect }
-        ) => {
-            sequence.push('render');
-            onMount(() => {
-                sequence.push('onMount');
-            });
-            onUnmount(() => {
-                sequence.push('onUnmount');
-            });
-            onEffect(() => {
-                sequence.push(`effect ${state.counter}`);
-            });
-            return <p id="child">child</p>;
-        };
-        const Parent: Component<{}> = (props, { onMount }) => {
-            return (
-                <div id="parent">
-                    {calc(() => state.showingChild && <Child />)}
-                </div>
-            );
-        };
-
-        mount(testRoot, <Parent />);
-
-        assert.deepEqual([], sequence);
-
-        state.showingChild = true;
-        flush();
-
-        assert.deepEqual(['render', 'effect 0', 'onMount'], sequence);
-
-        state.counter += 1;
-        flush();
-
-        assert.deepEqual(
-            ['render', 'effect 0', 'onMount', 'effect 1'],
-            sequence
-        );
-        state.counter += 1;
-        flush();
-
-        assert.deepEqual(
-            ['render', 'effect 0', 'onMount', 'effect 1', 'effect 2'],
-            sequence
-        );
-        flush();
-        assert.deepEqual(
-            ['render', 'effect 0', 'onMount', 'effect 1', 'effect 2'],
-            sequence
-        );
-
-        state.showingChild = false;
-        flush();
-
-        assert.deepEqual(
-            [
-                'render',
-                'effect 0',
-                'onMount',
-                'effect 1',
-                'effect 2',
-                'onUnmount',
-            ],
-            sequence
-        );
-
-        state.counter += 1;
-        flush();
-
-        assert.deepEqual(
-            [
-                'render',
-                'effect 0',
-                'onMount',
-                'effect 1',
-                'effect 2',
-                'onUnmount',
-            ],
-            sequence
-        );
-    });
-
     test('the children prop is a non-array single value when components receive a single child', () => {
         const Parent: Component<{ children: (val: string) => string }> = ({
             children,
@@ -607,49 +516,6 @@ suite('mount components', () => {
         );
         mount(testRoot, <Parent />);
         assert.is('empty', testRoot.querySelector('#parent')?.textContent);
-    });
-
-    test('onEffect is called *after* mounted calculations are updated', () => {
-        return;
-        // TODO: kill the concept of ordered nodes; they don't make sense -- add an <div data-what={after(calc())}> or something
-        const operations: string[] = [];
-        const data = model({
-            value: 'before',
-        });
-        const Child: Component<{}> = (_props, { onMount, onEffect }) => {
-            const divRef = ref<HTMLDivElement>();
-
-            onEffect(() => {
-                operations.push(
-                    `child:onEffect1:${data.value}:${
-                        divRef.current!.textContent
-                    }`
-                );
-            });
-
-            return (
-                <div ref={divRef}>
-                    {calc(() => {
-                        operations.push(`child:calc1:${data.value}`);
-                        return data.value;
-                    })}
-                </div>
-            );
-        };
-
-        mount(testRoot, <Child />);
-        data.value = 'after';
-        flush();
-
-        assert.deepEqual(
-            [
-                'child:calc1:before',
-                'child:onEffect1:before:before',
-                'child:calc1:after',
-                'child:onEffect1:after:after',
-            ],
-            operations
-        );
     });
 
     test('onUnmount called in correct order (children before parent) when entire tree is unmounted', () => {
@@ -2991,10 +2857,9 @@ if (2 < 1) {
 
 suite('automatic memory management', () => {
     test('component with calculation, effect leaves empty graph', () => {
-        let effectHit = false;
         const Item: Component<{ name: string }> = (
             { name },
-            { onMount, onEffect }
+            { onMount }
         ) => {
             const state = model(
                 {
@@ -3006,11 +2871,6 @@ suite('automatic memory management', () => {
             onMount(() => {
                 state.mountCount += 1;
             });
-            onEffect(() => {
-                if (state.count > 2) {
-                    effectHit = true;
-                }
-            }, 'item:effect');
             return (
                 <div>
                     <button
@@ -3086,7 +2946,6 @@ suite('automatic memory management', () => {
             'cool: 2',
             testRoot.querySelector('[data-mount-count]')?.textContent
         );
-        assert.isFalsy(effectHit);
         testRoot
             .querySelector('button')
             ?.dispatchEvent(new MouseEvent('click'));
@@ -3101,7 +2960,6 @@ suite('automatic memory management', () => {
             'cool: 3',
             testRoot.querySelector('[data-mount-count]')?.textContent
         );
-        assert.isTruthy(effectHit);
         unmount();
 
         assert.deepEqual([], debugGetGraph()._test_getVertices());

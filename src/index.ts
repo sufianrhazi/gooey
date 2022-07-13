@@ -2,10 +2,17 @@ export { getLogLevel, setLogLevel } from './log';
 export type { LogLevel } from './log';
 import { createElement } from './view';
 export { createElement, LifecycleObserver, Fragment, mount } from './view';
-export type { Component } from './rendernode';
-export type { Model } from './model';
-export { model } from './model';
+export type {
+    Component,
+    LifecycleObserverNodeCallback,
+    LifecycleObserverElementCallback,
+    LifecycleObserverEventType,
+} from './rendernode';
+export type { Model, ModelEvent } from './model';
+export { model, ModelEventType } from './model';
 export type { Collection, View } from './collection';
+export type { ArrayEvent } from './arrayevent';
+export { ArrayEventType } from './arrayevent';
 export { collection } from './collection';
 export { calc, effect, CalculationErrorType } from './calc';
 export type { Calculation } from './calc';

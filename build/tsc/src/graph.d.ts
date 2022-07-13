@@ -69,13 +69,8 @@ export declare class Graph<TVertex> {
     private markVertexDirtyInner;
     clearVertexDirty(vertex: TVertex): void;
     private clearVertexDirtyInner;
-    markVertexRoot(vertex: TVertex): void;
     markVertexCycleInformed(vertex: TVertex): void;
-    private markReachesRootRecursive;
-    clearVertexRoot(vertex: TVertex): void;
-    private reachesRoot;
     private cycleAwareAdjacency;
-    private checkReachesRootRecursive;
     addEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor): void;
     hasEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor): boolean;
     removeEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor): void;

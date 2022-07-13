@@ -489,17 +489,26 @@ const App = () => (
                 <p>Unmount and remount 100 retained components</p>
             </TestCase>
             <TestCase
-                name="Component effect"
+                name="Component model subscribe"
                 test={(el) => {
                     const state = model({ value: 0 });
                     const MyComponent: Component<{ name: string }> = (
                         { name },
-                        { onMount, onEffect }
+                        { onMount, onDestroy }
                     ) => {
                         const div = document.createElement('div');
-                        onEffect(() => {
-                            div.textContent = name + state.value;
-                        });
+                        const unsubscribe = model.subscribe(
+                            state,
+                            (effects) => {
+                                for (const effect of effects) {
+                                    if (effect.prop === 'value') {
+                                        div.textContent = name + effect.value;
+                                    }
+                                }
+                            }
+                        );
+                        onDestroy(unsubscribe);
+
                         return <>{div}</>;
                     };
                     const unmount = mount(

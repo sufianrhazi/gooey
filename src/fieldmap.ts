@@ -48,7 +48,7 @@ export class FieldMap implements Retainable {
 
     set(prop: string, val: any) {
         const field = this.getOrMake(prop, val);
-        field.set(val);
+        return field.set(val);
     }
 
     delete(prop: string) {

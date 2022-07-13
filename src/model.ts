@@ -5,7 +5,14 @@ import {
     TrackedDataHandle,
     ProxyHandler,
 } from './trackeddata';
-import { SymDebugName, SymRefcount, SymAlive, SymDead } from './engine';
+import {
+    retain,
+    release,
+    SymDebugName,
+    SymRefcount,
+    SymAlive,
+    SymDead,
+} from './engine';
 import { ViewHandler, ViewImpl, makeViewPrototype, View } from './collection';
 import { noop } from './util';
 import { ArrayEvent, ArrayEventType } from './arrayevent';
@@ -18,15 +25,15 @@ const ModelPrototype = {
 };
 
 export enum ModelEventType {
-    ADD,
-    SET,
-    DEL,
+    ADD = 'add',
+    SET = 'set',
+    DEL = 'del',
 }
 
-type ModelEvent =
+export type ModelEvent =
     | { type: ModelEventType.ADD; prop: string; value: any }
     | { type: ModelEventType.SET; prop: string; value: any }
-    | { type: ModelEventType.DEL; prop: string };
+    | { type: ModelEventType.DEL; prop: string; value?: undefined };
 
 export type Model<T extends {}> = TrackedData<
     T,
@@ -65,6 +72,23 @@ export function model<T extends {}>(target: T, debugName?: string): Model<T> {
     >(target, proxyHandler, ModelPrototype, null, null, debugName);
     return modelInterface.revocable.proxy;
 }
+
+model.subscribe = function modelSubscribe<T extends {}>(
+    sourceModel: Model<T>,
+    handler: (event: ModelEvent[]) => void,
+    debugName?: string
+): () => void {
+    const sourceTDHandle = getTrackedDataHandle(sourceModel);
+    log.assert(sourceTDHandle, 'missing tdHandle');
+    retain(sourceTDHandle.emitter);
+    const unsubscribe = sourceTDHandle.emitter.subscribe((events, offset) => {
+        handler(offset > 0 ? events.slice(offset) : events);
+    });
+    return () => {
+        unsubscribe();
+        release(sourceTDHandle.emitter);
+    };
+};
 
 model.keys = function modelKeys<T extends {}>(
     sourceModel: Model<T>,

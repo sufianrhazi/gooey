@@ -1,4 +1,5 @@
 import Gooey, {
+    LifecycleObserver,
     Component,
     Ref,
     ref,
@@ -7,33 +8,33 @@ import Gooey, {
     Collection,
     collection,
     calc,
+    setLogLevel,
 } from '../../index';
 
-const Log: Component<{ messages: Collection<string> }> = (
-    { messages },
-    { onEffect }
-) => {
+const Log: Component<{ messages: Collection<string> }> = ({ messages }) => {
     const logRef = ref<HTMLPreElement>();
-
-    onEffect(() => {
-        if (logRef.current && messages.length > 0) {
-            logRef.current.scrollTop = logRef.current.scrollHeight;
-        }
-    });
 
     return (
         <pre class="log" ref={logRef}>
-            {messages.mapView((message) => (
-                <div>
-                    {new Date().toISOString().split('T')[1].slice(0, -1)}:{' '}
-                    {message}
-                </div>
-            ))}
+            <LifecycleObserver
+                elementCallback={() => {
+                    if (logRef.current) {
+                        logRef.current.scrollTop = logRef.current.scrollHeight;
+                    }
+                }}
+            >
+                {messages.mapView((message) => (
+                    <div>
+                        {new Date().toISOString().split('T')[1].slice(0, -1)}:{' '}
+                        {message}
+                    </div>
+                ))}
+            </LifecycleObserver>
         </pre>
     );
 };
 
-const Checkbox: Component<{}> = (props, { onEffect }) => {
+const Checkbox: Component<{}> = (props, { onDestroy }) => {
     const state = model({
         checked: false,
         disabled: false,
@@ -47,10 +48,19 @@ const Checkbox: Component<{}> = (props, { onEffect }) => {
     }
     const logEvent = (name: string) => () => log(name);
 
-    onEffect(() => {
-        state.messages.push(
-            `state change: checked=${state.checked}, disabled=${state.disabled}, indeterminate=${state.indeterminate}`
-        );
+    const unsubscribe = model.subscribe(state, (events) => {
+        for (const event of events) {
+            state.messages.push(
+                `state change: ${event.type}:${event.prop}=${event.value}`
+            );
+        }
+    });
+    onDestroy(() => {
+        unsubscribe();
+    });
+
+    onDestroy(() => {
+        unsubscribe();
     });
 
     const onChange = () => {
@@ -111,7 +121,7 @@ const Checkbox: Component<{}> = (props, { onEffect }) => {
     );
 };
 
-const Radio: Component<{}> = (props, { onEffect }) => {
+const Radio: Component<{}> = (props, { onDestroy }) => {
     const state = model({
         selected: 'one',
         disabledOne: false,
@@ -124,10 +134,15 @@ const Radio: Component<{}> = (props, { onEffect }) => {
     }
     const logEvent = (name: string) => () => log(name);
 
-    onEffect(() => {
-        state.messages.push(
-            `state change: selected=${state.selected}, disabledOne=${state.disabledOne}, disabledTwo=${state.disabledTwo}`
-        );
+    const unsubscribe = model.subscribe(state, (events) => {
+        for (const event of events) {
+            state.messages.push(
+                `state change: ${event.type}:${event.prop}=${event.value}`
+            );
+        }
+    });
+    onDestroy(() => {
+        unsubscribe();
     });
 
     const onChange = (e: Event) => {
@@ -205,7 +220,7 @@ const Radio: Component<{}> = (props, { onEffect }) => {
 
 const ButtonLike: Component<{ inputType: 'button' | 'reset' | 'submit' }> = (
     { inputType },
-    { onEffect }
+    { onDestroy }
 ) => {
     const state = model({
         disabled: false,
@@ -218,8 +233,15 @@ const ButtonLike: Component<{ inputType: 'button' | 'reset' | 'submit' }> = (
     }
     const logEvent = (name: string) => () => log(name);
 
-    onEffect(() => {
-        state.messages.push(`state change: disabled=${state.disabled}`);
+    const unsubscribe = model.subscribe(state, (events) => {
+        for (const event of events) {
+            state.messages.push(
+                `state change: ${event.type}:${event.prop}=${event.value}`
+            );
+        }
+    });
+    onDestroy(() => {
+        unsubscribe();
     });
 
     const onClick = () => {
@@ -255,7 +277,7 @@ const ButtonLike: Component<{ inputType: 'button' | 'reset' | 'submit' }> = (
     );
 };
 
-const Color: Component<{}> = (props, { onEffect }) => {
+const Color: Component<{}> = (props, { onDestroy }) => {
     const state = model({
         disabled: false,
         inputValue: '#FF0000',
@@ -270,8 +292,15 @@ const Color: Component<{}> = (props, { onEffect }) => {
     const logEvent = (name: string) => () =>
         log(`${name} value=${inputRef.current?.value}`);
 
-    onEffect(() => {
-        state.messages.push(`state change: disabled=${state.disabled}`);
+    const unsubscribe = model.subscribe(state, (events) => {
+        for (const event of events) {
+            state.messages.push(
+                `state change: ${event.type}:${event.prop}=${event.value}`
+            );
+        }
+    });
+    onDestroy(() => {
+        unsubscribe();
     });
 
     const onChange = () => {
@@ -352,7 +381,7 @@ const TextLike: Component<{
         | 'url'
         | 'week'
         | 'textarea';
-}> = ({ inputType }, { onEffect }) => {
+}> = ({ inputType }, { onDestroy }) => {
     const state = model({
         disabled: false,
         readonly: false,
@@ -373,8 +402,15 @@ const TextLike: Component<{
             `${name} key=${e.key}; code=${e.code}; repeat=${e.repeat}; shiftKey=${e.shiftKey}; metaKey=${e.metaKey}; ctrlKey=${e.ctrlKey}; altKey=${e.altKey}; isComposing=${e.isComposing}`
         );
 
-    onEffect(() => {
-        state.messages.push(`state change: disabled=${state.disabled}`);
+    const unsubscribe = model.subscribe(state, (events) => {
+        for (const event of events) {
+            state.messages.push(
+                `state change: ${event.type}:${event.prop}=${event.value}`
+            );
+        }
+    });
+    onDestroy(() => {
+        unsubscribe();
     });
 
     const onChange = () => {
@@ -445,7 +481,7 @@ const TextLike: Component<{
     );
 };
 
-const Range: Component<{}> = (props, { onEffect }) => {
+const Range: Component<{}> = (props, { onDestroy }) => {
     const state = model({
         disabled: false,
         value: '50',
@@ -459,8 +495,15 @@ const Range: Component<{}> = (props, { onEffect }) => {
     const logEvent = (name: string) => () =>
         log(`${name} value=${inputRef.current?.value}`);
 
-    onEffect(() => {
-        state.messages.push(`state change: disabled=${state.disabled}`);
+    const unsubscribe = model.subscribe(state, (events) => {
+        for (const event of events) {
+            state.messages.push(
+                `state change: ${event.type}:${event.prop}=${event.value}`
+            );
+        }
+    });
+    onDestroy(() => {
+        unsubscribe();
     });
 
     const onChange = () => {
@@ -509,7 +552,7 @@ const Range: Component<{}> = (props, { onEffect }) => {
     );
 };
 
-const Select: Component<{}> = (props, { onEffect }) => {
+const Select: Component<{}> = (props, { onDestroy }) => {
     // Note: this is a poor implementation of a controlled select
     const state = model({
         disabled: false,
@@ -539,8 +582,15 @@ const Select: Component<{}> = (props, { onEffect }) => {
     const logEvent = (name: string) => () =>
         log(`${name} value=${inputRef.current?.value}`);
 
-    onEffect(() => {
-        state.messages.push(`state change: disabled=${state.disabled}`);
+    const unsubscribe = model.subscribe(state, (events) => {
+        for (const event of events) {
+            state.messages.push(
+                `state change: ${event.type}:${event.prop}=${event.value}`
+            );
+        }
+    });
+    onDestroy(() => {
+        unsubscribe();
     });
 
     function onChange() {
@@ -664,7 +714,7 @@ const Select: Component<{}> = (props, { onEffect }) => {
     );
 };
 
-const Details: Component<{}> = (props, { onEffect }) => {
+const Details: Component<{}> = (props, { onDestroy }) => {
     const state = model({
         open: false,
         disabled: false,
@@ -681,6 +731,17 @@ const Details: Component<{}> = (props, { onEffect }) => {
     const onClickToggle = () => {
         state.open = !state.open;
     };
+
+    const unsubscribe = model.subscribe(state, (events) => {
+        for (const event of events) {
+            state.messages.push(
+                `state change: ${event.type}:${event.prop}=${event.value}`
+            );
+        }
+    });
+    onDestroy(() => {
+        unsubscribe();
+    });
 
     return (
         <fieldset>

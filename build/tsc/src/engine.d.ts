@@ -35,8 +35,6 @@ export declare function removeHardEdge(fromVertex: Processable, toVertex: Proces
 export declare function removeSoftEdge(fromVertex: Processable, toVertex: Processable): void;
 export declare function markDirty(vertex: Processable): void;
 export declare function unmarkDirty(vertex: Processable): void;
-export declare function markRoot(vertex: Processable): void;
-export declare function unmarkRoot(vertex: Processable): void;
 export declare function markCycleInformed(vertex: Processable): void;
 export declare function trackReads<T>(set: Set<Retainable | (Retainable & Processable)>, fn: () => T, debugName?: string): T;
 export declare function untrackReads<T>(fn: () => T, debugName?: string): T;

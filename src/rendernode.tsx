@@ -27,7 +27,7 @@ import { noop } from './util';
 export interface ComponentLifecycle {
     onMount: (callback: () => void) => void;
     onUnmount: (callback: () => void) => void;
-    onEffect: (callback: () => void, debugName?: string) => void;
+    onDestroy: (callback: () => void) => void;
     onContext: <TContext>(
         context: Context<TContext>,
         handler: (val: TContext) => void
@@ -888,121 +888,125 @@ export class CollectionRenderNode implements RenderNode {
         release(this);
     }
 
-    private handleCollectionEvent = (event: ArrayEvent<any>) => {
+    private handleCollectionEvent = (events: ArrayEvent<any>[]) => {
         log.assert(this.context, 'Invariant: missing context');
-        switch (event.type) {
-            case ArrayEventType.SPLICE: {
-                const newChildren: RenderNode[] = [];
-                if (event.items) {
-                    for (const [index, item] of event.items.entries()) {
-                        const child = renderJSXNode(item);
-                        newChildren.push(child);
-                        this.childIndex.set(child, event.index + index);
+        for (const event of events) {
+            switch (event.type) {
+                case ArrayEventType.SPLICE: {
+                    const newChildren: RenderNode[] = [];
+                    if (event.items) {
+                        for (const [index, item] of event.items.entries()) {
+                            const child = renderJSXNode(item);
+                            newChildren.push(child);
+                            this.childIndex.set(child, event.index + index);
+                        }
                     }
+                    const removed = this.children.splice(
+                        event.index,
+                        event.count,
+                        ...newChildren
+                    );
+                    for (const child of removed) {
+                        if (this.isMounted) {
+                            child.onUnmount();
+                        }
+                        if (this.emitter) {
+                            const emitter = this.emitter;
+                            child.detach((event) =>
+                                this.handleChildEvent(emitter, event, child)
+                            );
+                        }
+                        release(child);
+                    }
+                    this.slotSizes.splice(
+                        event.index,
+                        event.count,
+                        ...newChildren.map(() => 0)
+                    );
+                    for (const child of newChildren) {
+                        retain(child);
+                        if (this.emitter) {
+                            const emitter = this.emitter;
+                            child.setContext(this.context);
+                            child.attach((event) =>
+                                this.handleChildEvent(emitter, event, child)
+                            );
+                        }
+                        if (this.isMounted) {
+                            child.onMount();
+                        }
+                    }
+                    if (newChildren.length !== event.count) {
+                        for (
+                            let i = event.index + newChildren.length;
+                            i < this.children.length;
+                            ++i
+                        ) {
+                            this.childIndex.set(this.children[i], i);
+                        }
+                    }
+                    break;
                 }
-                const removed = this.children.splice(
-                    event.index,
-                    event.count,
-                    ...newChildren
-                );
-                for (const child of removed) {
-                    if (this.isMounted) {
-                        child.onUnmount();
-                    }
-                    if (this.emitter) {
-                        const emitter = this.emitter;
-                        child.detach((event) =>
-                            this.handleChildEvent(emitter, event, child)
-                        );
-                    }
-                    release(child);
-                }
-                this.slotSizes.splice(
-                    event.index,
-                    event.count,
-                    ...newChildren.map(() => 0)
-                );
-                for (const child of newChildren) {
-                    retain(child);
-                    if (this.emitter) {
-                        const emitter = this.emitter;
-                        child.setContext(this.context);
-                        child.attach((event) =>
-                            this.handleChildEvent(emitter, event, child)
-                        );
-                    }
-                    if (this.isMounted) {
-                        child.onMount();
-                    }
-                }
-                if (newChildren.length !== event.count) {
-                    for (
-                        let i = event.index + newChildren.length;
-                        i < this.children.length;
-                        ++i
-                    ) {
-                        this.childIndex.set(this.children[i], i);
-                    }
-                }
-                break;
-            }
-            case ArrayEventType.MOVE: {
-                // if we aren't attached, we have no nodes to move
-                if (!this.emitter) return;
+                case ArrayEventType.MOVE: {
+                    // if we aren't attached, we have no nodes to move
+                    if (!this.emitter) return;
 
-                // Get adjusted data for event
-                const slotStartIndex: number[] = [];
-                let realIndex = 0;
-                for (const slotSize of this.slotSizes) {
-                    slotStartIndex.push(realIndex);
-                    realIndex += slotSize;
-                }
-                let realCount = 0;
-                for (let i = 0; i < event.count; ++i) {
-                    realCount += this.slotSizes[event.from + i];
-                }
-
-                // Move slots
-                applyEvent(this.slotSizes, event);
-
-                // Update and emit event
-                event.from = slotStartIndex[event.from];
-                event.count = realCount;
-                event.to = slotStartIndex[event.to];
-                this.emitter(event);
-                break;
-            }
-            case ArrayEventType.SORT: {
-                // if we aren't attached, we have no nodes to move
-                if (!this.emitter) return;
-
-                // Get adjusted data for event
-                let realFrom = 0;
-                for (let i = 0; i < event.from; ++i) {
-                    realFrom += this.slotSizes[i];
-                }
-                const nestedIndexes: number[][] = [];
-                let index = 0;
-                for (let i = 0; i < this.slotSizes.length; ++i) {
-                    const slotIndexes: number[] = [];
-                    for (let j = 0; j < this.slotSizes[i]; ++j) {
-                        slotIndexes.push(index);
-                        index += 1;
+                    // Get adjusted data for event
+                    const slotStartIndex: number[] = [];
+                    let realIndex = 0;
+                    for (const slotSize of this.slotSizes) {
+                        slotStartIndex.push(realIndex);
+                        realIndex += slotSize;
                     }
-                    nestedIndexes.push(slotIndexes);
+                    let realCount = 0;
+                    for (let i = 0; i < event.count; ++i) {
+                        realCount += this.slotSizes[event.from + i];
+                    }
+
+                    // Move slots
+                    applyEvent(this.slotSizes, event);
+
+                    // Update and emit event
+                    event.from = slotStartIndex[event.from];
+                    event.count = realCount;
+                    event.to = slotStartIndex[event.to];
+                    this.emitter(event);
+                    break;
                 }
+                case ArrayEventType.SORT: {
+                    // if we aren't attached, we have no nodes to move
+                    if (!this.emitter) return;
 
-                // Sort slots
-                applyEvent(this.slotSizes, event);
-                // Sort nested indexes
-                applyEvent(nestedIndexes, event);
+                    // Get adjusted data for event
+                    let realFrom = 0;
+                    for (let i = 0; i < event.from; ++i) {
+                        realFrom += this.slotSizes[i];
+                    }
+                    const nestedIndexes: number[][] = [];
+                    let index = 0;
+                    for (let i = 0; i < this.slotSizes.length; ++i) {
+                        const slotIndexes: number[] = [];
+                        for (let j = 0; j < this.slotSizes[i]; ++j) {
+                            slotIndexes.push(index);
+                            index += 1;
+                        }
+                        nestedIndexes.push(slotIndexes);
+                    }
 
-                // Update and emit event
-                const sortedIndexes = nestedIndexes.slice(event.from).flat();
-                event.from = realFrom;
-                event.indexes = sortedIndexes;
-                this.emitter(event);
-                break;
+                    // Sort slots
+                    applyEvent(this.slotSizes, event);
+                    // Sort nested indexes
+                    applyEvent(nestedIndexes, event);
+
+                    // Update and emit event
+                    const sortedIndexes = nestedIndexes
+                        .slice(event.from)
+                        .flat();
+                    event.from = realFrom;
+                    event.indexes = sortedIndexes;
+                    this.emitter(event);
+                    break;
+                }
             }
         }
     };
@@ -1159,6 +1163,12 @@ export class LifecycleObserverRenderNode implements RenderNode {
                     );
                 }
             }
+        }
+
+        applyEvent(this.childNodes, event);
+        emitter(event);
+
+        if (event.type === ArrayEventType.SPLICE) {
             if (event.items) {
                 for (const node of event.items) {
                     this.nodeCallback?.(node, LifecycleObserverEventType.ADD);
@@ -1171,8 +1181,6 @@ export class LifecycleObserverRenderNode implements RenderNode {
                 }
             }
         }
-        applyEvent(this.childNodes, event);
-        emitter(event);
     }
 
     detach(emitter: NodeEmitter) {
@@ -1240,9 +1248,9 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     result: RenderNode | null;
     onMountCallbacks?: (() => void)[];
     onUnmountCallbacks?: (() => void)[];
+    onDestroyCallbacks?: (() => void)[];
     onContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;
     owned: Set<Retainable>;
-    effects?: Calculation<void>[];
 
     constructor(
         Component: Component<TProps>,
@@ -1295,13 +1303,9 @@ export class ComponentRenderNode<TProps> implements RenderNode {
                     if (!this.onUnmountCallbacks) this.onUnmountCallbacks = [];
                     this.onUnmountCallbacks.push(handler);
                 },
-                onEffect: (handler: () => void, debugName?: string) => {
-                    log.assert(
-                        callbacksAllowed,
-                        'onUnmount must be called in component body'
-                    );
-                    if (!this.effects) this.effects = [];
-                    this.effects.push(effect(handler, debugName));
+                onDestroy: (handler: () => void) => {
+                    if (!this.onDestroyCallbacks) this.onDestroyCallbacks = [];
+                    this.onDestroyCallbacks.push(handler);
                 },
                 // "extends unknown" needed to avoid syntax ambiguity with type parameter in jsx
                 // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-constraint
@@ -1346,11 +1350,6 @@ export class ComponentRenderNode<TProps> implements RenderNode {
             retain(this.result);
             for (const item of this.owned) {
                 retain(item);
-            }
-            if (this.effects) {
-                for (const eff of this.effects) {
-                    eff();
-                }
             }
         }
         this.result.setContext(contextMap);
@@ -1402,6 +1401,13 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     [SymAlive] = noop;
     [SymDead]() {
         log.assert(this.result, 'Invariant: missing context');
+
+        if (this.onDestroyCallbacks) {
+            for (const callback of this.onDestroyCallbacks) {
+                callback();
+            }
+        }
+
         release(this.result);
         for (const item of this.owned) {
             release(item);

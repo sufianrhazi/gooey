@@ -321,14 +321,17 @@ const Cell: Component<{
         isActive,
         isFocused,
     },
-    { onEffect }
+    { onDestroy }
 ) => {
     const tdRef = ref<HTMLTableCellElement>();
-    onEffect(() => {
-        if (isFocused()) {
+
+    const unsubscribe = isFocused.onRecalc((focused) => {
+        if (focused) {
             tdRef.current?.focus();
         }
     });
+    onDestroy(unsubscribe);
+
     return (
         <td
             ref={tdRef}
