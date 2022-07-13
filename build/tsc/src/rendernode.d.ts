@@ -3,7 +3,7 @@ import { ArrayEvent } from './arrayevent';
 import { Calculation } from './calc';
 import { Collection, View } from './collection';
 export interface ComponentLifecycle {
-    onMount: (callback: () => void) => void;
+    onMount: (callback: () => void) => (() => void) | void;
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
     onContext: <TContext>(context: Context<TContext>, handler: (val: TContext) => void) => void;
@@ -241,7 +241,7 @@ export declare class ComponentRenderNode<TProps> implements RenderNode {
     props: TProps | null | undefined;
     children: JSX.Node[];
     result: RenderNode | null;
-    onMountCallbacks?: (() => void)[];
+    onMountCallbacks?: (() => (() => void) | void)[];
     onUnmountCallbacks?: (() => void)[];
     onDestroyCallbacks?: (() => void)[];
     onContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;

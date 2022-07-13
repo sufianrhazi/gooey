@@ -12,7 +12,6 @@ import {
     afterFlush,
 } from './engine';
 import { RefObject } from './ref';
-import { effect } from './calc';
 import { JSXNode, getElementTypeMapping } from './jsx';
 import {
     ArrayEvent,
@@ -25,7 +24,7 @@ import { isCollection, isView, Collection, View } from './collection';
 import { noop } from './util';
 
 export interface ComponentLifecycle {
-    onMount: (callback: () => void) => void;
+    onMount: (callback: () => void) => (() => void) | void;
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
     onContext: <TContext>(
@@ -1246,7 +1245,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     props: TProps | null | undefined;
     children: JSX.Node[];
     result: RenderNode | null;
-    onMountCallbacks?: (() => void)[];
+    onMountCallbacks?: (() => (() => void) | void)[];
     onUnmountCallbacks?: (() => void)[];
     onDestroyCallbacks?: (() => void)[];
     onContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;
@@ -1287,7 +1286,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         if (!this.result) {
             let callbacksAllowed = true;
             const lifecycle: ComponentLifecycle = {
-                onMount: (handler: () => void) => {
+                onMount: (handler: () => (() => void) | void) => {
                     log.assert(
                         callbacksAllowed,
                         'onMount must be called in component body'
@@ -1374,7 +1373,23 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         this.result.onMount();
         if (this.onMountCallbacks) {
             for (const callback of this.onMountCallbacks) {
-                callback();
+                const maybeOnUnmount = callback();
+                if (typeof maybeOnUnmount === 'function') {
+                    if (!this.onUnmountCallbacks) {
+                        this.onUnmountCallbacks = [];
+                    }
+                    const onUnmount = () => {
+                        maybeOnUnmount();
+                        if (this.onUnmountCallbacks) {
+                            const index =
+                                this.onUnmountCallbacks.indexOf(onUnmount);
+                            if (index >= 0) {
+                                this.onUnmountCallbacks.splice(index, 1);
+                            }
+                        }
+                    };
+                    this.onUnmountCallbacks.push(onUnmount);
+                }
             }
         }
     }

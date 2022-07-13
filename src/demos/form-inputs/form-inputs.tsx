@@ -55,9 +55,6 @@ const Checkbox: Component<{}> = (props, { onDestroy }) => {
             );
         }
     });
-    onDestroy(() => {
-        unsubscribe();
-    });
 
     onDestroy(() => {
         unsubscribe();

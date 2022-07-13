@@ -432,6 +432,42 @@ suite('mount components', () => {
         assert.is(testRoot.querySelector('#p'), queried);
     });
 
+    test('components onMount can return an onUnmount callback which gets called after mount', () => {
+        const sequence: string[] = [];
+        let queried: null | Element = null;
+        let count = 0;
+        const Greet: Component<{}> = (props, { onMount }) => {
+            sequence.push('render');
+            onMount(() => {
+                count++;
+                sequence.push(`onMount:${count}`);
+                queried = testRoot.querySelector('#p');
+                return () => {
+                    sequence.push(`onUnmount:${count}`);
+                };
+            });
+            return <p id="p">Hello!</p>;
+        };
+
+        const jsx = <Greet />;
+        jsx.retain();
+
+        let unmount = mount(testRoot, jsx);
+        assert.deepEqual(['render', 'onMount:1'], sequence);
+        unmount();
+        assert.deepEqual(['render', 'onMount:1', 'onUnmount:1'], sequence);
+        unmount = mount(testRoot, jsx);
+        assert.deepEqual(
+            ['render', 'onMount:1', 'onUnmount:1', 'onMount:2'],
+            sequence
+        );
+        unmount();
+        assert.deepEqual(
+            ['render', 'onMount:1', 'onUnmount:1', 'onMount:2', 'onUnmount:2'],
+            sequence
+        );
+    });
+
     test('components are provided an onUnmount callback which is called immediately before unmount', () => {
         const state = model({
             showingChild: false,
@@ -2857,10 +2893,7 @@ if (2 < 1) {
 
 suite('automatic memory management', () => {
     test('component with calculation, effect leaves empty graph', () => {
-        const Item: Component<{ name: string }> = (
-            { name },
-            { onMount }
-        ) => {
+        const Item: Component<{ name: string }> = ({ name }, { onMount }) => {
             const state = model(
                 {
                     mountCount: 0,

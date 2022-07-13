@@ -494,20 +494,18 @@ const App = () => (
                     const state = model({ value: 0 });
                     const MyComponent: Component<{ name: string }> = (
                         { name },
-                        { onMount, onDestroy }
+                        { onMount }
                     ) => {
                         const div = document.createElement('div');
-                        const unsubscribe = model.subscribe(
-                            state,
-                            (effects) => {
+                        onMount(() => {
+                            return model.subscribe(state, (effects) => {
                                 for (const effect of effects) {
                                     if (effect.prop === 'value') {
                                         div.textContent = name + effect.value;
                                     }
                                 }
-                            }
-                        );
-                        onDestroy(unsubscribe);
+                            });
+                        });
 
                         return <>{div}</>;
                     };
