@@ -70,6 +70,16 @@ function scheduleFlush() {
     });
 }
 
+function pumpFlush() {
+    if (!needsFlush) return;
+    if (flushHandle) {
+        flushHandle();
+        flushHandle = null;
+    }
+    needsFlush = false;
+    flush();
+}
+
 export function subscribe(scheduler?: (callback: () => void) => () => void) {
     flushScheduler = scheduler ?? noopScheduler;
 }
@@ -131,6 +141,9 @@ export function flush() {
         callback();
     }
     afterFlushCallbacks.splice(0, afterFlushCallbacks.length);
+    if (needsFlush) {
+        pumpFlush();
+    }
 }
 
 export function afterFlush(fn: () => void) {
