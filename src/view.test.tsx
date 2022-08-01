@@ -227,6 +227,50 @@ suite('mount static', () => {
             ]
         );
     });
+
+    test('react lies about JSX not supporting class, for, and other keywords', () => {
+        mount(
+            testRoot,
+            <>
+                <label class="my-class" for="my-thing">
+                    Hello
+                </label>
+                <div tabindex={0}>focusable</div>
+                <input id="my-thing" type="text" readonly />
+            </>
+        );
+        assert.is(
+            'my-class',
+            (testRoot.childNodes[0] as HTMLLabelElement).getAttribute('class')
+        );
+        assert.is(
+            'my-class',
+            (testRoot.childNodes[0] as HTMLLabelElement).className
+        );
+
+        assert.is(
+            'my-thing',
+            (testRoot.childNodes[0] as HTMLLabelElement).getAttribute('for')
+        );
+        assert.is(
+            'my-thing',
+            (testRoot.childNodes[0] as HTMLLabelElement).htmlFor
+        );
+
+        assert.is(
+            '0',
+            (testRoot.childNodes[1] as HTMLElement).getAttribute('tabindex')
+        );
+        assert.is(0, (testRoot.childNodes[1] as HTMLElement).tabIndex);
+
+        assert.is(
+            '',
+            (testRoot.childNodes[2] as HTMLInputElement).getAttribute(
+                'readonly'
+            )
+        );
+        assert.is(true, (testRoot.childNodes[2] as HTMLInputElement).readOnly);
+    });
 });
 
 suite('mount calculations', () => {
@@ -674,10 +718,10 @@ suite('mount components', () => {
 
         const Child: Component<{ name: string }> = (
             { name },
-            { onContext }
+            { getContext }
         ) => {
             const state = model({ value: 'wut' });
-            onContext(Context, (value) => (state.value = value));
+            getContext(Context, (value) => (state.value = value));
             return (
                 <p>
                     {calc(() => state.value)}:{name}
@@ -1535,16 +1579,16 @@ suite('createContext', () => {
         const CtxB = createContext<number>(42);
         const MyComponent: Component<{ id: string }> = (
             { id },
-            { onContext }
+            { getContext }
         ) => {
             const state = model({
                 a: 'boop',
                 b: 0,
             });
-            onContext(CtxA, (a) => {
+            getContext(CtxA, (a) => {
                 state.a = a;
             });
-            onContext(CtxB, (b) => {
+            getContext(CtxB, (b) => {
                 state.b = b;
             });
 
@@ -1572,16 +1616,16 @@ suite('createContext', () => {
         const CtxB = createContext<number>(42);
         const MyComponent: Component<{ id: string }> = (
             { id },
-            { onContext }
+            { getContext }
         ) => {
             const state = model({
                 a: 'boop',
                 b: 0,
             });
-            onContext(CtxA, (a) => {
+            getContext(CtxA, (a) => {
                 state.a = a;
             });
-            onContext(CtxB, (b) => {
+            getContext(CtxB, (b) => {
                 state.b = b;
             });
             return (
@@ -1616,6 +1660,57 @@ suite('createContext', () => {
             'CtxA=inner, CtxB=111',
             testRoot.querySelector('#inner-first')!.textContent
         );
+    });
+
+    test('changing context can be observed while moved', () => {
+        const Ctx = createContext<string>('default');
+        const state = model({
+            slot: 'a',
+        });
+
+        const MyComponent: Component<{}> = (_props, { getContext }) => {
+            const localState = model({
+                val: getContext(Ctx, (val) => {
+                    localState.val = val;
+                }),
+            });
+            return (
+                <div>val: {calc(() => localState.val)}</div>
+            );
+        };
+
+        const myComponent = <MyComponent />;
+        myComponent.retain();
+        const unmount = mount(testRoot, <div>
+            <div id="a">{calc(() => state.slot === 'a' && myComponent)}</div>
+            <Ctx value="b">
+                <div id="b">{calc(() => state.slot === 'b' && myComponent)}</div>
+            </Ctx>
+            <Ctx value="c">
+                <div id="c">{calc(() => state.slot === 'c' && myComponent)}</div>
+            </Ctx>
+        </div>);
+
+        assert.is('val: default', testRoot.querySelector('#a')?.textContent);
+        assert.is('', testRoot.querySelector('#b')?.textContent);
+        assert.is('', testRoot.querySelector('#c')?.textContent);
+        state.slot = 'b';
+        flush();
+        assert.is('', testRoot.querySelector('#a')?.textContent);
+        assert.is('val: b', testRoot.querySelector('#b')?.textContent);
+        assert.is('', testRoot.querySelector('#c')?.textContent);
+        state.slot = 'c';
+        flush();
+        assert.is('', testRoot.querySelector('#a')?.textContent);
+        assert.is('', testRoot.querySelector('#b')?.textContent);
+        assert.is('val: c', testRoot.querySelector('#c')?.textContent);
+        state.slot = 'a';
+        flush();
+        assert.is('val: default', testRoot.querySelector('#a')?.textContent);
+        assert.is('', testRoot.querySelector('#b')?.textContent);
+        assert.is('', testRoot.querySelector('#c')?.textContent);
+        unmount();
+        myComponent.release();
     });
 });
 
@@ -2888,6 +2983,19 @@ if (2 < 1) {
                 )
             );
         });
+    });
+
+    test('event target passed as second parameter', () => {
+        const divHandler = (event: MouseEvent, div: HTMLDivElement) => {
+            return false;
+        };
+
+        const goodJSx = <div on:click={divHandler} />;
+        assert.isTruthy(goodJSx);
+
+        // @ts-expect-error
+        const badJSX = <button on:click={divHandler} />;
+        assert.isTruthy(badJSX);
     });
 }
 
