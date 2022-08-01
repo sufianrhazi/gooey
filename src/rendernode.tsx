@@ -27,10 +27,10 @@ export interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
-    onContext: <TContext>(
+    getContext: <TContext>(
         context: Context<TContext>,
-        handler: (val: TContext) => void
-    ) => void;
+        handler?: ((val: TContext) => void) | undefined
+    ) => TContext;
 }
 
 // NOTE: UnusedSymbolForChildrenOmission is present solely for the typechecker to not allow assignment of { children?: JSXNode | JSXNode[] } to TProps if TProps is {}
@@ -379,19 +379,19 @@ export class IntrinsicRenderNode implements RenderNode {
             for (const [prop, val] of Object.entries(this.props)) {
                 if (prop === 'ref') continue; // specially handled
                 if (prop.startsWith('on:capture:')) {
-                    element.addEventListener(prop.slice(3), val, {
+                    element.addEventListener(prop.slice(3), (e) => val(e, element), {
                         capture: true,
                     });
                     continue;
                 }
                 if (prop.startsWith('on:passive:')) {
-                    element.addEventListener(prop.slice(3), val, {
+                    element.addEventListener(prop.slice(3), (e) => val(e, element), {
                         passive: true,
                     });
                     continue;
                 }
                 if (prop.startsWith('on:')) {
-                    element.addEventListener(prop.slice(3), val);
+                    element.addEventListener(prop.slice(3), (e) => val(e, element));
                     continue;
                 }
                 if (isCalcUnsubscribe(val) || isCalculation(val)) {
@@ -1248,7 +1248,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     onMountCallbacks?: (() => (() => void) | void)[];
     onUnmountCallbacks?: (() => void)[];
     onDestroyCallbacks?: (() => void)[];
-    onContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;
+    getContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;
     owned: Set<Retainable>;
 
     constructor(
@@ -1303,27 +1303,34 @@ export class ComponentRenderNode<TProps> implements RenderNode {
                     this.onUnmountCallbacks.push(handler);
                 },
                 onDestroy: (handler: () => void) => {
+                    log.assert(
+                        callbacksAllowed,
+                        'onDestroy must be called in component body'
+                    );
                     if (!this.onDestroyCallbacks) this.onDestroyCallbacks = [];
                     this.onDestroyCallbacks.push(handler);
                 },
                 // "extends unknown" needed to avoid syntax ambiguity with type parameter in jsx
                 // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-constraint
-                onContext: <TContext extends unknown>(
+                getContext: <TContext extends unknown>(
                     context: Context<TContext>,
-                    handler: (val: TContext) => void
+                    handler?: ((val: TContext) => void) | undefined
                 ) => {
                     log.assert(
                         callbacksAllowed,
-                        'onContext must be called in component body'
+                        'getContext must be called in component body'
                     );
-                    if (!this.onContextCallbacks)
-                        this.onContextCallbacks = new Map();
-                    let callbacks = this.onContextCallbacks.get(context);
-                    if (!callbacks) {
-                        callbacks = [];
-                        this.onContextCallbacks.set(context, callbacks);
+                    if (handler) {
+                        if (!this.getContextCallbacks)
+                            this.getContextCallbacks = new Map();
+                        let callbacks = this.getContextCallbacks.get(context);
+                        if (!callbacks) {
+                            callbacks = [];
+                            this.getContextCallbacks.set(context, callbacks);
+                        }
+                        callbacks.push(handler);
                     }
-                    callbacks.push(handler);
+                    return readContext(contextMap, context);
                 },
             };
 
@@ -1352,12 +1359,11 @@ export class ComponentRenderNode<TProps> implements RenderNode {
             }
         }
         this.result.setContext(contextMap);
-
-        if (this.onContextCallbacks) {
+        if (this.getContextCallbacks) {
             for (const [
                 Context,
                 callbacks,
-            ] of this.onContextCallbacks.entries()) {
+            ] of this.getContextCallbacks.entries()) {
                 const value = contextMap.has(Context)
                     ? contextMap.get(Context)
                     : Context._get();
@@ -1366,6 +1372,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
                 }
             }
         }
+
     }
 
     onMount() {
@@ -1415,15 +1422,16 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     [SymRefcount]: number;
     [SymAlive] = noop;
     [SymDead]() {
-        log.assert(this.result, 'Invariant: missing context');
-
         if (this.onDestroyCallbacks) {
             for (const callback of this.onDestroyCallbacks) {
                 callback();
             }
         }
 
-        release(this.result);
+        if (this.result) {
+            release(this.result);
+            this.result = null;
+        }
         for (const item of this.owned) {
             release(item);
         }
