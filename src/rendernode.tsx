@@ -379,19 +379,29 @@ export class IntrinsicRenderNode implements RenderNode {
             for (const [prop, val] of Object.entries(this.props)) {
                 if (prop === 'ref') continue; // specially handled
                 if (prop.startsWith('on:capture:')) {
-                    element.addEventListener(prop.slice(3), (e) => val(e, element), {
-                        capture: true,
-                    });
+                    element.addEventListener(
+                        prop.slice(3),
+                        (e) => val(e, element),
+                        {
+                            capture: true,
+                        }
+                    );
                     continue;
                 }
                 if (prop.startsWith('on:passive:')) {
-                    element.addEventListener(prop.slice(3), (e) => val(e, element), {
-                        passive: true,
-                    });
+                    element.addEventListener(
+                        prop.slice(3),
+                        (e) => val(e, element),
+                        {
+                            passive: true,
+                        }
+                    );
                     continue;
                 }
                 if (prop.startsWith('on:')) {
-                    element.addEventListener(prop.slice(3), (e) => val(e, element));
+                    element.addEventListener(prop.slice(3), (e) =>
+                        val(e, element)
+                    );
                     continue;
                 }
                 if (isCalcUnsubscribe(val) || isCalculation(val)) {
@@ -425,24 +435,42 @@ export class IntrinsicRenderNode implements RenderNode {
         return element;
     }
 
+    private setAttribute(
+        element: Element,
+        attributeName: string,
+        val: unknown
+    ) {
+        if (val === undefined || val === null || val === false) {
+            element.removeAttribute(attributeName);
+        } else if (val === true) {
+            element.setAttribute(attributeName, '');
+        } else if (typeof val === 'string') {
+            element.setAttribute(attributeName, val);
+        } else if (typeof val === 'number' || typeof val === 'bigint') {
+            element.setAttribute(attributeName, val.toString());
+        }
+    }
+
     private setProp(element: Element, prop: string, val: unknown) {
+        if (prop.startsWith('prop:')) {
+            const propName = prop.slice(5);
+            (element as any)[propName] = val;
+            return;
+        }
+
+        if (prop.startsWith('attr:')) {
+            const attrName = prop.slice(5);
+            this.setAttribute(element, attrName, val);
+            return;
+        }
+
         const mapping = getElementTypeMapping(this.tagName, prop);
         if (mapping) {
             if (mapping.makeAttrValue !== null) {
                 const attributeValue = mapping.makeAttrValue
                     ? mapping.makeAttrValue(val)
-                    : (val as any);
-                if (
-                    attributeValue === undefined ||
-                    attributeValue === null ||
-                    attributeValue === false
-                ) {
-                    element.removeAttribute(prop);
-                } else if (attributeValue === true) {
-                    element.setAttribute(prop, '');
-                } else {
-                    element.setAttribute(prop, attributeValue);
-                }
+                    : val;
+                this.setAttribute(element, prop, attributeValue);
             }
             if (mapping.idlName !== null) {
                 const idlValue = mapping.makeIdlValue
@@ -450,13 +478,10 @@ export class IntrinsicRenderNode implements RenderNode {
                     : val;
                 (element as any)[mapping.idlName ?? prop] = idlValue;
             }
-        } else if (val === false || val === undefined || val === null) {
-            element.removeAttribute(prop);
-        } else if (val === true) {
-            element.setAttribute(prop, '');
-        } else if (typeof val === 'string' || typeof val === 'number') {
-            element.setAttribute(prop, val.toString());
+            return;
         }
+
+        this.setAttribute(element, prop, val);
     }
 
     private handleEvent = (event: ArrayEvent<Node>) => {
@@ -1114,30 +1139,30 @@ export function mount(target: Element, node: RenderNode): () => void {
     };
 }
 
-export enum LifecycleObserverEventType {
+export enum AttachmentObserverEventType {
     REMOVE = 'remove',
     ADD = 'add',
 }
 
-export type LifecycleObserverNodeCallback = (
+export type AttachmentObserverNodeCallback = (
     node: Node,
-    event: LifecycleObserverEventType
+    event: AttachmentObserverEventType
 ) => void;
-export type LifecycleObserverElementCallback = (
+export type AttachmentObserverElementCallback = (
     element: Element,
-    event: LifecycleObserverEventType
+    event: AttachmentObserverEventType
 ) => void;
 
-export class LifecycleObserverRenderNode implements RenderNode {
+export class AttachmentObserverRenderNode implements RenderNode {
     _type: typeof RenderNodeType = RenderNodeType;
-    nodeCallback: LifecycleObserverNodeCallback | undefined;
-    elementCallback: LifecycleObserverElementCallback | undefined;
+    nodeCallback: AttachmentObserverNodeCallback | undefined;
+    elementCallback: AttachmentObserverElementCallback | undefined;
     child: RenderNode;
     childNodes: Node[];
 
     constructor(
-        nodeCallback: LifecycleObserverNodeCallback | undefined,
-        elementCallback: LifecycleObserverElementCallback | undefined,
+        nodeCallback: AttachmentObserverNodeCallback | undefined,
+        elementCallback: AttachmentObserverElementCallback | undefined,
         children: RenderNode[],
         debugName?: string
     ) {
@@ -1154,11 +1179,11 @@ export class LifecycleObserverRenderNode implements RenderNode {
         if (event.type === ArrayEventType.SPLICE) {
             for (let i = 0; i < event.count; ++i) {
                 const node = this.childNodes[event.index + i];
-                this.nodeCallback?.(node, LifecycleObserverEventType.REMOVE);
+                this.nodeCallback?.(node, AttachmentObserverEventType.REMOVE);
                 if (node instanceof Element) {
                     this.elementCallback?.(
                         node,
-                        LifecycleObserverEventType.REMOVE
+                        AttachmentObserverEventType.REMOVE
                     );
                 }
             }
@@ -1170,11 +1195,11 @@ export class LifecycleObserverRenderNode implements RenderNode {
         if (event.type === ArrayEventType.SPLICE) {
             if (event.items) {
                 for (const node of event.items) {
-                    this.nodeCallback?.(node, LifecycleObserverEventType.ADD);
+                    this.nodeCallback?.(node, AttachmentObserverEventType.ADD);
                     if (node instanceof Element) {
                         this.elementCallback?.(
                             node,
-                            LifecycleObserverEventType.ADD
+                            AttachmentObserverEventType.ADD
                         );
                     }
                 }
@@ -1223,21 +1248,17 @@ export class LifecycleObserverRenderNode implements RenderNode {
     }
 }
 
-export function LifecycleObserver({
-    nodeCallback,
-    elementCallback,
-    children,
-}: {
-    nodeCallback?: LifecycleObserverNodeCallback;
-    elementCallback?: LifecycleObserverElementCallback;
+export const AttachmentObserver: Component<{
+    nodeCallback?: AttachmentObserverNodeCallback;
+    elementCallback?: AttachmentObserverElementCallback;
     children?: JSX.Node | JSX.Node[];
-}) {
-    return new LifecycleObserverRenderNode(
+}> = ({ nodeCallback, elementCallback, children }) => {
+    return new AttachmentObserverRenderNode(
         nodeCallback,
         elementCallback,
         renderJSXChildren(children)
     );
-}
+};
 
 export class ComponentRenderNode<TProps> implements RenderNode {
     _type: typeof RenderNodeType = RenderNodeType;
@@ -1372,7 +1393,6 @@ export class ComponentRenderNode<TProps> implements RenderNode {
                 }
             }
         }
-
     }
 
     onMount() {

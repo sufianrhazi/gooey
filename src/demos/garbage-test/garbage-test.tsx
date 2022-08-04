@@ -6,7 +6,7 @@ import Gooey, {
     calc,
     subscribe,
     flush,
-    LifecycleObserver,
+    AttachmentObserver,
 } from '../../index';
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
@@ -532,7 +532,7 @@ const App = () => (
                 <p>Run 100 component effects</p>
             </TestCase>
             <TestCase
-                name="LifecycleObserver"
+                name="AttachmentObserver"
                 test={(el) => {
                     const state = model({
                         visible: false,
@@ -552,7 +552,7 @@ const App = () => (
                                 Nodes: {calc(() => state.mountNodes)} /{' '}
                                 {calc(() => state.unmountNodes)}
                             </div>
-                            <LifecycleObserver
+                            <AttachmentObserver
                                 elementCallback={(el, action) => {
                                     if (action === 'add')
                                         state.mountElements += 1;
@@ -572,7 +572,7 @@ const App = () => (
                                             i % 2 === 0 ? <p>{str}</p> : str
                                         )
                                 )}
-                            </LifecycleObserver>
+                            </AttachmentObserver>
                         </>
                     );
                     return {
@@ -591,7 +591,7 @@ const App = () => (
             >
                 <p>
                     Mount and unmount 100 strings (50 Text nodes; 50 elements
-                    with Text nodes) observed by a LifecycleObserver
+                    with Text nodes) observed by a AttachmentObserver
                 </p>
             </TestCase>
         </div>

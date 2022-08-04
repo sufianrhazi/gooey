@@ -398,7 +398,7 @@ interface JSXElementInterface {
     slot?: string | undefined;
     spellcheck?: boolean | undefined;
     style?: string | undefined;
-    tabindex?: -1 | 0 | "-1" | "0" | string | number | undefined; // "-1" and "0" used as convenience
+    tabindex?: -1 | 0 | '-1' | '0' | string | number | undefined; // "-1" and "0" used as convenience
     title?: string | undefined;
     translate?: '' | 'yes' | 'no' | undefined;
 }
@@ -2199,7 +2199,12 @@ type EventHandler<TEvent extends Event, TElement extends Element> =
       }['bivarianceHack'];
 
 interface JSXRefProps<TElement extends Element> {
-    ref?: undefined | Ref<TElement> | ((current: TElement | undefined) => void);
+    ref?: undefined | Ref<TElement>;
+}
+
+interface JSXAttrProps {
+    [key: `attr:${string}`]: Calculation<any> | any;
+    [key: `prop:${string}`]: Calculation<any> | any;
 }
 
 interface JSXEventProps<TElement extends Element> {
@@ -2375,8 +2380,14 @@ interface JSXEventProps<TElement extends Element> {
     'on:passive:readystatechange'?: EventHandler<Event, TElement>;
     'on:capture:readystatechange'?: EventHandler<Event, TElement>;
     'on:rejectionhandled'?: EventHandler<PromiseRejectionEvent, TElement>;
-    'on:passive:rejectionhandled'?: EventHandler<PromiseRejectionEvent, TElement>;
-    'on:capture:rejectionhandled'?: EventHandler<PromiseRejectionEvent, TElement>;
+    'on:passive:rejectionhandled'?: EventHandler<
+        PromiseRejectionEvent,
+        TElement
+    >;
+    'on:capture:rejectionhandled'?: EventHandler<
+        PromiseRejectionEvent,
+        TElement
+    >;
     'on:reset'?: EventHandler<Event, TElement>;
     'on:passive:reset'?: EventHandler<Event, TElement>;
     'on:capture:reset'?: EventHandler<Event, TElement>;
@@ -2405,8 +2416,14 @@ interface JSXEventProps<TElement extends Element> {
     'on:passive:toggle'?: EventHandler<Event, TElement>;
     'on:capture:toggle'?: EventHandler<Event, TElement>;
     'on:unhandledrejection'?: EventHandler<PromiseRejectionEvent, TElement>;
-    'on:passive:unhandledrejection'?: EventHandler<PromiseRejectionEvent, TElement>;
-    'on:capture:unhandledrejection'?: EventHandler<PromiseRejectionEvent, TElement>;
+    'on:passive:unhandledrejection'?: EventHandler<
+        PromiseRejectionEvent,
+        TElement
+    >;
+    'on:capture:unhandledrejection'?: EventHandler<
+        PromiseRejectionEvent,
+        TElement
+    >;
     'on:unload'?: EventHandler<Event, TElement>;
     'on:passive:unload'?: EventHandler<Event, TElement>;
     'on:capture:unload'?: EventHandler<Event, TElement>;
@@ -2443,6 +2460,7 @@ type WithCalculationsAndRef<
     TElement extends Element,
     HasChildren extends boolean
 > = JSXRefProps<TElement> &
+    JSXAttrProps &
     JSXEventProps<TElement> &
     JSXDataProps &
     JSXElementInterfaceProps<TJSXType> &

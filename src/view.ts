@@ -8,7 +8,7 @@ import {
     Component,
 } from './rendernode';
 
-export { LifecycleObserver } from './rendernode';
+export { AttachmentObserver } from './rendernode';
 
 export { mount } from './rendernode';
 

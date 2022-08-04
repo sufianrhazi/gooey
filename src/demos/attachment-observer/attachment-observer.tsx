@@ -3,7 +3,7 @@ import Gooey, {
     Component,
     model,
     calc,
-    LifecycleObserver,
+    AttachmentObserver,
 } from '../../index';
 
 const appRoot = document.getElementById('app');
@@ -57,7 +57,7 @@ const FocusListener: Component<FocusListenerProps> = (
     }
 
     return (
-        <LifecycleObserver
+        <AttachmentObserver
             elementCallback={(element, event) => {
                 if (event === 'add' && element instanceof HTMLElement) {
                     elements.add(element);
@@ -80,7 +80,7 @@ const FocusListener: Component<FocusListenerProps> = (
             }}
         >
             {children}
-        </LifecycleObserver>
+        </AttachmentObserver>
     );
 };
 
@@ -127,8 +127,10 @@ const App: Component<{}> = (_props, { onMount, onUnmount }) => {
 
     return (
         <>
-            <h1>LifecycleObserver</h1>
-            <p>Demonstration of LifecycleObserver to detect and manage focus</p>
+            <h1>AttachmentObserver</h1>
+            <p>
+                Demonstration of AttachmentObserver to detect and manage focus
+            </p>
             <Example>
                 <p>
                     Here is some text with a <a href="#">hyperlink</a>

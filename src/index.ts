@@ -1,12 +1,12 @@
 export { getLogLevel, setLogLevel } from './log';
 export type { LogLevel } from './log';
 import { createElement } from './view';
-export { createElement, LifecycleObserver, Fragment, mount } from './view';
+export { createElement, AttachmentObserver, Fragment, mount } from './view';
 export type {
     Component,
-    LifecycleObserverNodeCallback,
-    LifecycleObserverElementCallback,
-    LifecycleObserverEventType,
+    AttachmentObserverNodeCallback,
+    AttachmentObserverElementCallback,
+    AttachmentObserverEventType,
 } from './rendernode';
 export type { Model, ModelEvent } from './model';
 export { model, ModelEventType } from './model';

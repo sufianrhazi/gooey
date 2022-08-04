@@ -582,7 +582,7 @@ function getLogLevel(): LogLevel
 Retrieve the current log level.
 
 
-#### `setLogLevel()`
+#### `setLogLevel(newLogLevel)`
 
 ```typescript
 function setLogLevel(logLevel: LogLevel): void
@@ -704,10 +704,10 @@ When a model's string properties are accessed within the execution of a calculat
 for that calculation.
 
 
-##### `model(init)`
+##### `model(obj)`
 
 ```typescript
-function model<T extends {}>(target: T, debugName?: string | undefined): Model<T>
+function model<T extends {}>(obj: T, debugName?: string | undefined): Model<T>
 ```
 
 Create a model object, which is initialized from the provided `target`. Avoid mutating `target` after creating
@@ -753,14 +753,32 @@ model, the collection is updated accordingly.
 
 #### Collections &amp; Views
 
-Collections act like ordinary JavaScript arrays, with a few helper methods. Views are read-only collections
-that are derived from collections or models.
+Collections act like ordinary JavaScript arrays, with a few helper methods added. Views are read-only collections that
+are derived from collections (via `.mapView(fn)`, `.filterView(fn)`, and `.flatMapView(fn)`) or models (via
+`model.keys(modelObj)`)
 
-When a collection's or view's length or indexed properties are accessed within the execution of a calculation,
-they act as dependencies for that calculation.
+When a collection's or view's length or indexed properties are accessed within the execution of a calculation, they act
+as dependencies for that calculation.
+
+Note: Collections are designed to be _mutated_ over time. Unlike other frameworks, Gooey embraces mutation. Call
+`push()`, `pop()`, `splice()` or any other mutation methods as you wish!
 
 
-#### collection
+##### Arraylike collection methods
+
+Collections _are_ effectively a subclass of plain JavaScript arrays, which means methods that you'd normally use to
+mutate an Array are present on a collection. These include:
+
+* `push`
+* `pop`
+* `shift`
+* `unshift`
+* `splice`
+* `sort`
+* `reverse`
+
+
+##### `collection(items)`
 
 ```typescript
 export interface Collection<T> {
@@ -798,88 +816,477 @@ function collection<T>(items: T[], debugName?: string | undefined): Collection<T
 
 Create a collection initially populated with `items`. Avoid mutating `items` after creating a collection.
 
+Note: `mapView`, `filterView`, and `flatMapView` return `View` types, which are like read-only collections.
 
-##### Arraylike collection methods
 
-The following methods behave identically to those on Array.
+##### `Collection<T>.reject(callbackFn)`
 
-    splice(start: number, deleteCount?: number | undefined): T[];
-    splice(start: number, deleteCount: number, ...items: T[]): T[];
-    push(...items: T[]): number;
-    pop(): T | undefined;
-    shift(): T | undefined;
-    unshift(...items: T[]): number;
-    sort(cmp?: ((a: T, b: T) => number) | undefined): this;
-    reverse(): this;
-
-    // Collection-specific methods 
-    reject: (pred: (val: T) => boolean) => T[];
-    moveSlice: (fromIndex: number, count: number, toIndex: number) => void;
-    mapView: <V>(
-        fn: (val: T) => V,
-        debugName?: string | undefined
-    ) => View<V, ArrayEvent<T>>;
-    filterView: (
-        fn: (val: T) => boolean,
-        debugName?: string | undefined
-    ) => View<T, ArrayEvent<T>>;
-    flatMapView: <V>(
-        fn: (val: T) => V[],
-        debugName?: string | undefined
-    ) => View<V, ArrayEvent<T>>;
-
-    subscribe: (handler: (event: ArrayEvent<T>[]) => void) => () => void;
-
-### View layer
-
-#### The `JSX.Element` type
-
+```typescript
+interface Collection<T> {
+    reject: (callbackFn: (val: T) => boolean) => T[];
+}
 ```
-interface RenderNode {
-    retain(): void;
-    release(): void;
+
+Efficiently remove items from the collection which the passed `callbackFn` predicate function return `true`. An array of
+the removed items is returned.
+
+
+##### `Collection<T>.moveSlice(fromIndex, count, toIndex)`
+
+```typescript
+interface Collection<T> {
+    moveSlice: (fromIndex: number, count: number, toIndex: number) => void;
+}
+```
+
+Efficiently _move_ sequences of items from a starting `fromIndex` to a ending `toIndex`. `toIndex` is the destination
+offset _after_ removing `count` items from `fromIndex`. Consider this function to be equivalent to:
+`collection.splice(toIndex, 0, ...collection.splice(fromIndex, count))`
+
+Note: the difference between two splice operations is that moveSlice does not cause mapped/filtered views to be
+re-mapped/re-filtered.
+
+
+##### `Collection<T>.subscribe(handler)`
+
+```typescript
+enum ArrayEventType {
+    SPLICE = 'splice',
+    MOVE = 'move',
+    SORT = 'sort',
 }
 
-type JSX.Element = RenderNode
+type ArrayEvent<T> =
+    | {
+          type: ArrayEventType.SPLICE;
+          index: number;
+          count: number;
+          items?: T[] | undefined;
+      }
+    | {
+          type: ArrayEventType.MOVE;
+          from: number;
+          count: number;
+          to: number;
+      }
+    | {
+          type: ArrayEventType.SORT;
+          from: number;
+          indexes: number[];
+      };
+
+
+interface Collection<T> {
+    subscribe: (handler: (event: ArrayEvent<T>[]) => void) => () => void;
+}
 ```
 
-All JSX expressions evaluate to a `RenderNode` type, which is an abstract type that has two methods:
+Subscribe to a stream of events when modifications are made to the target collection. The `handler` is called
+asynchronously after any collection items are modified with a list of modifications. The returned function can be called
+to unsubscribe.
 
-- `RenderNode#retain()` - 
-This is the type that all JSX expressions evaluate to.
+The kinds of events are:
+* `ArrayEventType.SPLICE` - a splice operation has been performed: 0 or more items are replaced by 0 or more items
+* `ArrayEventType.MOVE` - a run of items is moved from an index to another index
+* `ArrayEventType.SORT` - a subset of the collection was reordered with a new set of indexes; Note: even when `from` is
+  greater than zero, `indexes` is zero-indexed.
+
+
+##### `Collection<T>.mapView(mapFn)`
+
+```typescript
+interface Collection<T> {
+    mapView: <V>(
+        mapFn: (val: T) => V,
+        debugName?: string | undefined
+    ) => View<V, ArrayEvent<T>>;
+}
+```
+
+Produce a read-only View from a collection that holds transformed items. As items are added to, removed from, resorted,
+and reassigned within the target collection, the derived View will hold mapped versions of those items by calling the
+provided `mapFn`.
+
+
+##### `Collection<T>.flatMapView(filterFn)`
+
+```typescript
+interface Collection<T> {
+    filterView: (
+        filterFn: (val: T) => boolean,
+        debugName?: string | undefined
+    ) => View<T, ArrayEvent<T>>;
+}
+```
+
+Produce a read-only View from a collection that holds filtered items. As items are added to, removed from, resorted, and
+reassigned within the target collection, the derived View will hold items that pass the provided filter `filterFn`.
+
+
+##### `Collection<T>.flatMapView(flatMapFn)`
+
+```typescript
+interface Collection<T> {
+    flatMapView: <V>(
+        flatMapFn: (val: T) => V[],
+        debugName?: string | undefined
+    ) => View<V, ArrayEvent<T>>;
+}
+```
+
+Produce a read-only View from a collection that holds flatMapped items .As items are added to, removed from,
+resorted, and reassigned within the target collection, the derived View will hold items that pass the provided filter
+`fn`.
+
+Fun fact: `.filterView` and `.mapView` internally do nothing but call `.flatMapView`, which is more generalized.
+
+
+### Rendering HTML with JSX
+
+Gooey is a tool to create UI applications, and it is recommended (but not required) to use
+[JSX](https://facebook.github.io/jsx/).
+
+If you are unfamiliar with JSX, please read [React's documentation: Introducing
+JSX](https://reactjs.org/docs/introducing-jsx.html), but do note:
+* Unlike React (where you must write `className`, `htmlFor`, and other odd intrinsic element prop names), Gooey aims for
+  to be written like html. `<label class="fancy-container" for="target-id"></label>` is perfectly valid in Gooey. Do not
+  follow any of the advice in the [DOM Elements React documentation](https://reactjs.org/docs/dom-elements.html).
+
+
+#### Default export: `createElement(type, props, ...children)`
+
+```typescript
+interface IntrinsicRenderNode extends RenderNode { /* private internals */ }
+
+interface ComponentRenderNode<TProps> extends RenderNode { /* private internals */ }
+
+function createElement<TProps>(
+    type: string | Component<TProps>,
+    props: TProps,
+    ...children: JSX.Node[]
+): IntrinsicRenderNode | ComponentRenderNode<TProps>
+```
+
+This function is the factory for writing JSX.
+
+If a string is passed as `type`, you'll be rendering an intrinsic element: some native HTML, SVG, or MathML (where supported)
+element. The provided props map to the HTML/SVG/MathML attributes, plus some special props to allow you to bind event
+handlers and perform other actions.
+
+If a function is passed as `type`, you'll be rendering component: either some special built-in component (like a `Context` or a
+`AttachmentObserver`), or a user-created component.
+
+The type of evaluating a JSX expression (the return type of `createElement`) is `JSX.Element`, which in Gooey is called
+`RenderNode`.
+
+
+#### Intrinsic elements
+
+Intrinsic element props correspond to HTML/SVG/MathML attributes.
+
+Intrinsic elements have a set of special props that allow for more custom behavior: 
+
+* `ref` - pass a `Ref` type, which allows code to get a reference to the underlying DOM `Element`
+* `attr:*` - set an attribute; i.e. `<button attr:disabled={true} />`; equivalent to
+  `el.setAttribute('disabled', true)`; this is rarely if at all needed unless you are using Web Components
+* `prop:*` - set a property on the element instance; i.e. `<button attr:indeterminate={true} />`; equivalent to
+  `el.indeterminate = true`; this is rarely needed unless you are using Web Components
+* `on:*` - add a standard event handler; i.e. `<button on:click={handler} />`; equivalent to 
+  `el.addEventListener('click', handler)`
+* `on:capture:*` - add an event handlers on the capture phase; i.e. `<button on:capture:click={handler} />`; equivalent
+  to `el.addEventListener('click', handler, true)`
+* `on:passive:*` - add a passive event handlers, which cannot have default prevented or stop propagation; i.e.
+  `<button on:capture:click={handler} />`; equivalent to `el.addEventListener('click', handler, { passive: true })
+
+Note: In rare cases, intrinsic element props correspond to DOM Interface attributes. The only instances of this are:
+* The `input` element's `indeterminate` prop, which sets the `indeterminate` property on the `HTMLInputElement` instance.
+* The `select` element's `value` prop, which sets the `value` property on the `HTMLSelectElement` instance.
+
+
+#### Refs
+
+```typescript
+interface RefObject<T> {
+    current: T | undefined;
+}
+
+function ref<T>(val?: T): RefObject<T>
+
+type RefCallback<T> = (val: T | undefined) => void;
+
+type Ref<T> = RefObject<T> | RefCallback<T>;
+```
+
+Refs are values that can be passed as the special `ref` prop on intrinsic elements. Components do not have default
+behavior with respect to the `ref` prop.
+
+Ref callbacks and object values are called:
+* Immediately after mounting (equivalent to the component `onMount` lifecycle) and after children are mounted
+* Immediately before unmounting (equivalent to the component `onUnmount` lifecycle) and after children are unmounted
 
 
 #### The `JSX.Node` type
 
-#### `Gooey` / `createElement()` (default export)`
+```typescript
+type JSXNode =
+    | string
+    | number
+    | boolean
+    | null
+    | undefined
+    | bigint
+    | symbol
+    | Function
+    | Element
+    | RenderNode
+    | JSXNodeArray
+    | JSXNodeCalculation
+    | JSXNodeCollection
+    | JSXNodeView;
 
+interface JSXNodeCalculation extends Calculation<JSXNode> {}
+
+interface JSXNodeCollection extends Collection<JSXNode> {}
+
+interface JSXNodeView extends View<JSXNode, any> {}
+
+interface JSXNodeArray extends Array<JSXNode> {}
 ```
-function createElement<TProps>(type: string | Component<TProps>, props: TProps, ...children: JSX.Node[]): IntrinsicRenderNode | ComponentRenderNode<TProps>
+
+The non-standard `JSX.Node` type represents the type that is valid as children of JSX.
+
+* Static values:
+  * `string` values are rendered as `Text`.
+  * `number` and `bigint` values are converted to strings via `.toString()` and rendered as `Text`.
+  * `boolean`, `null`, and `undefined` values do not render to anything.
+  * `Function` and `symbol` types log a warning and do not render to anything.
+  * `Element` (as in DOM `Element`) values are rendered as-is. That is to say, if a native Element is passed as a child in
+    a JSX expression, that element will be rendered in the correct position.
+  * `RenderNode` values are rendered as-is.
+  * `Array<JSXNode>` values are rendered in place, concatenated together.
+* Dynamic, bound values:
+  * `Calculation<JSXNode>` values are rendered as the result of the calculation. When the calculation's dependencies have
+    changed, it is re-rendered and replaces the prior result. This is how dynamic JSX subtrees are created.
+  * `Collection<JSXNode>` and `View<JSXNode>` values are rendered as the contents of the collection. When items are added
+    to, removed from, replaced within, or reordered within the collection, the ordering is reflected in the DOM.
+
+
+#### `mount(target, jsx)`
+
+```typescript
+function mount(target: Element, jsx: RenderNode): () => void
 ```
 
-This is the JSX factory function. It should not be normally called manually.
+Mount and render a JSX `node` to a `target` DOM element. Returns a function that unmounts the `node`.
+
+Note: It is recommended, but not necessary for the `target` DOM element to be empty. Rendering will be performed at the
+end of the existing children. Behavior is undefined if the set of children changes while JSX is mounted.
 
 
-LifecycleObserver
-Fragment
-mount
-type Component
-type LifecycleObserverNodeCallback
-type LifecycleObserverElementCallback
-type LifecycleObserverEventType
-ArrayEventType
-reset
-subscribe
-flush
-retain
-release
-debug
-debugSubscribe
-type Context
-createContext
-InvariantError
-type Ref
-type RefObject
-type RefCallback
-ref
-VERSION: string
+#### Components: `Component<Props>`
+
+```typescript
+export interface ComponentLifecycle {
+    onMount: (callback: () => void) => (() => void) | void;
+    onUnmount: (callback: () => void) => void;
+    onDestroy: (callback: () => void) => void;
+    getContext: <TContext>(
+        context: Context<TContext>,
+        handler?: ((val: TContext) => void) | undefined
+    ) => TContext;
+}
+
+type Component<TProps = {}> = (props: TProps, lifecycle: ComponentLifecycle) => JSX.Element | null;
+```
+
+Components are functions which start with a capital letter and are given two parameters:
+* `props`, an object holding the JSX props passed to the component, including optionally a `children` prop, which
+  represents child JSX nodes
+* `lifecycle`, an object which holds the lifecycle methods able to be used by a component
+
+Note: the type of the `children` prop depends on how the JSX is passed. If there is one child in the JSX tree, the value
+is passed as-is, if there are multiple children, they are passed as an array of values.
+
+The lifecycle methods are:
+* `onMount`: Gets called immediately after the component is attached to the DOM. It may optionally return a function
+  that gets called immediately before the component is detached from the DOM.
+* `onUnmount`: Gets called immediately before the component is attached to the DOM.
+* `onDestroy`: Gets called after all of the retainers release the component.
+* `getContext`: Reads a value from the provided context. The optional callback is called **before** `onMount` and can be
+  used to observe context changes when a component is relocated.
+
+
+#### `Fragment` (`<>...</>`)
+
+```typescript
+const Fragment: Component<{ children?: JSX.Node | JSX.Node[] }>
+```
+
+The `Fragment` component (also found on the `createElement` property of the default export) is a built-in component
+which allows you to express multiple pieces of JSX side-by-side.
+
+It can be used to express grouped JSX, often using the `<>{contents}</>` syntax:
+
+```typescript
+const Definition: Component<{ term: JSX.Node, children: JSX.Node }> = ({ term, children }) => (
+  <>
+    <dt>{term}</dt>
+    <dd>{children>}</dd>
+  </>
+);
+
+mount(document.body, (
+  <dl>
+    <Definition term="Gooey">a focused web framework designed to be predictable, fast, and flexible</Definition>
+    <Definition term="React">A JavaScript library for building user interfaces</Definition>
+    <Definition term="SolidJS">Simple and performant reactivity for building user interfaces</Definition>
+    <Definition term="Vue.js">An approachable, performant and versatile framework for building web user interfaces</Definition>
+    <Definition term="Svelte">a radical new approach to building user interfaces</Definition>
+  </dl>
+);
+```
+
+
+#### `RenderNode.retain()` and `RenderNode.release()`
+
+```typescript
+interface RenderNode {
+    retain(): void;
+    release(): void;
+}
+```
+
+`RenderNode` instances may hold state. For example, an intrinsic node will hold the native DOM `Element` reference that
+it will render to; component nodes will hold the child nodes rendered by the component. While a RenderNode is
+`mount()ed` to the DOM, it is `retain()`ed; when it is unmounted from the DOM, it is `release()`d. If there are no
+retainers for a RenderNode, any state it holds onto is destroyed. If you wish to maintain the state of a `RenderNode`
+
+
+#### Contexts: `createContext`
+
+```typescript
+interface Context<T> extends Component<{ value: T; children?: JSX.Node | JSX.Node[] }> { /* private internals */ }
+
+function createContext<T>(val: T): Context<T>
+```
+
+A `Context` is a JSX node that allows child JSX to access a corresponding value. `Component` functions can read contexts
+with the `getContext()` lifecycle handler.
+
+The closest ancestor context is the one which provides the value. If there is no ancestor, the default value (provided
+upon creation) is used.
+
+The optional callback provided to `getContext()` gets called _prior_ to mounting (prior to the `onMount` component
+lifecycle event event).
+
+
+
+#### `AttachmentObserver`
+
+```typescript
+export enum AttachmentObserverEventType {
+    REMOVE = 'remove',
+    ADD = 'add',
+}
+
+export type AttachmentObserverNodeCallback = (
+    node: Node,
+    event: AttachmentObserverEventType
+) => void;
+
+export type AttachmentObserverElementCallback = (
+    element: Element,
+    event: AttachmentObserverEventType
+) => void;
+
+const AttachmentObserver: Component<{
+    nodeCallback?: AttachmentObserverNodeCallback | undefined;
+    elementCallback?: AttachmentObserverElementCallback | undefined;
+    children?: JSX.Node | JSX.Node[];
+}>
+```
+
+`AttachmentObserver` is a special built-in component which allows callers to observe the child DOM elements as they are
+added and removed as a result of rendering child JSX.
+
+This in particular allows components to observe child DOM elements without knowing any information about the
+component/JSX that is passed as the `children` prop.
+
+There are two `event` values passed to each callback:
+* `AttachmentObserverEventType.ADD` - called immediately after a child Element/Node has been added to the DOM
+* `AttachmentObserverEventType.REMOVE` - called immediately before a child Element/Node has been removed from the DOM
+
+The two different callbacks allow for different levels of specificity:
+* `nodeCallback` is called with all `Node` subtypes (`Text`, `Element`, `CData`, etc...)
+* `elementCallback` is called with only `Element` subtypes
+
+
+### Recalculation Engine
+
+Internally, Gooey contains a global dependency graph. When vertices in the graph are dirtied (by, for example, writing
+to a Model's property), the global dependency graph can be processed. In processing the global dependency graph,
+calculations are recalculated and subscriptions are triggered in topological order.
+
+That is to say: if a calculation A depends on a calculation B, calculation B will be recalculated _before_ calculation
+A.
+
+
+#### `reset()`
+
+```typescript
+function reset(): void
+```
+
+Completely reset the internal state of Gooey. Nothing that would have occurred upon `flush()` is occurred after this is
+called. This is only provided to reset state in a test context.
+
+
+#### `subscribe(scheduler)`
+
+```typescript
+function subscribe(scheduler?: ((performFlush: () => void) => () => void) | undefined): void
+```
+
+Provide a custom scheduler to perform a flush of the system.
+
+The `scheduler` function is called when Gooey determines that the global dependency graph needs to be processed. It is
+provided a `performFlush` callback that processes the global dependency graph when called. The `scheduler` function
+should return a function that prevents it from calling `performFlush` in the future.
+
+By passing `undefined` as the scheduler, automatic processing is disabled and the global dependency graph is not
+automatically processed.
+
+The default scheduler is:
+
+```typescript
+function defaultScheduler(callback: () => void) {
+    const handle = setTimeout(callback, 0);
+    return () => clearTimeout(handle);
+}
+```
+
+
+#### `flush()`
+
+```typescript
+function flush(): void
+```
+
+Manually trigger processing of the global dependency graph. With typical operation, this should not need be called.
+
+
+#### `debug()` and `debugSubscribe()`
+
+```typescript
+function debug(activeVertex?: Processable | undefined, label?: string | undefined): string
+```
+
+Return a [graphviz](https://graphviz.org/) representation of the global dependency graph.
+
+
+```typescript
+function debugSubscribe(fn: (label: string, graphviz: string) => void): () => void
+```
+
+Subscribe to a stream of [graphviz](https://graphviz.org/) representations of the global dependency graph. Returns a
+function to unsubscribe from the stream.

@@ -9,7 +9,7 @@ import Gooey, {
     reset,
     createContext,
     subscribe,
-    LifecycleObserver,
+    AttachmentObserver,
 } from './index';
 import { debugGetGraph } from './engine';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
@@ -271,6 +271,38 @@ suite('mount static', () => {
         );
         assert.is(true, (testRoot.childNodes[2] as HTMLInputElement).readOnly);
     });
+
+    test('prop:myprop sets element property manually', () => {
+        const state = model<{ val: any }>({
+            val: 42,
+        });
+        mount(
+            testRoot,
+            <div
+                prop:mypropstr="my-value"
+                prop:mypropnum={3}
+                prop:mypropcalc={calc(() => state.val)}
+            >
+                Hello
+            </div>
+        );
+        assert.is('my-value', (testRoot.childNodes[0] as any).mypropstr);
+        assert.is(3, (testRoot.childNodes[0] as any).mypropnum);
+        assert.is(42, (testRoot.childNodes[0] as any).mypropcalc);
+        state.val = 'hello';
+        flush();
+        assert.is('hello', (testRoot.childNodes[0] as any).mypropcalc);
+    });
+
+    test('attr:myprop sets element attribute manually', () => {
+        // the indeterminate attribute does not exist, but it does exist as a property on HTMLInputElement instances
+        mount(testRoot, <input type="checkbox" attr:indeterminate="" />);
+        assert.is(false, (testRoot.childNodes[0] as any).indeterminate);
+        assert.is(
+            '',
+            (testRoot.childNodes[0] as any).getAttribute('indeterminate')
+        );
+    });
 });
 
 suite('mount calculations', () => {
@@ -478,14 +510,12 @@ suite('mount components', () => {
 
     test('components onMount can return an onUnmount callback which gets called after mount', () => {
         const sequence: string[] = [];
-        let queried: null | Element = null;
         let count = 0;
         const Greet: Component<{}> = (props, { onMount }) => {
             sequence.push('render');
             onMount(() => {
                 count++;
                 sequence.push(`onMount:${count}`);
-                queried = testRoot.querySelector('#p');
                 return () => {
                     sequence.push(`onUnmount:${count}`);
                 };
@@ -1674,22 +1704,29 @@ suite('createContext', () => {
                     localState.val = val;
                 }),
             });
-            return (
-                <div>val: {calc(() => localState.val)}</div>
-            );
+            return <div>val: {calc(() => localState.val)}</div>;
         };
 
         const myComponent = <MyComponent />;
         myComponent.retain();
-        const unmount = mount(testRoot, <div>
-            <div id="a">{calc(() => state.slot === 'a' && myComponent)}</div>
-            <Ctx value="b">
-                <div id="b">{calc(() => state.slot === 'b' && myComponent)}</div>
-            </Ctx>
-            <Ctx value="c">
-                <div id="c">{calc(() => state.slot === 'c' && myComponent)}</div>
-            </Ctx>
-        </div>);
+        const unmount = mount(
+            testRoot,
+            <div>
+                <div id="a">
+                    {calc(() => state.slot === 'a' && myComponent)}
+                </div>
+                <Ctx value="b">
+                    <div id="b">
+                        {calc(() => state.slot === 'b' && myComponent)}
+                    </div>
+                </Ctx>
+                <Ctx value="c">
+                    <div id="c">
+                        {calc(() => state.slot === 'c' && myComponent)}
+                    </div>
+                </Ctx>
+            </div>
+        );
 
         assert.is('val: default', testRoot.querySelector('#a')?.textContent);
         assert.is('', testRoot.querySelector('#b')?.textContent);
@@ -1714,14 +1751,14 @@ suite('createContext', () => {
     });
 });
 
-suite('LifecycleObserver component', () => {
+suite('AttachmentObserver component', () => {
     test('with no children does nothing', () => {
         const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
         const elements: { element: Element; event: 'add' | 'remove' }[] = [];
         const unmount = mount(
             testRoot,
             <div>
-                <LifecycleObserver
+                <AttachmentObserver
                     nodeCallback={(node: Node, event: 'add' | 'remove') =>
                         nodes.push({ node, event })
                     }
@@ -1743,7 +1780,7 @@ suite('LifecycleObserver component', () => {
         const unmount = mount(
             testRoot,
             <div>
-                <LifecycleObserver
+                <AttachmentObserver
                     nodeCallback={(node: Node, event: 'add' | 'remove') =>
                         nodes.push({ node, event })
                     }
@@ -1753,7 +1790,7 @@ suite('LifecycleObserver component', () => {
                     ) => elements.push({ element, event })}
                 >
                     Hello, world!
-                </LifecycleObserver>
+                </AttachmentObserver>
             </div>
         );
 
@@ -1781,7 +1818,7 @@ suite('LifecycleObserver component', () => {
         const unmount = mount(
             testRoot,
             <div>
-                <LifecycleObserver
+                <AttachmentObserver
                     nodeCallback={(node: Node, event: 'add' | 'remove') =>
                         nodes.push({ node, event })
                     }
@@ -1791,7 +1828,7 @@ suite('LifecycleObserver component', () => {
                     ) => elements.push({ element, event })}
                 >
                     {'Hello,'} {'world!'}
-                </LifecycleObserver>
+                </AttachmentObserver>
             </div>
         );
 
@@ -1824,7 +1861,7 @@ suite('LifecycleObserver component', () => {
         const unmount = mount(
             testRoot,
             <div>
-                <LifecycleObserver
+                <AttachmentObserver
                     nodeCallback={(node: Node, event: 'add' | 'remove') =>
                         nodes.push({ node, event })
                     }
@@ -1837,7 +1874,7 @@ suite('LifecycleObserver component', () => {
                         <div id="inner-1" />
                         <div id="inner-2" />
                     </div>
-                </LifecycleObserver>
+                </AttachmentObserver>
             </div>
         );
 
@@ -1865,7 +1902,7 @@ suite('LifecycleObserver component', () => {
         const unmount = mount(
             testRoot,
             <div>
-                <LifecycleObserver
+                <AttachmentObserver
                     nodeCallback={(node: Node, event: 'add' | 'remove') =>
                         nodes.push({ node, event })
                     }
@@ -1886,7 +1923,7 @@ suite('LifecycleObserver component', () => {
                         <div id="inner-4" />
                         <div id="inner-5" />
                     </div>
-                </LifecycleObserver>
+                </AttachmentObserver>
             </div>
         );
 
@@ -1923,7 +1960,7 @@ suite('LifecycleObserver component', () => {
         const unmount = mount(
             testRoot,
             <div>
-                <LifecycleObserver
+                <AttachmentObserver
                     nodeCallback={(node: Node, event: 'add' | 'remove') =>
                         nodes.push({ node, event })
                     }
@@ -1941,7 +1978,7 @@ suite('LifecycleObserver component', () => {
                         <div id="inner-3" />
                         <div id="inner-4" />
                     </div>
-                </LifecycleObserver>
+                </AttachmentObserver>
             </div>
         );
 
@@ -1995,7 +2032,7 @@ suite('LifecycleObserver component', () => {
         const unmount = mount(
             testRoot,
             <div>
-                <LifecycleObserver
+                <AttachmentObserver
                     nodeCallback={(node: Node, event: 'add' | 'remove') =>
                         nodes.push({ node, event })
                     }
@@ -2014,7 +2051,7 @@ suite('LifecycleObserver component', () => {
                                 return null;
                         }
                     })}
-                </LifecycleObserver>
+                </AttachmentObserver>
             </div>
         );
 
@@ -2087,7 +2124,7 @@ suite('LifecycleObserver component', () => {
         const unmount = mount(
             testRoot,
             <div>
-                <LifecycleObserver
+                <AttachmentObserver
                     nodeCallback={(node: Node, event: 'add' | 'remove') =>
                         nodes.push({ node, event })
                     }
@@ -2099,7 +2136,7 @@ suite('LifecycleObserver component', () => {
                     {items.mapView((item) => (
                         <div id={item}>{item}</div>
                     ))}
-                </LifecycleObserver>
+                </AttachmentObserver>
             </div>
         );
 
