@@ -8,7 +8,6 @@ import Gooey, {
     Collection,
     collection,
     calc,
-    setLogLevel,
 } from '../../index';
 
 const Log: Component<{ messages: Collection<string> }> = ({ messages }) => {
