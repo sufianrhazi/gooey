@@ -65,8 +65,8 @@ interface MissingFromTypescriptHTMLMetaElementProperties {
     media?: string | undefined;
 }
 interface MissingFromTypescriptHTMLSourceElementProperties {
-    width?: number | undefined;
-    height?: number | undefined;
+    width?: string | number | undefined;
+    height?: string | number | undefined;
 }
 declare type PropertyMapField<TJSXField, TElement, TIDLName extends keyof TElement> = {
     makeAttrValue?: ((jsxAttr: Exclude<TJSXField, undefined>) => string | undefined) | null;
@@ -162,7 +162,7 @@ interface JSXElementInterface {
     slot?: string | undefined;
     spellcheck?: boolean | undefined;
     style?: string | undefined;
-    tabindex?: -1 | 0 | number | undefined;
+    tabindex?: -1 | 0 | '-1' | '0' | string | number | undefined;
     title?: string | undefined;
     translate?: '' | 'yes' | 'no' | undefined;
 }
@@ -235,8 +235,8 @@ interface JSXButtonElementInterface extends JSXElementInterface {
     value?: string | undefined;
 }
 interface JSXCanvasElementInterface extends JSXElementInterface {
-    width?: number | undefined;
-    height?: number | undefined;
+    width?: string | number | undefined;
+    height?: string | number | undefined;
 }
 interface JSXDListElementInterface extends JSXElementInterface {
 }
@@ -256,8 +256,8 @@ interface JSXDivElementInterface extends JSXElementInterface {
 interface JSXEmbedElementInterface extends JSXElementInterface {
     src?: string | undefined;
     type?: string | undefined;
-    width?: number | undefined;
-    height?: number | undefined;
+    width?: string | number | undefined;
+    height?: string | number | undefined;
 }
 interface JSXFieldSetElementInterface extends JSXElementInterface {
     disabled?: boolean | undefined;
@@ -297,9 +297,9 @@ interface JSXIFrameElementInterface extends JSXElementInterface {
     /** Whether to allow the iframe's contents to use requestFullscreen() */
     allowfullscreen?: boolean | undefined;
     /** Horizontal dimension */
-    width?: number | undefined;
+    width?: string | number | undefined;
     /** Vertical dimension */
-    height?: number | undefined;
+    height?: string | number | undefined;
     /** Referrer policy for fetches initiated by the element */
     referrerpolicy?: ReferrerPolicyValue | undefined;
     /** Used when determining loading deferral */
@@ -358,19 +358,19 @@ interface JSXInputElementInterface extends JSXElementInterface {
     /** Browsing context for form submission */
     formtarget?: BrowsingContextValue | undefined;
     /** Vertical dimension */
-    height?: number | undefined;
+    height?: string | number | undefined;
     /** Third, indeterminate state for checkboxes */
     indeterminate?: boolean | undefined;
     /** List of autocomplete options */
     list?: string | undefined;
     /** Maximum value */
-    max?: number | undefined;
+    max?: string | number | undefined;
     /** Maximum length of value */
-    maxlength?: number | undefined;
+    maxlength?: string | number | undefined;
     /** Minimum value */
-    min?: number | undefined;
+    min?: string | number | undefined;
     /** Minimum length of value */
-    minlength?: number | undefined;
+    minlength?: string | number | undefined;
     /** Whether to allow multiple values */
     multiple?: boolean | undefined;
     /** Name of the element to use for form submission and in the form.elements API */
@@ -384,17 +384,17 @@ interface JSXInputElementInterface extends JSXElementInterface {
     /** Whether the control is required for form submission */
     required?: boolean | undefined;
     /** Size of the control */
-    size?: number | undefined;
+    size?: string | number | undefined;
     /** Address of the resource */
     src?: string | undefined;
     /** Granularity to be matched by the form control's value */
-    step?: number | undefined;
+    step?: string | number | undefined;
     /** Type of form control */
     type?: FormInputTypeValues | undefined;
     /** Value of the form control */
     value?: string | undefined;
     /** Horizontal dimension */
-    width?: number | undefined;
+    width?: string | number | undefined;
 }
 interface JSXModElementInterface extends JSXElementInterface {
     /** Link to the source of the quotation or more information about the edit */
@@ -462,17 +462,17 @@ interface JSXMetaElementInterface extends JSXElementInterface {
 }
 interface JSXMeterElementInterface extends JSXElementInterface {
     /** Current value of the element */
-    value?: number | undefined;
+    value?: string | number | undefined;
     /** Lower bound of range */
-    min?: number | undefined;
+    min?: string | number | undefined;
     /** Upper bound of range */
-    max?: number | undefined;
+    max?: string | number | undefined;
     /** High limit of low range */
-    low?: number | undefined;
+    low?: string | number | undefined;
     /** Low limit of high range */
-    high?: number | undefined;
+    high?: string | number | undefined;
     /** Optimum value in gauge */
-    optimum?: number | undefined;
+    optimum?: string | number | undefined;
 }
 interface JSXObjectElementInterface extends JSXElementInterface {
     /** Address of the resource */
@@ -492,7 +492,7 @@ interface JSXOListElementInterface extends JSXElementInterface {
     /** Number the list backwards */
     reversed?: boolean | undefined;
     /** Starting value of the list */
-    start?: number | undefined;
+    start?: string | number | undefined;
     /** Kind of list marker */
     type?: 'decimal' | 'lower-alpha' | 'upper-alpha' | 'lower-roman' | 'upper-roman' | string | undefined;
 }
@@ -534,9 +534,9 @@ interface JSXPreElementInterface extends JSXElementInterface {
 }
 interface JSXProgressElementInterface extends JSXElementInterface {
     /** Current value of the element */
-    value?: number | undefined;
+    value?: string | number | undefined;
     /** Upper bound of range */
-    max?: number | undefined;
+    max?: string | number | undefined;
 }
 interface JSXQuoteElementInterface extends JSXElementInterface {
     /** Link to the source of the quotation or more information about the edit */
@@ -574,7 +574,7 @@ interface JSXSelectElementInterface extends JSXElementInterface {
     /** Whether the control is required for form submission */
     required?: boolean | undefined;
     /** Size of the control */
-    size?: number | undefined;
+    size?: string | number | undefined;
     /** Value of the element */
     value?: string | undefined;
 }
@@ -594,9 +594,9 @@ interface JSXSourceElementInterface extends JSXElementInterface {
     /** (in picture) — Applicable media */
     media?: string | undefined;
     /** (in picture) — Horizontal dimension */
-    width?: number | undefined;
+    width?: string | number | undefined;
     /** (in picture) — Vertical dimension */
-    height?: number | undefined;
+    height?: string | number | undefined;
 }
 interface JSXSpanElementInterface extends JSXElementInterface {
 }
@@ -612,9 +612,9 @@ interface JSXTableSectionElementInterface extends JSXElementInterface {
 }
 interface JSXTableCellElementInterface extends JSXElementInterface {
     /** Number of columns that the cell is to span */
-    colspan?: number | undefined;
+    colspan?: string | number | undefined;
     /** Number of rows that the cell is to span */
-    rowspan?: number | undefined;
+    rowspan?: string | number | undefined;
     /** The header cells for this cell */
     headers?: string | undefined;
 }
@@ -626,7 +626,7 @@ interface JSXTableHeaderElementInterface extends JSXTableCellElementInterface {
 }
 interface JSXTableColElementInterface extends JSXElementInterface {
     /** Number of columns spanned by the element */
-    span?: number | undefined;
+    span?: string | number | undefined;
 }
 interface JSXTemplateElementInterface extends JSXElementInterface {
 }
@@ -634,7 +634,7 @@ interface JSXTextAreaElementInterface extends JSXElementInterface {
     /** Hint for form autofill feature */
     autocomplete?: AutocompleteValue | undefined;
     /** Maximum number of characters per line */
-    cols?: number | undefined;
+    cols?: string | number | undefined;
     /** Name of form control to use for sending the element's directionality in form submission */
     dirname?: DirValue | undefined;
     /** Whether the form control is disabled */
@@ -642,9 +642,9 @@ interface JSXTextAreaElementInterface extends JSXElementInterface {
     /** Associates the element with a form element */
     form?: string | undefined;
     /** Maximum length of value */
-    maxlength?: number | undefined;
+    maxlength?: string | number | undefined;
     /** Minimum length of value */
-    minlength?: number | undefined;
+    minlength?: string | number | undefined;
     /** Name of the element to use for form submission and in the form.elements API */
     name?: string | undefined;
     /** User-visible label to be placed within the form control */
@@ -654,7 +654,7 @@ interface JSXTextAreaElementInterface extends JSXElementInterface {
     /** Whether the control is required for form submission */
     required?: boolean | undefined;
     /** Number of lines to show */
-    rows?: number | undefined;
+    rows?: string | number | undefined;
     /** How the value of the form control is to be wrapped for form submission */
     wrap?: 'soft' | 'hard' | string | undefined;
 }
@@ -686,9 +686,9 @@ interface JSXVideoElementInterface extends JSXMediaElementInterface {
     /** Encourage the user agent to display video content within the element's playback area */
     playsinline?: string | undefined;
     /** Horizontal dimension */
-    width?: number | undefined;
+    width?: string | number | undefined;
     /** Vertical dimension */
-    height?: number | undefined;
+    height?: string | number | undefined;
 }
 export declare const ElementTypeMapping: {
     readonly a: PropertyMap<JSXAnchorElementInterface, HTMLAnchorElement>;
@@ -814,85 +814,233 @@ export declare function getElementTypeMapping(elementName: string, property: str
 /**
  * Good old bivarianceHack to allow assignability of specific event handlers to more generic event handlers :facepalm:
  */
-declare type EventHandler<TEvent extends Event> = undefined | {
-    bivarianceHack(event: TEvent): void;
+declare type EventHandler<TEvent extends Event, TElement extends Element> = undefined | {
+    bivarianceHack(event: TEvent, target: TElement): void;
 }['bivarianceHack'];
-interface JSXRefProps<TElement extends HTMLElement> {
-    ref?: undefined | Ref<TElement> | ((current: TElement | undefined) => void);
+interface JSXRefProps<TElement extends Element> {
+    ref?: undefined | Ref<TElement>;
 }
-interface JSXEventProps {
-    'on:abort'?: EventHandler<Event>;
-    'on:auxclick'?: EventHandler<PointerEvent>;
-    'on:beforeinput'?: EventHandler<InputEvent>;
-    'on:blur'?: EventHandler<FocusEvent>;
-    'on:cancel'?: EventHandler<Event>;
-    'on:change'?: EventHandler<Event>;
-    'on:click'?: EventHandler<PointerEvent>;
-    'on:close'?: EventHandler<Event>;
-    'on:compositionend'?: EventHandler<CompositionEvent>;
-    'on:compositionstart'?: EventHandler<CompositionEvent>;
-    'on:compositionupdate'?: EventHandler<CompositionEvent>;
-    'on:connect'?: EventHandler<MessageEvent>;
-    'on:contextlost'?: EventHandler<Event>;
-    'on:contextmenu'?: EventHandler<PointerEvent>;
-    'on:contextrestored'?: EventHandler<Event>;
-    'on:copy'?: EventHandler<Event>;
-    'on:cut'?: EventHandler<Event>;
-    'on:dblclick'?: EventHandler<MouseEvent>;
-    'on:drag'?: EventHandler<DragEvent>;
-    'on:dragend'?: EventHandler<DragEvent>;
-    'on:dragenter'?: EventHandler<DragEvent>;
-    'on:dragleave'?: EventHandler<DragEvent>;
-    'on:dragover'?: EventHandler<DragEvent>;
-    'on:dragstart'?: EventHandler<DragEvent>;
-    'on:drop'?: EventHandler<DragEvent>;
-    'on:emptied'?: EventHandler<Event>;
-    'on:error'?: EventHandler<Event>;
-    'on:focus'?: EventHandler<FocusEvent>;
-    'on:focusin'?: EventHandler<FocusEvent>;
-    'on:focusout'?: EventHandler<FocusEvent>;
-    'on:formdata'?: EventHandler<FormDataEvent>;
-    'on:hashchange'?: EventHandler<HashChangeEvent>;
-    'on:input'?: EventHandler<InputEvent>;
-    'on:invalid'?: EventHandler<Event>;
-    'on:keydown'?: EventHandler<KeyboardEvent>;
-    'on:keyup'?: EventHandler<KeyboardEvent>;
-    'on:languagechange'?: EventHandler<Event>;
-    'on:load'?: EventHandler<Event>;
-    'on:loadstart'?: EventHandler<Event>;
-    'on:message'?: EventHandler<MessageEvent>;
-    'on:messageerror'?: EventHandler<MessageEvent>;
-    'on:mousedown'?: EventHandler<MouseEvent>;
-    'on:mouseenter'?: EventHandler<MouseEvent>;
-    'on:mouseleave'?: EventHandler<MouseEvent>;
-    'on:mousemove'?: EventHandler<MouseEvent>;
-    'on:mouseout'?: EventHandler<MouseEvent>;
-    'on:mouseover'?: EventHandler<MouseEvent>;
-    'on:mouseup'?: EventHandler<MouseEvent>;
-    'on:offline'?: EventHandler<Event>;
-    'on:online'?: EventHandler<Event>;
-    'on:open'?: EventHandler<Event>;
-    'on:pagehide'?: EventHandler<PageTransitionEvent>;
-    'on:pageshow'?: EventHandler<PageTransitionEvent>;
-    'on:paste'?: EventHandler<Event>;
-    'on:popstate'?: EventHandler<PopStateEvent>;
-    'on:progress'?: EventHandler<Event>;
-    'on:readystatechange'?: EventHandler<Event>;
-    'on:rejectionhandled'?: EventHandler<PromiseRejectionEvent>;
-    'on:reset'?: EventHandler<Event>;
-    'on:securitypolicyviolation'?: EventHandler<Event>;
-    'on:select'?: EventHandler<Event>;
-    'on:slotchange'?: EventHandler<Event>;
-    'on:stalled'?: EventHandler<Event>;
-    'on:storage'?: EventHandler<StorageEvent>;
-    'on:submit'?: EventHandler<SubmitEvent>;
-    'on:suspend'?: EventHandler<Event>;
-    'on:toggle'?: EventHandler<Event>;
-    'on:unhandledrejection'?: EventHandler<PromiseRejectionEvent>;
-    'on:unload'?: EventHandler<Event>;
-    'on:visibilitychange'?: EventHandler<Event>;
-    'on:wheel'?: EventHandler<WheelEvent>;
-    [key: `on:${string}`]: EventHandler<Event>;
+interface JSXAttrProps {
+    [key: `attr:${string}`]: Calculation<any> | any;
+    [key: `prop:${string}`]: Calculation<any> | any;
+}
+interface JSXEventProps<TElement extends Element> {
+    'on:abort'?: EventHandler<Event, TElement>;
+    'on:passive:abort'?: EventHandler<Event, TElement>;
+    'on:capture:abort'?: EventHandler<Event, TElement>;
+    'on:auxclick'?: EventHandler<PointerEvent, TElement>;
+    'on:passive:auxclick'?: EventHandler<PointerEvent, TElement>;
+    'on:capture:auxclick'?: EventHandler<PointerEvent, TElement>;
+    'on:beforeinput'?: EventHandler<InputEvent, TElement>;
+    'on:passive:beforeinput'?: EventHandler<InputEvent, TElement>;
+    'on:capture:beforeinput'?: EventHandler<InputEvent, TElement>;
+    'on:blur'?: EventHandler<FocusEvent, TElement>;
+    'on:passive:blur'?: EventHandler<FocusEvent, TElement>;
+    'on:capture:blur'?: EventHandler<FocusEvent, TElement>;
+    'on:cancel'?: EventHandler<Event, TElement>;
+    'on:passive:cancel'?: EventHandler<Event, TElement>;
+    'on:capture:cancel'?: EventHandler<Event, TElement>;
+    'on:change'?: EventHandler<Event, TElement>;
+    'on:passive:change'?: EventHandler<Event, TElement>;
+    'on:capture:change'?: EventHandler<Event, TElement>;
+    'on:click'?: EventHandler<PointerEvent, TElement>;
+    'on:passive:click'?: EventHandler<PointerEvent, TElement>;
+    'on:capture:click'?: EventHandler<PointerEvent, TElement>;
+    'on:close'?: EventHandler<Event, TElement>;
+    'on:passive:close'?: EventHandler<Event, TElement>;
+    'on:capture:close'?: EventHandler<Event, TElement>;
+    'on:compositionend'?: EventHandler<CompositionEvent, TElement>;
+    'on:passive:compositionend'?: EventHandler<CompositionEvent, TElement>;
+    'on:capture:compositionend'?: EventHandler<CompositionEvent, TElement>;
+    'on:compositionstart'?: EventHandler<CompositionEvent, TElement>;
+    'on:passive:compositionstart'?: EventHandler<CompositionEvent, TElement>;
+    'on:capture:compositionstart'?: EventHandler<CompositionEvent, TElement>;
+    'on:compositionupdate'?: EventHandler<CompositionEvent, TElement>;
+    'on:passive:compositionupdate'?: EventHandler<CompositionEvent, TElement>;
+    'on:capture:compositionupdate'?: EventHandler<CompositionEvent, TElement>;
+    'on:connect'?: EventHandler<MessageEvent, TElement>;
+    'on:passive:connect'?: EventHandler<MessageEvent, TElement>;
+    'on:capture:connect'?: EventHandler<MessageEvent, TElement>;
+    'on:contextlost'?: EventHandler<Event, TElement>;
+    'on:passive:contextlost'?: EventHandler<Event, TElement>;
+    'on:capture:contextlost'?: EventHandler<Event, TElement>;
+    'on:contextmenu'?: EventHandler<PointerEvent, TElement>;
+    'on:passive:contextmenu'?: EventHandler<PointerEvent, TElement>;
+    'on:capture:contextmenu'?: EventHandler<PointerEvent, TElement>;
+    'on:contextrestored'?: EventHandler<Event, TElement>;
+    'on:passive:contextrestored'?: EventHandler<Event, TElement>;
+    'on:capture:contextrestored'?: EventHandler<Event, TElement>;
+    'on:copy'?: EventHandler<Event, TElement>;
+    'on:passive:copy'?: EventHandler<Event, TElement>;
+    'on:capture:copy'?: EventHandler<Event, TElement>;
+    'on:cut'?: EventHandler<Event, TElement>;
+    'on:passive:cut'?: EventHandler<Event, TElement>;
+    'on:capture:cut'?: EventHandler<Event, TElement>;
+    'on:dblclick'?: EventHandler<MouseEvent, TElement>;
+    'on:passive:dblclick'?: EventHandler<MouseEvent, TElement>;
+    'on:capture:dblclick'?: EventHandler<MouseEvent, TElement>;
+    'on:drag'?: EventHandler<DragEvent, TElement>;
+    'on:passive:drag'?: EventHandler<DragEvent, TElement>;
+    'on:capture:drag'?: EventHandler<DragEvent, TElement>;
+    'on:dragend'?: EventHandler<DragEvent, TElement>;
+    'on:passive:dragend'?: EventHandler<DragEvent, TElement>;
+    'on:capture:dragend'?: EventHandler<DragEvent, TElement>;
+    'on:dragenter'?: EventHandler<DragEvent, TElement>;
+    'on:passive:dragenter'?: EventHandler<DragEvent, TElement>;
+    'on:capture:dragenter'?: EventHandler<DragEvent, TElement>;
+    'on:dragleave'?: EventHandler<DragEvent, TElement>;
+    'on:passive:dragleave'?: EventHandler<DragEvent, TElement>;
+    'on:capture:dragleave'?: EventHandler<DragEvent, TElement>;
+    'on:dragover'?: EventHandler<DragEvent, TElement>;
+    'on:passive:dragover'?: EventHandler<DragEvent, TElement>;
+    'on:capture:dragover'?: EventHandler<DragEvent, TElement>;
+    'on:dragstart'?: EventHandler<DragEvent, TElement>;
+    'on:passive:dragstart'?: EventHandler<DragEvent, TElement>;
+    'on:capture:dragstart'?: EventHandler<DragEvent, TElement>;
+    'on:drop'?: EventHandler<DragEvent, TElement>;
+    'on:passive:drop'?: EventHandler<DragEvent, TElement>;
+    'on:capture:drop'?: EventHandler<DragEvent, TElement>;
+    'on:emptied'?: EventHandler<Event, TElement>;
+    'on:passive:emptied'?: EventHandler<Event, TElement>;
+    'on:capture:emptied'?: EventHandler<Event, TElement>;
+    'on:error'?: EventHandler<Event, TElement>;
+    'on:passive:error'?: EventHandler<Event, TElement>;
+    'on:capture:error'?: EventHandler<Event, TElement>;
+    'on:focus'?: EventHandler<FocusEvent, TElement>;
+    'on:passive:focus'?: EventHandler<FocusEvent, TElement>;
+    'on:capture:focus'?: EventHandler<FocusEvent, TElement>;
+    'on:focusin'?: EventHandler<FocusEvent, TElement>;
+    'on:passive:focusin'?: EventHandler<FocusEvent, TElement>;
+    'on:capture:focusin'?: EventHandler<FocusEvent, TElement>;
+    'on:focusout'?: EventHandler<FocusEvent, TElement>;
+    'on:passive:focusout'?: EventHandler<FocusEvent, TElement>;
+    'on:capture:focusout'?: EventHandler<FocusEvent, TElement>;
+    'on:formdata'?: EventHandler<FormDataEvent, TElement>;
+    'on:passive:formdata'?: EventHandler<FormDataEvent, TElement>;
+    'on:capture:formdata'?: EventHandler<FormDataEvent, TElement>;
+    'on:hashchange'?: EventHandler<HashChangeEvent, TElement>;
+    'on:passive:hashchange'?: EventHandler<HashChangeEvent, TElement>;
+    'on:capture:hashchange'?: EventHandler<HashChangeEvent, TElement>;
+    'on:input'?: EventHandler<InputEvent, TElement>;
+    'on:passive:input'?: EventHandler<InputEvent, TElement>;
+    'on:capture:input'?: EventHandler<InputEvent, TElement>;
+    'on:invalid'?: EventHandler<Event, TElement>;
+    'on:passive:invalid'?: EventHandler<Event, TElement>;
+    'on:capture:invalid'?: EventHandler<Event, TElement>;
+    'on:keydown'?: EventHandler<KeyboardEvent, TElement>;
+    'on:passive:keydown'?: EventHandler<KeyboardEvent, TElement>;
+    'on:capture:keydown'?: EventHandler<KeyboardEvent, TElement>;
+    'on:keyup'?: EventHandler<KeyboardEvent, TElement>;
+    'on:passive:keyup'?: EventHandler<KeyboardEvent, TElement>;
+    'on:capture:keyup'?: EventHandler<KeyboardEvent, TElement>;
+    'on:languagechange'?: EventHandler<Event, TElement>;
+    'on:passive:languagechange'?: EventHandler<Event, TElement>;
+    'on:capture:languagechange'?: EventHandler<Event, TElement>;
+    'on:load'?: EventHandler<Event, TElement>;
+    'on:passive:load'?: EventHandler<Event, TElement>;
+    'on:capture:load'?: EventHandler<Event, TElement>;
+    'on:loadstart'?: EventHandler<Event, TElement>;
+    'on:passive:loadstart'?: EventHandler<Event, TElement>;
+    'on:capture:loadstart'?: EventHandler<Event, TElement>;
+    'on:message'?: EventHandler<MessageEvent, TElement>;
+    'on:passive:message'?: EventHandler<MessageEvent, TElement>;
+    'on:capture:message'?: EventHandler<MessageEvent, TElement>;
+    'on:messageerror'?: EventHandler<MessageEvent, TElement>;
+    'on:passive:messageerror'?: EventHandler<MessageEvent, TElement>;
+    'on:capture:messageerror'?: EventHandler<MessageEvent, TElement>;
+    'on:mousedown'?: EventHandler<MouseEvent, TElement>;
+    'on:passive:mousedown'?: EventHandler<MouseEvent, TElement>;
+    'on:capture:mousedown'?: EventHandler<MouseEvent, TElement>;
+    'on:mouseenter'?: EventHandler<MouseEvent, TElement>;
+    'on:passive:mouseenter'?: EventHandler<MouseEvent, TElement>;
+    'on:capture:mouseenter'?: EventHandler<MouseEvent, TElement>;
+    'on:mouseleave'?: EventHandler<MouseEvent, TElement>;
+    'on:passive:mouseleave'?: EventHandler<MouseEvent, TElement>;
+    'on:capture:mouseleave'?: EventHandler<MouseEvent, TElement>;
+    'on:mousemove'?: EventHandler<MouseEvent, TElement>;
+    'on:passive:mousemove'?: EventHandler<MouseEvent, TElement>;
+    'on:capture:mousemove'?: EventHandler<MouseEvent, TElement>;
+    'on:mouseout'?: EventHandler<MouseEvent, TElement>;
+    'on:passive:mouseout'?: EventHandler<MouseEvent, TElement>;
+    'on:capture:mouseout'?: EventHandler<MouseEvent, TElement>;
+    'on:mouseover'?: EventHandler<MouseEvent, TElement>;
+    'on:passive:mouseover'?: EventHandler<MouseEvent, TElement>;
+    'on:capture:mouseover'?: EventHandler<MouseEvent, TElement>;
+    'on:mouseup'?: EventHandler<MouseEvent, TElement>;
+    'on:passive:mouseup'?: EventHandler<MouseEvent, TElement>;
+    'on:capture:mouseup'?: EventHandler<MouseEvent, TElement>;
+    'on:offline'?: EventHandler<Event, TElement>;
+    'on:passive:offline'?: EventHandler<Event, TElement>;
+    'on:capture:offline'?: EventHandler<Event, TElement>;
+    'on:online'?: EventHandler<Event, TElement>;
+    'on:passive:online'?: EventHandler<Event, TElement>;
+    'on:capture:online'?: EventHandler<Event, TElement>;
+    'on:open'?: EventHandler<Event, TElement>;
+    'on:passive:open'?: EventHandler<Event, TElement>;
+    'on:capture:open'?: EventHandler<Event, TElement>;
+    'on:pagehide'?: EventHandler<PageTransitionEvent, TElement>;
+    'on:passive:pagehide'?: EventHandler<PageTransitionEvent, TElement>;
+    'on:capture:pagehide'?: EventHandler<PageTransitionEvent, TElement>;
+    'on:pageshow'?: EventHandler<PageTransitionEvent, TElement>;
+    'on:passive:pageshow'?: EventHandler<PageTransitionEvent, TElement>;
+    'on:capture:pageshow'?: EventHandler<PageTransitionEvent, TElement>;
+    'on:paste'?: EventHandler<Event, TElement>;
+    'on:passive:paste'?: EventHandler<Event, TElement>;
+    'on:capture:paste'?: EventHandler<Event, TElement>;
+    'on:popstate'?: EventHandler<PopStateEvent, TElement>;
+    'on:passive:popstate'?: EventHandler<PopStateEvent, TElement>;
+    'on:capture:popstate'?: EventHandler<PopStateEvent, TElement>;
+    'on:progress'?: EventHandler<Event, TElement>;
+    'on:passive:progress'?: EventHandler<Event, TElement>;
+    'on:capture:progress'?: EventHandler<Event, TElement>;
+    'on:readystatechange'?: EventHandler<Event, TElement>;
+    'on:passive:readystatechange'?: EventHandler<Event, TElement>;
+    'on:capture:readystatechange'?: EventHandler<Event, TElement>;
+    'on:rejectionhandled'?: EventHandler<PromiseRejectionEvent, TElement>;
+    'on:passive:rejectionhandled'?: EventHandler<PromiseRejectionEvent, TElement>;
+    'on:capture:rejectionhandled'?: EventHandler<PromiseRejectionEvent, TElement>;
+    'on:reset'?: EventHandler<Event, TElement>;
+    'on:passive:reset'?: EventHandler<Event, TElement>;
+    'on:capture:reset'?: EventHandler<Event, TElement>;
+    'on:securitypolicyviolation'?: EventHandler<Event, TElement>;
+    'on:passive:securitypolicyviolation'?: EventHandler<Event, TElement>;
+    'on:capture:securitypolicyviolation'?: EventHandler<Event, TElement>;
+    'on:select'?: EventHandler<Event, TElement>;
+    'on:passive:select'?: EventHandler<Event, TElement>;
+    'on:capture:select'?: EventHandler<Event, TElement>;
+    'on:slotchange'?: EventHandler<Event, TElement>;
+    'on:passive:slotchange'?: EventHandler<Event, TElement>;
+    'on:capture:slotchange'?: EventHandler<Event, TElement>;
+    'on:stalled'?: EventHandler<Event, TElement>;
+    'on:passive:stalled'?: EventHandler<Event, TElement>;
+    'on:capture:stalled'?: EventHandler<Event, TElement>;
+    'on:storage'?: EventHandler<StorageEvent, TElement>;
+    'on:passive:storage'?: EventHandler<StorageEvent, TElement>;
+    'on:capture:storage'?: EventHandler<StorageEvent, TElement>;
+    'on:submit'?: EventHandler<SubmitEvent, TElement>;
+    'on:passive:submit'?: EventHandler<SubmitEvent, TElement>;
+    'on:capture:submit'?: EventHandler<SubmitEvent, TElement>;
+    'on:suspend'?: EventHandler<Event, TElement>;
+    'on:passive:suspend'?: EventHandler<Event, TElement>;
+    'on:capture:suspend'?: EventHandler<Event, TElement>;
+    'on:toggle'?: EventHandler<Event, TElement>;
+    'on:passive:toggle'?: EventHandler<Event, TElement>;
+    'on:capture:toggle'?: EventHandler<Event, TElement>;
+    'on:unhandledrejection'?: EventHandler<PromiseRejectionEvent, TElement>;
+    'on:passive:unhandledrejection'?: EventHandler<PromiseRejectionEvent, TElement>;
+    'on:capture:unhandledrejection'?: EventHandler<PromiseRejectionEvent, TElement>;
+    'on:unload'?: EventHandler<Event, TElement>;
+    'on:passive:unload'?: EventHandler<Event, TElement>;
+    'on:capture:unload'?: EventHandler<Event, TElement>;
+    'on:visibilitychange'?: EventHandler<Event, TElement>;
+    'on:passive:visibilitychange'?: EventHandler<Event, TElement>;
+    'on:capture:visibilitychange'?: EventHandler<Event, TElement>;
+    'on:wheel'?: EventHandler<WheelEvent, TElement>;
+    'on:passive:wheel'?: EventHandler<WheelEvent, TElement>;
+    'on:capture:wheel'?: EventHandler<WheelEvent, TElement>;
+    [key: `on:${string}`]: EventHandler<Event, TElement>;
+    [key: `on:passive:${string}`]: EventHandler<Event, TElement>;
+    [key: `on:capture:${string}`]: EventHandler<Event, TElement>;
 }
 interface JSXDataProps {
     [key: `data-${string}`]: Calculation<string | undefined> | string | undefined;
@@ -905,7 +1053,7 @@ declare type JSXChildrenProps<HasChildren extends boolean> = HasChildren extends
 } : {
     children?: never;
 };
-declare type WithCalculationsAndRef<TJSXType extends JSXElementInterface, TElement extends HTMLElement, HasChildren extends boolean> = JSXRefProps<TElement> & JSXEventProps & JSXDataProps & JSXElementInterfaceProps<TJSXType> & JSXChildrenProps<HasChildren>;
+declare type WithCalculationsAndRef<TJSXType extends JSXElementInterface, TElement extends Element, HasChildren extends boolean> = JSXRefProps<TElement> & JSXAttrProps & JSXEventProps<TElement> & JSXDataProps & JSXElementInterfaceProps<TJSXType> & JSXChildrenProps<HasChildren>;
 export interface KnownElements {
     a: WithCalculationsAndRef<JSXAnchorElementInterface, HTMLAnchorElement, true>;
     abbr: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;

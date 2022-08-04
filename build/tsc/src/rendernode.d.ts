@@ -6,7 +6,7 @@ export interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
-    onContext: <TContext>(context: Context<TContext>, handler: (val: TContext) => void) => void;
+    getContext: <TContext>(context: Context<TContext>, handler?: ((val: TContext) => void) | undefined) => TContext;
 }
 declare const UnusedSymbolForChildrenOmission: unique symbol;
 export declare type Component<TProps = {}> = (props: TProps & {
@@ -134,6 +134,7 @@ export declare class IntrinsicRenderNode implements RenderNode {
     private calculationSubscriptions?;
     constructor(elementOrTagName: string | Element, props: Record<string, any> | undefined, children: RenderNode[], debugName?: string);
     private createElement;
+    private setAttribute;
     private setProp;
     private handleEvent;
     detach(emitter: NodeEmitter): void;
@@ -204,19 +205,19 @@ export declare class CollectionRenderNode implements RenderNode {
 export declare function renderJSXNode(jsxNode: JSX.Node): RenderNode;
 export declare function renderJSXChildren(children?: JSX.Node | JSX.Node[]): RenderNode[];
 export declare function mount(target: Element, node: RenderNode): () => void;
-export declare enum LifecycleObserverEventType {
+export declare enum AttachmentObserverEventType {
     REMOVE = "remove",
     ADD = "add"
 }
-export declare type LifecycleObserverNodeCallback = (node: Node, event: LifecycleObserverEventType) => void;
-export declare type LifecycleObserverElementCallback = (element: Element, event: LifecycleObserverEventType) => void;
-export declare class LifecycleObserverRenderNode implements RenderNode {
+export declare type AttachmentObserverNodeCallback = (node: Node, event: AttachmentObserverEventType) => void;
+export declare type AttachmentObserverElementCallback = (element: Element, event: AttachmentObserverEventType) => void;
+export declare class AttachmentObserverRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
-    nodeCallback: LifecycleObserverNodeCallback | undefined;
-    elementCallback: LifecycleObserverElementCallback | undefined;
+    nodeCallback: AttachmentObserverNodeCallback | undefined;
+    elementCallback: AttachmentObserverElementCallback | undefined;
     child: RenderNode;
     childNodes: Node[];
-    constructor(nodeCallback: LifecycleObserverNodeCallback | undefined, elementCallback: LifecycleObserverElementCallback | undefined, children: RenderNode[], debugName?: string);
+    constructor(nodeCallback: AttachmentObserverNodeCallback | undefined, elementCallback: AttachmentObserverElementCallback | undefined, children: RenderNode[], debugName?: string);
     handleEvent(emitter: NodeEmitter, event: ArrayEvent<Node>): void;
     detach(emitter: NodeEmitter): void;
     attach(emitter: NodeEmitter): void;
@@ -230,11 +231,11 @@ export declare class LifecycleObserverRenderNode implements RenderNode {
     [SymAlive](): void;
     [SymDead](): void;
 }
-export declare function LifecycleObserver({ nodeCallback, elementCallback, children, }: {
-    nodeCallback?: LifecycleObserverNodeCallback;
-    elementCallback?: LifecycleObserverElementCallback;
+export declare const AttachmentObserver: Component<{
+    nodeCallback?: AttachmentObserverNodeCallback;
+    elementCallback?: AttachmentObserverElementCallback;
     children?: JSX.Node | JSX.Node[];
-}): LifecycleObserverRenderNode;
+}>;
 export declare class ComponentRenderNode<TProps> implements RenderNode {
     _type: typeof RenderNodeType;
     Component: Component<TProps>;
@@ -244,7 +245,7 @@ export declare class ComponentRenderNode<TProps> implements RenderNode {
     onMountCallbacks?: (() => (() => void) | void)[];
     onUnmountCallbacks?: (() => void)[];
     onDestroyCallbacks?: (() => void)[];
-    onContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;
+    getContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;
     owned: Set<Retainable>;
     constructor(Component: Component<TProps>, props: TProps | null | undefined, children: JSX.Node[], debugName?: string);
     detach(emitter: NodeEmitter): void;
