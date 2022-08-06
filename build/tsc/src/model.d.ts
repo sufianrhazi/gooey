@@ -1,5 +1,5 @@
 import { TrackedData } from './trackeddata';
-import { SymDebugName, SymRefcount, SymAlive, SymDead } from './engine';
+import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { View } from './collection';
 declare const ModelPrototype: {
     [SymDebugName]: string;

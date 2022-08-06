@@ -48,8 +48,8 @@ export declare class Graph<TVertex> {
     protected topologicalIndexById: (number | undefined)[];
     /** Ordered list of vertex ids */
     protected topologicalOrdering: (number | undefined)[];
-    /** Unordered list of dirty vertices */
-    protected dirtyVertexIds: number[];
+    /** The start index of process(), moves forward in each step, may move back as a result of dirty vertices being added / reordered */
+    protected startVertexIndex: number;
     /** Set of vertex ids that need reordering */
     protected toReorderIds: Set<number>;
     private debugSubscriptions;

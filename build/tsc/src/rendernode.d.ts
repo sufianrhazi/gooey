@@ -1,4 +1,5 @@
-import { Retainable, SymDebugName, SymRefcount, SymAlive, SymDead } from './engine';
+import { Retainable } from './engine';
+import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { ArrayEvent } from './arrayevent';
 import { Calculation } from './calc';
 import { Collection, View } from './collection';

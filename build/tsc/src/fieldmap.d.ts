@@ -1,4 +1,5 @@
-import { Processable, Retainable, SymDebugName, SymAlive, SymDead, SymRefcount } from './engine';
+import { Processable, Retainable } from './engine';
+import { SymDebugName, SymAlive, SymDead, SymRefcount } from './symbols';
 import { Field } from './field';
 export declare class FieldMap implements Retainable {
     private fieldMap;

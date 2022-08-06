@@ -153,7 +153,7 @@ var Graph = class {
     __publicField(this, "reverseAdjacencyEither");
     __publicField(this, "topologicalIndexById");
     __publicField(this, "topologicalOrdering");
-    __publicField(this, "dirtyVertexIds");
+    __publicField(this, "startVertexIndex");
     __publicField(this, "toReorderIds");
     __publicField(this, "debugSubscriptions");
     __publicField(this, "_processHandler");
@@ -173,7 +173,7 @@ var Graph = class {
     this.reverseAdjacencySoft = [];
     this.reverseAdjacencyHard = [];
     this.reverseAdjacencyEither = [];
-    this.dirtyVertexIds = [];
+    this.startVertexIndex = 0;
     this.toReorderIds = /* @__PURE__ */ new Set();
     this.debugSubscriptions = /* @__PURE__ */ new Set();
   }
@@ -214,6 +214,7 @@ var Graph = class {
     assert(this.reverseAdjacencyEither[id].length === 0, "cannot remove vertex with reverse edges");
     this.topologicalIndexById[id] = void 0;
     this.topologicalOrdering[index] = void 0;
+    this.clearVertexDirtyInner(id);
     this.vertexBitsById[id] = 0;
     this.cycleInfoById[id] = void 0;
     this.vertexToId.delete(vertex);
@@ -234,8 +235,11 @@ var Graph = class {
     const vertex = this.vertexById[vertexId];
     if (vertex && !(this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY)) {
       this.vertexBitsById[vertexId] |= VERTEX_BIT_DIRTY;
-      this.dirtyVertexIds.push(vertexId);
       this.processHandler(vertex, 0 /* INVALIDATE */);
+      const index = this.topologicalIndexById[vertexId];
+      if (index !== void 0 && index < this.startVertexIndex) {
+        this.startVertexIndex = index;
+      }
     }
   }
   clearVertexDirty(vertex) {
@@ -246,9 +250,6 @@ var Graph = class {
   clearVertexDirtyInner(vertexId) {
     if (this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY) {
       this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
-      const index = this.dirtyVertexIds.indexOf(vertexId);
-      this.dirtyVertexIds[index] = this.dirtyVertexIds[this.dirtyVertexIds.length - 1];
-      this.dirtyVertexIds.pop();
     }
   }
   markVertexCycleInformed(vertex) {
@@ -476,8 +477,14 @@ var Graph = class {
       this.resort(this.toReorderIds);
       this.toReorderIds.clear();
     }
-    for (let i = 0; i < this.topologicalOrdering.length; ++i) {
-      const vertexId = this.topologicalOrdering[i];
+    for (; ; ) {
+      const vertexIndex = this.startVertexIndex;
+      this.startVertexIndex++;
+      if (vertexIndex >= this.vertexById.length) {
+        this.startVertexIndex = 0;
+        break;
+      }
+      const vertexId = this.topologicalOrdering[vertexIndex];
       if (vertexId === void 0) {
         continue;
       }
@@ -508,9 +515,9 @@ var Graph = class {
         shouldPropagate = this.processVertex(vertexId) || shouldPropagate;
       }
       if (this.toReorderIds.size > 0) {
-        const reorderLowerBound = this.resort(this.toReorderIds);
-        if (reorderLowerBound < i) {
-          i = reorderLowerBound;
+        const lowerBound = this.resort(this.toReorderIds);
+        if (lowerBound < this.startVertexIndex) {
+          this.startVertexIndex = lowerBound;
         }
         this.toReorderIds.clear();
       }
@@ -550,7 +557,7 @@ var Graph = class {
           this.propagateDirty(cycleId, toPropagate);
         }
       } else {
-        this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
+        this.clearVertexDirtyInner(vertexId);
       }
     }
     if (false) {
@@ -563,7 +570,7 @@ var Graph = class {
     }
   }
   propagateDirty(vertexId, cycleVertexIds) {
-    this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
+    this.clearVertexDirtyInner(vertexId);
     for (const toId of this.forwardAdjacencyHard[vertexId]) {
       const toCycleInfo = this.cycleInfoById[toId];
       if (toCycleInfo) {
@@ -691,7 +698,7 @@ if (false) {
   };
 }
 
-// src/engine.ts
+// src/symbols.ts
 var SymDebugName = Symbol("debugName");
 var SymRefcount = Symbol("refcount");
 var SymAlive = Symbol("alive");
@@ -700,6 +707,8 @@ var SymRecalculate = Symbol("recalculate");
 var SymCycle = Symbol("cycle");
 var SymInvalidate = Symbol("invalidate");
 var SymProcessable = Symbol("processable");
+
+// src/engine.ts
 function isProcessable(val) {
   return val && val[SymProcessable] === true;
 }
@@ -4253,7 +4262,7 @@ function* keysHandler(target, event) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.7.0" : "development";
+var VERSION = true ? "0.7.1" : "development";
 export {
   ArrayEventType,
   AttachmentObserver,

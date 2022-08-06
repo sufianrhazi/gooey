@@ -1,4 +1,5 @@
-import { Processable, Retainable, SymProcessable, SymDebugName, SymAlive, SymDead, SymRecalculate, SymRefcount } from './engine';
+import { Processable, Retainable } from './engine';
+import { SymProcessable, SymDebugName, SymAlive, SymDead, SymRecalculate, SymRefcount } from './symbols';
 import { Field } from './field';
 declare type SubscriptionEmitterHandler<TEmitEvent> = {
     bivarianceHack(events: TEmitEvent[], index: number): void;
