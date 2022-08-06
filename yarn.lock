@@ -105,30 +105,23 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@srhazi/gooey-test@npm:0.2.3":
-  version: 0.2.3
-  resolution: "@srhazi/gooey-test@npm:0.2.3"
+"@srhazi/gooey-test@npm:0.7.1":
+  version: 0.7.1
+  resolution: "@srhazi/gooey-test@npm:0.7.1"
   dependencies:
-    "@srhazi/gooey": 0.6.6
+    "@srhazi/gooey": 0.7.1
     lodash: ^4.17.21
     yargs: ^17.3.1
-  checksum: 7c13bd3d9a0f84932684a6939c6db25697f10fb29e083a3aa8b00f4d37dfde11b5370fa735a2a5806be88f34b14db1aae4588dde5a6bfc81d1bf6254229f72ca
+  checksum: f46b8fad46b8ef170d38fdc90c25da2c7bfcbc546d784468600a0581de852e7927d9877c033dc13f1d15ce17acd89b80a6f8d2442136ff798690aa39801cc331
   languageName: node
   linkType: hard
 
-"@srhazi/gooey@npm:0.6.6":
-  version: 0.6.6
-  resolution: "@srhazi/gooey@npm:0.6.6"
-  checksum: df4b298ee3c6f2bffa22d7e4cb7941f576d081c5d11e922d958ae6ddb1af67a6c40d5b6447954c56ade8c2b6f6d7716b74c3bb4efbdd806f0f786db082bf3549
-  languageName: node
-  linkType: hard
-
-"@srhazi/gooey@workspace:.":
+"@srhazi/gooey@0.7.1, @srhazi/gooey@workspace:.":
   version: 0.0.0-use.local
   resolution: "@srhazi/gooey@workspace:."
   dependencies:
     "@hpcc-js/wasm": ^1.12.7
-    "@srhazi/gooey-test": 0.2.3
+    "@srhazi/gooey-test": 0.7.1
     "@types/lodash": ^4.14.174
     "@typescript-eslint/eslint-plugin": ^5.2.0
     "@typescript-eslint/parser": ^5.2.0
