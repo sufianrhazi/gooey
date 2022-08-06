@@ -10,13 +10,15 @@ import {
     retain,
     release,
     removeVertex,
+} from './engine';
+import {
     SymProcessable,
     SymDebugName,
     SymAlive,
     SymDead,
     SymRecalculate,
     SymRefcount,
-} from './engine';
+} from './symbols';
 import { Field } from './field';
 import { SubscriptionEmitter } from './subscriptionemitter';
 

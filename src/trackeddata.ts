@@ -1,11 +1,5 @@
-import {
-    Retainable,
-    notifyCreate,
-    notifyRead,
-    SymAlive,
-    SymDead,
-    SymRefcount,
-} from './engine';
+import { Retainable, notifyCreate, notifyRead } from './engine';
+import { SymAlive, SymDead, SymRefcount } from './symbols';
 import { FieldMap } from './fieldmap';
 import { field as makeField, Field } from './field';
 import { SubscriptionEmitter } from './subscriptionemitter';

@@ -5,11 +5,8 @@ import {
     removeSoftEdge,
     retain,
     release,
-    SymDebugName,
-    SymAlive,
-    SymDead,
-    SymRefcount,
 } from './engine';
+import { SymDebugName, SymAlive, SymDead, SymRefcount } from './symbols';
 import { field as makeField, Field } from './field';
 
 export class FieldMap implements Retainable {

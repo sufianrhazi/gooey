@@ -154,6 +154,9 @@ import {
     unmarkDirty,
     trackReads,
     untrackReads,
+    isProcessable,
+} from './engine';
+import {
     SymProcessable,
     SymCycle,
     SymDebugName,
@@ -162,8 +165,7 @@ import {
     SymInvalidate,
     SymRecalculate,
     SymRefcount,
-    isProcessable,
-} from './engine';
+} from './symbols';
 
 enum CalculationState {
     READY,

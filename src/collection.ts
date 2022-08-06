@@ -4,16 +4,8 @@ import {
     getTrackedDataHandle,
     ProxyHandler,
 } from './trackeddata';
-import {
-    untrackReads,
-    retain,
-    release,
-    SymRefcount,
-    SymAlive,
-    SymDead,
-    SymDebugName,
-    Retainable,
-} from './engine';
+import { untrackReads, retain, release, Retainable } from './engine';
+import { SymRefcount, SymAlive, SymDead, SymDebugName } from './symbols';
 import { ArrayEvent, ArrayEventType, arrayEventFlatMap } from './arrayevent';
 import * as log from './log';
 

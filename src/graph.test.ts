@@ -452,6 +452,53 @@ suite('Graph', () => {
             });
         });
     });
+
+    suite('Processing behavior', () => {
+        const a = { name: 'a' };
+        const b = { name: 'b' };
+        const c = { name: 'c' };
+        const d = { name: 'd' };
+        const e = { name: 'e' };
+
+        interface TNode {
+            name: string;
+        }
+
+        test('unrelated dirtied nodes created while processing are themselves processed', () => {
+            const actions: { name: string; action: ProcessAction }[] = [];
+            const graph = new Graph<TNode>(
+                (node: TNode, action: ProcessAction) => {
+                    actions.push({ name: node.name, action });
+                    if (node === d && action === ProcessAction.RECALCULATE) {
+                        graph.markVertexDirty(a);
+                    }
+                    return true;
+                }
+            );
+            graph.addVertex(a);
+            graph.addVertex(b);
+            graph.addEdge(a, b, Graph.EDGE_HARD);
+            graph.addVertex(c);
+            graph.addVertex(d);
+            graph.addVertex(e);
+            graph.addEdge(c, d, Graph.EDGE_HARD);
+            graph.markVertexDirty(c);
+            actions.splice(0, actions.length);
+            graph.process();
+            assert.deepEqual(
+                [
+                    { name: 'c', action: ProcessAction.RECALCULATE },
+                    { name: 'd', action: ProcessAction.INVALIDATE },
+                    { name: 'd', action: ProcessAction.RECALCULATE },
+                    { name: 'a', action: ProcessAction.INVALIDATE },
+                    { name: 'a', action: ProcessAction.RECALCULATE },
+                    { name: 'b', action: ProcessAction.INVALIDATE },
+                    { name: 'b', action: ProcessAction.RECALCULATE },
+                ],
+                actions
+            );
+        });
+    });
 });
 
 suite('Graph Cycles', () => {

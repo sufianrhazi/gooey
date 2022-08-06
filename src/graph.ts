@@ -192,8 +192,8 @@ export class Graph<TVertex> {
     /** Ordered list of vertex ids */
     protected topologicalOrdering: (number | undefined)[];
 
-    /** Unordered list of dirty vertices */
-    protected dirtyVertexIds: number[];
+    /** The start index of process(), moves forward in each step, may move back as a result of dirty vertices being added / reordered */
+    protected startVertexIndex: number;
 
     /** Set of vertex ids that need reordering */
     protected toReorderIds: Set<number>;
@@ -232,7 +232,7 @@ export class Graph<TVertex> {
         this.reverseAdjacencyHard = [];
         this.reverseAdjacencyEither = [];
 
-        this.dirtyVertexIds = [];
+        this.startVertexIndex = 0;
         this.toReorderIds = new Set();
 
         this.debugSubscriptions = new Set();
@@ -298,6 +298,7 @@ export class Graph<TVertex> {
         this.topologicalIndexById[id] = undefined;
         this.topologicalOrdering[index] = undefined;
 
+        this.clearVertexDirtyInner(id);
         this.vertexBitsById[id] = 0;
         this.cycleInfoById[id] = undefined;
         this.vertexToId.delete(vertex);
@@ -323,8 +324,12 @@ export class Graph<TVertex> {
         const vertex = this.vertexById[vertexId];
         if (vertex && !(this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY)) {
             this.vertexBitsById[vertexId] |= VERTEX_BIT_DIRTY;
-            this.dirtyVertexIds.push(vertexId);
             this.processHandler(vertex, ProcessAction.INVALIDATE);
+
+            const index = this.topologicalIndexById[vertexId];
+            if (index !== undefined && index < this.startVertexIndex) {
+                this.startVertexIndex = index;
+            }
         }
     }
 
@@ -337,10 +342,6 @@ export class Graph<TVertex> {
     private clearVertexDirtyInner(vertexId: number) {
         if (this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY) {
             this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
-            const index = this.dirtyVertexIds.indexOf(vertexId);
-            this.dirtyVertexIds[index] =
-                this.dirtyVertexIds[this.dirtyVertexIds.length - 1];
-            this.dirtyVertexIds.pop();
         }
     }
 
@@ -672,10 +673,17 @@ export class Graph<TVertex> {
             this.toReorderIds.clear();
         }
 
-        for (let i = 0; i < this.topologicalOrdering.length; ++i) {
-            const vertexId = this.topologicalOrdering[i];
+        for (;;) {
+            const vertexIndex = this.startVertexIndex;
+            this.startVertexIndex++;
+            if (vertexIndex >= this.vertexById.length) {
+                this.startVertexIndex = 0;
+                break;
+            }
+
+            const vertexId = this.topologicalOrdering[vertexIndex];
             if (vertexId === undefined) {
-                continue; // vertex was deleted
+                continue;
             }
 
             const isDirty = this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY;
@@ -718,9 +726,9 @@ export class Graph<TVertex> {
             }
 
             if (this.toReorderIds.size > 0) {
-                const reorderLowerBound = this.resort(this.toReorderIds);
-                if (reorderLowerBound < i) {
-                    i = reorderLowerBound;
+                const lowerBound = this.resort(this.toReorderIds);
+                if (lowerBound < this.startVertexIndex) {
+                    this.startVertexIndex = lowerBound;
                 }
                 this.toReorderIds.clear();
             }
@@ -784,7 +792,7 @@ export class Graph<TVertex> {
                     this.propagateDirty(cycleId, toPropagate);
                 }
             } else {
-                this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
+                this.clearVertexDirtyInner(vertexId);
             }
         }
 
@@ -808,7 +816,7 @@ export class Graph<TVertex> {
         vertexId: number,
         cycleVertexIds: null | Set<number>
     ) {
-        this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
+        this.clearVertexDirtyInner(vertexId);
         for (const toId of this.forwardAdjacencyHard[vertexId]) {
             const toCycleInfo = this.cycleInfoById[toId];
             if (toCycleInfo) {

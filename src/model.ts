@@ -5,14 +5,8 @@ import {
     TrackedDataHandle,
     ProxyHandler,
 } from './trackeddata';
-import {
-    retain,
-    release,
-    SymDebugName,
-    SymRefcount,
-    SymAlive,
-    SymDead,
-} from './engine';
+import { retain, release } from './engine';
+import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { ViewHandler, ViewImpl, makeViewPrototype, View } from './collection';
 import { noop } from './util';
 import { ArrayEvent, ArrayEventType } from './arrayevent';

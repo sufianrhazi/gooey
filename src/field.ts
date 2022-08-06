@@ -6,13 +6,15 @@ import {
     markDirty,
     removeVertex,
     notifyRead,
+} from './engine';
+import {
     SymProcessable,
     SymDebugName,
     SymDead,
     SymAlive,
     SymRecalculate,
     SymRefcount,
-} from './engine';
+} from './symbols';
 
 type FieldObserver<T> = (val: T) => void;
 

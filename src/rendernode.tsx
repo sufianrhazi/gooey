@@ -1,16 +1,13 @@
 import * as log from './log';
 import {
     Retainable,
-    SymDebugName,
-    SymRefcount,
-    SymAlive,
-    SymDead,
     retain,
     release,
     trackCreates,
     untrackReads,
     afterFlush,
 } from './engine';
+import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { RefObject } from './ref';
 import { JSXNode, getElementTypeMapping } from './jsx';
 import {

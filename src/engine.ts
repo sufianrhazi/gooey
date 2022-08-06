@@ -1,15 +1,16 @@
 import * as log from './log';
 import { noop } from './util';
 import { Graph, ProcessAction } from './graph';
-
-export const SymDebugName = Symbol('debugName');
-export const SymRefcount = Symbol('refcount');
-export const SymAlive = Symbol('alive');
-export const SymDead = Symbol('dead');
-export const SymRecalculate = Symbol('recalculate');
-export const SymCycle = Symbol('cycle');
-export const SymInvalidate = Symbol('invalidate');
-export const SymProcessable = Symbol('processable');
+import {
+    SymDebugName,
+    SymRefcount,
+    SymAlive,
+    SymDead,
+    SymRecalculate,
+    SymCycle,
+    SymInvalidate,
+    SymProcessable,
+} from './symbols';
 
 export interface Retainable {
     [SymDebugName]: string;
