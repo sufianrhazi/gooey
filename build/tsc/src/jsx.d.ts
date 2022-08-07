@@ -47,37 +47,8 @@ declare global {
         type ElementClass = never;
     }
 }
-interface MissingFromTypescriptHTMLElementProperties {
-    ariaColIndexText?: string | undefined;
-    ariaInvalid?: string | undefined;
-    ariaRowIndexText?: string | undefined;
-    role?: string | undefined;
-    autofocus?: boolean | undefined;
-    itemscope?: string | undefined;
-}
-interface MissingFromTypescriptHTMLDialogElementProperties {
-    open?: boolean | undefined;
-}
-interface MissingFromTypescriptHTMLIframeElementProperties {
-    loading?: LazyLoadingValue | undefined;
-}
-interface MissingFromTypescriptHTMLMetaElementProperties {
-    media?: string | undefined;
-}
-interface MissingFromTypescriptHTMLSourceElementProperties {
-    width?: string | number | undefined;
-    height?: string | number | undefined;
-}
-declare type PropertyMapField<TJSXField, TElement, TIDLName extends keyof TElement> = {
-    makeAttrValue?: ((jsxAttr: Exclude<TJSXField, undefined>) => string | undefined) | null;
-} | {
-    makeAttrValue?: ((jsxAttr: Exclude<TJSXField, undefined>) => string | undefined) | null;
-    idlName?: TIDLName | null;
-    makeIdlValue?: (jsxAttr: Exclude<TJSXField, undefined>) => TElement[TIDLName];
-};
-declare type PropertyMap<TJSXElementInterface, TElement> = {
-    [TJSXKey in keyof Required<TJSXElementInterface>]: PropertyMapField<TJSXElementInterface[TJSXKey], TElement, keyof TElement>;
-};
+export declare function setAttribute(element: Element, attributeName: string, val: unknown): void;
+export declare function assignProp(element: Element, attribute: string, value: any): void;
 declare type AriaRole = 'alert' | 'alertdialog' | 'application' | 'article' | 'associationlist' | 'associationlistitemkey' | 'associationlistitemvalue' | 'banner' | 'blockquote' | 'button' | 'caption' | 'cell' | 'checkbox' | 'code' | 'columnheader' | 'combobox' | 'comment' | 'complementary' | 'contentinfo' | 'definition' | 'deletion' | 'dialog' | 'directory' | 'document' | 'emphasis' | 'feed' | 'figure' | 'form' | 'generic' | 'grid' | 'gridcell' | 'group' | 'heading' | 'img' | 'insertion' | 'link' | 'list' | 'listbox' | 'listitem' | 'log' | 'main' | 'mark' | 'marquee' | 'math' | 'menu' | 'menubar' | 'menuitem' | 'menuitemcheckbox' | 'menuitemradio' | 'meter' | 'navigation' | 'none' | 'note' | 'option' | 'paragraph' | 'presentation' | 'progressbar' | 'radio' | 'radiogroup' | 'region' | 'row' | 'rowgroup' | 'rowheader' | 'scrollbar' | 'search' | 'searchbox' | 'separator' | 'slider' | 'spinbutton' | 'status' | 'strong' | 'subscript' | 'suggestion' | 'superscript' | 'switch' | 'tab' | 'table' | 'tablist' | 'tabpanel' | 'term' | 'textbox' | 'time' | 'timer' | 'toolbar' | 'tooltip' | 'tree' | 'treegrid' | 'treeitem' | string;
 declare type DirValue = 'ltr' | 'rtl' | 'auto' | string;
 declare type BrowsingContextValue = '_blank' | '_self' | '_parent' | '_top' | string;
@@ -166,7 +137,6 @@ interface JSXElementInterface {
     title?: string | undefined;
     translate?: '' | 'yes' | 'no' | undefined;
 }
-export declare const HTMLElementMap: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
 interface JSXAnchorElementInterface extends JSXElementInterface {
     /** Address of the hyperlink */
     href?: string | undefined;
@@ -690,127 +660,6 @@ interface JSXVideoElementInterface extends JSXMediaElementInterface {
     /** Vertical dimension */
     height?: string | number | undefined;
 }
-export declare const ElementTypeMapping: {
-    readonly a: PropertyMap<JSXAnchorElementInterface, HTMLAnchorElement>;
-    readonly abbr: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly address: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly area: PropertyMap<JSXAreaElementInterface, HTMLAreaElement>;
-    readonly article: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly aside: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly audio: PropertyMap<JSXAudioElementInterface, HTMLAudioElement>;
-    readonly b: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly base: PropertyMap<JSXBaseElementInterface, HTMLBaseElement>;
-    readonly bdi: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly bdo: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly blockquote: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly body: PropertyMap<JSXBodyElementInterface, HTMLBodyElement>;
-    readonly br: PropertyMap<JSXBRElementInterface, HTMLBRElement>;
-    readonly button: PropertyMap<JSXButtonElementInterface, HTMLButtonElement>;
-    readonly canvas: PropertyMap<JSXCanvasElementInterface, HTMLCanvasElement>;
-    readonly caption: PropertyMap<JSXTableCaptionElementInterface, HTMLTableCaptionElement>;
-    readonly cite: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly code: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly col: PropertyMap<JSXTableColElementInterface, HTMLTableColElement>;
-    readonly colgroup: PropertyMap<JSXTableColElementInterface, HTMLTableColElement>;
-    readonly data: PropertyMap<JSXDataElementInterface, HTMLDataElement>;
-    readonly datalist: PropertyMap<JSXDataListElementInterface, HTMLDataListElement>;
-    readonly dd: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly del: PropertyMap<JSXModElementInterface, HTMLModElement>;
-    readonly details: PropertyMap<JSXDetailsElementInterface, HTMLDetailsElement>;
-    readonly dfn: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly dialog: PropertyMap<JSXDialogElementInterface, HTMLDialogElement & MissingFromTypescriptHTMLDialogElementProperties>;
-    readonly div: PropertyMap<JSXDivElementInterface, HTMLDivElement>;
-    readonly dl: PropertyMap<JSXDListElementInterface, HTMLDListElement>;
-    readonly dt: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly em: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly embed: PropertyMap<JSXEmbedElementInterface, HTMLEmbedElement>;
-    readonly fieldset: PropertyMap<JSXFieldSetElementInterface, HTMLFieldSetElement>;
-    readonly figcaption: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly figure: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly footer: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly form: PropertyMap<JSXFormElementInterface, HTMLFormElement>;
-    readonly h1: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly h2: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly h3: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly h4: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly h5: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly h6: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly head: PropertyMap<JSXHeadElementInterface, HTMLHeadElement>;
-    readonly header: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly heading: PropertyMap<JSXHeadingElementInterface, HTMLHeadingElement>;
-    readonly hgroup: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly hr: PropertyMap<JSXHRElementInterface, HTMLHRElement>;
-    readonly html: PropertyMap<JSXHtmlElementInterface, HTMLHtmlElement>;
-    readonly i: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly iframe: PropertyMap<JSXIFrameElementInterface, HTMLIFrameElement & MissingFromTypescriptHTMLIframeElementProperties>;
-    readonly img: PropertyMap<JSXImageElementInterface, HTMLImageElement>;
-    readonly input: PropertyMap<JSXInputElementInterface, HTMLInputElement>;
-    readonly ins: PropertyMap<JSXModElementInterface, HTMLModElement>;
-    readonly kbd: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly label: PropertyMap<JSXLabelElementInterface, HTMLLabelElement>;
-    readonly legend: PropertyMap<JSXLegendElementInterface, HTMLLegendElement>;
-    readonly li: PropertyMap<JSXLIElementInterface, HTMLLIElement>;
-    readonly link: PropertyMap<JSXLinkElementInterface, HTMLLinkElement>;
-    readonly main: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly map: PropertyMap<JSXMapElementInterface, HTMLMapElement>;
-    readonly mark: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly menu: PropertyMap<JSXMenuElementInterface, HTMLMenuElement>;
-    readonly meta: PropertyMap<JSXMetaElementInterface, HTMLMetaElement & MissingFromTypescriptHTMLMetaElementProperties>;
-    readonly meter: PropertyMap<JSXMeterElementInterface, HTMLMeterElement>;
-    readonly nav: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly noscript: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly object: PropertyMap<JSXObjectElementInterface, HTMLObjectElement>;
-    readonly ol: PropertyMap<JSXOListElementInterface, HTMLOListElement>;
-    readonly optgroup: PropertyMap<JSXOptGroupElementInterface, HTMLOptGroupElement>;
-    readonly option: PropertyMap<JSXOptionElementInterface, HTMLOptionElement>;
-    readonly output: PropertyMap<JSXOutputElementInterface, HTMLOutputElement>;
-    readonly p: PropertyMap<JSXParagraphElementInterface, HTMLParagraphElement>;
-    readonly param: PropertyMap<JSXParamElementInterface, HTMLParamElement>;
-    readonly picture: PropertyMap<JSXPictureElementInterface, HTMLPictureElement>;
-    readonly pre: PropertyMap<JSXPreElementInterface, HTMLPreElement>;
-    readonly progress: PropertyMap<JSXProgressElementInterface, HTMLProgressElement>;
-    readonly quote: PropertyMap<JSXQuoteElementInterface, HTMLQuoteElement>;
-    readonly rp: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly rt: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly ruby: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly s: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly samp: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly script: PropertyMap<JSXScriptElementInterface, HTMLScriptElement>;
-    readonly section: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly select: PropertyMap<JSXSelectElementInterface, HTMLSelectElement>;
-    readonly slot: PropertyMap<JSXSlotElementInterface, HTMLSlotElement>;
-    readonly small: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly source: PropertyMap<JSXSourceElementInterface, HTMLSourceElement & MissingFromTypescriptHTMLSourceElementProperties>;
-    readonly span: PropertyMap<JSXSpanElementInterface, HTMLSpanElement>;
-    readonly strong: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly style: PropertyMap<JSXStyleElementInterface, HTMLStyleElement>;
-    readonly sub: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly summary: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly sup: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly table: PropertyMap<JSXTableElementInterface, HTMLTableElement>;
-    readonly tbody: PropertyMap<JSXTableSectionElementInterface, HTMLTableSectionElement>;
-    readonly td: PropertyMap<JSXTableCellElementInterface, HTMLTableCellElement>;
-    readonly template: PropertyMap<JSXTemplateElementInterface, HTMLTemplateElement>;
-    readonly textarea: PropertyMap<JSXTextAreaElementInterface, HTMLTextAreaElement>;
-    readonly tfoot: PropertyMap<JSXTableSectionElementInterface, HTMLTableSectionElement>;
-    readonly th: PropertyMap<JSXTableHeaderElementInterface, HTMLTableCellElement>;
-    readonly thead: PropertyMap<JSXTableSectionElementInterface, HTMLTableSectionElement>;
-    readonly time: PropertyMap<JSXTimeElementInterface, HTMLTimeElement>;
-    readonly title: PropertyMap<JSXTitleElementInterface, HTMLTitleElement>;
-    readonly tr: PropertyMap<JSXTableRowElementInterface, HTMLTableRowElement>;
-    readonly track: PropertyMap<JSXTrackElementInterface, HTMLTrackElement>;
-    readonly u: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly ul: PropertyMap<JSXUListElementInterface, HTMLUListElement>;
-    readonly var: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-    readonly video: PropertyMap<JSXVideoElementInterface, HTMLVideoElement>;
-    readonly wbr: PropertyMap<JSXElementInterface, HTMLElement & MissingFromTypescriptHTMLElementProperties>;
-};
-interface ElementTypeMappingField {
-    makeAttrValue?: (jsxAttr: any) => string | undefined;
-    idlName?: any;
-    makeIdlValue?: (jsxAttr: any) => any;
-}
-export declare function getElementTypeMapping(elementName: string, property: string): ElementTypeMappingField;
 /**
  * Good old bivarianceHack to allow assignability of specific event handlers to more generic event handlers :facepalm:
  */

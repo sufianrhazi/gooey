@@ -416,6 +416,7 @@ const TextLike: Component<{
     };
 
     const ElementType = inputType === 'textarea' ? 'textarea' : 'input';
+    const typeProps = inputType === 'textarea' ? {} : { type: inputType };
 
     return (
         <fieldset>
@@ -429,7 +430,7 @@ const TextLike: Component<{
             <div class="target">
                 <ElementType
                     ref={inputRef}
-                    type={inputType}
+                    {...typeProps}
                     value={calc(() => state.value)}
                     disabled={calc(() => state.disabled)}
                     readonly={calc(() => state.readonly)}
@@ -741,7 +742,7 @@ const Details: Component<{}> = (props, { onDestroy }) => {
 
     return (
         <fieldset>
-            <h2>select</h2>
+            <h2>details/summary</h2>
             <div class="target">
                 <details
                     ref={detailsRef}

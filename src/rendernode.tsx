@@ -9,7 +9,7 @@ import {
 } from './engine';
 import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { RefObject } from './ref';
-import { JSXNode, getElementTypeMapping } from './jsx';
+import { JSXNode, setAttribute, assignProp } from './jsx';
 import {
     ArrayEvent,
     ArrayEventType,
@@ -422,22 +422,6 @@ export class IntrinsicRenderNode implements RenderNode {
         return element;
     }
 
-    private setAttribute(
-        element: Element,
-        attributeName: string,
-        val: unknown
-    ) {
-        if (val === undefined || val === null || val === false) {
-            element.removeAttribute(attributeName);
-        } else if (val === true) {
-            element.setAttribute(attributeName, '');
-        } else if (typeof val === 'string') {
-            element.setAttribute(attributeName, val);
-        } else if (typeof val === 'number' || typeof val === 'bigint') {
-            element.setAttribute(attributeName, val.toString());
-        }
-    }
-
     private setProp(element: Element, prop: string, val: unknown) {
         if (prop.startsWith('prop:')) {
             const propName = prop.slice(5);
@@ -447,28 +431,11 @@ export class IntrinsicRenderNode implements RenderNode {
 
         if (prop.startsWith('attr:')) {
             const attrName = prop.slice(5);
-            this.setAttribute(element, attrName, val);
+            setAttribute(element, attrName, val);
             return;
         }
 
-        const mapping = getElementTypeMapping(this.tagName, prop);
-        if (mapping) {
-            if (mapping.makeAttrValue !== null) {
-                const attributeValue = mapping.makeAttrValue
-                    ? mapping.makeAttrValue(val)
-                    : val;
-                this.setAttribute(element, prop, attributeValue);
-            }
-            if (mapping.idlName !== null) {
-                const idlValue = mapping.makeIdlValue
-                    ? mapping.makeIdlValue(val)
-                    : val;
-                (element as any)[mapping.idlName ?? prop] = idlValue;
-            }
-            return;
-        }
-
-        this.setAttribute(element, prop, val);
+        assignProp(element, prop, val);
     }
 
     private handleEvent = (event: ArrayEvent<Node>) => {

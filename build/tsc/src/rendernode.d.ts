@@ -28,8 +28,7 @@ declare const RenderNodeType: unique symbol;
 export interface RenderNode extends Retainable {
     _type: typeof RenderNodeType;
     detach(emitter: NodeEmitter): void;
-    attach(emitter: NodeEmitter): void;
-    setContext(context: ContextMap): void;
+    attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -43,7 +42,6 @@ export declare class EmptyRenderNode implements RenderNode {
     constructor();
     detach: () => void;
     attach: () => void;
-    setContext: () => void;
     onMount: () => void;
     onUnmount: () => void;
     retain(): void;
@@ -66,8 +64,7 @@ export declare class TextRenderNode implements RenderNode {
     private isAttached;
     constructor(string: string, debugName?: string);
     detach(emitter: NodeEmitter): void;
-    attach(emitter: NodeEmitter): void;
-    setContext: () => void;
+    attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount: () => void;
     onUnmount: () => void;
     retain(): void;
@@ -85,8 +82,7 @@ export declare class ForeignRenderNode implements RenderNode {
     private node;
     constructor(node: Node, debugName?: string);
     detach(emitter: NodeEmitter): void;
-    attach(emitter: NodeEmitter): void;
-    setContext: () => void;
+    attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount: () => void;
     onUnmount: () => void;
     retain(): void;
@@ -105,8 +101,7 @@ export declare class ArrayRenderNode implements RenderNode {
     private slotSizes;
     constructor(children: RenderNode[], debugName?: string);
     detach(emitter: NodeEmitter): void;
-    attach(emitter: NodeEmitter): void;
-    setContext(context: ContextMap): void;
+    attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -135,12 +130,10 @@ export declare class IntrinsicRenderNode implements RenderNode {
     private calculationSubscriptions?;
     constructor(elementOrTagName: string | Element, props: Record<string, any> | undefined, children: RenderNode[], debugName?: string);
     private createElement;
-    private setAttribute;
     private setProp;
     private handleEvent;
     detach(emitter: NodeEmitter): void;
-    attach(emitter: NodeEmitter): void;
-    setContext(context: ContextMap): void;
+    attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -164,8 +157,7 @@ export declare class CalculationRenderNode implements RenderNode {
     private isCalculatedPendingAdd;
     constructor(calculation: Calculation<any>, debugName?: string);
     detach(emitter: NodeEmitter): void;
-    attach(emitter: NodeEmitter): void;
-    setContext(context: ContextMap): void;
+    attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -190,9 +182,8 @@ export declare class CollectionRenderNode implements RenderNode {
     private emitter;
     constructor(collection: Collection<any> | View<any>, debugName?: string);
     detach(emitter: NodeEmitter): void;
-    attach(emitter: NodeEmitter): void;
+    attach(emitter: NodeEmitter, context: ContextMap): void;
     handleChildEvent(emitter: NodeEmitter, event: ArrayEvent<Node>, child: RenderNode): void;
-    setContext(context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -221,8 +212,7 @@ export declare class AttachmentObserverRenderNode implements RenderNode {
     constructor(nodeCallback: AttachmentObserverNodeCallback | undefined, elementCallback: AttachmentObserverElementCallback | undefined, children: RenderNode[], debugName?: string);
     handleEvent(emitter: NodeEmitter, event: ArrayEvent<Node>): void;
     detach(emitter: NodeEmitter): void;
-    attach(emitter: NodeEmitter): void;
-    setContext(context: ContextMap): void;
+    attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -250,8 +240,7 @@ export declare class ComponentRenderNode<TProps> implements RenderNode {
     owned: Set<Retainable>;
     constructor(Component: Component<TProps>, props: TProps | null | undefined, children: JSX.Node[], debugName?: string);
     detach(emitter: NodeEmitter): void;
-    attach(emitter: NodeEmitter): void;
-    setContext(contextMap: ContextMap): void;
+    attach(emitter: NodeEmitter, contextMap: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -268,8 +257,7 @@ export declare class ContextRenderNode<T> implements RenderNode {
     value: T;
     constructor(context: Context<T>, value: T, children: JSX.Element[], debugName?: string);
     detach(emitter: NodeEmitter): void;
-    attach(emitter: NodeEmitter): void;
-    setContext(context: ContextMap): void;
+    attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;

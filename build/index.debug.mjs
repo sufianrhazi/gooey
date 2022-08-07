@@ -966,873 +966,227 @@ function attrYesNo(val) {
     return void 0;
   return val === "no" ? false : true;
 }
-var HTMLElementMap = {
-  accesskey: {
-    idlName: "accessKey"
-  },
-  "aria-atomic": {
-    idlName: "ariaAtomic"
-  },
-  "aria-autocomplete": {
-    idlName: "ariaAutoComplete"
-  },
-  "aria-busy": {
-    idlName: "ariaBusy"
-  },
-  "aria-checked": {
-    idlName: "ariaChecked"
-  },
-  "aria-colcount": {
-    idlName: "ariaColCount"
-  },
-  "aria-colindex": {
-    idlName: "ariaColIndex"
-  },
-  "aria-colindextext": {
-    idlName: "ariaColIndexText"
-  },
-  "aria-colspan": {
-    idlName: "ariaColSpan"
-  },
-  "aria-current": {
-    idlName: "ariaCurrent"
-  },
-  "aria-disabled": {
-    idlName: "ariaDisabled"
-  },
-  "aria-expanded": {
-    idlName: "ariaExpanded"
-  },
-  "aria-haspopup": {
-    idlName: "ariaHasPopup"
-  },
-  "aria-hidden": {
-    idlName: "ariaHidden"
-  },
-  "aria-invalid": {
-    idlName: "ariaInvalid"
-  },
-  "aria-keyshortcuts": {
-    idlName: "ariaKeyShortcuts"
-  },
-  "aria-label": {
-    idlName: "ariaLabel"
-  },
-  "aria-level": {
-    idlName: "ariaLevel"
-  },
-  "aria-live": {
-    idlName: "ariaLive"
-  },
-  "aria-modal": {
-    idlName: "ariaModal"
-  },
-  "aria-multiline": {
-    idlName: "ariaMultiLine"
-  },
-  "aria-multiselectable": {
-    idlName: "ariaMultiSelectable"
-  },
-  "aria-orientation": {
-    idlName: "ariaOrientation"
-  },
-  "aria-placeholder": {
-    idlName: "ariaPlaceholder"
-  },
-  "aria-posinset": {
-    idlName: "ariaPosInSet"
-  },
-  "aria-pressed": {
-    idlName: "ariaPressed"
-  },
-  "aria-readonly": {
-    idlName: "ariaReadOnly"
-  },
-  "aria-required": {
-    idlName: "ariaRequired"
-  },
-  "aria-roledescription": {
-    idlName: "ariaRoleDescription"
-  },
-  "aria-rowcount": {
-    idlName: "ariaRowCount"
-  },
-  "aria-rowindex": {
-    idlName: "ariaRowIndex"
-  },
-  "aria-rowindextext": {
-    idlName: "ariaRowIndexText"
-  },
-  "aria-rowspan": {
-    idlName: "ariaRowSpan"
-  },
-  "aria-selected": {
-    idlName: "ariaSelected"
-  },
-  "aria-setsize": {
-    idlName: "ariaSetSize"
-  },
-  "aria-sort": {
-    idlName: "ariaSort"
-  },
-  "aria-valuemax": {
-    idlName: "ariaValueMax"
-  },
-  "aria-valuemin": {
-    idlName: "ariaValueMin"
-  },
-  "aria-valuenow": {
-    idlName: "ariaValueNow"
-  },
-  "aria-valuetext": {
-    idlName: "ariaValueText"
-  },
-  autocapitalize: {},
-  autofocus: {},
-  class: {
-    idlName: "className"
-  },
-  contenteditable: {
-    idlName: "contentEditable"
-  },
-  dir: {},
-  draggable: {},
-  enterkeyhint: {
-    idlName: "enterKeyHint"
-  },
-  hidden: {},
-  id: {},
-  inputmode: {
-    idlName: "inputMode"
-  },
-  is: { idlName: null },
-  itemid: { idlName: null },
-  itemprop: { idlName: null },
-  itemref: { idlName: null },
-  itemscope: { idlName: null },
-  itemtype: { idlName: null },
-  lang: {},
-  nonce: {},
-  role: {},
-  slot: {},
-  spellcheck: {},
-  style: {},
-  tabindex: {
-    idlName: "tabIndex",
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  title: {},
-  translate: {
-    makeIdlValue: attrYesNo
-  }
-};
-var HTMLAnchorElementMap = {
-  ...HTMLElementMap,
-  href: {},
-  target: {},
-  download: {},
-  ping: {},
-  rel: {},
-  hreflang: {},
-  type: {},
-  referrerpolicy: {
-    idlName: "referrerPolicy"
-  }
-};
-var HTMLAreaElementMap = {
-  ...HTMLElementMap,
-  alt: {},
-  coords: {},
-  shape: {},
-  href: {},
-  target: {},
-  download: {},
-  ping: {},
-  rel: {},
-  referrerpolicy: {
-    idlName: "referrerPolicy"
-  }
-};
-var HTMLAudioElementMap = {
-  ...HTMLElementMap,
-  src: {},
-  crossorigin: {
-    idlName: "crossOrigin"
-  },
-  preload: {},
-  autoplay: {},
-  loop: {
-    makeIdlValue: attrBooleanToEmptyString
-  },
-  muted: {},
-  controls: {}
-};
-var HTMLBRElementMap = {
-  ...HTMLElementMap
-};
-var HTMLBaseElementMap = {
-  ...HTMLElementMap,
-  href: {},
-  target: {}
-};
-var HTMLBodyElementMap = {
-  ...HTMLElementMap
-};
-var HTMLButtonElementMap = {
-  ...HTMLElementMap,
-  disabled: {},
-  form: { idlName: null },
-  formaction: {
-    idlName: "formAction"
-  },
-  formenctype: {
-    idlName: "formEnctype"
-  },
-  formmethod: {
-    idlName: "formMethod"
-  },
-  formnovalidate: {
-    idlName: "formNoValidate"
-  },
-  formtarget: {
-    idlName: "formTarget"
-  },
-  name: {},
-  type: {},
-  value: {}
-};
-var HTMLCanvasElementMap = {
-  ...HTMLElementMap,
-  width: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  height: {
-    makeIdlValue: attrStringOrNumberToNumber
-  }
-};
-var HTMLDListElementMap = {
-  ...HTMLElementMap
-};
-var HTMLDataElementMap = {
-  ...HTMLElementMap,
-  value: {}
-};
-var HTMLDataListElementMap = {
-  ...HTMLElementMap
-};
-var HTMLDetailsElementMap = {
-  ...HTMLElementMap,
-  open: {}
-};
-var HTMLDialogElementMap = {
-  ...HTMLElementMap,
-  open: {}
-};
-var HTMLDivElementMap = {
-  ...HTMLElementMap
-};
-var HTMLEmbedElementMap = {
-  ...HTMLElementMap,
-  src: {},
-  type: {},
-  width: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  height: {
-    makeIdlValue: attrStringOrNumberToNumber
-  }
-};
-var HTMLFieldSetElementMap = {
-  ...HTMLElementMap,
-  disabled: {},
-  form: { idlName: null },
-  name: {}
-};
-var HTMLFormElementMap = {
-  ...HTMLElementMap,
-  "accept-charset": {
-    idlName: "acceptCharset"
-  },
+var attrBehavior = {
+  "accept-charset": { idn: "acceptCharset" },
+  "aria-atomic": { idn: "ariaAtomic" },
+  "aria-autocomplete": { idn: "ariaAutoComplete" },
+  "aria-busy": { idn: "ariaBusy" },
+  "aria-checked": { idn: "ariaChecked" },
+  "aria-colcount": { idn: "ariaColCount" },
+  "aria-colindex": { idn: "ariaColIndex" },
+  "aria-colindextext": { idn: "ariaColIndexText" },
+  "aria-colspan": { idn: "ariaColSpan" },
+  "aria-current": { idn: "ariaCurrent" },
+  "aria-disabled": { idn: "ariaDisabled" },
+  "aria-expanded": { idn: "ariaExpanded" },
+  "aria-haspopup": { idn: "ariaHasPopup" },
+  "aria-hidden": { idn: "ariaHidden" },
+  "aria-invalid": { idn: "ariaInvalid" },
+  "aria-keyshortcuts": { idn: "ariaKeyShortcuts" },
+  "aria-label": { idn: "ariaLabel" },
+  "aria-level": { idn: "ariaLevel" },
+  "aria-live": { idn: "ariaLive" },
+  "aria-modal": { idn: "ariaModal" },
+  "aria-multiline": { idn: "ariaMultiLine" },
+  "aria-multiselectable": { idn: "ariaMultiSelectable" },
+  "aria-orientation": { idn: "ariaOrientation" },
+  "aria-placeholder": { idn: "ariaPlaceholder" },
+  "aria-posinset": { idn: "ariaPosInSet" },
+  "aria-pressed": { idn: "ariaPressed" },
+  "aria-readonly": { idn: "ariaReadOnly" },
+  "aria-required": { idn: "ariaRequired" },
+  "aria-roledescription": { idn: "ariaRoleDescription" },
+  "aria-rowcount": { idn: "ariaRowCount" },
+  "aria-rowindex": { idn: "ariaRowIndex" },
+  "aria-rowindextext": { idn: "ariaRowIndexText" },
+  "aria-rowspan": { idn: "ariaRowSpan" },
+  "aria-selected": { idn: "ariaSelected" },
+  "aria-setsize": { idn: "ariaSetSize" },
+  "aria-sort": { idn: "ariaSort" },
+  "aria-valuemax": { idn: "ariaValueMax" },
+  "aria-valuemin": { idn: "ariaValueMin" },
+  "aria-valuenow": { idn: "ariaValueNow" },
+  "aria-valuetext": { idn: "ariaValueText" },
+  "http-equiv": { idn: "httpEquiv" },
+  abbr: {},
+  accept: {},
+  accesskey: { idn: "accessKey" },
   action: {},
+  allow: {},
+  allowfullscreen: { idn: "allowFullscreen" },
+  alt: {},
+  as: {},
+  async: {},
+  autocapitalize: {},
   autocomplete: {},
+  autofocus: {},
+  autoplay: {},
+  charset: { idn: null },
+  checked: {},
+  cite: {},
+  class: { idn: "className" },
+  color: { idn: null },
+  cols: { idv: attrStringOrNumberToNumber },
+  colspan: { idn: "colSpan", idv: attrStringOrNumberToNumber },
+  content: {},
+  contenteditable: { idn: "contentEditable" },
+  controls: {},
+  coords: {},
+  crossorigin: { idn: "crossOrigin" },
+  data: {},
+  datetime: { idn: "dateTime" },
+  decoding: {},
+  default: {},
+  defer: {},
+  dir: {},
+  dirname: { idn: "dirName" },
+  disabled: {},
+  download: {},
+  draggable: {},
   enctype: {},
-  method: {},
-  name: {},
-  novalidate: {
-    idlName: "noValidate"
+  enterkeyhint: { idn: "enterKeyHint" },
+  for: { idn: "htmlFor" },
+  form: { idn: null },
+  formaction: { idn: "formAction" },
+  formenctype: { idn: "formEnctype" },
+  formmethod: { idn: "formMethod" },
+  formnovalidate: { idn: "formNoValidate" },
+  formtarget: { idn: "formTarget" },
+  headers: {},
+  height: { idv: attrStringOrNumberToNumber },
+  hidden: {},
+  high: { idv: attrStringOrNumberToNumber },
+  href: {},
+  hreflang: {},
+  id: {},
+  imagesizes: { idn: "imageSizes" },
+  imagesrcset: { idn: "imageSrcset" },
+  indeterminate: { noa: true },
+  inputmode: { idn: "inputMode" },
+  integrity: {},
+  is: { idn: null },
+  ismap: { idn: "isMap" },
+  itemid: { idn: null },
+  itemprop: { idn: null },
+  itemref: { idn: null },
+  itemscope: { idn: null },
+  itemtype: { idn: null },
+  kind: {},
+  label: {},
+  lang: {},
+  list: {},
+  loading: {},
+  loop: { idv: attrBooleanToEmptyString },
+  low: { idv: attrStringOrNumberToNumber },
+  max: { idv: attrStringOrNumberToNumber },
+  maxlength: {
+    idn: "maxLength",
+    idv: attrStringOrNumberToNumber
   },
-  target: {},
-  rel: {}
-};
-var HTMLHeadingElementMap = {
-  ...HTMLElementMap
-};
-var HTMLHeadElementMap = {
-  ...HTMLElementMap
-};
-var HTMLHRElementMap = {
-  ...HTMLElementMap
-};
-var HTMLHtmlElementMap = {
-  ...HTMLElementMap
-};
-var HTMLIFrameElementMap = {
-  ...HTMLElementMap,
+  media: {},
+  method: {},
+  min: { idv: attrStringOrNumberToNumber },
+  minlength: {
+    idn: "minLength",
+    idv: attrStringOrNumberToNumber
+  },
+  multiple: {},
+  muted: {},
+  name: {},
+  nomodule: { idn: "noModule" },
+  nonce: {},
+  novalidate: { idn: "noValidate" },
+  open: {},
+  optimum: { idv: attrStringOrNumberToNumber },
+  pattern: {},
+  ping: {},
+  placeholder: {},
+  playsinline: { idn: "playsInline" },
+  poster: {},
+  preload: {},
+  readonly: { idn: "readOnly" },
+  referrerpolicy: { idn: "referrerPolicy" },
+  rel: {},
+  required: {},
+  reversed: {},
+  role: {},
+  rows: { idv: attrStringOrNumberToNumber },
+  rowspan: { idn: "rowSpan", idv: attrStringOrNumberToNumber },
+  sandbox: {},
+  scope: {},
+  selected: {},
+  shape: {},
+  size: { idv: attrStringOrNumberToNumber },
+  sizes: {},
+  slot: {},
+  span: { idv: attrStringOrNumberToNumber },
+  spellcheck: {},
   src: {},
   srcdoc: {},
-  name: {},
-  sandbox: {},
-  allow: {},
-  allowfullscreen: {
-    idlName: "allowFullscreen"
-  },
-  width: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  height: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  referrerpolicy: {
-    idlName: "referrerPolicy"
-  },
-  loading: {}
-};
-var HTMLImageElementMap = {
-  ...HTMLElementMap,
-  alt: {},
-  src: {},
+  srclang: {},
   srcset: {},
-  sizes: {},
-  crossorigin: {
-    idlName: "crossOrigin"
-  },
-  usemap: {
-    idlName: "useMap"
-  },
-  ismap: {
-    idlName: "isMap"
-  },
-  width: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  height: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  referrerpolicy: {
-    idlName: "referrerPolicy"
-  },
-  decoding: {},
-  loading: {}
-};
-var HTMLInputElementMap = {
-  ...HTMLElementMap,
-  accept: {},
-  alt: {},
-  autocomplete: {},
-  checked: {},
-  dirname: {
-    idlName: "dirName"
-  },
-  disabled: {},
-  form: {},
-  formaction: {
-    idlName: "formAction"
-  },
-  formenctype: {
-    idlName: "formEnctype"
-  },
-  formmethod: {
-    idlName: "formMethod"
-  },
-  formnovalidate: {
-    idlName: "formNoValidate"
-  },
-  formtarget: {
-    idlName: "formTarget"
-  },
-  height: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  indeterminate: {
-    makeAttrValue: null
-  },
-  list: {},
-  max: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  maxlength: {
-    idlName: "maxLength",
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  min: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  minlength: {
-    idlName: "minLength",
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  multiple: {},
-  name: {},
-  pattern: {},
-  placeholder: {},
-  readonly: {
-    idlName: "readOnly"
-  },
-  required: {},
-  size: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  src: {},
-  step: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
+  start: { idv: attrStringOrNumberToNumber },
+  step: { idv: attrStringOrNumberToNumber },
+  style: {},
+  tabindex: { idn: "tabIndex", idv: attrStringOrNumberToNumber },
+  target: {},
+  title: {},
+  translate: { idv: attrYesNo },
   type: {},
-  value: {},
-  width: {
-    makeIdlValue: attrStringOrNumberToNumber
-  }
-};
-var HTMLModElementMap = {
-  ...HTMLElementMap,
-  cite: {},
-  datetime: {
-    idlName: "dateTime"
-  }
-};
-var HTMLLabelElementMap = {
-  ...HTMLElementMap,
-  for: {
-    idlName: "htmlFor"
-  }
-};
-var HTMLLegendElementMap = {
-  ...HTMLElementMap
-};
-var HTMLLIElementMap = {
-  ...HTMLElementMap,
-  value: {}
-};
-var HTMLLinkElementMap = {
-  ...HTMLElementMap,
-  href: {},
-  crossorigin: {
-    idlName: "crossOrigin"
-  },
-  rel: {},
-  media: {},
-  integrity: {},
-  hreflang: {},
-  type: {},
-  referrerpolicy: {
-    idlName: "referrerPolicy"
-  },
-  sizes: {},
-  imagesrcset: {
-    idlName: "imageSrcset"
-  },
-  imagesizes: {
-    idlName: "imageSizes"
-  },
-  as: {},
-  color: {
-    idlName: null
-  },
-  disabled: {}
-};
-var HTMLMapElementMap = {
-  ...HTMLElementMap,
-  name: {}
-};
-var HTMLMenuElementMap = {
-  ...HTMLElementMap
-};
-var HTMLMetaElementMap = {
-  ...HTMLElementMap,
-  name: {},
-  "http-equiv": {
-    idlName: "httpEquiv"
-  },
-  content: {},
-  charset: {
-    idlName: null
-  },
-  media: {}
-};
-var HTMLMeterElementMap = {
-  ...HTMLElementMap,
-  value: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  min: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  max: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  low: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  high: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  optimum: {
-    makeIdlValue: attrStringOrNumberToNumber
-  }
-};
-var HTMLObjectElementMap = {
-  ...HTMLElementMap,
-  data: {},
-  type: {},
-  name: {},
-  form: {
-    idlName: null
-  },
-  width: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  height: {
-    makeIdlValue: attrStringOrNumberToNumber
-  }
-};
-var HTMLOListElementMap = {
-  ...HTMLElementMap,
-  reversed: {},
-  start: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  type: {}
-};
-var HTMLOptGroupElementMap = {
-  ...HTMLElementMap,
-  disabled: {},
-  label: {}
-};
-var HTMLOptionElementMap = {
-  ...HTMLElementMap,
-  disabled: {},
-  label: {},
-  selected: {},
-  value: {}
-};
-var HTMLOutputElementMap = {
-  ...HTMLElementMap,
-  for: {
-    idlName: "htmlFor"
-  },
-  form: { idlName: null },
-  name: {}
-};
-var HTMLParagraphElementMap = {
-  ...HTMLElementMap
-};
-var HTMLParamElementMap = {
-  ...HTMLElementMap,
-  name: {},
-  value: {}
-};
-var HTMLPictureElementMap = {
-  ...HTMLElementMap
-};
-var HTMLPreElementMap = {
-  ...HTMLElementMap
-};
-var HTMLProgressElementMap = {
-  ...HTMLElementMap,
-  value: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  max: {
-    makeIdlValue: attrStringOrNumberToNumber
-  }
-};
-var HTMLQuoteElementMap = {
-  ...HTMLElementMap,
-  cite: {}
-};
-var HTMLScriptElementMap = {
-  ...HTMLElementMap,
-  src: {},
-  type: {},
-  nomodule: {
-    idlName: "noModule"
-  },
-  async: {},
-  defer: {},
-  crossorigin: {
-    idlName: "crossOrigin"
-  },
-  integrity: {},
-  referrerpolicy: {
-    idlName: "referrerPolicy"
-  }
-};
-var HTMLSelectElementMap = {
-  ...HTMLElementMap,
-  autocomplete: {},
-  disabled: {},
-  form: { idlName: null },
-  multiple: {},
-  name: {},
-  required: {},
-  size: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  value: { makeAttrValue: null }
-};
-var HTMLSlotElementMap = {
-  ...HTMLElementMap,
-  name: {}
-};
-var HTMLSourceElementMap = {
-  ...HTMLElementMap,
-  type: {},
-  src: {},
-  srcset: {},
-  sizes: {},
-  media: {},
-  width: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  height: {
-    makeIdlValue: attrStringOrNumberToNumber
-  }
-};
-var HTMLSpanElementMap = {
-  ...HTMLElementMap
-};
-var HTMLStyleElementMap = {
-  ...HTMLElementMap,
-  media: {}
-};
-var HTMLTableElementMap = {
-  ...HTMLElementMap
-};
-var HTMLTableCaptionElementMap = {
-  ...HTMLElementMap
-};
-var HTMLTableSectionElementMap = {
-  ...HTMLElementMap
-};
-var HTMLTableCellElementMap = {
-  ...HTMLElementMap,
-  colspan: {
-    idlName: "colSpan",
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  rowspan: {
-    idlName: "rowSpan",
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  headers: {}
-};
-var HTMLTableHeaderElementMap = {
-  ...HTMLTableCellElementMap,
-  scope: {},
-  abbr: {}
-};
-var HTMLTableColElementMap = {
-  ...HTMLElementMap,
-  span: {
-    makeIdlValue: attrStringOrNumberToNumber
-  }
-};
-var HTMLTemplateElementMap = {
-  ...HTMLElementMap
-};
-var HTMLTextAreaElementMap = {
-  ...HTMLElementMap,
-  autocomplete: {},
-  cols: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  dirname: {
-    idlName: "dirName"
-  },
-  disabled: {},
-  form: { idlName: null },
-  maxlength: {
-    idlName: "maxLength",
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  minlength: {
-    idlName: "minLength",
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  name: {},
-  placeholder: {},
-  readonly: {
-    idlName: "readOnly"
-  },
-  required: {},
-  rows: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
+  usemap: { idn: "useMap" },
+  width: { idv: attrStringOrNumberToNumber },
   wrap: {}
 };
-var HTMLTimeElementMap = {
-  ...HTMLElementMap,
-  datetime: {
-    idlName: "dateTime"
+function setAttribute(element, attributeName, val) {
+  if (val === void 0 || val === null || val === false) {
+    element.removeAttribute(attributeName);
+  } else if (val === true) {
+    element.setAttribute(attributeName, "");
+  } else if (typeof val === "string") {
+    element.setAttribute(attributeName, val);
+  } else if (typeof val === "number" || typeof val === "bigint") {
+    element.setAttribute(attributeName, val.toString());
   }
-};
-var HTMLTitleElementMap = {
-  ...HTMLElementMap
-};
-var HTMLTableRowElementMap = {
-  ...HTMLElementMap
-};
-var HTMLTrackElementMap = {
-  ...HTMLElementMap,
-  kind: {},
-  src: {},
-  srclang: {},
-  label: {},
-  default: {}
-};
-var HTMLUListElementMap = {
-  ...HTMLElementMap
-};
-var HTMLVideoElementMap = {
-  ...HTMLElementMap,
-  src: {},
-  crossorigin: {
-    idlName: "crossOrigin"
-  },
-  preload: {},
-  autoplay: {},
-  loop: {
-    makeIdlValue: attrBooleanToEmptyString
-  },
-  muted: {},
-  controls: {},
-  poster: {},
-  playsinline: {
-    idlName: "playsInline"
-  },
-  width: {
-    makeIdlValue: attrStringOrNumberToNumber
-  },
-  height: {
-    makeIdlValue: attrStringOrNumberToNumber
+}
+function assignProp(element, attribute, value) {
+  if (attribute === "value") {
+    switch (element.tagName) {
+      case "PROGRESS":
+      case "METER":
+        setAttribute(element, attribute, value);
+        element.value = attrStringOrNumberToNumber(value);
+        break;
+      case "SELECT":
+        element.value = value;
+        break;
+      case "BUTTON":
+      case "DATA":
+      case "INPUT":
+      case "LI":
+      case "OPTION":
+      case "PARAM":
+      case "TEXTAREA":
+        setAttribute(element, attribute, value);
+        element.value = value;
+        break;
+      default:
+        setAttribute(element, attribute, value);
+    }
+    return;
   }
-};
-var ElementTypeMapping = {
-  a: HTMLAnchorElementMap,
-  abbr: HTMLElementMap,
-  address: HTMLElementMap,
-  area: HTMLAreaElementMap,
-  article: HTMLElementMap,
-  aside: HTMLElementMap,
-  audio: HTMLAudioElementMap,
-  b: HTMLElementMap,
-  base: HTMLBaseElementMap,
-  bdi: HTMLElementMap,
-  bdo: HTMLElementMap,
-  blockquote: HTMLElementMap,
-  body: HTMLBodyElementMap,
-  br: HTMLBRElementMap,
-  button: HTMLButtonElementMap,
-  canvas: HTMLCanvasElementMap,
-  caption: HTMLTableCaptionElementMap,
-  cite: HTMLElementMap,
-  code: HTMLElementMap,
-  col: HTMLTableColElementMap,
-  colgroup: HTMLTableColElementMap,
-  data: HTMLDataElementMap,
-  datalist: HTMLDataListElementMap,
-  dd: HTMLElementMap,
-  del: HTMLModElementMap,
-  details: HTMLDetailsElementMap,
-  dfn: HTMLElementMap,
-  dialog: HTMLDialogElementMap,
-  div: HTMLDivElementMap,
-  dl: HTMLDListElementMap,
-  dt: HTMLElementMap,
-  em: HTMLElementMap,
-  embed: HTMLEmbedElementMap,
-  fieldset: HTMLFieldSetElementMap,
-  figcaption: HTMLElementMap,
-  figure: HTMLElementMap,
-  footer: HTMLElementMap,
-  form: HTMLFormElementMap,
-  h1: HTMLElementMap,
-  h2: HTMLElementMap,
-  h3: HTMLElementMap,
-  h4: HTMLElementMap,
-  h5: HTMLElementMap,
-  h6: HTMLElementMap,
-  head: HTMLHeadElementMap,
-  header: HTMLElementMap,
-  heading: HTMLHeadingElementMap,
-  hgroup: HTMLElementMap,
-  hr: HTMLHRElementMap,
-  html: HTMLHtmlElementMap,
-  i: HTMLElementMap,
-  iframe: HTMLIFrameElementMap,
-  img: HTMLImageElementMap,
-  input: HTMLInputElementMap,
-  ins: HTMLModElementMap,
-  kbd: HTMLElementMap,
-  label: HTMLLabelElementMap,
-  legend: HTMLLegendElementMap,
-  li: HTMLLIElementMap,
-  link: HTMLLinkElementMap,
-  main: HTMLElementMap,
-  map: HTMLMapElementMap,
-  mark: HTMLElementMap,
-  menu: HTMLMenuElementMap,
-  meta: HTMLMetaElementMap,
-  meter: HTMLMeterElementMap,
-  nav: HTMLElementMap,
-  noscript: HTMLElementMap,
-  object: HTMLObjectElementMap,
-  ol: HTMLOListElementMap,
-  optgroup: HTMLOptGroupElementMap,
-  option: HTMLOptionElementMap,
-  output: HTMLOutputElementMap,
-  p: HTMLParagraphElementMap,
-  param: HTMLParamElementMap,
-  picture: HTMLPictureElementMap,
-  pre: HTMLPreElementMap,
-  progress: HTMLProgressElementMap,
-  quote: HTMLQuoteElementMap,
-  rp: HTMLElementMap,
-  rt: HTMLElementMap,
-  ruby: HTMLElementMap,
-  s: HTMLElementMap,
-  samp: HTMLElementMap,
-  script: HTMLScriptElementMap,
-  section: HTMLElementMap,
-  select: HTMLSelectElementMap,
-  slot: HTMLSlotElementMap,
-  small: HTMLElementMap,
-  source: HTMLSourceElementMap,
-  span: HTMLSpanElementMap,
-  strong: HTMLElementMap,
-  style: HTMLStyleElementMap,
-  sub: HTMLElementMap,
-  summary: HTMLElementMap,
-  sup: HTMLElementMap,
-  table: HTMLTableElementMap,
-  tbody: HTMLTableSectionElementMap,
-  td: HTMLTableCellElementMap,
-  template: HTMLTemplateElementMap,
-  textarea: HTMLTextAreaElementMap,
-  tfoot: HTMLTableSectionElementMap,
-  th: HTMLTableHeaderElementMap,
-  thead: HTMLTableSectionElementMap,
-  time: HTMLTimeElementMap,
-  title: HTMLTitleElementMap,
-  tr: HTMLTableRowElementMap,
-  track: HTMLTrackElementMap,
-  u: HTMLElementMap,
-  ul: HTMLUListElementMap,
-  var: HTMLElementMap,
-  video: HTMLVideoElementMap,
-  wbr: HTMLElementMap
-};
-function getElementTypeMapping(elementName, property) {
-  return ElementTypeMapping[elementName]?.[property];
+  const behavior = attrBehavior[attribute];
+  if (behavior) {
+    if (!behavior.noa) {
+      const attributeValue = value;
+      setAttribute(element, attribute, attributeValue);
+    }
+    if (behavior.idn !== null) {
+      const idlValue = behavior.idv ? behavior.idv(value) : value;
+      element[behavior.idn ?? attribute] = idlValue;
+    }
+    return;
+  }
+  setAttribute(element, attribute, value);
 }
 
 // src/arrayevent.ts
@@ -3084,7 +2438,6 @@ var EmptyRenderNode = class {
     __publicField(this, "_type", RenderNodeType);
     __publicField(this, "detach", noop);
     __publicField(this, "attach", noop);
-    __publicField(this, "setContext", noop);
     __publicField(this, "onMount", noop);
     __publicField(this, "onUnmount", noop);
     __publicField(this, _a4);
@@ -3109,7 +2462,6 @@ var TextRenderNode = class {
     __publicField(this, "_type", RenderNodeType);
     __publicField(this, "text");
     __publicField(this, "isAttached");
-    __publicField(this, "setContext", noop);
     __publicField(this, "onMount", noop);
     __publicField(this, "onUnmount", noop);
     __publicField(this, _a5);
@@ -3125,7 +2477,7 @@ var TextRenderNode = class {
     emitter({ type: "splice" /* SPLICE */, index: 0, count: 1 });
     this.isAttached = false;
   }
-  attach(emitter) {
+  attach(emitter, context) {
     assert(!this.isAttached, "Invariant: TextRenderNode 0 double attached");
     emitter({
       type: "splice" /* SPLICE */,
@@ -3148,7 +2500,6 @@ var ForeignRenderNode = class {
   constructor(node, debugName) {
     __publicField(this, "_type", RenderNodeType);
     __publicField(this, "node");
-    __publicField(this, "setContext", noop);
     __publicField(this, "onMount", noop);
     __publicField(this, "onUnmount", noop);
     __publicField(this, _a6);
@@ -3162,7 +2513,7 @@ var ForeignRenderNode = class {
   detach(emitter) {
     emitter({ type: "splice" /* SPLICE */, index: 0, count: 1 });
   }
-  attach(emitter) {
+  attach(emitter, context) {
     emitter({
       type: "splice" /* SPLICE */,
       index: 0,
@@ -3199,17 +2550,12 @@ var ArrayRenderNode = class {
       });
     }
   }
-  attach(emitter) {
+  attach(emitter, context) {
     for (const [index, child] of this.children.entries()) {
       child.attach((event) => {
         shiftEvent(this.slotSizes, index, event);
         emitter(event);
-      });
-    }
-  }
-  setContext(context) {
-    for (const child of this.children) {
-      child.setContext(context);
+      }, context);
     }
   }
   onMount() {
@@ -3392,17 +2738,6 @@ var IntrinsicRenderNode = class {
     }
     return element;
   }
-  setAttribute(element, attributeName, val) {
-    if (val === void 0 || val === null || val === false) {
-      element.removeAttribute(attributeName);
-    } else if (val === true) {
-      element.setAttribute(attributeName, "");
-    } else if (typeof val === "string") {
-      element.setAttribute(attributeName, val);
-    } else if (typeof val === "number" || typeof val === "bigint") {
-      element.setAttribute(attributeName, val.toString());
-    }
-  }
   setProp(element, prop, val) {
     if (prop.startsWith("prop:")) {
       const propName = prop.slice(5);
@@ -3411,22 +2746,10 @@ var IntrinsicRenderNode = class {
     }
     if (prop.startsWith("attr:")) {
       const attrName = prop.slice(5);
-      this.setAttribute(element, attrName, val);
+      setAttribute(element, attrName, val);
       return;
     }
-    const mapping = getElementTypeMapping(this.tagName, prop);
-    if (mapping) {
-      if (mapping.makeAttrValue !== null) {
-        const attributeValue = mapping.makeAttrValue ? mapping.makeAttrValue(val) : val;
-        this.setAttribute(element, prop, attributeValue);
-      }
-      if (mapping.idlName !== null) {
-        const idlValue = mapping.makeIdlValue ? mapping.makeIdlValue(val) : val;
-        element[mapping.idlName ?? prop] = idlValue;
-      }
-      return;
-    }
-    this.setAttribute(element, prop, val);
+    assignProp(element, prop, val);
   }
   detach(emitter) {
     emitter({
@@ -3436,18 +2759,7 @@ var IntrinsicRenderNode = class {
     });
     this.emitter = null;
   }
-  attach(emitter) {
-    assert(!this.emitter, "Invariant: RenderNode 0 double attached");
-    this.emitter = emitter;
-    assert(this.element, "Invariant: attached without context");
-    emitter({
-      type: "splice" /* SPLICE */,
-      index: 0,
-      count: 0,
-      items: [this.element]
-    });
-  }
-  setContext(context) {
+  attach(emitter, context) {
     const parentXmlNamespace = readContext(context, XmlNamespaceContext);
     const namespaceTransition = elementNamespaceTransitionMap[parentXmlNamespace]?.[this.tagName];
     const xmlNamespace = namespaceTransition?.node ?? parentXmlNamespace;
@@ -3488,12 +2800,20 @@ var IntrinsicRenderNode = class {
         subContext = new Map(context);
         subContext.set(XmlNamespaceContext, childXmlNamespace);
       }
-      this.arrayRenderNode.setContext(subContext);
-      this.arrayRenderNode.attach(this.handleEvent);
+      this.arrayRenderNode.attach(this.handleEvent, subContext);
       if (this.isPreexisting) {
         this.isPreexistingPopulated = true;
       }
     }
+    assert(!this.emitter, "Invariant: RenderNode 0 double attached");
+    this.emitter = emitter;
+    assert(this.element, "Invariant: attached without context");
+    emitter({
+      type: "splice" /* SPLICE */,
+      index: 0,
+      count: 0,
+      items: [this.element]
+    });
   }
   onMount() {
     this.arrayRenderNode.onMount();
@@ -3564,11 +2884,8 @@ var CalculationRenderNode = class {
         this.isCalculatedPendingAdd = false;
         this.renderNode = renderNode;
         retain(this.renderNode);
-        if (this.context) {
-          renderNode.setContext(this.context);
-        }
         if (this.emitter) {
-          renderNode.attach(this.emitter);
+          renderNode.attach(this.emitter, this.context);
         }
         if (this.isMounted) {
           renderNode.onMount();
@@ -3592,20 +2909,14 @@ var CalculationRenderNode = class {
     this.renderNode.detach(emitter);
     this.emitter = null;
   }
-  attach(emitter) {
-    assert(this.renderNode || this.isCalculatedPendingAdd, "Invariant: missing calculation result");
-    this.emitter = emitter;
-    if (this.renderNode) {
-      this.renderNode.attach(emitter);
-    }
-  }
-  setContext(context) {
+  attach(emitter, context) {
     this.context = context;
+    this.emitter = emitter;
     if (!this.renderNode && !this.isCalculatedPendingAdd) {
       this.renderCalculation(this.calculation());
       this.calculationSubscription = this.calculation.onRecalc(this.renderCalculation);
     } else if (this.renderNode) {
-      this.renderNode.setContext(context);
+      this.renderNode.attach(emitter, context);
     }
   }
   onMount() {
@@ -3689,8 +3000,7 @@ var CollectionRenderNode = class {
               retain(child);
               if (this.emitter) {
                 const emitter = this.emitter;
-                child.setContext(this.context);
-                child.attach((event2) => this.handleChildEvent(emitter, event2, child));
+                child.attach((event2) => this.handleChildEvent(emitter, event2, child), this.context);
               }
               if (this.isMounted) {
                 child.onMount();
@@ -3772,21 +3082,7 @@ var CollectionRenderNode = class {
     }
     this.emitter = null;
   }
-  attach(emitter) {
-    this.emitter = emitter;
-    for (const child of this.children) {
-      child.attach((event) => {
-        this.handleChildEvent(emitter, event, child);
-      });
-    }
-  }
-  handleChildEvent(emitter, event, child) {
-    const index = this.childIndex.get(child);
-    shiftEvent(this.slotSizes, index, event);
-    applyEvent(this.childrenNodes, event);
-    emitter(event);
-  }
-  setContext(context) {
+  attach(emitter, context) {
     this.context = context;
     untrackReads(() => {
       for (const [index, item] of this.collection.entries()) {
@@ -3797,9 +3093,18 @@ var CollectionRenderNode = class {
         this.childIndex.set(child, index);
       }
     });
+    this.emitter = emitter;
     for (const child of this.children) {
-      child.setContext(context);
+      child.attach((event) => {
+        this.handleChildEvent(emitter, event, child);
+      }, context);
     }
+  }
+  handleChildEvent(emitter, event, child) {
+    const index = this.childIndex.get(child);
+    shiftEvent(this.slotSizes, index, event);
+    applyEvent(this.childrenNodes, event);
+    emitter(event);
   }
   onMount() {
     this.isMounted = true;
@@ -3890,8 +3195,7 @@ function mount(target, node) {
   const root = new IntrinsicRenderNode(target, void 0, [node], "root");
   const context = /* @__PURE__ */ new Map();
   retain(root);
-  root.setContext(context);
-  root.attach(noop);
+  root.attach(noop, context);
   root.onMount();
   return () => {
     root.onUnmount();
@@ -3944,13 +3248,10 @@ var AttachmentObserverRenderNode = class {
       this.handleEvent(emitter, event);
     });
   }
-  attach(emitter) {
+  attach(emitter, context) {
     this.child.attach((event) => {
       this.handleEvent(emitter, event);
-    });
-  }
-  setContext(context) {
-    this.child.setContext(context);
+    }, context);
   }
   onMount() {
     this.child.onMount();
@@ -4002,11 +3303,7 @@ var ComponentRenderNode = class {
     assert(this.result, "Invariant: missing context");
     this.result.detach(emitter);
   }
-  attach(emitter) {
-    assert(this.result, "Invariant: missing context");
-    this.result.attach(emitter);
-  }
-  setContext(contextMap) {
+  attach(emitter, contextMap) {
     assert(this[SymRefcount] > 0, "Invariant: dead ComponentRenderNode called setContext");
     if (!this.result) {
       let callbacksAllowed = true;
@@ -4063,7 +3360,6 @@ var ComponentRenderNode = class {
         retain(item);
       }
     }
-    this.result.setContext(contextMap);
     if (this.getContextCallbacks) {
       for (const [
         Context,
@@ -4075,6 +3371,8 @@ var ComponentRenderNode = class {
         }
       }
     }
+    assert(this.result, "Invariant: missing context");
+    this.result.attach(emitter, contextMap);
   }
   onMount() {
     assert(this.result, "Invariant: missing context");
@@ -4148,13 +3446,10 @@ var ContextRenderNode = class {
   detach(emitter) {
     this.child.detach(emitter);
   }
-  attach(emitter) {
-    this.child.attach(emitter);
-  }
-  setContext(context) {
+  attach(emitter, context) {
     const derivedContext = new Map(context);
     derivedContext.set(this.context, this.value);
-    this.child.setContext(derivedContext);
+    this.child.attach(emitter, derivedContext);
   }
   onMount() {
     this.child.onMount();

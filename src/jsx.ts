@@ -75,85 +75,282 @@ declare global {
     }
 }
 
-/*
- * Interfaces adopted from HTML Living Standard Last Updated 30 November 2021: https://html.spec.whatwg.org/
- */
 function attrBooleanToEmptyString(
     val: boolean | undefined
 ): string | undefined {
     if (!val) return undefined;
     return '';
 }
+
 function attrStringOrNumberToNumber(
     val: string | number | undefined
 ): number | undefined {
     if (val === undefined) return undefined;
     return typeof val === 'number' ? val : parseInt(val);
 }
+
 function attrYesNo(val: '' | 'yes' | 'no' | undefined): boolean | undefined {
     if (val === undefined) return undefined;
     return val === 'no' ? false : true;
 }
 
-// Note: TypeScript has some notably missing IDL properties from its HTMLElement interface, this adds them in lieu of those properties:
-interface MissingFromTypescriptHTMLElementProperties {
-    // https://w3c.github.io/aria/#idl-reflection-attribute-values
-    ariaColIndexText?: string | undefined;
-    ariaInvalid?: string | undefined;
-    ariaRowIndexText?: string | undefined;
-    role?: string | undefined;
-
-    // https://html.spec.whatwg.org/multipage/dom.html#htmlorsvgelement
-    autofocus?: boolean | undefined;
-
-    itemscope?: string | undefined;
-}
-
-// Note: TypeScript has some notably missing IDL properties from its HTMLDialog interface, this adds them in lieu of those properties:
-interface MissingFromTypescriptHTMLDialogElementProperties {
-    // https://html.spec.whatwg.org/multipage/interactive-elements.html#the-dialog-element
-    open?: boolean | undefined;
-}
-
-interface MissingFromTypescriptHTMLIframeElementProperties {
-    // https://html.spec.whatwg.org/multipage/interactive-elements.html#the-dialog-element
-    loading?: LazyLoadingValue | undefined;
-}
-
-interface MissingFromTypescriptHTMLMetaElementProperties {
-    // https://html.spec.whatwg.org/multipage/semantics.html#attr-meta-media
-    media?: string | undefined;
-}
-
-interface MissingFromTypescriptHTMLSourceElementProperties {
-    // https://html.spec.whatwg.org/multipage/embedded-content.html#the-source-element
-    width?: string | number | undefined;
-    height?: string | number | undefined;
-}
-
-type PropertyMapField<TJSXField, TElement, TIDLName extends keyof TElement> =
-    | {
-          makeAttrValue?:
-              | ((jsxAttr: Exclude<TJSXField, undefined>) => string | undefined)
-              | null;
-      }
-    | {
-          makeAttrValue?:
-              | ((jsxAttr: Exclude<TJSXField, undefined>) => string | undefined)
-              | null;
-          idlName?: TIDLName | null;
-          makeIdlValue?: (
-              jsxAttr: Exclude<TJSXField, undefined>
-          ) => TElement[TIDLName];
-      };
-
-type PropertyMap<TJSXElementInterface, TElement> = {
-    [TJSXKey in keyof Required<TJSXElementInterface>]: PropertyMapField<
-        TJSXElementInterface[TJSXKey],
-        TElement,
-        keyof TElement
-    >;
+// All attributes (except for value) share similar behavior. This map holds:
+// - Mapping of html attribute name to idl property name
+// - Formatter of jsx property value to idl property value
+// - A flag to omit setting an html attribute (only used for indeterminate)
+const attrBehavior: Record<
+    string,
+    {
+        // idl name
+        idn?: string | null;
+        // idl value formatter
+        idv?: (jsxAttr: any) => any;
+        // no attribute (do not call setAttribute)
+        noa?: true;
+    }
+> = {
+    'accept-charset': { idn: 'acceptCharset' },
+    'aria-atomic': { idn: 'ariaAtomic' },
+    'aria-autocomplete': { idn: 'ariaAutoComplete' },
+    'aria-busy': { idn: 'ariaBusy' },
+    'aria-checked': { idn: 'ariaChecked' },
+    'aria-colcount': { idn: 'ariaColCount' },
+    'aria-colindex': { idn: 'ariaColIndex' },
+    'aria-colindextext': { idn: 'ariaColIndexText' },
+    'aria-colspan': { idn: 'ariaColSpan' },
+    'aria-current': { idn: 'ariaCurrent' },
+    'aria-disabled': { idn: 'ariaDisabled' },
+    'aria-expanded': { idn: 'ariaExpanded' },
+    'aria-haspopup': { idn: 'ariaHasPopup' },
+    'aria-hidden': { idn: 'ariaHidden' },
+    'aria-invalid': { idn: 'ariaInvalid' },
+    'aria-keyshortcuts': { idn: 'ariaKeyShortcuts' },
+    'aria-label': { idn: 'ariaLabel' },
+    'aria-level': { idn: 'ariaLevel' },
+    'aria-live': { idn: 'ariaLive' },
+    'aria-modal': { idn: 'ariaModal' },
+    'aria-multiline': { idn: 'ariaMultiLine' },
+    'aria-multiselectable': { idn: 'ariaMultiSelectable' },
+    'aria-orientation': { idn: 'ariaOrientation' },
+    'aria-placeholder': { idn: 'ariaPlaceholder' },
+    'aria-posinset': { idn: 'ariaPosInSet' },
+    'aria-pressed': { idn: 'ariaPressed' },
+    'aria-readonly': { idn: 'ariaReadOnly' },
+    'aria-required': { idn: 'ariaRequired' },
+    'aria-roledescription': { idn: 'ariaRoleDescription' },
+    'aria-rowcount': { idn: 'ariaRowCount' },
+    'aria-rowindex': { idn: 'ariaRowIndex' },
+    'aria-rowindextext': { idn: 'ariaRowIndexText' },
+    'aria-rowspan': { idn: 'ariaRowSpan' },
+    'aria-selected': { idn: 'ariaSelected' },
+    'aria-setsize': { idn: 'ariaSetSize' },
+    'aria-sort': { idn: 'ariaSort' },
+    'aria-valuemax': { idn: 'ariaValueMax' },
+    'aria-valuemin': { idn: 'ariaValueMin' },
+    'aria-valuenow': { idn: 'ariaValueNow' },
+    'aria-valuetext': { idn: 'ariaValueText' },
+    'http-equiv': { idn: 'httpEquiv' },
+    abbr: {},
+    accept: {},
+    accesskey: { idn: 'accessKey' },
+    action: {},
+    allow: {},
+    allowfullscreen: { idn: 'allowFullscreen' },
+    alt: {},
+    as: {},
+    async: {},
+    autocapitalize: {},
+    autocomplete: {},
+    autofocus: {},
+    autoplay: {},
+    charset: { idn: null },
+    checked: {},
+    cite: {},
+    class: { idn: 'className' },
+    color: { idn: null },
+    cols: { idv: attrStringOrNumberToNumber },
+    colspan: { idn: 'colSpan', idv: attrStringOrNumberToNumber },
+    content: {},
+    contenteditable: { idn: 'contentEditable' },
+    controls: {},
+    coords: {},
+    crossorigin: { idn: 'crossOrigin' },
+    data: {},
+    datetime: { idn: 'dateTime' },
+    decoding: {},
+    default: {},
+    defer: {},
+    dir: {},
+    dirname: { idn: 'dirName' },
+    disabled: {},
+    download: {},
+    draggable: {},
+    enctype: {},
+    enterkeyhint: { idn: 'enterKeyHint' },
+    for: { idn: 'htmlFor' },
+    form: { idn: null },
+    formaction: { idn: 'formAction' },
+    formenctype: { idn: 'formEnctype' },
+    formmethod: { idn: 'formMethod' },
+    formnovalidate: { idn: 'formNoValidate' },
+    formtarget: { idn: 'formTarget' },
+    headers: {},
+    height: { idv: attrStringOrNumberToNumber },
+    hidden: {},
+    high: { idv: attrStringOrNumberToNumber },
+    href: {},
+    hreflang: {},
+    id: {},
+    imagesizes: { idn: 'imageSizes' },
+    imagesrcset: { idn: 'imageSrcset' },
+    indeterminate: { noa: true },
+    inputmode: { idn: 'inputMode' },
+    integrity: {},
+    is: { idn: null },
+    ismap: { idn: 'isMap' },
+    itemid: { idn: null },
+    itemprop: { idn: null },
+    itemref: { idn: null },
+    itemscope: { idn: null },
+    itemtype: { idn: null },
+    kind: {},
+    label: {},
+    lang: {},
+    list: {},
+    loading: {},
+    loop: { idv: attrBooleanToEmptyString },
+    low: { idv: attrStringOrNumberToNumber },
+    max: { idv: attrStringOrNumberToNumber },
+    maxlength: {
+        idn: 'maxLength',
+        idv: attrStringOrNumberToNumber,
+    },
+    media: {},
+    method: {},
+    min: { idv: attrStringOrNumberToNumber },
+    minlength: {
+        idn: 'minLength',
+        idv: attrStringOrNumberToNumber,
+    },
+    multiple: {},
+    muted: {},
+    name: {},
+    nomodule: { idn: 'noModule' },
+    nonce: {},
+    novalidate: { idn: 'noValidate' },
+    open: {},
+    optimum: { idv: attrStringOrNumberToNumber },
+    pattern: {},
+    ping: {},
+    placeholder: {},
+    playsinline: { idn: 'playsInline' },
+    poster: {},
+    preload: {},
+    readonly: { idn: 'readOnly' },
+    referrerpolicy: { idn: 'referrerPolicy' },
+    rel: {},
+    required: {},
+    reversed: {},
+    role: {},
+    rows: { idv: attrStringOrNumberToNumber },
+    rowspan: { idn: 'rowSpan', idv: attrStringOrNumberToNumber },
+    sandbox: {},
+    scope: {},
+    selected: {},
+    shape: {},
+    size: { idv: attrStringOrNumberToNumber },
+    sizes: {},
+    slot: {},
+    span: { idv: attrStringOrNumberToNumber },
+    spellcheck: {},
+    src: {},
+    srcdoc: {},
+    srclang: {},
+    srcset: {},
+    start: { idv: attrStringOrNumberToNumber },
+    step: { idv: attrStringOrNumberToNumber },
+    style: {},
+    tabindex: { idn: 'tabIndex', idv: attrStringOrNumberToNumber },
+    target: {},
+    title: {},
+    translate: { idv: attrYesNo },
+    type: {},
+    usemap: { idn: 'useMap' },
+    // value: {}, // NOTE: value is special and depends on the element
+    width: { idv: attrStringOrNumberToNumber },
+    wrap: {},
 };
+
+export function setAttribute(
+    element: Element,
+    attributeName: string,
+    val: unknown
+) {
+    if (val === undefined || val === null || val === false) {
+        element.removeAttribute(attributeName);
+    } else if (val === true) {
+        element.setAttribute(attributeName, '');
+    } else if (typeof val === 'string') {
+        element.setAttribute(attributeName, val);
+    } else if (typeof val === 'number' || typeof val === 'bigint') {
+        element.setAttribute(attributeName, val.toString());
+    }
+}
+
+export function assignProp(element: Element, attribute: string, value: any) {
+    if (attribute === 'value') {
+        // Note: value is special and treated differently, depending on the element
+        switch (element.tagName) {
+            case 'PROGRESS':
+            case 'METER':
+                // Passthru attribue
+                // Numeric idl value
+                setAttribute(element, attribute, value);
+                (element as any).value = attrStringOrNumberToNumber(value);
+                break;
+
+            case 'SELECT':
+                // No attribue
+                // Passthru idl value; provided for convenience as writing to select.value assigns the corresponding option as the selected value
+                (element as any).value = value;
+                break;
+
+            case 'BUTTON':
+            case 'DATA':
+            case 'INPUT':
+            case 'LI':
+            case 'OPTION':
+            case 'PARAM':
+            case 'TEXTAREA':
+                // Passthru attribute
+                // Passthru idl
+                setAttribute(element, attribute, value);
+                (element as any).value = value;
+                break;
+            default:
+                // Passthru attribute
+                setAttribute(element, attribute, value);
+        }
+        return;
+    }
+    const behavior = attrBehavior[attribute];
+    if (behavior) {
+        if (!behavior.noa) {
+            const attributeValue = value;
+            setAttribute(element, attribute, attributeValue);
+        }
+        if (behavior.idn !== null) {
+            const idlValue = behavior.idv ? behavior.idv(value) : value;
+            (element as any)[behavior.idn ?? attribute] = idlValue;
+        }
+        return;
+    }
+    setAttribute(element, attribute, value);
+}
+
+/*
+ * Interfaces adopted from HTML Living Standard Last Updated 30 November 2021: https://html.spec.whatwg.org/
+ */
 
 // Note: abstract roles are **not** in this list, as "Authors MUST NOT use abstract roles in content"
 type AriaRole =
@@ -403,187 +600,6 @@ interface JSXElementInterface {
     translate?: '' | 'yes' | 'no' | undefined;
 }
 
-export const HTMLElementMap: PropertyMap<
-    JSXElementInterface,
-    HTMLElement & MissingFromTypescriptHTMLElementProperties
-> = {
-    accesskey: {
-        idlName: 'accessKey',
-    },
-    'aria-atomic': {
-        idlName: 'ariaAtomic',
-    },
-    'aria-autocomplete': {
-        idlName: 'ariaAutoComplete',
-    },
-    'aria-busy': {
-        idlName: 'ariaBusy',
-    },
-    'aria-checked': {
-        idlName: 'ariaChecked',
-    },
-    'aria-colcount': {
-        idlName: 'ariaColCount',
-    },
-    'aria-colindex': {
-        idlName: 'ariaColIndex',
-    },
-    'aria-colindextext': {
-        // Note: ariaColIndexText is not present on TypeScript's Element AriaMixin IDL, despite being present in https://www.w3.org/TR/wai-aria-1.2/
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore: Type '"ariaColIndexText"' is not assignable to type 'keyof HTMLElement'.
-        idlName: 'ariaColIndexText',
-    },
-    'aria-colspan': {
-        idlName: 'ariaColSpan',
-    },
-    'aria-current': {
-        idlName: 'ariaCurrent',
-    },
-    /*
-     * Note: omitting aria-description, as it is still in consideration for ARIA 2.0: https://www.w3.org/WAI/ARIA/track/issues/411
-    'aria-description': {
-        idlName: 'ariaDescription',
-    },
-    */
-    'aria-disabled': {
-        idlName: 'ariaDisabled',
-    },
-    'aria-expanded': {
-        idlName: 'ariaExpanded',
-    },
-    'aria-haspopup': {
-        idlName: 'ariaHasPopup',
-    },
-    'aria-hidden': {
-        idlName: 'ariaHidden',
-    },
-    'aria-invalid': {
-        // Note: ariaColIndexText is not present on TypeScript's Element AriaMixin IDL, despite being present in https://www.w3.org/TR/wai-aria-1.2/
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore: Type '"ariaInvalid"' is not assignable to type 'keyof HTMLElement'.
-        idlName: 'ariaInvalid',
-    },
-    'aria-keyshortcuts': {
-        idlName: 'ariaKeyShortcuts',
-    },
-    'aria-label': {
-        idlName: 'ariaLabel',
-    },
-    'aria-level': {
-        idlName: 'ariaLevel',
-    },
-    'aria-live': {
-        idlName: 'ariaLive',
-    },
-    'aria-modal': {
-        idlName: 'ariaModal',
-    },
-    'aria-multiline': {
-        idlName: 'ariaMultiLine',
-    },
-    'aria-multiselectable': {
-        idlName: 'ariaMultiSelectable',
-    },
-    'aria-orientation': {
-        idlName: 'ariaOrientation',
-    },
-    'aria-placeholder': {
-        idlName: 'ariaPlaceholder',
-    },
-    'aria-posinset': {
-        idlName: 'ariaPosInSet',
-    },
-    'aria-pressed': {
-        idlName: 'ariaPressed',
-    },
-    'aria-readonly': {
-        idlName: 'ariaReadOnly',
-    },
-    'aria-required': {
-        idlName: 'ariaRequired',
-    },
-    'aria-roledescription': {
-        idlName: 'ariaRoleDescription',
-    },
-    'aria-rowcount': {
-        idlName: 'ariaRowCount',
-    },
-    'aria-rowindex': {
-        idlName: 'ariaRowIndex',
-    },
-    'aria-rowindextext': {
-        // Note: ariaColIndexText is not present on TypeScript's Element AriaMixin IDL, despite being present in https://www.w3.org/TR/wai-aria-1.2/
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore: Type '"ariaColIndexText"' is not assignable to type 'keyof HTMLElement'.
-        idlName: 'ariaRowIndexText',
-    },
-    'aria-rowspan': {
-        idlName: 'ariaRowSpan',
-    },
-    'aria-selected': {
-        idlName: 'ariaSelected',
-    },
-    'aria-setsize': {
-        idlName: 'ariaSetSize',
-    },
-    'aria-sort': {
-        idlName: 'ariaSort',
-    },
-    'aria-valuemax': {
-        idlName: 'ariaValueMax',
-    },
-    'aria-valuemin': {
-        idlName: 'ariaValueMin',
-    },
-    'aria-valuenow': {
-        idlName: 'ariaValueNow',
-    },
-    'aria-valuetext': {
-        idlName: 'ariaValueText',
-    },
-    autocapitalize: {},
-    autofocus: {
-        // Note: The "autofocus" property exists in HTMLElement interface: https://html.spec.whatwg.org/multipage/dom.html#htmlorsvgelement
-    },
-    class: {
-        idlName: 'className',
-    },
-    contenteditable: {
-        idlName: 'contentEditable',
-    },
-    dir: {},
-    draggable: {},
-    enterkeyhint: {
-        idlName: 'enterKeyHint',
-    },
-    hidden: {},
-    id: {},
-    inputmode: {
-        idlName: 'inputMode',
-    },
-    is: { idlName: null },
-    itemid: { idlName: null },
-    itemprop: { idlName: null },
-    itemref: { idlName: null },
-    itemscope: { idlName: null },
-    itemtype: { idlName: null },
-    lang: {},
-    nonce: {},
-    role: {},
-    slot: {},
-    spellcheck: {},
-    style: {},
-    tabindex: {
-        idlName: 'tabIndex',
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    title: {},
-    translate: {
-        makeIdlValue: attrYesNo,
-    },
-};
-
 interface JSXAnchorElementInterface extends JSXElementInterface {
     /** Address of the hyperlink */
     href?: string | undefined;
@@ -602,23 +618,6 @@ interface JSXAnchorElementInterface extends JSXElementInterface {
     /** Referrer policy for fetches initiated by the element */
     referrerpolicy?: ReferrerPolicyValue | undefined;
 }
-
-const HTMLAnchorElementMap: PropertyMap<
-    JSXAnchorElementInterface,
-    HTMLAnchorElement
-> = {
-    ...HTMLElementMap,
-    href: {},
-    target: {},
-    download: {},
-    ping: {},
-    rel: {},
-    hreflang: {},
-    type: {},
-    referrerpolicy: {
-        idlName: 'referrerPolicy',
-    },
-};
 
 interface JSXAreaElementInterface extends JSXElementInterface {
     alt?: string | undefined;
@@ -641,24 +640,6 @@ interface JSXAreaElementInterface extends JSXElementInterface {
     referrerpolicy?: ReferrerPolicyValue | undefined;
 }
 
-const HTMLAreaElementMap: PropertyMap<
-    JSXAreaElementInterface,
-    HTMLAreaElement
-> = {
-    ...HTMLElementMap,
-    alt: {},
-    coords: {},
-    shape: {},
-    href: {},
-    target: {},
-    download: {},
-    ping: {},
-    rel: {},
-    referrerpolicy: {
-        idlName: 'referrerPolicy',
-    },
-};
-
 interface JSXMediaElementInterface extends JSXElementInterface {
     /** Address of the resource */
     src?: string | undefined;
@@ -679,54 +660,16 @@ interface JSXMediaElementInterface extends JSXElementInterface {
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXAudioElementInterface extends JSXMediaElementInterface {}
 
-const HTMLAudioElementMap: PropertyMap<
-    JSXAudioElementInterface,
-    HTMLAudioElement
-> = {
-    ...HTMLElementMap,
-    src: {},
-    crossorigin: {
-        idlName: 'crossOrigin',
-    },
-    preload: {},
-    autoplay: {},
-    loop: {
-        makeIdlValue: attrBooleanToEmptyString,
-    },
-    muted: {},
-    controls: {},
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXBRElementInterface extends JSXElementInterface {}
-
-const HTMLBRElementMap: PropertyMap<JSXBRElementInterface, HTMLBRElement> = {
-    ...HTMLElementMap,
-};
 
 interface JSXBaseElementInterface extends JSXElementInterface {
     href?: string | undefined;
     target?: BrowsingContextValue | undefined;
 }
 
-const HTMLBaseElementMap: PropertyMap<
-    JSXBaseElementInterface,
-    HTMLBaseElement
-> = {
-    ...HTMLElementMap,
-    href: {},
-    target: {},
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXBodyElementInterface extends JSXElementInterface {}
-
-const HTMLBodyElementMap: PropertyMap<
-    JSXBodyElementInterface,
-    HTMLBodyElement
-> = {
-    ...HTMLElementMap,
-};
 
 interface JSXButtonElementInterface extends JSXElementInterface {
     disabled?: boolean | undefined;
@@ -741,113 +684,31 @@ interface JSXButtonElementInterface extends JSXElementInterface {
     value?: string | undefined;
 }
 
-const HTMLButtonElementMap: PropertyMap<
-    JSXButtonElementInterface,
-    HTMLButtonElement
-> = {
-    ...HTMLElementMap,
-    disabled: {},
-    form: { idlName: null }, // Note: form IDL not ever written
-    formaction: {
-        idlName: 'formAction',
-    },
-    formenctype: {
-        idlName: 'formEnctype',
-    },
-    formmethod: {
-        idlName: 'formMethod',
-    },
-    formnovalidate: {
-        idlName: 'formNoValidate',
-    },
-    formtarget: {
-        idlName: 'formTarget',
-    },
-    name: {},
-    type: {},
-    value: {},
-};
-
 interface JSXCanvasElementInterface extends JSXElementInterface {
     width?: string | number | undefined;
     height?: string | number | undefined;
 }
 
-const HTMLCanvasElementMap: PropertyMap<
-    JSXCanvasElementInterface,
-    HTMLCanvasElement
-> = {
-    ...HTMLElementMap,
-    width: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    height: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXDListElementInterface extends JSXElementInterface {}
-
-const HTMLDListElementMap: PropertyMap<
-    JSXDListElementInterface,
-    HTMLDListElement
-> = {
-    ...HTMLElementMap,
-};
 
 interface JSXDataElementInterface extends JSXElementInterface {
     value?: string | undefined;
 }
 
-const HTMLDataElementMap: PropertyMap<
-    JSXDataElementInterface,
-    HTMLDataElement
-> = {
-    ...HTMLElementMap,
-    value: {},
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXDataListElementInterface extends JSXElementInterface {}
-
-const HTMLDataListElementMap: PropertyMap<
-    JSXDataListElementInterface,
-    HTMLDataListElement
-> = {
-    ...HTMLElementMap,
-};
 
 interface JSXDetailsElementInterface extends JSXElementInterface {
     open?: boolean | undefined;
 }
 
-const HTMLDetailsElementMap: PropertyMap<
-    JSXDetailsElementInterface,
-    HTMLDetailsElement
-> = {
-    ...HTMLElementMap,
-    open: {},
-};
-
 interface JSXDialogElementInterface extends JSXElementInterface {
     open?: boolean | undefined;
 }
 
-const HTMLDialogElementMap: PropertyMap<
-    JSXDialogElementInterface,
-    HTMLDialogElement & MissingFromTypescriptHTMLDialogElementProperties
-> = {
-    ...HTMLElementMap,
-    open: {},
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXDivElementInterface extends JSXElementInterface {}
-
-const HTMLDivElementMap: PropertyMap<JSXDivElementInterface, HTMLDivElement> = {
-    ...HTMLElementMap,
-};
 
 interface JSXEmbedElementInterface extends JSXElementInterface {
     src?: string | undefined;
@@ -856,36 +717,11 @@ interface JSXEmbedElementInterface extends JSXElementInterface {
     height?: string | number | undefined;
 }
 
-const HTMLEmbedElementMap: PropertyMap<
-    JSXEmbedElementInterface,
-    HTMLEmbedElement
-> = {
-    ...HTMLElementMap,
-    src: {},
-    type: {},
-    width: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    height: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-};
-
 interface JSXFieldSetElementInterface extends JSXElementInterface {
     disabled?: boolean | undefined;
     form?: string | undefined;
     name?: string | undefined;
 }
-
-const HTMLFieldSetElementMap: PropertyMap<
-    JSXFieldSetElementInterface,
-    HTMLFieldSetElement
-> = {
-    ...HTMLElementMap,
-    disabled: {},
-    form: { idlName: null }, // form IDL not ever written
-    name: {},
-};
 
 interface JSXFormElementInterface extends JSXElementInterface {
     'accept-charset'?: 'UTF-8' | string | undefined;
@@ -899,62 +735,17 @@ interface JSXFormElementInterface extends JSXElementInterface {
     rel?: string | undefined;
 }
 
-const HTMLFormElementMap: PropertyMap<
-    JSXFormElementInterface,
-    HTMLFormElement
-> = {
-    ...HTMLElementMap,
-    'accept-charset': {
-        idlName: 'acceptCharset',
-    },
-    action: {},
-    autocomplete: {},
-    enctype: {},
-    method: {},
-    name: {},
-    novalidate: {
-        idlName: 'noValidate',
-    },
-    target: {},
-    rel: {},
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXHeadingElementInterface extends JSXElementInterface {}
-
-const HTMLHeadingElementMap: PropertyMap<
-    JSXHeadingElementInterface,
-    HTMLHeadingElement
-> = {
-    ...HTMLElementMap,
-};
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXHeadElementInterface extends JSXElementInterface {}
 
-const HTMLHeadElementMap: PropertyMap<
-    JSXHeadElementInterface,
-    HTMLHeadElement
-> = {
-    ...HTMLElementMap,
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXHRElementInterface extends JSXElementInterface {}
 
-const HTMLHRElementMap: PropertyMap<JSXHRElementInterface, HTMLHRElement> = {
-    ...HTMLElementMap,
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXHtmlElementInterface extends JSXElementInterface {}
-
-const HTMLHtmlElementMap: PropertyMap<
-    JSXHtmlElementInterface,
-    HTMLHtmlElement
-> = {
-    ...HTMLElementMap,
-};
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXIFrameElementInterface extends JSXElementInterface {
@@ -979,31 +770,6 @@ interface JSXIFrameElementInterface extends JSXElementInterface {
     /** Used when determining loading deferral */
     loading?: LazyLoadingValue | undefined;
 }
-
-const HTMLIFrameElementMap: PropertyMap<
-    JSXIFrameElementInterface,
-    HTMLIFrameElement & MissingFromTypescriptHTMLIframeElementProperties
-> = {
-    ...HTMLElementMap,
-    src: {},
-    srcdoc: {},
-    name: {},
-    sandbox: {},
-    allow: {},
-    allowfullscreen: {
-        idlName: 'allowFullscreen',
-    },
-    width: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    height: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    referrerpolicy: {
-        idlName: 'referrerPolicy',
-    },
-    loading: {},
-};
 
 interface JSXImageElementInterface extends JSXElementInterface {
     /** Replacement text for use when images are not available */
@@ -1031,37 +797,6 @@ interface JSXImageElementInterface extends JSXElementInterface {
     /** Used when determining loading deferral */
     loading?: LazyLoadingValue | undefined;
 }
-
-const HTMLImageElementMap: PropertyMap<
-    JSXImageElementInterface,
-    HTMLImageElement
-> = {
-    ...HTMLElementMap,
-    alt: {},
-    src: {},
-    srcset: {},
-    sizes: {},
-    crossorigin: {
-        idlName: 'crossOrigin',
-    },
-    usemap: {
-        idlName: 'useMap',
-    },
-    ismap: {
-        idlName: 'isMap',
-    },
-    width: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    height: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    referrerpolicy: {
-        idlName: 'referrerPolicy',
-    },
-    decoding: {},
-    loading: {},
-};
 
 type FormInputTypeValues =
     | 'button'
@@ -1152,77 +887,6 @@ interface JSXInputElementInterface extends JSXElementInterface {
     /** Horizontal dimension */
     width?: string | number | undefined;
 }
-const HTMLInputElementMap: PropertyMap<
-    JSXInputElementInterface,
-    HTMLInputElement
-> = {
-    ...HTMLElementMap,
-    accept: {},
-    alt: {},
-    autocomplete: {},
-    checked: {},
-    dirname: {
-        idlName: 'dirName',
-    },
-    disabled: {},
-    form: {},
-    formaction: {
-        idlName: 'formAction',
-    },
-    formenctype: {
-        idlName: 'formEnctype',
-    },
-    formmethod: {
-        idlName: 'formMethod',
-    },
-    formnovalidate: {
-        idlName: 'formNoValidate',
-    },
-    formtarget: {
-        idlName: 'formTarget',
-    },
-    height: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    indeterminate: {
-        makeAttrValue: null, // TODO: what other IDL attributes don't set html attributes?
-    },
-    list: {},
-    max: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    maxlength: {
-        idlName: 'maxLength',
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    min: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    minlength: {
-        idlName: 'minLength',
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    multiple: {},
-    name: {},
-    pattern: {},
-    placeholder: {},
-    readonly: {
-        idlName: 'readOnly',
-    },
-    required: {},
-    size: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    src: {},
-    step: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    type: {},
-    value: {},
-    width: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-};
 
 interface JSXModElementInterface extends JSXElementInterface {
     /** Link to the source of the quotation or more information about the edit */
@@ -1231,48 +895,18 @@ interface JSXModElementInterface extends JSXElementInterface {
     datetime?: string | undefined;
 }
 
-const HTMLModElementMap: PropertyMap<JSXModElementInterface, HTMLModElement> = {
-    ...HTMLElementMap,
-    cite: {},
-    datetime: {
-        idlName: 'dateTime',
-    },
-};
-
 interface JSXLabelElementInterface extends JSXElementInterface {
     /** Associate the label with form control */
     for?: string | undefined;
 }
 
-const HTMLLabelElementMap: PropertyMap<
-    JSXLabelElementInterface,
-    HTMLLabelElement
-> = {
-    ...HTMLElementMap,
-    for: {
-        idlName: 'htmlFor',
-    },
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXLegendElementInterface extends JSXElementInterface {}
-
-const HTMLLegendElementMap: PropertyMap<
-    JSXLegendElementInterface,
-    HTMLLegendElement
-> = {
-    ...HTMLElementMap,
-};
 
 interface JSXLIElementInterface extends JSXElementInterface {
     /** Ordinal value of the list item */
     value?: string | undefined;
 }
-
-const HTMLLIElementMap: PropertyMap<JSXLIElementInterface, HTMLLIElement> = {
-    ...HTMLElementMap,
-    value: {},
-};
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXLinkElementInterface extends JSXElementInterface {
@@ -1306,56 +940,13 @@ interface JSXLinkElementInterface extends JSXElementInterface {
     disabled?: boolean | undefined;
 }
 
-const HTMLLinkElementMap: PropertyMap<
-    JSXLinkElementInterface,
-    HTMLLinkElement
-> = {
-    ...HTMLElementMap,
-    href: {},
-    crossorigin: {
-        idlName: 'crossOrigin',
-    },
-    rel: {},
-    media: {},
-    integrity: {},
-    hreflang: {},
-    type: {},
-    referrerpolicy: {
-        idlName: 'referrerPolicy',
-    },
-    sizes: {},
-    imagesrcset: {
-        idlName: 'imageSrcset',
-    },
-    imagesizes: {
-        idlName: 'imageSizes',
-    },
-    as: {},
-    color: {
-        idlName: null, // TODO: confirm
-    },
-    disabled: {},
-};
-
 interface JSXMapElementInterface extends JSXElementInterface {
     /** Name of image map to reference from the usemap attribute */
     name?: string | undefined;
 }
 
-const HTMLMapElementMap: PropertyMap<JSXMapElementInterface, HTMLMapElement> = {
-    ...HTMLElementMap,
-    name: {},
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXMenuElementInterface extends JSXElementInterface {}
-
-const HTMLMenuElementMap: PropertyMap<
-    JSXMenuElementInterface,
-    HTMLMenuElement
-> = {
-    ...HTMLElementMap,
-};
 
 interface JSXMetaElementInterface extends JSXElementInterface {
     /** Metadata name */
@@ -1380,22 +971,6 @@ interface JSXMetaElementInterface extends JSXElementInterface {
     media?: string | undefined;
 }
 
-const HTMLMetaElementMap: PropertyMap<
-    JSXMetaElementInterface,
-    HTMLMetaElement & MissingFromTypescriptHTMLMetaElementProperties
-> = {
-    ...HTMLElementMap,
-    name: {},
-    'http-equiv': {
-        idlName: 'httpEquiv',
-    },
-    content: {},
-    charset: {
-        idlName: null, // TODO: confirm
-    },
-    media: {},
-};
-
 interface JSXMeterElementInterface extends JSXElementInterface {
     /** Current value of the element */
     value?: string | number | undefined;
@@ -1411,32 +986,6 @@ interface JSXMeterElementInterface extends JSXElementInterface {
     optimum?: string | number | undefined;
 }
 
-const HTMLMeterElementMap: PropertyMap<
-    JSXMeterElementInterface,
-    HTMLMeterElement
-> = {
-    ...HTMLElementMap,
-    value: {
-        // <meter> is special and has a numeric value
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    min: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    max: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    low: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    high: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    optimum: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-};
-
 interface JSXObjectElementInterface extends JSXElementInterface {
     /** Address of the resource */
     data?: string | undefined;
@@ -1451,25 +1000,6 @@ interface JSXObjectElementInterface extends JSXElementInterface {
     /** Vertical dimension */
     height?: string | undefined;
 }
-
-const HTMLObjectElementMap: PropertyMap<
-    JSXObjectElementInterface,
-    HTMLObjectElement
-> = {
-    ...HTMLElementMap,
-    data: {},
-    type: {},
-    name: {},
-    form: {
-        idlName: null,
-    },
-    width: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    height: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-};
 
 interface JSXOListElementInterface extends JSXElementInterface {
     /** Number the list backwards */
@@ -1487,33 +1017,12 @@ interface JSXOListElementInterface extends JSXElementInterface {
         | undefined;
 }
 
-const HTMLOListElementMap: PropertyMap<
-    JSXOListElementInterface,
-    HTMLOListElement
-> = {
-    ...HTMLElementMap,
-    reversed: {},
-    start: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    type: {},
-};
-
 interface JSXOptGroupElementInterface extends JSXElementInterface {
     /** Whether the form control is disabled */
     disabled?: boolean | undefined;
     /** User-visible label */
     label?: string | undefined;
 }
-
-const HTMLOptGroupElementMap: PropertyMap<
-    JSXOptGroupElementInterface,
-    HTMLOptGroupElement
-> = {
-    ...HTMLElementMap,
-    disabled: {},
-    label: {},
-};
 
 interface JSXOptionElementInterface extends JSXElementInterface {
     /** Whether the form control is disabled */
@@ -1526,17 +1035,6 @@ interface JSXOptionElementInterface extends JSXElementInterface {
     value?: string | undefined;
 }
 
-const HTMLOptionElementMap: PropertyMap<
-    JSXOptionElementInterface,
-    HTMLOptionElement
-> = {
-    ...HTMLElementMap,
-    disabled: {},
-    label: {},
-    selected: {},
-    value: {},
-};
-
 interface JSXOutputElementInterface extends JSXElementInterface {
     /** Specifies controls from which the output was calculated */
     for?: string | undefined;
@@ -1546,27 +1044,8 @@ interface JSXOutputElementInterface extends JSXElementInterface {
     name?: string | undefined;
 }
 
-const HTMLOutputElementMap: PropertyMap<
-    JSXOutputElementInterface,
-    HTMLOutputElement
-> = {
-    ...HTMLElementMap,
-    for: {
-        idlName: 'htmlFor',
-    },
-    form: { idlName: null },
-    name: {},
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXParagraphElementInterface extends JSXElementInterface {}
-
-const HTMLParagraphElementMap: PropertyMap<
-    JSXParagraphElementInterface,
-    HTMLParagraphElement
-> = {
-    ...HTMLElementMap,
-};
 
 interface JSXParamElementInterface extends JSXElementInterface {
     /** Name of parameter */
@@ -1575,31 +1054,11 @@ interface JSXParamElementInterface extends JSXElementInterface {
     value?: string | undefined;
 }
 
-const HTMLParamElementMap: PropertyMap<
-    JSXParamElementInterface,
-    HTMLParamElement
-> = {
-    ...HTMLElementMap,
-    name: {},
-    value: {},
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXPictureElementInterface extends JSXElementInterface {}
 
-const HTMLPictureElementMap: PropertyMap<
-    JSXPictureElementInterface,
-    HTMLPictureElement
-> = {
-    ...HTMLElementMap,
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXPreElementInterface extends JSXElementInterface {}
-
-const HTMLPreElementMap: PropertyMap<JSXPreElementInterface, HTMLPreElement> = {
-    ...HTMLElementMap,
-};
 
 interface JSXProgressElementInterface extends JSXElementInterface {
     /** Current value of the element */
@@ -1608,32 +1067,10 @@ interface JSXProgressElementInterface extends JSXElementInterface {
     max?: string | number | undefined;
 }
 
-const HTMLProgressElementMap: PropertyMap<
-    JSXProgressElementInterface,
-    HTMLProgressElement
-> = {
-    ...HTMLElementMap,
-    value: {
-        // <progress> is special and has a numeric value
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    max: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-};
-
 interface JSXQuoteElementInterface extends JSXElementInterface {
     /** Link to the source of the quotation or more information about the edit */
     cite?: string | undefined;
 }
-
-const HTMLQuoteElementMap: PropertyMap<
-    JSXQuoteElementInterface,
-    HTMLQuoteElement
-> = {
-    ...HTMLElementMap,
-    cite: {},
-};
 
 interface JSXScriptElementInterface extends JSXElementInterface {
     /** Address of the resource */
@@ -1654,27 +1091,6 @@ interface JSXScriptElementInterface extends JSXElementInterface {
     referrerpolicy?: ReferrerPolicyValue | undefined;
 }
 
-const HTMLScriptElementMap: PropertyMap<
-    JSXScriptElementInterface,
-    HTMLScriptElement
-> = {
-    ...HTMLElementMap,
-    src: {},
-    type: {},
-    nomodule: {
-        idlName: 'noModule',
-    },
-    async: {},
-    defer: {},
-    crossorigin: {
-        idlName: 'crossOrigin',
-    },
-    integrity: {},
-    referrerpolicy: {
-        idlName: 'referrerPolicy',
-    },
-};
-
 interface JSXSelectElementInterface extends JSXElementInterface {
     /** Hint for form autofill feature */
     autocomplete?: AutocompleteValue | undefined;
@@ -1694,35 +1110,10 @@ interface JSXSelectElementInterface extends JSXElementInterface {
     value?: string | undefined;
 }
 
-const HTMLSelectElementMap: PropertyMap<
-    JSXSelectElementInterface,
-    HTMLSelectElement
-> = {
-    ...HTMLElementMap,
-    autocomplete: {},
-    disabled: {},
-    form: { idlName: null },
-    multiple: {},
-    name: {},
-    required: {},
-    size: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    value: { makeAttrValue: null },
-};
-
 interface JSXSlotElementInterface extends JSXElementInterface {
     /** Name of shadow tree slot */
     name?: string | undefined;
 }
-
-const HTMLSlotElementMap: PropertyMap<
-    JSXSlotElementInterface,
-    HTMLSlotElement
-> = {
-    ...HTMLElementMap,
-    name: {},
-};
 
 interface JSXSourceElementInterface extends JSXElementInterface {
     /** Type of embedded resource */
@@ -1741,76 +1132,22 @@ interface JSXSourceElementInterface extends JSXElementInterface {
     height?: string | number | undefined;
 }
 
-const HTMLSourceElementMap: PropertyMap<
-    JSXSourceElementInterface,
-    HTMLSourceElement & MissingFromTypescriptHTMLSourceElementProperties
-> = {
-    ...HTMLElementMap,
-    type: {},
-    src: {},
-    srcset: {},
-    sizes: {},
-    media: {},
-    width: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    height: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXSpanElementInterface extends JSXElementInterface {}
-
-const HTMLSpanElementMap: PropertyMap<
-    JSXSpanElementInterface,
-    HTMLSpanElement
-> = {
-    ...HTMLElementMap,
-};
 
 interface JSXStyleElementInterface extends JSXElementInterface {
     /** Applicable media */
     media?: string | undefined;
 }
 
-const HTMLStyleElementMap: PropertyMap<
-    JSXStyleElementInterface,
-    HTMLStyleElement
-> = {
-    ...HTMLElementMap,
-    media: {},
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXTableElementInterface extends JSXElementInterface {}
-
-const HTMLTableElementMap: PropertyMap<
-    JSXTableElementInterface,
-    HTMLTableElement
-> = {
-    ...HTMLElementMap,
-};
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXTableCaptionElementInterface extends JSXElementInterface {}
 
-const HTMLTableCaptionElementMap: PropertyMap<
-    JSXTableCaptionElementInterface,
-    HTMLTableCaptionElement
-> = {
-    ...HTMLElementMap,
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXTableSectionElementInterface extends JSXElementInterface {}
-
-const HTMLTableSectionElementMap: PropertyMap<
-    JSXTableSectionElementInterface,
-    HTMLTableSectionElement
-> = {
-    ...HTMLElementMap,
-};
 
 interface JSXTableCellElementInterface extends JSXElementInterface {
     /** Number of columns that the cell is to span */
@@ -1821,22 +1158,6 @@ interface JSXTableCellElementInterface extends JSXElementInterface {
     headers?: string | undefined;
 }
 
-const HTMLTableCellElementMap: PropertyMap<
-    JSXTableCellElementInterface,
-    HTMLTableCellElement
-> = {
-    ...HTMLElementMap,
-    colspan: {
-        idlName: 'colSpan',
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    rowspan: {
-        idlName: 'rowSpan',
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    headers: {},
-};
-
 interface JSXTableHeaderElementInterface extends JSXTableCellElementInterface {
     /** Specifies which cells the header cell applies to */
     scope?: string | undefined;
@@ -1845,39 +1166,13 @@ interface JSXTableHeaderElementInterface extends JSXTableCellElementInterface {
     abbr?: string | undefined;
 }
 
-const HTMLTableHeaderElementMap: PropertyMap<
-    JSXTableHeaderElementInterface,
-    HTMLTableCellElement
-> = {
-    ...HTMLTableCellElementMap,
-    scope: {},
-    abbr: {},
-};
-
 interface JSXTableColElementInterface extends JSXElementInterface {
     /** Number of columns spanned by the element */
     span?: string | number | undefined;
 }
 
-const HTMLTableColElementMap: PropertyMap<
-    JSXTableColElementInterface,
-    HTMLTableColElement
-> = {
-    ...HTMLElementMap,
-    span: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXTemplateElementInterface extends JSXElementInterface {}
-
-const HTMLTemplateElementMap: PropertyMap<
-    JSXTemplateElementInterface,
-    HTMLTemplateElement
-> = {
-    ...HTMLElementMap,
-};
 
 interface JSXTextAreaElementInterface extends JSXElementInterface {
     /** Hint for form autofill feature */
@@ -1908,74 +1203,16 @@ interface JSXTextAreaElementInterface extends JSXElementInterface {
     wrap?: 'soft' | 'hard' | string | undefined;
 }
 
-const HTMLTextAreaElementMap: PropertyMap<
-    JSXTextAreaElementInterface,
-    HTMLTextAreaElement
-> = {
-    ...HTMLElementMap,
-    autocomplete: {},
-    cols: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    dirname: {
-        idlName: 'dirName',
-    },
-    disabled: {},
-    form: { idlName: null },
-    maxlength: {
-        idlName: 'maxLength',
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    minlength: {
-        idlName: 'minLength',
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    name: {},
-    placeholder: {},
-    readonly: {
-        idlName: 'readOnly',
-    },
-    required: {},
-    rows: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    wrap: {},
-};
-
 interface JSXTimeElementInterface extends JSXElementInterface {
     /** Machine-readable value */
     datetime?: string | undefined;
 }
 
-const HTMLTimeElementMap: PropertyMap<
-    JSXTimeElementInterface,
-    HTMLTimeElement
-> = {
-    ...HTMLElementMap,
-    datetime: {
-        idlName: 'dateTime',
-    },
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXTitleElementInterface extends JSXElementInterface {}
 
-const HTMLTitleElementMap: PropertyMap<
-    JSXTitleElementInterface,
-    HTMLTitleElement
-> = {
-    ...HTMLElementMap,
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXTableRowElementInterface extends JSXElementInterface {}
-
-const HTMLTableRowElementMap: PropertyMap<
-    JSXTableRowElementInterface,
-    HTMLTableRowElement
-> = {
-    ...HTMLElementMap,
-};
 
 interface JSXTrackElementInterface extends JSXElementInterface {
     /** The type of text track */
@@ -1997,27 +1234,8 @@ interface JSXTrackElementInterface extends JSXElementInterface {
     default?: boolean | undefined;
 }
 
-const HTMLTrackElementMap: PropertyMap<
-    JSXTrackElementInterface,
-    HTMLTrackElement
-> = {
-    ...HTMLElementMap,
-    kind: {},
-    src: {},
-    srclang: {},
-    label: {},
-    default: {},
-};
-
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 interface JSXUListElementInterface extends JSXElementInterface {}
-
-const HTMLUListElementMap: PropertyMap<
-    JSXUListElementInterface,
-    HTMLUListElement
-> = {
-    ...HTMLElementMap,
-};
 
 interface JSXVideoElementInterface extends JSXMediaElementInterface {
     /** Poster frame to show prior to video playback */
@@ -2028,165 +1246,6 @@ interface JSXVideoElementInterface extends JSXMediaElementInterface {
     width?: string | number | undefined;
     /** Vertical dimension */
     height?: string | number | undefined;
-}
-
-const HTMLVideoElementMap: PropertyMap<
-    JSXVideoElementInterface,
-    HTMLVideoElement
-> = {
-    ...HTMLElementMap,
-    src: {},
-    crossorigin: {
-        idlName: 'crossOrigin',
-    },
-    preload: {},
-    autoplay: {},
-    loop: {
-        makeIdlValue: attrBooleanToEmptyString,
-    },
-    muted: {},
-    controls: {},
-    poster: {},
-    playsinline: {
-        idlName: 'playsInline',
-    },
-    width: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-    height: {
-        makeIdlValue: attrStringOrNumberToNumber,
-    },
-};
-
-export const ElementTypeMapping = {
-    a: HTMLAnchorElementMap,
-    abbr: HTMLElementMap,
-    address: HTMLElementMap,
-    area: HTMLAreaElementMap,
-    article: HTMLElementMap,
-    aside: HTMLElementMap,
-    audio: HTMLAudioElementMap,
-    b: HTMLElementMap,
-    base: HTMLBaseElementMap,
-    bdi: HTMLElementMap,
-    bdo: HTMLElementMap,
-    blockquote: HTMLElementMap,
-    body: HTMLBodyElementMap,
-    br: HTMLBRElementMap,
-    button: HTMLButtonElementMap,
-    canvas: HTMLCanvasElementMap,
-    caption: HTMLTableCaptionElementMap,
-    cite: HTMLElementMap,
-    code: HTMLElementMap,
-    col: HTMLTableColElementMap,
-    colgroup: HTMLTableColElementMap,
-    data: HTMLDataElementMap,
-    datalist: HTMLDataListElementMap,
-    dd: HTMLElementMap,
-    del: HTMLModElementMap,
-    details: HTMLDetailsElementMap,
-    dfn: HTMLElementMap,
-    dialog: HTMLDialogElementMap,
-    div: HTMLDivElementMap,
-    dl: HTMLDListElementMap,
-    dt: HTMLElementMap,
-    em: HTMLElementMap,
-    embed: HTMLEmbedElementMap,
-    fieldset: HTMLFieldSetElementMap,
-    figcaption: HTMLElementMap,
-    figure: HTMLElementMap,
-    footer: HTMLElementMap,
-    form: HTMLFormElementMap,
-    h1: HTMLElementMap,
-    h2: HTMLElementMap,
-    h3: HTMLElementMap,
-    h4: HTMLElementMap,
-    h5: HTMLElementMap,
-    h6: HTMLElementMap,
-    head: HTMLHeadElementMap,
-    header: HTMLElementMap,
-    heading: HTMLHeadingElementMap,
-    hgroup: HTMLElementMap,
-    hr: HTMLHRElementMap,
-    html: HTMLHtmlElementMap,
-    i: HTMLElementMap,
-    iframe: HTMLIFrameElementMap,
-    img: HTMLImageElementMap,
-    input: HTMLInputElementMap,
-    ins: HTMLModElementMap,
-    kbd: HTMLElementMap,
-    label: HTMLLabelElementMap,
-    legend: HTMLLegendElementMap,
-    li: HTMLLIElementMap,
-    link: HTMLLinkElementMap,
-    main: HTMLElementMap,
-    map: HTMLMapElementMap,
-    mark: HTMLElementMap,
-    menu: HTMLMenuElementMap,
-    meta: HTMLMetaElementMap,
-    meter: HTMLMeterElementMap,
-    nav: HTMLElementMap,
-    noscript: HTMLElementMap,
-    object: HTMLObjectElementMap,
-    ol: HTMLOListElementMap,
-    optgroup: HTMLOptGroupElementMap,
-    option: HTMLOptionElementMap,
-    output: HTMLOutputElementMap,
-    p: HTMLParagraphElementMap,
-    param: HTMLParamElementMap,
-    picture: HTMLPictureElementMap,
-    pre: HTMLPreElementMap,
-    progress: HTMLProgressElementMap,
-    quote: HTMLQuoteElementMap,
-    rp: HTMLElementMap,
-    rt: HTMLElementMap,
-    ruby: HTMLElementMap,
-    s: HTMLElementMap,
-    samp: HTMLElementMap,
-    script: HTMLScriptElementMap,
-    section: HTMLElementMap,
-    select: HTMLSelectElementMap,
-    slot: HTMLSlotElementMap,
-    small: HTMLElementMap,
-    source: HTMLSourceElementMap,
-    span: HTMLSpanElementMap,
-    strong: HTMLElementMap,
-    style: HTMLStyleElementMap,
-    sub: HTMLElementMap,
-    summary: HTMLElementMap,
-    sup: HTMLElementMap,
-    table: HTMLTableElementMap,
-    tbody: HTMLTableSectionElementMap,
-    td: HTMLTableCellElementMap,
-    template: HTMLTemplateElementMap,
-    textarea: HTMLTextAreaElementMap,
-    tfoot: HTMLTableSectionElementMap,
-    th: HTMLTableHeaderElementMap,
-    thead: HTMLTableSectionElementMap,
-    time: HTMLTimeElementMap,
-    title: HTMLTitleElementMap,
-    tr: HTMLTableRowElementMap,
-    track: HTMLTrackElementMap,
-    u: HTMLElementMap,
-    ul: HTMLUListElementMap,
-    var: HTMLElementMap,
-    video: HTMLVideoElementMap,
-    wbr: HTMLElementMap,
-} as const;
-
-// TODO: maybe typecheck this?
-interface ElementTypeMappingField {
-    makeAttrValue?: (jsxAttr: any) => string | undefined;
-    idlName?: any;
-    makeIdlValue?: (jsxAttr: any) => any;
-}
-
-// TODO: maybe typecheck this?
-export function getElementTypeMapping(
-    elementName: string,
-    property: string
-): ElementTypeMappingField {
-    return (ElementTypeMapping as any)[elementName]?.[property];
 }
 
 /**
