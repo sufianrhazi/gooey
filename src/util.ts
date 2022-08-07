@@ -1,6 +1,9 @@
 // eslint-disable-next-line @typescript-eslint/no-empty-function
 export const noop = () => {};
 
+// eslint-disable-next-line @typescript-eslint/no-empty-function
+export function* noopGenerator() {}
+
 export const dead = (): any => {
     throw new Error('Cannot call dead function');
 };

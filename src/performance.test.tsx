@@ -69,6 +69,30 @@ suite('perf tests', () => {
         });
     });
 
+    test('empty 1000 flat, static items in 8ms', async () => {
+        const COUNT = 1000;
+        const items = collection<{ id: number }>([]);
+        for (let i = 0; i < COUNT; ++i) {
+            items.push({ id: i });
+        }
+        const Items = () => (
+            <div>
+                {items.mapView((item) => (
+                    <div>{item.id}</div>
+                ))}
+            </div>
+        );
+
+        await assert.medianRuntimeLessThan(8, (measure) => {
+            const unmount = mount(testRoot, <Items />);
+            items.splice(0, items.length);
+            measure(() => {
+                flush();
+            });
+            unmount();
+        });
+    });
+
     test('render 1000 flat, component items in 15ms', async () => {
         const COUNT = 1000;
         const items = collection<{ id: number }>([]);
