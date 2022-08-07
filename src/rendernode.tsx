@@ -85,8 +85,7 @@ const RenderNodeType = Symbol('rendernode');
 export interface RenderNode extends Retainable {
     _type: typeof RenderNodeType;
     detach(emitter: NodeEmitter): void;
-    attach(emitter: NodeEmitter): void;
-    setContext(context: ContextMap): void;
+    attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -105,7 +104,6 @@ export class EmptyRenderNode implements RenderNode {
 
     detach = noop;
     attach = noop;
-    setContext = noop;
     onMount = noop;
     onUnmount = noop;
     retain() {
@@ -148,7 +146,7 @@ export class TextRenderNode implements RenderNode {
         this.isAttached = false;
     }
 
-    attach(emitter: NodeEmitter) {
+    attach(emitter: NodeEmitter, context: ContextMap) {
         log.assert(
             !this.isAttached,
             'Invariant: TextRenderNode 0 double attached'
@@ -162,7 +160,6 @@ export class TextRenderNode implements RenderNode {
         this.isAttached = true;
     }
 
-    setContext = noop;
     onMount = noop;
     onUnmount = noop;
     retain() {
@@ -197,7 +194,7 @@ export class ForeignRenderNode implements RenderNode {
         emitter({ type: ArrayEventType.SPLICE, index: 0, count: 1 });
     }
 
-    attach(emitter: NodeEmitter) {
+    attach(emitter: NodeEmitter, context: ContextMap) {
         emitter({
             type: ArrayEventType.SPLICE,
             index: 0,
@@ -206,7 +203,6 @@ export class ForeignRenderNode implements RenderNode {
         });
     }
 
-    setContext = noop;
     onMount = noop;
     onUnmount = noop;
     retain() {
@@ -248,18 +244,12 @@ export class ArrayRenderNode implements RenderNode {
         }
     }
 
-    attach(emitter: NodeEmitter) {
+    attach(emitter: NodeEmitter, context: ContextMap) {
         for (const [index, child] of this.children.entries()) {
             child.attach((event) => {
                 shiftEvent(this.slotSizes, index, event);
                 emitter(event);
-            });
-        }
-    }
-
-    setContext(context: ContextMap) {
-        for (const child of this.children) {
-            child.setContext(context);
+            }, context);
         }
     }
 
@@ -567,19 +557,7 @@ export class IntrinsicRenderNode implements RenderNode {
         this.emitter = null;
     }
 
-    attach(emitter: NodeEmitter) {
-        log.assert(!this.emitter, 'Invariant: RenderNode 0 double attached');
-        this.emitter = emitter;
-        log.assert(this.element, 'Invariant: attached without context');
-        emitter({
-            type: ArrayEventType.SPLICE,
-            index: 0,
-            count: 0,
-            items: [this.element],
-        });
-    }
-
-    setContext(context: ContextMap) {
+    attach(emitter: NodeEmitter, context: ContextMap) {
         const parentXmlNamespace = readContext(context, XmlNamespaceContext);
         const namespaceTransition =
             elementNamespaceTransitionMap[parentXmlNamespace]?.[this.tagName];
@@ -628,12 +606,21 @@ export class IntrinsicRenderNode implements RenderNode {
                 subContext = new Map(context);
                 subContext.set(XmlNamespaceContext, childXmlNamespace);
             }
-            this.arrayRenderNode.setContext(subContext);
-            this.arrayRenderNode.attach(this.handleEvent);
+            this.arrayRenderNode.attach(this.handleEvent, subContext);
             if (this.isPreexisting) {
                 this.isPreexistingPopulated = true;
             }
         }
+
+        log.assert(!this.emitter, 'Invariant: RenderNode 0 double attached');
+        this.emitter = emitter;
+        log.assert(this.element, 'Invariant: attached without context');
+        emitter({
+            type: ArrayEventType.SPLICE,
+            index: 0,
+            count: 0,
+            items: [this.element],
+        });
     }
 
     onMount() {
@@ -725,26 +712,16 @@ export class CalculationRenderNode implements RenderNode {
         this.emitter = null;
     }
 
-    attach(emitter: NodeEmitter) {
-        log.assert(
-            this.renderNode || this.isCalculatedPendingAdd,
-            'Invariant: missing calculation result'
-        );
-        this.emitter = emitter;
-        if (this.renderNode) {
-            this.renderNode.attach(emitter);
-        }
-    }
-
-    setContext(context: ContextMap) {
+    attach(emitter: NodeEmitter, context: ContextMap) {
         this.context = context;
+        this.emitter = emitter;
         if (!this.renderNode && !this.isCalculatedPendingAdd) {
             this.renderCalculation(this.calculation());
             this.calculationSubscription = this.calculation.onRecalc(
                 this.renderCalculation
             );
         } else if (this.renderNode) {
-            this.renderNode.setContext(context);
+            this.renderNode.attach(emitter, context);
         }
     }
 
@@ -792,11 +769,10 @@ export class CalculationRenderNode implements RenderNode {
             this.isCalculatedPendingAdd = false;
             this.renderNode = renderNode;
             retain(this.renderNode);
-            if (this.context) {
-                renderNode.setContext(this.context);
-            }
             if (this.emitter) {
-                renderNode.attach(this.emitter);
+                // context guaranteed to exist
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                renderNode.attach(this.emitter, this.context!);
             }
             if (this.isMounted) {
                 renderNode.onMount();
@@ -852,12 +828,23 @@ export class CollectionRenderNode implements RenderNode {
         this.emitter = null;
     }
 
-    attach(emitter: NodeEmitter) {
+    attach(emitter: NodeEmitter, context: ContextMap) {
+        this.context = context;
+        untrackReads(() => {
+            for (const [index, item] of this.collection.entries()) {
+                this.slotSizes.push(0);
+                const child = renderJSXNode(item);
+                retain(child);
+                this.children.push(child);
+                this.childIndex.set(child, index);
+            }
+        });
+
         this.emitter = emitter;
         for (const child of this.children) {
             child.attach((event) => {
                 this.handleChildEvent(emitter, event, child);
-            });
+            }, context);
         }
     }
 
@@ -871,22 +858,6 @@ export class CollectionRenderNode implements RenderNode {
         shiftEvent(this.slotSizes, index, event);
         applyEvent(this.childrenNodes, event);
         emitter(event);
-    }
-
-    setContext(context: ContextMap) {
-        this.context = context;
-        untrackReads(() => {
-            for (const [index, item] of this.collection.entries()) {
-                this.slotSizes.push(0);
-                const child = renderJSXNode(item);
-                retain(child);
-                this.children.push(child);
-                this.childIndex.set(child, index);
-            }
-        });
-        for (const child of this.children) {
-            child.setContext(context);
-        }
     }
 
     onMount() {
@@ -948,9 +919,14 @@ export class CollectionRenderNode implements RenderNode {
                         retain(child);
                         if (this.emitter) {
                             const emitter = this.emitter;
-                            child.setContext(this.context);
-                            child.attach((event) =>
-                                this.handleChildEvent(emitter, event, child)
+                            child.attach(
+                                (event) =>
+                                    this.handleChildEvent(
+                                        emitter,
+                                        event,
+                                        child
+                                    ),
+                                this.context
                             );
                         }
                         if (this.isMounted) {
@@ -1126,8 +1102,7 @@ export function mount(target: Element, node: RenderNode): () => void {
     const root = new IntrinsicRenderNode(target, undefined, [node], 'root');
     const context = new Map();
     retain(root);
-    root.setContext(context);
-    root.attach(noop);
+    root.attach(noop, context);
     root.onMount();
     return () => {
         root.onUnmount();
@@ -1210,14 +1185,10 @@ export class AttachmentObserverRenderNode implements RenderNode {
         });
     }
 
-    attach(emitter: NodeEmitter) {
+    attach(emitter: NodeEmitter, context: ContextMap) {
         this.child.attach((event) => {
             this.handleEvent(emitter, event);
-        });
-    }
-
-    setContext(context: ContextMap) {
-        this.child.setContext(context);
+        }, context);
     }
 
     onMount() {
@@ -1291,12 +1262,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         this.result.detach(emitter);
     }
 
-    attach(emitter: NodeEmitter) {
-        log.assert(this.result, 'Invariant: missing context');
-        this.result.attach(emitter);
-    }
-
-    setContext(contextMap: ContextMap) {
+    attach(emitter: NodeEmitter, contextMap: ContextMap) {
         log.assert(
             this[SymRefcount] > 0,
             'Invariant: dead ComponentRenderNode called setContext'
@@ -1376,7 +1342,6 @@ export class ComponentRenderNode<TProps> implements RenderNode {
                 retain(item);
             }
         }
-        this.result.setContext(contextMap);
         if (this.getContextCallbacks) {
             for (const [
                 Context,
@@ -1390,6 +1355,9 @@ export class ComponentRenderNode<TProps> implements RenderNode {
                 }
             }
         }
+
+        log.assert(this.result, 'Invariant: missing context');
+        this.result.attach(emitter, contextMap);
     }
 
     onMount() {
@@ -1478,14 +1446,11 @@ export class ContextRenderNode<T> implements RenderNode {
         this.child.detach(emitter);
     }
 
-    attach(emitter: NodeEmitter) {
-        this.child.attach(emitter);
-    }
-
-    setContext(context: ContextMap) {
+    attach(emitter: NodeEmitter, context: ContextMap) {
         const derivedContext = new Map(context);
         derivedContext.set(this.context, this.value);
-        this.child.setContext(derivedContext);
+
+        this.child.attach(emitter, derivedContext);
     }
 
     onMount() {
