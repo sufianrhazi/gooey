@@ -340,6 +340,13 @@ const elementNamespaceTransitionMap: Record<
 const XmlNamespaceContext = createContext(HTML_NAMESPACE);
 
 /**
+ * If an intrinsic element is detached when it has focused, this holds a reference to the element.
+ * While any nodes are mounted, we observe the document for focus change events. If focus is moved to anything inside the body, we clear this reference.
+ * If an intrinsic element is attached and its element matches this reference, it steals focus.
+ */
+let previousFocusedDetachedElement: Element | null = null;
+
+/**
  * Renders an intrinsic DOM node
  */
 export class IntrinsicRenderNode implements RenderNode {
@@ -629,8 +636,18 @@ export class IntrinsicRenderNode implements RenderNode {
                 ref(this.element);
             }
         }
+        if (
+            this.element &&
+            (this.element as any).focus &&
+            previousFocusedDetachedElement === this.element
+        ) {
+            (this.element as any).focus();
+        }
     }
     onUnmount() {
+        if (this.element && document.activeElement === this.element) {
+            previousFocusedDetachedElement = this.element;
+        }
         const ref = this.props?.ref;
         if (ref) {
             if (ref instanceof RefObject) {
@@ -1099,6 +1116,17 @@ export function renderJSXChildren(
 }
 
 export function mount(target: Element, node: RenderNode): () => void {
+    const focusMonitor = (e: FocusEvent) => {
+        if (
+            previousFocusedDetachedElement &&
+            e.target &&
+            e.target !== document.documentElement &&
+            e.target !== document.body
+        ) {
+            previousFocusedDetachedElement = null;
+        }
+    };
+    document.documentElement.addEventListener('focusin', focusMonitor);
     const root = new IntrinsicRenderNode(target, undefined, [node], 'root');
     const context = new Map();
     retain(root);
@@ -1113,6 +1141,7 @@ export function mount(target: Element, node: RenderNode): () => void {
         root.onUnmount();
         root.detach();
         release(root);
+        document.documentElement.removeEventListener('focusin', focusMonitor);
     };
 }
 

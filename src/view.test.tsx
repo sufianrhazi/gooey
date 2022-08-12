@@ -2578,6 +2578,51 @@ suite('rendered node reuse', () => {
         assert.is(leftMount.querySelector('#left'), references[0].parentNode);
         assert.is('it works!', references[2].getAttribute('data-magic'));
     });
+
+    test('focus is not lost when reparented', () => {
+        const references: HTMLButtonElement[] = [];
+        const refFunc = (val: HTMLButtonElement | undefined) => {
+            if (val) references.push(val);
+        };
+        const state = model({ leftSide: true });
+        const jsx = (
+            <button ref={refFunc}>
+                <strong>hello</strong>, <em>world</em>!
+            </button>
+        );
+        jsx.retain();
+        const leftMount = document.createElement('div');
+        const rightMount = document.createElement('div');
+
+        testRoot.appendChild(leftMount);
+        testRoot.appendChild(rightMount);
+        mount(
+            leftMount,
+            <div id="left">
+                Left: {calc(() => (state.leftSide ? jsx : null))}
+            </div>
+        );
+        mount(
+            rightMount,
+            <div id="right">
+                Right: {calc(() => (state.leftSide ? null : jsx))}
+            </div>
+        );
+
+        const buttonEl = references[0];
+        buttonEl.focus();
+        assert.is(buttonEl, buttonEl.ownerDocument.activeElement);
+
+        state.leftSide = false;
+        flush();
+
+        assert.is(buttonEl, buttonEl.ownerDocument.activeElement);
+
+        state.leftSide = true;
+        flush();
+
+        assert.is(buttonEl, buttonEl.ownerDocument.activeElement);
+    });
 });
 
 suite('error handling', () => {
