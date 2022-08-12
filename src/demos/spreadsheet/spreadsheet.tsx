@@ -326,8 +326,8 @@ const Cell: Component<{
     const tdRef = ref<HTMLTableCellElement>();
 
     onMount(() => {
-        return isFocused.onRecalc((focused) => {
-            if (focused) {
+        return isFocused.onRecalc((errorType, focused) => {
+            if (!errorType && focused) {
                 tdRef.current?.focus();
             }
         });

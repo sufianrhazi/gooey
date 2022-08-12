@@ -677,7 +677,16 @@ By default, this comparison function is strict equality: `(a, b) => a === b`.
 ##### `Calculation<T>.onRecalc(handler)`
 
 ```typescript
-type CalcSubscriptionHandler<T> = (val: T) => void;
+enum CalculationErrorType {
+    CYCLE,
+    EXCEPTION,
+}
+
+interface CalcSubscriptionHandler<T> {
+    (errorType: undefined, val: T): void;
+    (errorType: CalculationErrorType, val: Error): void;
+    (errorType: CalculationErrorType | undefined, val: Error | T): void;
+}
 
 interface CalcUnsubscribe<T> {
     (): void;
@@ -690,6 +699,12 @@ interface Calculation<T> {
 
 Add a subscription to the calculation. The `handler` will be called with the new result after the calculation
 is recalculated. The returned value is a function which can be called to unsubscribe from the subscription.
+
+If the result of the recalculation is not an error, the `errorType` parameter will be undefined and `val` will be the
+result of the calculation.
+
+If the result of the recalculation is an uncaught error, the `errorType` will be set, and `val` will be the `Error`
+instance.
 
 
 ##### `effect(fn)`
