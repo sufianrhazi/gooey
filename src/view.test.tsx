@@ -717,7 +717,7 @@ suite('mount components', () => {
                 <div id="right">{children}</div>
             </div>
         );
-        assert.throwsMatching(/Invariant: RenderNode \d+ double attached/, () =>
+        assert.throwsMatching(/Invariant: Intrinsic node double attached/, () =>
             mount(
                 testRoot,
                 <BadComponent>
@@ -2192,7 +2192,7 @@ suite('AttachmentObserver component', () => {
 suite('rendered node reuse', () => {
     test('element cannot be rendered multiple times', () => {
         const jsx = <p>hello there</p>;
-        assert.throwsMatching(/Invariant: RenderNode \d+ double attached/, () =>
+        assert.throwsMatching(/Invariant: Intrinsic node double attached/, () =>
             mount(
                 testRoot,
                 <div>

@@ -147,10 +147,7 @@ export class TextRenderNode implements RenderNode {
     }
 
     attach(emitter: NodeEmitter, context: ContextMap) {
-        log.assert(
-            !this.isAttached,
-            'Invariant: TextRenderNode 0 double attached'
-        );
+        log.assert(!this.isAttached, 'Invariant: Text node double attached');
         emitter({
             type: ArrayEventType.SPLICE,
             index: 0,
@@ -579,7 +576,7 @@ export class IntrinsicRenderNode implements RenderNode {
             }
         }
 
-        log.assert(!this.emitter, 'Invariant: RenderNode 0 double attached');
+        log.assert(!this.emitter, 'Invariant: Intrinsic node double attached');
         this.emitter = emitter;
         log.assert(this.element, 'Invariant: attached without context');
         emitter({
