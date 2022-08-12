@@ -2444,6 +2444,101 @@ suite('rendered node reuse', () => {
     });
 });
 
+suite('error handling', () => {
+    test('components can catch render errors', () => {
+        const Exploder: Component = () => {
+            throw new Error('oh no');
+        };
+        const ErrorHandler: Component = (props, { onError }) => {
+            onError((error: Error) => {
+                return (
+                    <div class="target" id="error">
+                        Got error: {error.message}
+                    </div>
+                );
+            });
+            return (
+                <div class="target" id="normal">
+                    Normal
+                    <div id="inner">
+                        <Exploder />
+                    </div>
+                </div>
+            );
+        };
+        mount(testRoot, <ErrorHandler />);
+        assert.is(
+            'Got error: oh no',
+            testRoot.querySelector('.target')?.textContent
+        );
+    });
+
+    test('components can catch calculation render errors when children rendered', () => {
+        const Exploder: Component = () => {
+            throw new Error('oh no');
+        };
+        const state = model({
+            error: true,
+        });
+        const ErrorHandler: Component = (props, { onError }) => {
+            onError((error: Error) => {
+                return (
+                    <div class="target" id="error">
+                        Got error: {error.message}
+                    </div>
+                );
+            });
+            return (
+                <div class="target" id="normal">
+                    Normal
+                    <div id="inner">
+                        {calc(() => state.error && <Exploder />)}
+                    </div>
+                </div>
+            );
+        };
+        mount(testRoot, <ErrorHandler />);
+        assert.is(
+            'Got error: oh no',
+            testRoot.querySelector('.target')?.textContent
+        );
+    });
+
+    test('components can catch render errors when children rerendered', () => {
+        const Exploder: Component = () => {
+            throw new Error('oh no');
+        };
+        const state = model({
+            error: false,
+        });
+        const ErrorHandler: Component = (props, { onError }) => {
+            onError((error: Error) => {
+                return (
+                    <div class="target" id="error">
+                        Got error: {error.message}
+                    </div>
+                );
+            });
+            return (
+                <div class="target" id="normal">
+                    Normal
+                    <div id="inner">
+                        {calc(() => state.error && <Exploder />)}
+                    </div>
+                </div>
+            );
+        };
+        mount(testRoot, <ErrorHandler />);
+        assert.is('Normal', testRoot.querySelector('.target')?.textContent);
+        state.error = true;
+        flush();
+        assert.is(
+            'Got error: oh no',
+            testRoot.querySelector('.target')?.textContent
+        );
+    });
+});
+
 // Type tests
 // eslint-disable-next-line no-constant-condition
 if (2 < 1) {

@@ -24,6 +24,7 @@ export interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
+    onError: (handler: (e: Error) => JSX.Element | null) => void;
     getContext: <TContext>(
         context: Context<TContext>,
         handler?: ((val: TContext) => void) | undefined
@@ -1217,6 +1218,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     onDestroyCallbacks?: (() => void)[];
     getContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;
     owned: Set<Retainable>;
+    errorHandler: ((e: Error) => RenderNode | null) | null;
 
     constructor(
         Component: Component<TProps>,
@@ -1228,6 +1230,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         this.props = props;
         this.children = children;
         this.owned = new Set();
+        this.errorHandler = null;
 
         this.result = null;
 
@@ -1293,6 +1296,17 @@ export class ComponentRenderNode<TProps> implements RenderNode {
                         callbacks.push(handler);
                     }
                     return readContext(contextMap, context);
+                },
+                onError: (errorHandler: (e: Error) => RenderNode | null) => {
+                    log.assert(
+                        callbacksAllowed,
+                        'onError must be called in component body'
+                    );
+                    log.assert(
+                        !this.errorHandler,
+                        'onError called multiple times'
+                    );
+                    this.errorHandler = errorHandler;
                 },
             };
 
