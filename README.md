@@ -316,6 +316,7 @@ interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
+    onError: (handler: (e: Error) => JSX.Element | null) => void;
     getContext: <TContext>(
         context: Context<TContext>,
         handler?: (val: TContext) => void
@@ -327,6 +328,8 @@ interface ComponentLifecycle {
   function that gets called immediately before the component is detached from the DOM.
 * `onUnmount`: Gets called immediately before the component is attached to the DOM.
 * `onDestroy`: Gets called after all of the retainers release the component.
+* `onError`: Gets called if any unhandled exception is thrown while rendering / rerendering children. The returned JSX
+  will be rendered as the components contents.
 * `getContext`: Gets called **before** onMount if the corresponding context has changed.
 
 
@@ -394,6 +397,7 @@ interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
+    onError: (handler: (e: Error) => JSX.Element | null) => void;
     getContext: <TContext>(
         context: Context<TContext>,
         handler?: (val: TContext) => void
@@ -405,6 +409,8 @@ interface ComponentLifecycle {
   function that gets called immediately before the component is detached from the DOM.
 * `onUnmount`: Gets called immediately before the component is attached to the DOM.
 * `onDestroy`: Gets called after all of the retainers release the component.
+* `onError`: Gets called if any unhandled exception is thrown while rendering / rerendering children. The returned JSX
+  will be rendered as the components contents.
 * `getContext`: Gets called **before** `onMount` if the corresponding context has changed.
 
 Visually, this means that the component lifecycle looks like this:
@@ -974,7 +980,7 @@ element. The provided props map to the HTML/SVG/MathML attributes, plus some spe
 handlers and perform other actions.
 
 If a function is passed as `type`, you'll be rendering component: either some special built-in component (like a `Context` or a
-`AttachmentObserver`), or a user-created component.
+`IntrinsicObserver`), or a user-created component.
 
 The type of evaluating a JSX expression (the return type of `createElement`) is `JSX.Element`, which in Gooey is called
 `RenderNode`.
@@ -1181,44 +1187,48 @@ lifecycle event event).
 
 
 
-#### `AttachmentObserver`
+#### `IntrinsicObserver`
 
 ```typescript
-export enum AttachmentObserverEventType {
-    REMOVE = 'remove',
-    ADD = 'add',
+export enum IntrinsicObserverEventType {
+    MOUNT = 'mount',
+    UNMOUNT = 'unmount',
 }
 
-export type AttachmentObserverNodeCallback = (
+export type IntrinsicObserverNodeCallback = (
     node: Node,
-    event: AttachmentObserverEventType
+    event: IntrinsicObserverEventType
 ) => void;
 
-export type AttachmentObserverElementCallback = (
+export type IntrinsicObserverElementCallback = (
     element: Element,
-    event: AttachmentObserverEventType
+    event: IntrinsicObserverEventType
 ) => void;
 
-const AttachmentObserver: Component<{
-    nodeCallback?: AttachmentObserverNodeCallback | undefined;
-    elementCallback?: AttachmentObserverElementCallback | undefined;
+const IntrinsicObserver: Component<{
+    nodeCallback?: IntrinsicObserverNodeCallback | undefined;
+    elementCallback?: IntrinsicObserverElementCallback | undefined;
     children?: JSX.Node | JSX.Node[];
 }>
 ```
 
-`AttachmentObserver` is a special built-in component which allows callers to observe the child DOM elements as they are
+`IntrinsicObserver` is a special built-in component which allows callers to observe the child DOM elements as they are
 added and removed as a result of rendering child JSX.
 
 This in particular allows components to observe child DOM elements without knowing any information about the
 component/JSX that is passed as the `children` prop.
 
 There are two `event` values passed to each callback:
-* `AttachmentObserverEventType.ADD` - called immediately after a child Element/Node has been added to the DOM
-* `AttachmentObserverEventType.REMOVE` - called immediately before a child Element/Node has been removed from the DOM
+* `IntrinsicObserverEventType.MOUNT` - called immediately after a child Element/Node has been mounted to the DOM
+* `IntrinsicObserverEventType.UNMOUNT` - called immediately before a child Element/Node has been unmounted from the DOM
 
 The two different callbacks allow for different levels of specificity:
 * `nodeCallback` is called with all `Node` subtypes (`Text`, `Element`, `CData`, etc...)
 * `elementCallback` is called with only `Element` subtypes
+
+Note: If `IntrinsicObserver` is used on a detached/attached RenderNode, it may be mounted / unmounted with children. In
+this case, the `nodeCallback` / `elementCallback` callbacks will be called at the corresponding mount / unmount
+lifecycle.
 
 
 ### Recalculation Engine

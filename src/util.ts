@@ -73,6 +73,10 @@ export function alwaysTrue(): true {
     return true;
 }
 
+export function alwaysFalse(): false {
+    return false;
+}
+
 export function strictEqual<T>(a: T, b: T): boolean {
     return a === b;
 }
@@ -88,4 +92,11 @@ export function median(numbers: number[]): number {
             sorted[Math.ceil((numbers.length - 1) / 2)]) /
         2
     );
+}
+
+export function wrapError(e: unknown, msg?: string): Error {
+    if (e instanceof Error) return e;
+    // @ts-ignore -- 2nd error cause param harmless to add
+    const err = new Error(msg ?? 'Unknown error', { cause: e });
+    return err;
 }

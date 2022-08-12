@@ -3,7 +3,7 @@ import Gooey, {
     Component,
     model,
     calc,
-    AttachmentObserver,
+    IntrinsicObserver,
 } from '../../index';
 
 const appRoot = document.getElementById('app');
@@ -57,9 +57,9 @@ const FocusListener: Component<FocusListenerProps> = (
     }
 
     return (
-        <AttachmentObserver
+        <IntrinsicObserver
             elementCallback={(element, event) => {
-                if (event === 'add' && element instanceof HTMLElement) {
+                if (event === 'mount' && element instanceof HTMLElement) {
                     elements.add(element);
                     addEventListeners(element);
 
@@ -68,7 +68,7 @@ const FocusListener: Component<FocusListenerProps> = (
                         onFocusEnter();
                     }
                 }
-                if (event === 'remove' && element instanceof HTMLElement) {
+                if (event === 'unmount' && element instanceof HTMLElement) {
                     elements.delete(element);
                     removeEventListeners(element);
 
@@ -80,7 +80,7 @@ const FocusListener: Component<FocusListenerProps> = (
             }}
         >
             {children}
-        </AttachmentObserver>
+        </IntrinsicObserver>
     );
 };
 
@@ -127,10 +127,8 @@ const App: Component<{}> = (_props, { onMount, onUnmount }) => {
 
     return (
         <>
-            <h1>AttachmentObserver</h1>
-            <p>
-                Demonstration of AttachmentObserver to detect and manage focus
-            </p>
+            <h1>IntrinsicObserver</h1>
+            <p>Demonstration of IntrinsicObserver to detect and manage focus</p>
             <Example>
                 <p>
                     Here is some text with a <a href="#">hyperlink</a>

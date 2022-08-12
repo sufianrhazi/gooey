@@ -6,7 +6,7 @@ import Gooey, {
     calc,
     subscribe,
     flush,
-    AttachmentObserver,
+    IntrinsicObserver,
 } from '../../index';
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
@@ -532,7 +532,7 @@ const App = () => (
                 <p>Run 100 component effects</p>
             </TestCase>
             <TestCase
-                name="AttachmentObserver"
+                name="IntrinsicObserver"
                 test={(el) => {
                     const state = model({
                         visible: false,
@@ -552,16 +552,17 @@ const App = () => (
                                 Nodes: {calc(() => state.mountNodes)} /{' '}
                                 {calc(() => state.unmountNodes)}
                             </div>
-                            <AttachmentObserver
+                            <IntrinsicObserver
                                 elementCallback={(el, action) => {
-                                    if (action === 'add')
+                                    if (action === 'mount')
                                         state.mountElements += 1;
-                                    if (action === 'remove')
+                                    if (action === 'unmount')
                                         state.unmountElements += 1;
                                 }}
                                 nodeCallback={(node, action) => {
-                                    if (action === 'add') state.mountNodes += 1;
-                                    if (action === 'remove')
+                                    if (action === 'mount')
+                                        state.mountNodes += 1;
+                                    if (action === 'unmount')
                                         state.unmountNodes += 1;
                                 }}
                             >
@@ -572,7 +573,7 @@ const App = () => (
                                             i % 2 === 0 ? <p>{str}</p> : str
                                         )
                                 )}
-                            </AttachmentObserver>
+                            </IntrinsicObserver>
                         </>
                     );
                     return {
@@ -591,7 +592,7 @@ const App = () => (
             >
                 <p>
                     Mount and unmount 100 strings (50 Text nodes; 50 elements
-                    with Text nodes) observed by a AttachmentObserver
+                    with Text nodes) observed by a IntrinsicObserver
                 </p>
             </TestCase>
         </div>

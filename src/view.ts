@@ -8,7 +8,7 @@ import {
     Component,
 } from './rendernode';
 
-export { AttachmentObserver } from './rendernode';
+export { IntrinsicObserver } from './rendernode';
 
 export { mount } from './rendernode';
 

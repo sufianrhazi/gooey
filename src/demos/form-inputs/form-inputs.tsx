@@ -1,5 +1,5 @@
 import Gooey, {
-    AttachmentObserver,
+    IntrinsicObserver,
     Component,
     Ref,
     ref,
@@ -15,7 +15,7 @@ const Log: Component<{ messages: Collection<string> }> = ({ messages }) => {
 
     return (
         <pre class="log" ref={logRef}>
-            <AttachmentObserver
+            <IntrinsicObserver
                 elementCallback={() => {
                     if (logRef.current) {
                         logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -28,7 +28,7 @@ const Log: Component<{ messages: Collection<string> }> = ({ messages }) => {
                         {message}
                     </div>
                 ))}
-            </AttachmentObserver>
+            </IntrinsicObserver>
         </pre>
     );
 };

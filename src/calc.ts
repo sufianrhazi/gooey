@@ -166,6 +166,7 @@ import {
     SymRecalculate,
     SymRefcount,
 } from './symbols';
+import { wrapError } from './util';
 
 enum CalculationState {
     READY,
@@ -183,7 +184,12 @@ export enum CalculationErrorType {
 const CalculationSymbol = Symbol('calculation');
 const CalculationUnsubscribeSymbol = Symbol('calculationUnsubscribe');
 
-type CalcSubscriptionHandler<T> = (val: T) => void;
+interface CalcSubscriptionHandler<T> {
+    (errorType: undefined, val: T): void;
+    (errorType: CalculationErrorType, val: Error): void;
+    (errorType: CalculationErrorType | undefined, val: Error | T): void;
+}
+
 interface CalcUnsubscribe<T> {
     (): void;
     _type: typeof CalculationUnsubscribeSymbol;
@@ -448,6 +454,12 @@ function calculationRecalculate<T>(this: Calculation<T>) {
             } catch (e) {
                 this._state = CalculationState.ERROR;
                 this._error = e;
+                if (this._subscriptions) {
+                    const error = wrapError(e, 'Unknown error in calculation');
+                    for (const subscription of this._subscriptions) {
+                        subscription(CalculationErrorType.EXCEPTION, error);
+                    }
+                }
                 return true; // Errors always propagate
             }
             if (priorResult !== Sentinel && this._eq(priorResult, newResult)) {
@@ -456,7 +468,7 @@ function calculationRecalculate<T>(this: Calculation<T>) {
             }
             if (this._subscriptions) {
                 for (const subscription of this._subscriptions) {
-                    subscription(newResult);
+                    subscription(undefined, newResult);
                 }
             }
             return true;
@@ -511,6 +523,14 @@ function calculationCycle<T>(this: Calculation<T>) {
             } else {
                 this._state = CalculationState.ERROR;
                 this._error = Sentinel;
+                if (this._subscriptions) {
+                    const error = new Error(
+                        'Calculation found to be in a cycle'
+                    );
+                    for (const subscription of this._subscriptions) {
+                        subscription(CalculationErrorType.CYCLE, error);
+                    }
+                }
                 return true; // Errors always propagate
             }
             if (priorResult !== Sentinel && this._eq(priorResult, this._val)) {
@@ -519,7 +539,7 @@ function calculationCycle<T>(this: Calculation<T>) {
             }
             if (this._subscriptions) {
                 for (const subscription of this._subscriptions) {
-                    subscription(this._val);
+                    subscription(undefined, this._val);
                 }
             }
             return true;

@@ -9,7 +9,7 @@ import Gooey, {
     reset,
     createContext,
     subscribe,
-    AttachmentObserver,
+    IntrinsicObserver,
 } from './index';
 import { debugGetGraph } from './engine';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
@@ -1751,20 +1751,26 @@ suite('createContext', () => {
     });
 });
 
-suite('AttachmentObserver component', () => {
+suite('IntrinsicObserver component', () => {
     test('with no children does nothing', () => {
-        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
-        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const nodes: {
+            node: Node;
+            event: 'mount' | 'unmount';
+        }[] = [];
+        const elements: {
+            element: Element;
+            event: 'mount' | 'unmount';
+        }[] = [];
         const unmount = mount(
             testRoot,
             <div>
-                <AttachmentObserver
-                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+                <IntrinsicObserver
+                    nodeCallback={(node: Node, event: 'mount' | 'unmount') =>
                         nodes.push({ node, event })
                     }
                     elementCallback={(
                         element: Element,
-                        event: 'add' | 'remove'
+                        event: 'mount' | 'unmount'
                     ) => elements.push({ element, event })}
                 />
             </div>
@@ -1775,60 +1781,148 @@ suite('AttachmentObserver component', () => {
     });
 
     test('with single string child', () => {
-        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
-        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const nodes: {
+            node: Node;
+            event: 'mount' | 'unmount';
+        }[] = [];
+        const elements: {
+            element: Element;
+            event: 'mount' | 'unmount';
+        }[] = [];
         const unmount = mount(
             testRoot,
-            <div>
-                <AttachmentObserver
-                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+            <div class="container">
+                <IntrinsicObserver
+                    nodeCallback={(node: Node, event: 'mount' | 'unmount') =>
                         nodes.push({ node, event })
                     }
                     elementCallback={(
                         element: Element,
-                        event: 'add' | 'remove'
+                        event: 'mount' | 'unmount'
                     ) => elements.push({ element, event })}
                 >
                     Hello, world!
-                </AttachmentObserver>
+                </IntrinsicObserver>
             </div>
         );
 
-        assert.is(1, nodes.length);
-        assert.isTruthy(nodes[0].node instanceof Text);
-        assert.is('Hello, world!', (nodes[0].node as Text).data);
-        assert.is('add', nodes[0].event);
-
+        const container = testRoot.querySelector('.container')!;
         assert.deepEqual([], elements);
+        assert.deepEqual(
+            [
+                {
+                    node: container.childNodes[0],
+                    event: 'mount',
+                },
+            ],
+            nodes
+        );
 
         unmount();
 
-        assert.is(2, nodes.length);
-        assert.isTruthy(nodes[1].node instanceof Text);
-        assert.is(nodes[0].node, nodes[1].node);
-        assert.is('Hello, world!', (nodes[1].node as Text).data);
-        assert.is('remove', nodes[1].event);
-
         assert.deepEqual([], elements);
+        assert.deepEqual(
+            [
+                {
+                    node: container.childNodes[0],
+                    event: 'mount',
+                },
+                {
+                    node: container.childNodes[0],
+                    event: 'unmount',
+                },
+            ],
+            nodes
+        );
     });
 
-    test('with multiple string children', () => {
-        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
-        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
-        const unmount = mount(
+    test('with dynamic single string child', () => {
+        const nodes: {
+            node: Node;
+            event: 'mount' | 'unmount';
+        }[] = [];
+        const elements: {
+            element: Element;
+            event: 'mount' | 'unmount';
+        }[] = [];
+        const state = model({ visible: false });
+        mount(
             testRoot,
-            <div>
-                <AttachmentObserver
-                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+            <div class="container">
+                <IntrinsicObserver
+                    nodeCallback={(node: Node, event: 'mount' | 'unmount') =>
                         nodes.push({ node, event })
                     }
                     elementCallback={(
                         element: Element,
-                        event: 'add' | 'remove'
+                        event: 'mount' | 'unmount'
+                    ) => elements.push({ element, event })}
+                >
+                    {calc(() => (state.visible ? <>Hello, world!</> : null))}
+                </IntrinsicObserver>
+            </div>
+        );
+
+        const container = testRoot.querySelector('.container')!;
+        assert.deepEqual([], elements);
+        assert.deepEqual([], nodes);
+
+        state.visible = true;
+        flush();
+
+        const textNode = container.childNodes[0];
+        assert.deepEqual(
+            [
+                {
+                    node: textNode,
+                    event: 'mount',
+                },
+            ],
+            nodes
+        );
+
+        state.visible = false;
+        flush();
+
+        assert.deepEqual([], elements);
+        assert.deepEqual(
+            [
+                {
+                    node: textNode,
+                    event: 'mount',
+                },
+                {
+                    node: textNode,
+                    event: 'unmount',
+                },
+            ],
+            nodes
+        );
+    });
+
+    test('with multiple string children', () => {
+        const nodes: {
+            node: Node;
+            event: 'mount' | 'unmount';
+        }[] = [];
+        const elements: {
+            element: Element;
+            event: 'mount' | 'unmount';
+        }[] = [];
+        const unmount = mount(
+            testRoot,
+            <div>
+                <IntrinsicObserver
+                    nodeCallback={(node: Node, event: 'mount' | 'unmount') =>
+                        nodes.push({ node, event })
+                    }
+                    elementCallback={(
+                        element: Element,
+                        event: 'mount' | 'unmount'
                     ) => elements.push({ element, event })}
                 >
                     {'Hello,'} {'world!'}
-                </AttachmentObserver>
+                </IntrinsicObserver>
             </div>
         );
 
@@ -1838,7 +1932,7 @@ suite('AttachmentObserver component', () => {
         nodes.forEach((item, idx) => {
             assert.isTruthy(item.node instanceof Text);
             assert.is(strings[idx], (item.node as Text).data);
-            assert.is('add', item.event);
+            assert.is('mount', item.event);
         });
 
         assert.deepEqual([], elements);
@@ -1849,39 +1943,45 @@ suite('AttachmentObserver component', () => {
         nodes.slice(3).forEach((item, idx) => {
             assert.isTruthy(item.node instanceof Text);
             assert.is(strings[idx], (item.node as Text).data);
-            assert.is('remove', item.event);
+            assert.is('unmount', item.event);
         });
 
         assert.deepEqual([], elements);
     });
 
     test('with single element child', () => {
-        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
-        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const nodes: {
+            node: Node;
+            event: 'mount' | 'unmount';
+        }[] = [];
+        const elements: {
+            element: Element;
+            event: 'mount' | 'unmount';
+        }[] = [];
         const unmount = mount(
             testRoot,
             <div>
-                <AttachmentObserver
-                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+                <IntrinsicObserver
+                    nodeCallback={(node: Node, event: 'mount' | 'unmount') =>
                         nodes.push({ node, event })
                     }
                     elementCallback={(
                         element: Element,
-                        event: 'add' | 'remove'
+                        event: 'mount' | 'unmount'
                     ) => elements.push({ element, event })}
                 >
                     <div id="outer">
                         <div id="inner-1" />
                         <div id="inner-2" />
                     </div>
-                </AttachmentObserver>
+                </IntrinsicObserver>
             </div>
         );
 
         assert.is(1, elements.length);
         assert.isTruthy(elements[0].element instanceof HTMLDivElement);
         assert.is('outer', elements[0].element.id);
-        assert.is('add', elements[0].event);
+        assert.is('mount', elements[0].event);
         assert.is(1, nodes.length);
         assert.is(elements[0].element, nodes[0].node);
         assert.is(elements[0].event, nodes[0].event);
@@ -1890,25 +1990,31 @@ suite('AttachmentObserver component', () => {
 
         assert.is(2, elements.length);
         assert.is(elements[0].element, elements[1].element);
-        assert.is('remove', elements[1].event);
+        assert.is('unmount', elements[1].event);
         assert.is(2, nodes.length);
         assert.is(elements[1].element, nodes[1].node);
         assert.is(elements[1].event, nodes[1].event);
     });
 
     test('with multiple element children', () => {
-        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
-        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const nodes: {
+            node: Node;
+            event: 'mount' | 'unmount';
+        }[] = [];
+        const elements: {
+            element: Element;
+            event: 'mount' | 'unmount';
+        }[] = [];
         const unmount = mount(
             testRoot,
             <div>
-                <AttachmentObserver
-                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+                <IntrinsicObserver
+                    nodeCallback={(node: Node, event: 'mount' | 'unmount') =>
                         nodes.push({ node, event })
                     }
                     elementCallback={(
                         element: Element,
-                        event: 'add' | 'remove'
+                        event: 'mount' | 'unmount'
                     ) => elements.push({ element, event })}
                 >
                     <div id="outer-1">
@@ -1923,7 +2029,7 @@ suite('AttachmentObserver component', () => {
                         <div id="inner-4" />
                         <div id="inner-5" />
                     </div>
-                </AttachmentObserver>
+                </IntrinsicObserver>
             </div>
         );
 
@@ -1934,7 +2040,7 @@ suite('AttachmentObserver component', () => {
         elements.forEach((item, idx) => {
             assert.isTruthy(item.element instanceof HTMLDivElement);
             assert.is(ids[idx], item.element.id);
-            assert.is('add', item.event);
+            assert.is('mount', item.event);
 
             assert.is(nodes[idx].node, item.element);
             assert.is(nodes[idx].event, item.event);
@@ -1947,7 +2053,7 @@ suite('AttachmentObserver component', () => {
         elements.slice(3).forEach((item, idx) => {
             assert.isTruthy(item.element instanceof HTMLDivElement);
             assert.is(ids[idx], item.element.id);
-            assert.is('remove', item.event);
+            assert.is('unmount', item.event);
 
             assert.is(nodes[idx + 3].node, item.element);
             assert.is(nodes[idx + 3].event, item.event);
@@ -1955,18 +2061,24 @@ suite('AttachmentObserver component', () => {
     });
 
     test('with multiple mixed children', () => {
-        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
-        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const nodes: {
+            node: Node;
+            event: 'mount' | 'unmount';
+        }[] = [];
+        const elements: {
+            element: Element;
+            event: 'mount' | 'unmount';
+        }[] = [];
         const unmount = mount(
             testRoot,
             <div>
-                <AttachmentObserver
-                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+                <IntrinsicObserver
+                    nodeCallback={(node: Node, event: 'mount' | 'unmount') =>
                         nodes.push({ node, event })
                     }
                     elementCallback={(
                         element: Element,
-                        event: 'add' | 'remove'
+                        event: 'mount' | 'unmount'
                     ) => elements.push({ element, event })}
                 >
                     <div id="outer-1">
@@ -1978,67 +2090,73 @@ suite('AttachmentObserver component', () => {
                         <div id="inner-3" />
                         <div id="inner-4" />
                     </div>
-                </AttachmentObserver>
+                </IntrinsicObserver>
             </div>
         );
 
         assert.is(2, elements.length);
         assert.isTruthy(elements[0].element instanceof HTMLDivElement);
         assert.is('outer-1', elements[0].element.id);
-        assert.is('add', elements[0].event);
+        assert.is('mount', elements[0].event);
         assert.isTruthy(elements[1].element instanceof HTMLDivElement);
         assert.is('outer-2', elements[1].element.id);
-        assert.is('add', elements[1].event);
+        assert.is('mount', elements[1].event);
 
         assert.is(3, nodes.length);
         assert.isTruthy(nodes[0].node instanceof HTMLDivElement);
         assert.is('outer-1', (nodes[0].node as Element).id);
-        assert.is('add', nodes[0].event);
+        assert.is('mount', nodes[0].event);
         assert.isTruthy(nodes[1].node instanceof Text);
         assert.is('Middle text', (nodes[1].node as Text).data);
-        assert.is('add', nodes[1].event);
+        assert.is('mount', nodes[1].event);
         assert.isTruthy(nodes[2].node instanceof HTMLDivElement);
         assert.is('outer-2', (nodes[2].node as Element).id);
-        assert.is('add', nodes[2].event);
+        assert.is('mount', nodes[2].event);
 
         unmount();
 
         assert.is(4, elements.length);
         assert.isTruthy(elements[2].element instanceof HTMLDivElement);
         assert.is('outer-1', elements[2].element.id);
-        assert.is('remove', elements[2].event);
+        assert.is('unmount', elements[2].event);
         assert.isTruthy(elements[3].element instanceof HTMLDivElement);
         assert.is('outer-2', elements[3].element.id);
-        assert.is('remove', elements[3].event);
+        assert.is('unmount', elements[3].event);
 
         assert.is(6, nodes.length);
         assert.isTruthy(nodes[3].node instanceof HTMLDivElement);
         assert.is('outer-1', (nodes[3].node as Element).id);
-        assert.is('remove', nodes[3].event);
+        assert.is('unmount', nodes[3].event);
         assert.isTruthy(nodes[4].node instanceof Text);
         assert.is('Middle text', (nodes[4].node as Text).data);
-        assert.is('remove', nodes[4].event);
+        assert.is('unmount', nodes[4].event);
         assert.isTruthy(nodes[5].node instanceof HTMLDivElement);
         assert.is('outer-2', (nodes[5].node as Element).id);
-        assert.is('remove', nodes[5].event);
+        assert.is('unmount', nodes[5].event);
     });
 
     test('with dynamic children', () => {
         const state = model({
             type: 'text',
         });
-        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
-        const elements: { element: Element; event: 'add' | 'remove' }[] = [];
+        const nodes: {
+            node: Node;
+            event: 'mount' | 'unmount';
+        }[] = [];
+        const elements: {
+            element: Element;
+            event: 'mount' | 'unmount';
+        }[] = [];
         const unmount = mount(
             testRoot,
-            <div>
-                <AttachmentObserver
-                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+            <div class="container">
+                <IntrinsicObserver
+                    nodeCallback={(node: Node, event: 'mount' | 'unmount') =>
                         nodes.push({ node, event })
                     }
                     elementCallback={(
                         element: Element,
-                        event: 'add' | 'remove'
+                        event: 'mount' | 'unmount'
                     ) => elements.push({ element, event })}
                 >
                     {calc(() => {
@@ -2051,7 +2169,7 @@ suite('AttachmentObserver component', () => {
                                 return null;
                         }
                     })}
-                </AttachmentObserver>
+                </IntrinsicObserver>
             </div>
         );
 
@@ -2059,7 +2177,7 @@ suite('AttachmentObserver component', () => {
         assert.is(1, nodes.length);
         assert.isTruthy(nodes[0].node instanceof Text);
         assert.is('dynamic text', (nodes[0].node as Text).data);
-        assert.is('add', nodes[0].event);
+        assert.is('mount', nodes[0].event);
 
         state.type = 'element';
         flush();
@@ -2067,15 +2185,15 @@ suite('AttachmentObserver component', () => {
         assert.is(1, elements.length);
         assert.isTruthy(elements[0].element instanceof HTMLDivElement);
         assert.is('dynamic-el', elements[0].element.id);
-        assert.is('add', elements[0].event);
+        assert.is('mount', elements[0].event);
 
         assert.is(3, nodes.length);
         assert.isTruthy(nodes[1].node instanceof Text);
         assert.is('dynamic text', (nodes[1].node as Text).data);
-        assert.is('remove', nodes[1].event);
+        assert.is('unmount', nodes[1].event);
         assert.isTruthy(nodes[2].node instanceof HTMLDivElement);
         assert.is('dynamic-el', (nodes[2].node as Element).id);
-        assert.is('add', nodes[2].event);
+        assert.is('mount', nodes[2].event);
 
         state.type = 'nothing';
         flush();
@@ -2083,12 +2201,12 @@ suite('AttachmentObserver component', () => {
         assert.is(2, elements.length);
         assert.isTruthy(elements[1].element instanceof HTMLDivElement);
         assert.is('dynamic-el', elements[1].element.id);
-        assert.is('remove', elements[1].event);
+        assert.is('unmount', elements[1].event);
 
         assert.is(4, nodes.length);
         assert.isTruthy(nodes[3].node instanceof HTMLDivElement);
         assert.is('dynamic-el', (nodes[3].node as Element).id);
-        assert.is('remove', nodes[3].event);
+        assert.is('unmount', nodes[3].event);
 
         state.type = 'element';
         flush();
@@ -2096,52 +2214,58 @@ suite('AttachmentObserver component', () => {
         assert.is(3, elements.length);
         assert.isTruthy(elements[2].element instanceof HTMLDivElement);
         assert.is('dynamic-el', elements[2].element.id);
-        assert.is('add', elements[2].event);
+        assert.is('mount', elements[2].event);
 
         assert.is(5, nodes.length);
         assert.isTruthy(nodes[4].node instanceof HTMLDivElement);
         assert.is('dynamic-el', (nodes[4].node as Element).id);
-        assert.is('add', nodes[4].event);
+        assert.is('mount', nodes[4].event);
 
         unmount();
 
-        // add, remove, add
+        // mount, unmount, mount
         assert.is(4, elements.length);
         assert.isTruthy(elements[3].element instanceof HTMLDivElement);
         assert.is('dynamic-el', elements[3].element.id);
-        assert.is('remove', elements[3].event);
+        assert.is('unmount', elements[3].event);
 
         assert.is(6, nodes.length);
         assert.isTruthy(nodes[5].node instanceof HTMLDivElement);
         assert.is('dynamic-el', (nodes[5].node as Element).id);
-        assert.is('remove', nodes[5].event);
+        assert.is('unmount', nodes[5].event);
     });
 
     test('with collection children', () => {
         const items = collection(['one', 'two', 'three']);
-        const nodes: { node: Node; event: 'add' | 'remove' }[] = [];
-        const elements: { text: string | null; event: 'add' | 'remove' }[] = [];
+        const nodes: {
+            node: Node;
+            event: 'mount' | 'unmount';
+        }[] = [];
+        const elements: {
+            text: string | null;
+            event: 'mount' | 'unmount';
+        }[] = [];
         const unmount = mount(
             testRoot,
             <div>
-                <AttachmentObserver
-                    nodeCallback={(node: Node, event: 'add' | 'remove') =>
+                <IntrinsicObserver
+                    nodeCallback={(node: Node, event: 'mount' | 'unmount') =>
                         nodes.push({ node, event })
                     }
                     elementCallback={(
                         element: Element,
-                        event: 'add' | 'remove'
+                        event: 'mount' | 'unmount'
                     ) => elements.push({ text: element.textContent, event })}
                 >
                     {items.mapView((item) => (
                         <div id={item}>{item}</div>
                     ))}
-                </AttachmentObserver>
+                </IntrinsicObserver>
             </div>
         );
 
         assert.deepEqual(
-            ['one:add', 'two:add', 'three:add'],
+            ['one:mount', 'two:mount', 'three:mount'],
             elements.map((item) => `${item.text}:${item.event}`)
         );
 
@@ -2149,7 +2273,7 @@ suite('AttachmentObserver component', () => {
         flush();
 
         assert.deepEqual(
-            ['one:add', 'two:add', 'three:add', 'four:add'],
+            ['one:mount', 'two:mount', 'three:mount', 'four:mount'],
             elements.map((item) => `${item.text}:${item.event}`)
         );
 
@@ -2157,7 +2281,13 @@ suite('AttachmentObserver component', () => {
         flush();
 
         assert.deepEqual(
-            ['one:add', 'two:add', 'three:add', 'four:add', 'one:remove'],
+            [
+                'one:mount',
+                'two:mount',
+                'three:mount',
+                'four:mount',
+                'one:unmount',
+            ],
             elements.map((item) => `${item.text}:${item.event}`)
         );
 
@@ -2166,7 +2296,13 @@ suite('AttachmentObserver component', () => {
 
         // Note: no changes triggered, despite sort order changing
         assert.deepEqual(
-            ['one:add', 'two:add', 'three:add', 'four:add', 'one:remove'],
+            [
+                'one:mount',
+                'two:mount',
+                'three:mount',
+                'four:mount',
+                'one:unmount',
+            ],
             elements.map((item) => `${item.text}:${item.event}`)
         );
 
@@ -2174,15 +2310,15 @@ suite('AttachmentObserver component', () => {
 
         assert.deepEqual(
             [
-                'one:add',
-                'two:add',
-                'three:add',
-                'four:add',
-                'one:remove',
-                // Note: removed in newly sorted (alphabetical) document order
-                'four:remove',
-                'three:remove',
-                'two:remove',
+                'one:mount',
+                'two:mount',
+                'three:mount',
+                'four:mount',
+                'one:unmount',
+                // Note: unmount in newly sorted (alphabetical) document order
+                'four:unmount',
+                'three:unmount',
+                'two:unmount',
             ],
             elements.map((item) => `${item.text}:${item.event}`)
         );
@@ -2531,6 +2667,74 @@ suite('error handling', () => {
         mount(testRoot, <ErrorHandler />);
         assert.is('Normal', testRoot.querySelector('.target')?.textContent);
         state.error = true;
+        flush();
+        assert.is(
+            'Got error: oh no',
+            testRoot.querySelector('.target')?.textContent
+        );
+    });
+
+    test('components can catch render errors when collection children rendered', () => {
+        const Exploder: Component = () => {
+            throw new Error('oh no');
+        };
+        const items = collection([0, 1, 2]);
+        const ErrorHandler: Component = (props, { onError }) => {
+            onError((error: Error) => {
+                return (
+                    <div class="target" id="error">
+                        Got error: {error.message}
+                    </div>
+                );
+            });
+            return (
+                <div class="target" id="normal">
+                    Normal
+                    <div id="inner">
+                        {items.mapView((num) =>
+                            num % 2 === 1 ? <Exploder /> : <div>num:${num}</div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+        mount(testRoot, <ErrorHandler />);
+        assert.is(
+            'Got error: oh no',
+            testRoot.querySelector('.target')?.textContent
+        );
+    });
+
+    test('components can catch render errors when collection children rendered', () => {
+        const Exploder: Component = () => {
+            throw new Error('oh no');
+        };
+        const items = collection([0, 2]);
+        const ErrorHandler: Component = (props, { onError }) => {
+            onError((error: Error) => {
+                return (
+                    <div class="target" id="error">
+                        Got error: {error.message}
+                    </div>
+                );
+            });
+            return (
+                <div class="target" id="normal">
+                    Normal{' '}
+                    <div id="inner">
+                        {items.mapView((num) =>
+                            num % 2 === 1 ? <Exploder /> : <div>num:{num};</div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+        mount(testRoot, <ErrorHandler />);
+        assert.is(
+            'Normal num:0;num:2;',
+            testRoot.querySelector('.target')?.textContent
+        );
+        items.splice(1, 0, 1); // [0, 2] -> [0, 1, 2]
         flush();
         assert.is(
             'Got error: oh no',

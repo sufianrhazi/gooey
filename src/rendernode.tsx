@@ -16,9 +16,14 @@ import {
     shiftEvent,
     applyEvent,
 } from './arrayevent';
-import { isCalculation, isCalcUnsubscribe, Calculation } from './calc';
+import {
+    isCalculation,
+    isCalcUnsubscribe,
+    Calculation,
+    CalculationErrorType,
+} from './calc';
 import { isCollection, isView, Collection, View } from './collection';
-import { noop, noopGenerator } from './util';
+import { noop, noopGenerator, wrapError } from './util';
 
 export interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
@@ -39,7 +44,7 @@ export type Component<TProps = {}> = (
     lifecycle: ComponentLifecycle
 ) => JSX.Element | null;
 
-type NodeEmitter = (event: ArrayEvent<Node>) => void;
+type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
 
 const ContextType = Symbol('context');
 
@@ -85,7 +90,7 @@ const RenderNodeType = Symbol('rendernode');
 
 export interface RenderNode extends Retainable {
     _type: typeof RenderNodeType;
-    detach(): IterableIterator<ArrayEvent<Node>>;
+    detach(): void;
     attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
@@ -132,30 +137,30 @@ export const emptyRenderNode = new EmptyRenderNode();
 export class TextRenderNode implements RenderNode {
     _type: typeof RenderNodeType = RenderNodeType;
     private text: Text;
-    private isAttached: boolean;
+    private emitter: NodeEmitter | null;
 
     constructor(string: string, debugName?: string) {
         this.text = document.createTextNode(string);
-        this.isAttached = false;
+        this.emitter = null;
 
         this[SymDebugName] = debugName ?? 'text';
         this[SymRefcount] = 0;
     }
 
-    *detach(): IterableIterator<ArrayEvent<Node>> {
-        yield { type: ArrayEventType.SPLICE, index: 0, count: 1 };
-        this.isAttached = false;
+    detach() {
+        this.emitter?.({ type: ArrayEventType.SPLICE, index: 0, count: 1 });
+        this.emitter = null;
     }
 
     attach(emitter: NodeEmitter, context: ContextMap) {
-        log.assert(!this.isAttached, 'Invariant: Text node double attached');
-        emitter({
+        log.assert(!this.emitter, 'Invariant: Text node double attached');
+        this.emitter = emitter;
+        this.emitter?.({
             type: ArrayEventType.SPLICE,
             index: 0,
             count: 0,
             items: [this.text],
         });
-        this.isAttached = true;
     }
 
     onMount = noop;
@@ -171,7 +176,9 @@ export class TextRenderNode implements RenderNode {
     [SymDebugName]: string;
     [SymRefcount]: number;
     [SymAlive] = noop;
-    [SymDead] = noop;
+    [SymDead]() {
+        this.emitter = null;
+    }
 }
 
 /**
@@ -180,20 +187,25 @@ export class TextRenderNode implements RenderNode {
 export class ForeignRenderNode implements RenderNode {
     _type: typeof RenderNodeType = RenderNodeType;
     private node: Node;
+    private emitter: NodeEmitter | null;
 
     constructor(node: Node, debugName?: string) {
         this.node = node;
+        this.emitter = null;
 
         this[SymDebugName] = debugName ?? 'foreign';
         this[SymRefcount] = 0;
     }
 
-    *detach(): IterableIterator<ArrayEvent<Node>> {
-        yield { type: ArrayEventType.SPLICE, index: 0, count: 1 };
+    detach() {
+        this.emitter?.({ type: ArrayEventType.SPLICE, index: 0, count: 1 });
+        this.emitter = null;
     }
 
     attach(emitter: NodeEmitter, context: ContextMap) {
-        emitter({
+        log.assert(!this.emitter, 'Invariant: Foreign node double attached');
+        this.emitter = emitter;
+        this.emitter?.({
             type: ArrayEventType.SPLICE,
             index: 0,
             count: 0,
@@ -214,7 +226,9 @@ export class ForeignRenderNode implements RenderNode {
     [SymDebugName]: string;
     [SymRefcount]: number;
     [SymAlive] = noop;
-    [SymDead] = noop;
+    [SymDead]() {
+        this.emitter = null;
+    }
 }
 
 /**
@@ -224,30 +238,43 @@ export class ArrayRenderNode implements RenderNode {
     _type: typeof RenderNodeType = RenderNodeType;
     private children: RenderNode[];
     private slotSizes: number[];
+    private attached: boolean[];
+    private emitter: NodeEmitter | null;
 
     constructor(children: RenderNode[], debugName?: string) {
         this.children = children;
         this.slotSizes = children.map(() => 0);
+        this.attached = children.map(() => false);
+        this.emitter = null;
 
         this[SymDebugName] = debugName ?? 'array';
         this[SymRefcount] = 0;
     }
 
-    *detach(): IterableIterator<ArrayEvent<Node>> {
+    detach() {
         for (const [index, child] of this.children.entries()) {
-            for (const event of child.detach()) {
-                shiftEvent(this.slotSizes, index, event);
-                yield event;
+            if (this.attached[index]) {
+                child.detach();
+                this.attached[index] = false;
             }
         }
+        this.emitter = null;
     }
 
     attach(emitter: NodeEmitter, context: ContextMap) {
+        this.emitter = emitter;
         for (const [index, child] of this.children.entries()) {
             child.attach((event) => {
-                shiftEvent(this.slotSizes, index, event);
-                emitter(event);
+                if (this.emitter) {
+                    if (event instanceof Error) {
+                        this.emitter(event);
+                    } else {
+                        shiftEvent(this.slotSizes, index, event);
+                        this.emitter(event);
+                    }
+                }
             }, context);
+            this.attached[index] = true;
         }
     }
 
@@ -280,6 +307,7 @@ export class ArrayRenderNode implements RenderNode {
         for (const child of this.children) {
             release(child);
         }
+        this.emitter = null;
     }
 }
 
@@ -410,8 +438,16 @@ export class IntrinsicRenderNode implements RenderNode {
                     const currentVal = calculation();
                     this.setProp(element, prop, currentVal);
                     this.calculationSubscriptions.add(
-                        calculation.onRecalc((updatedVal) => {
-                            this.setProp(element, prop, updatedVal);
+                        calculation.onRecalc((error, updatedVal) => {
+                            if (error) {
+                                log.error('Unhandled error in bound prop', {
+                                    prop,
+                                    element,
+                                    error: updatedVal,
+                                });
+                            } else {
+                                this.setProp(element, prop, updatedVal);
+                            }
                         })
                     );
                 }
@@ -436,7 +472,11 @@ export class IntrinsicRenderNode implements RenderNode {
         assignProp(element, prop, val);
     }
 
-    private handleEvent = (event: ArrayEvent<Node>) => {
+    private handleEvent = (event: ArrayEvent<Node> | Error) => {
+        if (event instanceof Error) {
+            this.emitter?.(event);
+            return;
+        }
         log.assert(this.element, 'missing element');
         switch (event.type) {
             case ArrayEventType.SPLICE: {
@@ -513,16 +553,19 @@ export class IntrinsicRenderNode implements RenderNode {
         }
     };
 
-    *detach(): IterableIterator<ArrayEvent<Node>> {
-        yield {
+    detach() {
+        this.emitter?.({
             type: ArrayEventType.SPLICE,
             index: 0,
             count: 1,
-        };
+        });
         this.emitter = null;
     }
 
     attach(emitter: NodeEmitter, context: ContextMap) {
+        log.assert(!this.emitter, 'Invariant: Intrinsic node double attached');
+        this.emitter = emitter;
+
         const parentXmlNamespace = readContext(context, XmlNamespaceContext);
         const namespaceTransition =
             elementNamespaceTransitionMap[parentXmlNamespace]?.[this.tagName];
@@ -542,24 +585,9 @@ export class IntrinsicRenderNode implements RenderNode {
                     this.element.removeChild(node);
                     element.appendChild(node);
                 }
-                if (this.emitter) {
-                    this.emitter({
-                        type: ArrayEventType.SPLICE,
-                        index: 0,
-                        count: 1,
-                    });
-                }
             }
             this.element = element;
             this.existingOffset = 0;
-            if (this.emitter) {
-                this.emitter({
-                    type: ArrayEventType.SPLICE,
-                    index: 0,
-                    count: 0,
-                    items: [this.element],
-                });
-            }
         }
 
         if (
@@ -577,15 +605,18 @@ export class IntrinsicRenderNode implements RenderNode {
             }
         }
 
-        log.assert(!this.emitter, 'Invariant: Intrinsic node double attached');
-        this.emitter = emitter;
-        log.assert(this.element, 'Invariant: attached without context');
-        emitter({
-            type: ArrayEventType.SPLICE,
-            index: 0,
-            count: 0,
-            items: [this.element],
-        });
+        if (this.emitter) {
+            log.assert(
+                this.element,
+                'Invariant: intrinsic node missing element'
+            );
+            this.emitter({
+                type: ArrayEventType.SPLICE,
+                index: 0,
+                count: 0,
+                items: [this.element],
+            });
+        }
     }
 
     onMount() {
@@ -636,13 +667,14 @@ export class IntrinsicRenderNode implements RenderNode {
             this.calculationSubscriptions.clear();
         }
 
-        for (const event of this.arrayRenderNode.detach()) {
-            this.handleEvent(event);
+        if (this.isPreexisting) {
+            this.arrayRenderNode.detach();
         }
         release(this.arrayRenderNode);
         if (!this.isPreexisting) {
             this.element = null;
         }
+        this.emitter = null;
     }
 }
 
@@ -673,9 +705,9 @@ export class CalculationRenderNode implements RenderNode {
         this[SymRefcount] = 0;
     }
 
-    *detach(): IterableIterator<ArrayEvent<Node>> {
+    detach() {
         log.assert(this.renderNode, 'Invariant: missing calculation result');
-        yield* this.renderNode.detach();
+        this.renderNode.detach();
         this.emitter = null;
     }
 
@@ -683,10 +715,14 @@ export class CalculationRenderNode implements RenderNode {
         this.context = context;
         this.emitter = emitter;
         if (!this.renderNode && !this.isCalculatedPendingAdd) {
-            this.renderCalculation(this.calculation());
-            this.calculationSubscription = this.calculation.onRecalc(
-                this.renderCalculation
-            );
+            try {
+                this.renderCalculation(undefined, this.calculation());
+                this.calculationSubscription = this.calculation.onRecalc(
+                    this.renderCalculation
+                );
+            } catch (e) {
+                this.renderCalculation(CalculationErrorType.EXCEPTION, e);
+            }
         } else if (this.renderNode) {
             this.renderNode.attach(emitter, context);
         }
@@ -721,32 +757,39 @@ export class CalculationRenderNode implements RenderNode {
                 this.renderNode.onUnmount();
             }
             if (this.emitter) {
-                for (const event of this.renderNode.detach()) {
-                    this.emitter(event);
-                }
+                this.renderNode.detach();
+            } else {
+                log.info('TODO: DOES THIS EVER HAPPEN?');
             }
             release(this.renderNode);
             this.renderNode = null;
         }
     }
 
-    renderCalculation = (val: any) => {
-        this.cleanPrior();
-        const renderNode = renderJSXNode(val);
-        this.isCalculatedPendingAdd = true;
-        afterFlush(() => {
-            this.isCalculatedPendingAdd = false;
-            this.renderNode = renderNode;
-            retain(this.renderNode);
-            if (this.emitter) {
-                // context guaranteed to exist
-                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                renderNode.attach(this.emitter, this.context!);
-            }
-            if (this.isMounted) {
-                renderNode.onMount();
-            }
-        });
+    renderCalculation = (
+        errorType: CalculationErrorType | undefined,
+        val: any
+    ) => {
+        if (errorType) {
+            this.emitter?.(val);
+        } else {
+            this.cleanPrior();
+            const renderNode = renderJSXNode(val);
+            this.isCalculatedPendingAdd = true;
+            afterFlush(() => {
+                this.isCalculatedPendingAdd = false;
+                this.renderNode = renderNode;
+                retain(this.renderNode);
+                if (this.emitter) {
+                    // context guaranteed to exist
+                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                    renderNode.attach(this.emitter, this.context!);
+                }
+                if (this.isMounted) {
+                    renderNode.onMount();
+                }
+            });
+        }
     };
 
     // Retainable
@@ -788,17 +831,17 @@ export class CollectionRenderNode implements RenderNode {
         this[SymRefcount] = 0;
     }
 
-    *detach(): IterableIterator<ArrayEvent<Node>> {
+    detach() {
         for (const child of this.children) {
-            for (const event of child.detach()) {
-                yield* this.handleChildEvent(event, child);
-            }
+            child.detach();
         }
         this.emitter = null;
     }
 
     attach(emitter: NodeEmitter, context: ContextMap) {
+        this.emitter = emitter;
         this.context = context;
+
         untrackReads(() => {
             for (const [index, item] of this.collection.entries()) {
                 this.slotSizes.push(0);
@@ -809,25 +852,23 @@ export class CollectionRenderNode implements RenderNode {
             }
         });
 
-        this.emitter = emitter;
         for (const child of this.children) {
             child.attach((event) => {
-                for (const childEvent of this.handleChildEvent(event, child)) {
-                    emitter(childEvent);
-                }
+                this.handleChildEvent(event, child);
             }, context);
         }
     }
 
-    *handleChildEvent(
-        event: ArrayEvent<Node>,
-        child: RenderNode
-    ): IterableIterator<ArrayEvent<Node>> {
-        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-        const index = this.childIndex.get(child)!;
-        shiftEvent(this.slotSizes, index, event);
-        applyEvent(this.childrenNodes, event);
-        yield event;
+    handleChildEvent(event: ArrayEvent<Node> | Error, child: RenderNode) {
+        if (this.emitter) {
+            if (!(event instanceof Error)) {
+                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+                const index = this.childIndex.get(child)!;
+                shiftEvent(this.slotSizes, index, event);
+                applyEvent(this.childrenNodes, event);
+            }
+            this.emitter(event);
+        }
     }
 
     onMount() {
@@ -872,17 +913,7 @@ export class CollectionRenderNode implements RenderNode {
                         if (this.isMounted) {
                             child.onUnmount();
                         }
-                        if (this.emitter) {
-                            const emitter = this.emitter;
-                            for (const event of child.detach()) {
-                                for (const childEvent of this.handleChildEvent(
-                                    event,
-                                    child
-                                )) {
-                                    emitter(childEvent);
-                                }
-                            }
-                        }
+                        child.detach();
                         release(child);
                     }
                     this.slotSizes.splice(
@@ -893,14 +924,8 @@ export class CollectionRenderNode implements RenderNode {
                     for (const child of newChildren) {
                         retain(child);
                         if (this.emitter) {
-                            const emitter = this.emitter;
                             child.attach((event) => {
-                                for (const childEvent of this.handleChildEvent(
-                                    event,
-                                    child
-                                )) {
-                                    emitter(childEvent);
-                                }
+                                this.handleChildEvent(event, child);
                             }, this.context);
                         }
                         if (this.isMounted) {
@@ -994,6 +1019,7 @@ export class CollectionRenderNode implements RenderNode {
     [SymDead]() {
         this.unsubscribe?.();
         release(this.collection);
+        this.emitter = null;
     }
 }
 
@@ -1076,42 +1102,46 @@ export function mount(target: Element, node: RenderNode): () => void {
     const root = new IntrinsicRenderNode(target, undefined, [node], 'root');
     const context = new Map();
     retain(root);
-    root.attach(noop, context);
+    root.attach((event) => {
+        if (event instanceof Error) {
+            console.error('Unhandled mount error', event);
+            return;
+        }
+    }, context);
     root.onMount();
     return () => {
         root.onUnmount();
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars, no-unused-vars
-        for (const _event of root.detach()) {
-            // noop
-        }
+        root.detach();
         release(root);
     };
 }
 
-export enum AttachmentObserverEventType {
-    REMOVE = 'remove',
-    ADD = 'add',
+export enum IntrinsicObserverEventType {
+    MOUNT = 'mount',
+    UNMOUNT = 'unmount',
 }
 
-export type AttachmentObserverNodeCallback = (
+export type IntrinsicObserverNodeCallback = (
     node: Node,
-    event: AttachmentObserverEventType
+    event: IntrinsicObserverEventType
 ) => void;
-export type AttachmentObserverElementCallback = (
+export type IntrinsicObserverElementCallback = (
     element: Element,
-    event: AttachmentObserverEventType
+    event: IntrinsicObserverEventType
 ) => void;
 
-export class AttachmentObserverRenderNode implements RenderNode {
+export class IntrinsicObserverRenderNode implements RenderNode {
     _type: typeof RenderNodeType = RenderNodeType;
-    nodeCallback: AttachmentObserverNodeCallback | undefined;
-    elementCallback: AttachmentObserverElementCallback | undefined;
+    nodeCallback: IntrinsicObserverNodeCallback | undefined;
+    elementCallback: IntrinsicObserverElementCallback | undefined;
     child: RenderNode;
     childNodes: Node[];
+    emitter: NodeEmitter | null;
+    isMounted: boolean;
 
     constructor(
-        nodeCallback: AttachmentObserverNodeCallback | undefined,
-        elementCallback: AttachmentObserverElementCallback | undefined,
+        nodeCallback: IntrinsicObserverNodeCallback | undefined,
+        elementCallback: IntrinsicObserverElementCallback | undefined,
         children: RenderNode[],
         debugName?: string
     ) {
@@ -1119,63 +1149,74 @@ export class AttachmentObserverRenderNode implements RenderNode {
         this.elementCallback = elementCallback;
         this.child = new ArrayRenderNode(children);
         this.childNodes = [];
+        this.emitter = null;
+        this.isMounted = false;
 
         this[SymDebugName] = debugName ?? `lifecycleobserver`;
         this[SymRefcount] = 0;
     }
 
-    *handleEvent(event: ArrayEvent<Node>): IterableIterator<ArrayEvent<Node>> {
+    notify(node: Node, type: IntrinsicObserverEventType) {
+        this.nodeCallback?.(node, type);
+        if (node instanceof Element) {
+            this.elementCallback?.(node, type);
+        }
+    }
+
+    handleEvent(event: ArrayEvent<Node> | Error) {
+        if (event instanceof Error) {
+            this.emitter?.(event);
+            return;
+        }
         if (event.type === ArrayEventType.SPLICE) {
             for (let i = 0; i < event.count; ++i) {
                 const node = this.childNodes[event.index + i];
-                this.nodeCallback?.(node, AttachmentObserverEventType.REMOVE);
-                if (node instanceof Element) {
-                    this.elementCallback?.(
-                        node,
-                        AttachmentObserverEventType.REMOVE
-                    );
+                if (this.isMounted) {
+                    this.notify(node, IntrinsicObserverEventType.UNMOUNT);
                 }
             }
         }
 
         applyEvent(this.childNodes, event);
-        yield event;
+        this.emitter?.(event);
 
         if (event.type === ArrayEventType.SPLICE) {
             if (event.items) {
                 for (const node of event.items) {
-                    this.nodeCallback?.(node, AttachmentObserverEventType.ADD);
-                    if (node instanceof Element) {
-                        this.elementCallback?.(
-                            node,
-                            AttachmentObserverEventType.ADD
-                        );
+                    if (this.isMounted) {
+                        this.notify(node, IntrinsicObserverEventType.MOUNT);
                     }
                 }
             }
         }
     }
 
-    *detach(): IterableIterator<ArrayEvent<Node>> {
-        for (const event of this.child.detach()) {
-            yield* this.handleEvent(event);
-        }
+    detach() {
+        this.child.detach();
+        this.emitter = null;
     }
 
     attach(emitter: NodeEmitter, context: ContextMap) {
+        this.emitter = emitter;
         this.child.attach((event) => {
-            for (const childEvent of this.handleEvent(event)) {
-                emitter(childEvent);
-            }
+            this.handleEvent(event);
         }, context);
     }
 
     onMount() {
         this.child.onMount();
+        this.isMounted = true;
+        for (const node of this.childNodes) {
+            this.notify(node, IntrinsicObserverEventType.MOUNT);
+        }
     }
 
     onUnmount() {
         this.child.onUnmount();
+        this.isMounted = false;
+        for (const node of this.childNodes) {
+            this.notify(node, IntrinsicObserverEventType.UNMOUNT);
+        }
     }
     retain() {
         retain(this);
@@ -1192,15 +1233,16 @@ export class AttachmentObserverRenderNode implements RenderNode {
     }
     [SymDead]() {
         release(this.child);
+        this.emitter = null;
     }
 }
 
-export const AttachmentObserver: Component<{
-    nodeCallback?: AttachmentObserverNodeCallback;
-    elementCallback?: AttachmentObserverElementCallback;
+export const IntrinsicObserver: Component<{
+    nodeCallback?: IntrinsicObserverNodeCallback;
+    elementCallback?: IntrinsicObserverElementCallback;
     children?: JSX.Node | JSX.Node[];
 }> = ({ nodeCallback, elementCallback, children }) => {
-    return new AttachmentObserverRenderNode(
+    return new IntrinsicObserverRenderNode(
         nodeCallback,
         elementCallback,
         renderJSXChildren(children)
@@ -1212,13 +1254,17 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     Component: Component<TProps>;
     props: TProps | null | undefined;
     children: JSX.Node[];
-    result: RenderNode | null;
+    result: RenderNode | Error | null;
+    resultAttached: boolean;
     onMountCallbacks?: (() => (() => void) | void)[];
     onUnmountCallbacks?: (() => void)[];
     onDestroyCallbacks?: (() => void)[];
     getContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;
     owned: Set<Retainable>;
     errorHandler: ((e: Error) => RenderNode | null) | null;
+    emitter: NodeEmitter | null;
+    contextMap: ContextMap | null;
+    isMounted: boolean;
 
     constructor(
         Component: Component<TProps>,
@@ -1231,16 +1277,30 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         this.children = children;
         this.owned = new Set();
         this.errorHandler = null;
+        this.isMounted = false;
 
+        this.emitter = null;
+        this.contextMap = null;
         this.result = null;
+        this.resultAttached = false;
 
         this[SymDebugName] = debugName ?? `component`;
         this[SymRefcount] = 0;
     }
 
-    *detach(): IterableIterator<ArrayEvent<Node>> {
-        log.assert(this.result, 'Invariant: missing context');
-        yield* this.result.detach();
+    detach() {
+        log.assert(this.result, 'Invariant: missing component result');
+        if (this.result instanceof Error) {
+            return;
+        }
+        log.assert(
+            this.resultAttached,
+            'Invariant: detached unattached component result'
+        );
+        this.result.detach();
+        this.resultAttached = false;
+        this.emitter = null;
+        this.contextMap = null;
     }
 
     attach(emitter: NodeEmitter, contextMap: ContextMap) {
@@ -1248,6 +1308,8 @@ export class ComponentRenderNode<TProps> implements RenderNode {
             this[SymRefcount] > 0,
             'Invariant: dead ComponentRenderNode called setContext'
         );
+        this.emitter = emitter;
+        this.contextMap = contextMap;
         if (!this.result) {
             let callbacksAllowed = true;
             const lifecycle: ComponentLifecycle = {
@@ -1323,15 +1385,30 @@ export class ComponentRenderNode<TProps> implements RenderNode {
             } else {
                 componentProps = props ? { ...props, children } : { children };
             }
-            const jsxResult = trackCreates(
-                this.owned,
-                () => Component(componentProps, lifecycle) || emptyRenderNode
-            );
+            let jsxResult: RenderNode | Error;
+            try {
+                jsxResult = trackCreates(
+                    this.owned,
+                    () =>
+                        Component(componentProps, lifecycle) || emptyRenderNode
+                );
+            } catch (e) {
+                const error = wrapError(e, 'Unknown error rendering component');
+                if (this.errorHandler) {
+                    jsxResult = this.errorHandler(error) ?? emptyRenderNode;
+                } else {
+                    jsxResult = error;
+                }
+            }
             callbacksAllowed = false;
-            this.result = renderJSXNode(jsxResult);
-            retain(this.result);
             for (const item of this.owned) {
                 retain(item);
+            }
+            if (!(jsxResult instanceof Error)) {
+                this.result = renderJSXNode(jsxResult);
+                retain(this.result);
+            } else {
+                this.result = jsxResult;
             }
         }
         if (this.getContextCallbacks) {
@@ -1349,11 +1426,58 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         }
 
         log.assert(this.result, 'Invariant: missing context');
-        this.result.attach(emitter, contextMap);
+        if (this.result instanceof Error) {
+            this.emitter?.(this.result);
+        } else {
+            this.result.attach(this.handleEvent, contextMap);
+            this.resultAttached = true;
+        }
     }
 
+    handleEvent = (event: ArrayEvent<Node> | Error) => {
+        log.assert(
+            !(this.result instanceof Error),
+            'Invariant: received event on calculation error'
+        );
+        if (event instanceof Error && this.errorHandler) {
+            if (this.result) {
+                if (this.resultAttached) {
+                    if (this.isMounted) {
+                        this.result.onUnmount();
+                    }
+                    this.result.detach();
+                    this.resultAttached = false;
+                }
+                release(this.result);
+                this.result = null;
+            }
+            const handledResult = this.errorHandler(event);
+            this.result = handledResult
+                ? renderJSXNode(handledResult)
+                : emptyRenderNode;
+            retain(this.result);
+
+            log.assert(
+                this.emitter && this.contextMap,
+                'Invariant: received event while unattached'
+            );
+            this.result.attach(this.handleEvent, this.contextMap);
+            this.resultAttached = true;
+
+            if (this.isMounted) {
+                this.result.onMount();
+            }
+        } else {
+            this.emitter?.(event);
+        }
+    };
+
     onMount() {
+        this.isMounted = true;
         log.assert(this.result, 'Invariant: missing context');
+        if (this.result instanceof Error) {
+            return;
+        }
         this.result.onMount();
         if (this.onMountCallbacks) {
             for (const callback of this.onMountCallbacks) {
@@ -1380,16 +1504,21 @@ export class ComponentRenderNode<TProps> implements RenderNode {
 
     onUnmount() {
         log.assert(this.result, 'Invariant: missing context');
-        this.result.onUnmount();
-        if (this.onUnmountCallbacks) {
-            for (const callback of this.onUnmountCallbacks) {
-                callback();
+        if (!(this.result instanceof Error) && this.resultAttached) {
+            this.result.onUnmount();
+            if (this.onUnmountCallbacks) {
+                for (const callback of this.onUnmountCallbacks) {
+                    callback();
+                }
             }
         }
+        this.isMounted = false;
     }
+
     retain() {
         retain(this);
     }
+
     release() {
         release(this);
     }
@@ -1405,13 +1534,14 @@ export class ComponentRenderNode<TProps> implements RenderNode {
             }
         }
 
-        if (this.result) {
+        if (this.result && !(this.result instanceof Error)) {
             release(this.result);
-            this.result = null;
         }
+        this.result = null;
         for (const item of this.owned) {
             release(item);
         }
+        this.emitter = null;
     }
 }
 
@@ -1434,8 +1564,8 @@ export class ContextRenderNode<T> implements RenderNode {
         this[SymRefcount] = 0;
     }
 
-    *detach(): IterableIterator<ArrayEvent<Node>> {
-        yield* this.child.detach();
+    detach() {
+        this.child.detach();
     }
 
     attach(emitter: NodeEmitter, context: ContextMap) {
