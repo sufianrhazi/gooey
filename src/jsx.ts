@@ -298,6 +298,13 @@ export function setAttribute(
 }
 
 export function assignProp(element: Element, attribute: string, value: any) {
+    // Note: SVG elements (and probably other kinds) do not have the same
+    // shared IDL behaviors. For example, it's an error to set the .width
+    // property of an SVGSVGElement
+    if (!(element instanceof HTMLElement)) {
+        setAttribute(element, attribute, value);
+        return;
+    }
     if (attribute === 'value') {
         // Note: value is special and treated differently, depending on the element
         switch (element.tagName) {
