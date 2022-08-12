@@ -773,11 +773,7 @@ export class CalculationRenderNode implements RenderNode {
             if (this.isMounted) {
                 this.renderNode.onUnmount();
             }
-            if (this.emitter) {
-                this.renderNode.detach();
-            } else {
-                log.info('TODO: DOES THIS EVER HAPPEN?');
-            }
+            this.renderNode.detach();
             release(this.renderNode);
             this.renderNode = null;
         }
