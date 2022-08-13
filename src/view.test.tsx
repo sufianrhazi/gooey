@@ -303,6 +303,127 @@ suite('mount static', () => {
             (testRoot.childNodes[0] as any).getAttribute('indeterminate')
         );
     });
+
+    test('on:event handlers work for normal events', () => {
+        const events: Element[] = [];
+        const onClick = (event: Event, target: Element) => {
+            events.push(target);
+        };
+        mount(
+            testRoot,
+            <div id="outer" on:click={onClick}>
+                <div id="mid" on:click={onClick}>
+                    <div id="inner" on:click={onClick}></div>
+                </div>
+            </div>
+        );
+        testRoot
+            .querySelector('#inner')
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        assert.deepEqual(events, [
+            testRoot.querySelector('#inner'),
+            testRoot.querySelector('#mid'),
+            testRoot.querySelector('#outer'),
+        ]);
+    });
+
+    test('on:event handlers can stop propagation for normal events', () => {
+        const events: Element[] = [];
+        const onClick = (event: Event, target: Element) => {
+            events.push(target);
+        };
+        const onClickMid = (event: Event, target: Element) => {
+            event.stopPropagation();
+            events.push(target);
+        };
+        mount(
+            testRoot,
+            <div id="outer" on:click={onClick}>
+                <div id="mid" on:click={onClickMid}>
+                    <div id="inner" on:click={onClick}></div>
+                </div>
+            </div>
+        );
+        testRoot
+            .querySelector('#inner')
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        assert.deepEqual(events, [
+            testRoot.querySelector('#inner'),
+            testRoot.querySelector('#mid'),
+        ]);
+    });
+
+    test('on:event handlers can run on capture phase', () => {
+        const events: Element[] = [];
+        const onClick = (event: Event, target: Element) => {
+            events.push(target);
+        };
+        const onClickMid = (event: Event, target: Element) => {
+            event.stopPropagation();
+            events.push(target);
+        };
+        mount(
+            testRoot,
+            <div id="outer" oncapture:click={onClick}>
+                <div id="mid" oncapture:click={onClickMid}>
+                    <div id="inner" oncapture:click={onClick}></div>
+                </div>
+            </div>
+        );
+        testRoot
+            .querySelector('#inner')
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        assert.deepEqual(events, [
+            testRoot.querySelector('#outer'),
+            testRoot.querySelector('#mid'),
+        ]);
+    });
+
+    test('on:event handlers can be passive events', () => {
+        const events: Element[] = [];
+        const onClick = (event: Event, target: Element) => {
+            events.push(target);
+        };
+        mount(
+            testRoot,
+            <div id="outer" onpassive:scroll={onClick}>
+                <div id="mid" onpassive:scroll={onClick}>
+                    <div id="inner" onpassive:scroll={onClick}></div>
+                </div>
+            </div>
+        );
+        testRoot
+            .querySelector('#inner')
+            ?.dispatchEvent(new Event('scroll', { bubbles: true }));
+        assert.deepEqual(events, [
+            testRoot.querySelector('#inner'),
+            testRoot.querySelector('#mid'), // propagation does not stop!
+            testRoot.querySelector('#outer'),
+        ]);
+    });
+
+    test('on:event handlers work for custom events', () => {
+        const events: Element[] = [];
+        const onCustom = (event: Event, target: Element) => {
+            events.push(target);
+        };
+        mount(
+            testRoot,
+            <div id="outer" on:custom={onCustom}>
+                <div id="mid" on:custom={onCustom}>
+                    <div id="inner" on:custom={onCustom}></div>
+                </div>
+            </div>
+        );
+        testRoot
+            .querySelector('#inner')
+            ?.dispatchEvent(new Event('custom', { bubbles: true }));
+        assert.deepEqual(events, [
+            testRoot.querySelector('#inner'),
+            testRoot.querySelector('#mid'),
+            testRoot.querySelector('#outer'),
+        ]);
+    });
 });
 
 suite('mount calculations', () => {

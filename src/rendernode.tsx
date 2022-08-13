@@ -398,9 +398,9 @@ export class IntrinsicRenderNode implements RenderNode {
         if (this.props) {
             for (const [prop, val] of Object.entries(this.props)) {
                 if (prop === 'ref') continue; // specially handled
-                if (prop.startsWith('on:capture:')) {
+                if (prop.startsWith('oncapture:')) {
                     element.addEventListener(
-                        prop.slice(3),
+                        prop.slice(10),
                         (e) => val(e, element),
                         {
                             capture: true,
@@ -408,9 +408,9 @@ export class IntrinsicRenderNode implements RenderNode {
                     );
                     continue;
                 }
-                if (prop.startsWith('on:passive:')) {
+                if (prop.startsWith('onpassive:')) {
                     element.addEventListener(
-                        prop.slice(3),
+                        prop.slice(10),
                         (e) => val(e, element),
                         {
                             passive: true,

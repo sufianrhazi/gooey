@@ -92,10 +92,10 @@ To add event listeners to **intrinsic elements**, a few different attribute _pre
 on the kind of event listener:
 * <code>on:<u>eventname</u></code> (i.e. `on:click`, `on:focus`, etc...): binds a standard event handler to
   the DOM node. Equivalent to `element.addEventListener('eventname', handler);`
-* <code>on:capture:<u>eventname</u></code> (i.e. `on:capture:click`, `on:capture:focusin`, etc...): binds a
+* <code>oncapture:<u>eventname</u></code> (i.e. `oncapture:click`, `oncapture:focusin`, etc...): binds a
   standard event handler to the DOM node that passes `true` as the optional `useCapture` parameter. Equivalent
   to `element.addEventListener('eventname', handler, true)`
-* <code>on:passive:<u>eventname</u></code> (i.e. `on:passive:scroll`, etc...): binds a _passive_ event handler
+* <code>onpassive:<u>eventname</u></code> (i.e. `onpassive:scroll`, etc...): binds a _passive_ event handler
   to the DOM node. Passive event listeners cannot call `preventDefault()` or `stopPropagation()` on the event.
   Equivalent to `element.addEventListener('eventname', handler, { passive: true })`.
 
@@ -1014,10 +1014,10 @@ Intrinsic elements have a set of special props that allow for more custom behavi
   `el.indeterminate = true`; this is rarely needed unless you are using Web Components
 * `on:*` - add a standard event handler; i.e. `<button on:click={handler} />`; equivalent to 
   `el.addEventListener('click', handler)`
-* `on:capture:*` - add an event handlers on the capture phase; i.e. `<button on:capture:click={handler} />`; equivalent
+* `oncapture:*` - add an event handlers on the capture phase; i.e. `<button oncapture:click={handler} />`; equivalent
   to `el.addEventListener('click', handler, true)`
-* `on:passive:*` - add a passive event handlers, which cannot have default prevented or stop propagation; i.e.
-  `<button on:capture:click={handler} />`; equivalent to `el.addEventListener('click', handler, { passive: true })
+* `onpassive:*` - add a passive event handlers, which cannot have default prevented or stop propagation; i.e.
+  `<button onpassive:click={handler} />`; equivalent to `el.addEventListener('click', handler, { passive: true })
 
 Note: In rare cases, intrinsic element props correspond to DOM Interface attributes. The only instances of this are:
 * The `input` element's `indeterminate` prop, which sets the `indeterminate` property on the `HTMLInputElement` instance.
