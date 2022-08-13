@@ -4,10 +4,11 @@ import { createElement } from './view';
 export { createElement, IntrinsicObserver, Fragment, mount } from './view';
 export type {
     Component,
+    Context,
     IntrinsicObserverNodeCallback,
     IntrinsicObserverElementCallback,
-    IntrinsicObserverEventType,
 } from './rendernode';
+export { createContext, IntrinsicObserverEventType } from './rendernode';
 export type { Model, ModelEvent } from './model';
 export { model, ModelEventType } from './model';
 export type { Collection, View } from './collection';
@@ -26,8 +27,6 @@ export {
     debugSubscribe,
 } from './engine';
 
-export type { Context } from './rendernode';
-export { createContext } from './rendernode';
 export { InvariantError } from './types';
 export type { Ref, RefObject, RefCallback } from './ref';
 export { ref } from './ref';
