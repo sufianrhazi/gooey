@@ -68,10 +68,18 @@ function assertExhausted(context, ...items) {
 // src/util.ts
 var noop = () => {
 };
+function* noopGenerator() {
+}
 var uniqueid = (() => {
   let id = 1;
   return () => id++;
 })();
+function wrapError(e, msg) {
+  if (e instanceof Error)
+    return e;
+  const err = new Error(msg ?? "Unknown error", { cause: e });
+  return err;
+}
 
 // src/tarjan.ts
 function tarjanStronglyConnected(reverseAdjacency, topologicalIndexById, lowerBound, upperBound, fromNodes) {
@@ -1128,6 +1136,10 @@ function setAttribute(element, attributeName, val) {
   }
 }
 function assignProp(element, attribute, value) {
+  if (!(element instanceof HTMLElement)) {
+    setAttribute(element, attribute, value);
+    return;
+  }
   if (attribute === "value") {
     switch (element.tagName) {
       case "PROGRESS":
@@ -1504,6 +1516,12 @@ function calculationRecalculate() {
       } catch (e) {
         this._state = 3 /* ERROR */;
         this._error = e;
+        if (this._subscriptions) {
+          const error2 = wrapError(e, "Unknown error in calculation");
+          for (const subscription of this._subscriptions) {
+            subscription(1 /* EXCEPTION */, error2);
+          }
+        }
         return true;
       }
       if (priorResult !== Sentinel && this._eq(priorResult, newResult)) {
@@ -1512,7 +1530,7 @@ function calculationRecalculate() {
       }
       if (this._subscriptions) {
         for (const subscription of this._subscriptions) {
-          subscription(newResult);
+          subscription(void 0, newResult);
         }
       }
       return true;
@@ -1562,6 +1580,12 @@ function calculationCycle() {
       } else {
         this._state = 3 /* ERROR */;
         this._error = Sentinel;
+        if (this._subscriptions) {
+          const error2 = new Error("Calculation found to be in a cycle");
+          for (const subscription of this._subscriptions) {
+            subscription(0 /* CYCLE */, error2);
+          }
+        }
         return true;
       }
       if (priorResult !== Sentinel && this._eq(priorResult, this._val)) {
@@ -1570,7 +1594,7 @@ function calculationCycle() {
       }
       if (this._subscriptions) {
         for (const subscription of this._subscriptions) {
-          subscription(this._val);
+          subscription(void 0, this._val);
         }
       }
       return true;
@@ -2415,7 +2439,7 @@ var _a4, _b4, _c3, _d;
 var EmptyRenderNode = class {
   constructor() {
     __publicField(this, "_type", RenderNodeType);
-    __publicField(this, "detach", noop);
+    __publicField(this, "detach", noopGenerator);
     __publicField(this, "attach", noop);
     __publicField(this, "onMount", noop);
     __publicField(this, "onUnmount", noop);
@@ -2435,36 +2459,35 @@ var EmptyRenderNode = class {
 };
 _a4 = SymDebugName, _b4 = SymRefcount, _c3 = SymAlive, _d = SymDead;
 var emptyRenderNode = new EmptyRenderNode();
-var _a5, _b5, _c4, _d2;
+var _a5, _b5, _c4;
 var TextRenderNode = class {
   constructor(string, debugName) {
     __publicField(this, "_type", RenderNodeType);
     __publicField(this, "text");
-    __publicField(this, "isAttached");
+    __publicField(this, "emitter");
     __publicField(this, "onMount", noop);
     __publicField(this, "onUnmount", noop);
     __publicField(this, _a5);
     __publicField(this, _b5);
     __publicField(this, _c4, noop);
-    __publicField(this, _d2, noop);
     this.text = document.createTextNode(string);
-    this.isAttached = false;
+    this.emitter = null;
     this[SymDebugName] = debugName ?? "text";
     this[SymRefcount] = 0;
   }
-  detach(emitter) {
-    emitter({ type: "splice" /* SPLICE */, index: 0, count: 1 });
-    this.isAttached = false;
+  detach() {
+    this.emitter?.({ type: "splice" /* SPLICE */, index: 0, count: 1 });
+    this.emitter = null;
   }
   attach(emitter, context) {
-    assert(!this.isAttached, "Invariant: TextRenderNode 0 double attached");
-    emitter({
+    assert(!this.emitter, "Invariant: Text node double attached");
+    this.emitter = emitter;
+    this.emitter?.({
       type: "splice" /* SPLICE */,
       index: 0,
       count: 0,
       items: [this.text]
     });
-    this.isAttached = true;
   }
   retain() {
     retain(this);
@@ -2472,28 +2495,34 @@ var TextRenderNode = class {
   release() {
     release(this);
   }
+  [(_a5 = SymDebugName, _b5 = SymRefcount, _c4 = SymAlive, SymDead)]() {
+    this.emitter = null;
+  }
 };
-_a5 = SymDebugName, _b5 = SymRefcount, _c4 = SymAlive, _d2 = SymDead;
-var _a6, _b6, _c5, _d3;
+var _a6, _b6, _c5;
 var ForeignRenderNode = class {
   constructor(node, debugName) {
     __publicField(this, "_type", RenderNodeType);
     __publicField(this, "node");
+    __publicField(this, "emitter");
     __publicField(this, "onMount", noop);
     __publicField(this, "onUnmount", noop);
     __publicField(this, _a6);
     __publicField(this, _b6);
     __publicField(this, _c5, noop);
-    __publicField(this, _d3, noop);
     this.node = node;
+    this.emitter = null;
     this[SymDebugName] = debugName ?? "foreign";
     this[SymRefcount] = 0;
   }
-  detach(emitter) {
-    emitter({ type: "splice" /* SPLICE */, index: 0, count: 1 });
+  detach() {
+    this.emitter?.({ type: "splice" /* SPLICE */, index: 0, count: 1 });
+    this.emitter = null;
   }
   attach(emitter, context) {
-    emitter({
+    assert(!this.emitter, "Invariant: Foreign node double attached");
+    this.emitter = emitter;
+    this.emitter?.({
       type: "splice" /* SPLICE */,
       index: 0,
       count: 0,
@@ -2506,35 +2535,50 @@ var ForeignRenderNode = class {
   release() {
     release(this);
   }
+  [(_a6 = SymDebugName, _b6 = SymRefcount, _c5 = SymAlive, SymDead)]() {
+    this.emitter = null;
+  }
 };
-_a6 = SymDebugName, _b6 = SymRefcount, _c5 = SymAlive, _d3 = SymDead;
 var _a7, _b7;
 var ArrayRenderNode = class {
   constructor(children, debugName) {
     __publicField(this, "_type", RenderNodeType);
     __publicField(this, "children");
     __publicField(this, "slotSizes");
+    __publicField(this, "attached");
+    __publicField(this, "emitter");
     __publicField(this, _a7);
     __publicField(this, _b7);
     this.children = children;
     this.slotSizes = children.map(() => 0);
+    this.attached = children.map(() => false);
+    this.emitter = null;
     this[SymDebugName] = debugName ?? "array";
     this[SymRefcount] = 0;
   }
-  detach(emitter) {
+  detach() {
     for (const [index, child] of this.children.entries()) {
-      child.detach((event) => {
-        shiftEvent(this.slotSizes, index, event);
-        emitter(event);
-      });
+      if (this.attached[index]) {
+        child.detach();
+        this.attached[index] = false;
+      }
     }
+    this.emitter = null;
   }
   attach(emitter, context) {
+    this.emitter = emitter;
     for (const [index, child] of this.children.entries()) {
       child.attach((event) => {
-        shiftEvent(this.slotSizes, index, event);
-        emitter(event);
+        if (this.emitter) {
+          if (event instanceof Error) {
+            this.emitter(event);
+          } else {
+            shiftEvent(this.slotSizes, index, event);
+            this.emitter(event);
+          }
+        }
       }, context);
+      this.attached[index] = true;
     }
   }
   onMount() {
@@ -2562,6 +2606,7 @@ var ArrayRenderNode = class {
     for (const child of this.children) {
       release(child);
     }
+    this.emitter = null;
   }
 };
 var HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
@@ -2586,6 +2631,7 @@ var elementNamespaceTransitionMap = {
   }
 };
 var XmlNamespaceContext = createContext(HTML_NAMESPACE);
+var previousFocusedDetachedElement = null;
 var _a8, _b8;
 var IntrinsicRenderNode = class {
   constructor(elementOrTagName, props, children, debugName) {
@@ -2603,6 +2649,10 @@ var IntrinsicRenderNode = class {
     __publicField(this, "calculations");
     __publicField(this, "calculationSubscriptions");
     __publicField(this, "handleEvent", (event) => {
+      if (event instanceof Error) {
+        this.emitter?.(event);
+        return;
+      }
       assert(this.element, "missing element");
       switch (event.type) {
         case "splice" /* SPLICE */: {
@@ -2709,8 +2759,16 @@ var IntrinsicRenderNode = class {
           retain(calculation);
           const currentVal = calculation();
           this.setProp(element, prop, currentVal);
-          this.calculationSubscriptions.add(calculation.onRecalc((updatedVal) => {
-            this.setProp(element, prop, updatedVal);
+          this.calculationSubscriptions.add(calculation.onRecalc((error2, updatedVal) => {
+            if (error2) {
+              error("Unhandled error in bound prop", {
+                prop,
+                element,
+                error: updatedVal
+              });
+            } else {
+              this.setProp(element, prop, updatedVal);
+            }
           }));
         }
       }
@@ -2730,8 +2788,8 @@ var IntrinsicRenderNode = class {
     }
     assignProp(element, prop, val);
   }
-  detach(emitter) {
-    emitter({
+  detach() {
+    this.emitter?.({
       type: "splice" /* SPLICE */,
       index: 0,
       count: 1
@@ -2739,6 +2797,8 @@ var IntrinsicRenderNode = class {
     this.emitter = null;
   }
   attach(emitter, context) {
+    assert(!this.emitter, "Invariant: Intrinsic node double attached");
+    this.emitter = emitter;
     const parentXmlNamespace = readContext(context, XmlNamespaceContext);
     const namespaceTransition = elementNamespaceTransitionMap[parentXmlNamespace]?.[this.tagName];
     const xmlNamespace = namespaceTransition?.node ?? parentXmlNamespace;
@@ -2754,24 +2814,9 @@ var IntrinsicRenderNode = class {
           this.element.removeChild(node);
           element.appendChild(node);
         }
-        if (this.emitter) {
-          this.emitter({
-            type: "splice" /* SPLICE */,
-            index: 0,
-            count: 1
-          });
-        }
       }
       this.element = element;
       this.existingOffset = 0;
-      if (this.emitter) {
-        this.emitter({
-          type: "splice" /* SPLICE */,
-          index: 0,
-          count: 0,
-          items: [this.element]
-        });
-      }
     }
     if (needsNewElement || this.isPreexisting && !this.isPreexistingPopulated) {
       let subContext = context;
@@ -2784,15 +2829,15 @@ var IntrinsicRenderNode = class {
         this.isPreexistingPopulated = true;
       }
     }
-    assert(!this.emitter, "Invariant: RenderNode 0 double attached");
-    this.emitter = emitter;
-    assert(this.element, "Invariant: attached without context");
-    emitter({
-      type: "splice" /* SPLICE */,
-      index: 0,
-      count: 0,
-      items: [this.element]
-    });
+    if (this.emitter) {
+      assert(this.element, "Invariant: intrinsic node missing element");
+      this.emitter({
+        type: "splice" /* SPLICE */,
+        index: 0,
+        count: 0,
+        items: [this.element]
+      });
+    }
   }
   onMount() {
     this.arrayRenderNode.onMount();
@@ -2804,8 +2849,14 @@ var IntrinsicRenderNode = class {
         ref2(this.element);
       }
     }
+    if (this.element && this.element.focus && previousFocusedDetachedElement === this.element) {
+      this.element.focus();
+    }
   }
   onUnmount() {
+    if (this.element && document.activeElement === this.element) {
+      previousFocusedDetachedElement = this.element;
+    }
     const ref2 = this.props?.ref;
     if (ref2) {
       if (ref2 instanceof RefObject) {
@@ -2837,11 +2888,14 @@ var IntrinsicRenderNode = class {
       }
       this.calculationSubscriptions.clear();
     }
-    this.arrayRenderNode.detach(this.handleEvent);
+    if (this.isPreexisting) {
+      this.arrayRenderNode.detach();
+    }
     release(this.arrayRenderNode);
     if (!this.isPreexisting) {
       this.element = null;
     }
+    this.emitter = null;
   }
 };
 var _a9, _b9;
@@ -2855,21 +2909,25 @@ var CalculationRenderNode = class {
     __publicField(this, "isMounted");
     __publicField(this, "emitter");
     __publicField(this, "isCalculatedPendingAdd");
-    __publicField(this, "renderCalculation", (val) => {
-      this.cleanPrior();
-      const renderNode = renderJSXNode(val);
-      this.isCalculatedPendingAdd = true;
-      afterFlush(() => {
-        this.isCalculatedPendingAdd = false;
-        this.renderNode = renderNode;
-        retain(this.renderNode);
-        if (this.emitter) {
-          renderNode.attach(this.emitter, this.context);
-        }
-        if (this.isMounted) {
-          renderNode.onMount();
-        }
-      });
+    __publicField(this, "renderCalculation", (errorType, val) => {
+      if (errorType) {
+        this.emitter?.(val);
+      } else {
+        this.cleanPrior();
+        const renderNode = renderJSXNode(val);
+        this.isCalculatedPendingAdd = true;
+        afterFlush(() => {
+          this.isCalculatedPendingAdd = false;
+          this.renderNode = renderNode;
+          retain(this.renderNode);
+          if (this.emitter) {
+            renderNode.attach(this.emitter, this.context);
+          }
+          if (this.isMounted) {
+            renderNode.onMount();
+          }
+        });
+      }
     });
     __publicField(this, _a9);
     __publicField(this, _b9);
@@ -2883,17 +2941,21 @@ var CalculationRenderNode = class {
     this[SymDebugName] = debugName ?? `rendercalc:${calculation[SymDebugName]}`;
     this[SymRefcount] = 0;
   }
-  detach(emitter) {
+  detach() {
     assert(this.renderNode, "Invariant: missing calculation result");
-    this.renderNode.detach(emitter);
+    this.renderNode.detach();
     this.emitter = null;
   }
   attach(emitter, context) {
     this.context = context;
     this.emitter = emitter;
     if (!this.renderNode && !this.isCalculatedPendingAdd) {
-      this.renderCalculation(this.calculation());
-      this.calculationSubscription = this.calculation.onRecalc(this.renderCalculation);
+      try {
+        this.renderCalculation(void 0, this.calculation());
+        this.calculationSubscription = this.calculation.onRecalc(this.renderCalculation);
+      } catch (e) {
+        this.renderCalculation(1 /* EXCEPTION */, e);
+      }
     } else if (this.renderNode) {
       this.renderNode.attach(emitter, context);
     }
@@ -2921,9 +2983,7 @@ var CalculationRenderNode = class {
       if (this.isMounted) {
         this.renderNode.onUnmount();
       }
-      if (this.emitter) {
-        this.renderNode.detach(this.emitter);
-      }
+      this.renderNode.detach();
       release(this.renderNode);
       this.renderNode = null;
     }
@@ -2968,18 +3028,16 @@ var CollectionRenderNode = class {
               if (this.isMounted) {
                 child.onUnmount();
               }
-              if (this.emitter) {
-                const emitter = this.emitter;
-                child.detach((event2) => this.handleChildEvent(emitter, event2, child));
-              }
+              child.detach();
               release(child);
             }
             this.slotSizes.splice(event.index, event.count, ...newChildren.map(() => 0));
             for (const child of newChildren) {
               retain(child);
               if (this.emitter) {
-                const emitter = this.emitter;
-                child.attach((event2) => this.handleChildEvent(emitter, event2, child), this.context);
+                child.attach((event2) => {
+                  this.handleChildEvent(event2, child);
+                }, this.context);
               }
               if (this.isMounted) {
                 child.onMount();
@@ -3053,15 +3111,14 @@ var CollectionRenderNode = class {
     this[SymDebugName] = debugName ?? `rendercoll`;
     this[SymRefcount] = 0;
   }
-  detach(emitter) {
+  detach() {
     for (const child of this.children) {
-      child.detach((event) => {
-        this.handleChildEvent(emitter, event, child);
-      });
+      child.detach();
     }
     this.emitter = null;
   }
   attach(emitter, context) {
+    this.emitter = emitter;
     this.context = context;
     untrackReads(() => {
       for (const [index, item] of this.collection.entries()) {
@@ -3072,18 +3129,21 @@ var CollectionRenderNode = class {
         this.childIndex.set(child, index);
       }
     });
-    this.emitter = emitter;
     for (const child of this.children) {
       child.attach((event) => {
-        this.handleChildEvent(emitter, event, child);
+        this.handleChildEvent(event, child);
       }, context);
     }
   }
-  handleChildEvent(emitter, event, child) {
-    const index = this.childIndex.get(child);
-    shiftEvent(this.slotSizes, index, event);
-    applyEvent(this.childrenNodes, event);
-    emitter(event);
+  handleChildEvent(event, child) {
+    if (this.emitter) {
+      if (!(event instanceof Error)) {
+        const index = this.childIndex.get(child);
+        shiftEvent(this.slotSizes, index, event);
+        applyEvent(this.childrenNodes, event);
+      }
+      this.emitter(event);
+    }
   }
   onMount() {
     this.isMounted = true;
@@ -3110,6 +3170,7 @@ var CollectionRenderNode = class {
   [SymDead]() {
     this.unsubscribe?.();
     release(this.collection);
+    this.emitter = null;
   }
 };
 function isCalculationRenderNode(val) {
@@ -3171,72 +3232,104 @@ function renderJSXChildren(children) {
   return childRenderNodes;
 }
 function mount(target, node) {
+  const focusMonitor = (e) => {
+    if (previousFocusedDetachedElement && e.target && e.target !== document.documentElement && e.target !== document.body) {
+      previousFocusedDetachedElement = null;
+    }
+  };
+  document.documentElement.addEventListener("focusin", focusMonitor);
   const root = new IntrinsicRenderNode(target, void 0, [node], "root");
   const context = /* @__PURE__ */ new Map();
   retain(root);
-  root.attach(noop, context);
+  root.attach((event) => {
+    if (event instanceof Error) {
+      console.error("Unhandled mount error", event);
+      return;
+    }
+  }, context);
   root.onMount();
   return () => {
     root.onUnmount();
-    root.detach(noop);
+    root.detach();
     release(root);
+    document.documentElement.removeEventListener("focusin", focusMonitor);
   };
 }
 var _a11, _b11;
-var AttachmentObserverRenderNode = class {
+var IntrinsicObserverRenderNode = class {
   constructor(nodeCallback, elementCallback, children, debugName) {
     __publicField(this, "_type", RenderNodeType);
     __publicField(this, "nodeCallback");
     __publicField(this, "elementCallback");
     __publicField(this, "child");
     __publicField(this, "childNodes");
+    __publicField(this, "emitter");
+    __publicField(this, "isMounted");
     __publicField(this, _a11);
     __publicField(this, _b11);
     this.nodeCallback = nodeCallback;
     this.elementCallback = elementCallback;
     this.child = new ArrayRenderNode(children);
     this.childNodes = [];
+    this.emitter = null;
+    this.isMounted = false;
     this[SymDebugName] = debugName ?? `lifecycleobserver`;
     this[SymRefcount] = 0;
   }
-  handleEvent(emitter, event) {
+  notify(node, type) {
+    this.nodeCallback?.(node, type);
+    if (node instanceof Element) {
+      this.elementCallback?.(node, type);
+    }
+  }
+  handleEvent(event) {
+    if (event instanceof Error) {
+      this.emitter?.(event);
+      return;
+    }
     if (event.type === "splice" /* SPLICE */) {
       for (let i = 0; i < event.count; ++i) {
         const node = this.childNodes[event.index + i];
-        this.nodeCallback?.(node, "remove" /* REMOVE */);
-        if (node instanceof Element) {
-          this.elementCallback?.(node, "remove" /* REMOVE */);
+        if (this.isMounted) {
+          this.notify(node, "unmount" /* UNMOUNT */);
         }
       }
     }
     applyEvent(this.childNodes, event);
-    emitter(event);
+    this.emitter?.(event);
     if (event.type === "splice" /* SPLICE */) {
       if (event.items) {
         for (const node of event.items) {
-          this.nodeCallback?.(node, "add" /* ADD */);
-          if (node instanceof Element) {
-            this.elementCallback?.(node, "add" /* ADD */);
+          if (this.isMounted) {
+            this.notify(node, "mount" /* MOUNT */);
           }
         }
       }
     }
   }
-  detach(emitter) {
-    this.child.detach((event) => {
-      this.handleEvent(emitter, event);
-    });
+  detach() {
+    this.child.detach();
+    this.emitter = null;
   }
   attach(emitter, context) {
+    this.emitter = emitter;
     this.child.attach((event) => {
-      this.handleEvent(emitter, event);
+      this.handleEvent(event);
     }, context);
   }
   onMount() {
     this.child.onMount();
+    this.isMounted = true;
+    for (const node of this.childNodes) {
+      this.notify(node, "mount" /* MOUNT */);
+    }
   }
   onUnmount() {
     this.child.onUnmount();
+    this.isMounted = false;
+    for (const node of this.childNodes) {
+      this.notify(node, "unmount" /* UNMOUNT */);
+    }
   }
   retain() {
     retain(this);
@@ -3249,10 +3342,11 @@ var AttachmentObserverRenderNode = class {
   }
   [SymDead]() {
     release(this.child);
+    this.emitter = null;
   }
 };
-var AttachmentObserver = ({ nodeCallback, elementCallback, children }) => {
-  return new AttachmentObserverRenderNode(nodeCallback, elementCallback, renderJSXChildren(children));
+var IntrinsicObserver = ({ nodeCallback, elementCallback, children }) => {
+  return new IntrinsicObserverRenderNode(nodeCallback, elementCallback, renderJSXChildren(children));
 };
 var _a12, _b12, _c6;
 var ComponentRenderNode = class {
@@ -3262,11 +3356,43 @@ var ComponentRenderNode = class {
     __publicField(this, "props");
     __publicField(this, "children");
     __publicField(this, "result");
+    __publicField(this, "resultAttached");
     __publicField(this, "onMountCallbacks");
     __publicField(this, "onUnmountCallbacks");
     __publicField(this, "onDestroyCallbacks");
     __publicField(this, "getContextCallbacks");
     __publicField(this, "owned");
+    __publicField(this, "errorHandler");
+    __publicField(this, "emitter");
+    __publicField(this, "contextMap");
+    __publicField(this, "isMounted");
+    __publicField(this, "handleEvent", (event) => {
+      assert(!(this.result instanceof Error), "Invariant: received event on calculation error");
+      if (event instanceof Error && this.errorHandler) {
+        if (this.result) {
+          if (this.resultAttached) {
+            if (this.isMounted) {
+              this.result.onUnmount();
+            }
+            this.result.detach();
+            this.resultAttached = false;
+          }
+          release(this.result);
+          this.result = null;
+        }
+        const handledResult = this.errorHandler(event);
+        this.result = handledResult ? renderJSXNode(handledResult) : emptyRenderNode;
+        retain(this.result);
+        assert(this.emitter && this.contextMap, "Invariant: received event while unattached");
+        this.result.attach(this.handleEvent, this.contextMap);
+        this.resultAttached = true;
+        if (this.isMounted) {
+          this.result.onMount();
+        }
+      } else {
+        this.emitter?.(event);
+      }
+    });
     __publicField(this, _a12);
     __publicField(this, _b12);
     __publicField(this, _c6, noop);
@@ -3274,16 +3400,30 @@ var ComponentRenderNode = class {
     this.props = props;
     this.children = children;
     this.owned = /* @__PURE__ */ new Set();
+    this.errorHandler = null;
+    this.isMounted = false;
+    this.emitter = null;
+    this.contextMap = null;
     this.result = null;
+    this.resultAttached = false;
     this[SymDebugName] = debugName ?? `component`;
     this[SymRefcount] = 0;
   }
-  detach(emitter) {
-    assert(this.result, "Invariant: missing context");
-    this.result.detach(emitter);
+  detach() {
+    assert(this.result, "Invariant: missing component result");
+    if (this.result instanceof Error) {
+      return;
+    }
+    assert(this.resultAttached, "Invariant: detached unattached component result");
+    this.result.detach();
+    this.resultAttached = false;
+    this.emitter = null;
+    this.contextMap = null;
   }
   attach(emitter, contextMap) {
     assert(this[SymRefcount] > 0, "Invariant: dead ComponentRenderNode called setContext");
+    this.emitter = emitter;
+    this.contextMap = contextMap;
     if (!this.result) {
       let callbacksAllowed = true;
       const lifecycle = {
@@ -3318,6 +3458,11 @@ var ComponentRenderNode = class {
             callbacks.push(handler);
           }
           return readContext(contextMap, context);
+        },
+        onError: (errorHandler) => {
+          assert(callbacksAllowed, "onError must be called in component body");
+          assert(!this.errorHandler, "onError called multiple times");
+          this.errorHandler = errorHandler;
         }
       };
       let componentProps;
@@ -3331,12 +3476,26 @@ var ComponentRenderNode = class {
       } else {
         componentProps = props ? { ...props, children } : { children };
       }
-      const jsxResult = trackCreates(this.owned, () => Component2(componentProps, lifecycle) || emptyRenderNode);
+      let jsxResult;
+      try {
+        jsxResult = trackCreates(this.owned, () => Component2(componentProps, lifecycle) || emptyRenderNode);
+      } catch (e) {
+        const error2 = wrapError(e, "Unknown error rendering component");
+        if (this.errorHandler) {
+          jsxResult = this.errorHandler(error2) ?? emptyRenderNode;
+        } else {
+          jsxResult = error2;
+        }
+      }
       callbacksAllowed = false;
-      this.result = renderJSXNode(jsxResult);
-      retain(this.result);
       for (const item of this.owned) {
         retain(item);
+      }
+      if (!(jsxResult instanceof Error)) {
+        this.result = renderJSXNode(jsxResult);
+        retain(this.result);
+      } else {
+        this.result = jsxResult;
       }
     }
     if (this.getContextCallbacks) {
@@ -3351,10 +3510,19 @@ var ComponentRenderNode = class {
       }
     }
     assert(this.result, "Invariant: missing context");
-    this.result.attach(emitter, contextMap);
+    if (this.result instanceof Error) {
+      this.emitter?.(this.result);
+    } else {
+      this.result.attach(this.handleEvent, contextMap);
+      this.resultAttached = true;
+    }
   }
   onMount() {
+    this.isMounted = true;
     assert(this.result, "Invariant: missing context");
+    if (this.result instanceof Error) {
+      return;
+    }
     this.result.onMount();
     if (this.onMountCallbacks) {
       for (const callback of this.onMountCallbacks) {
@@ -3379,12 +3547,15 @@ var ComponentRenderNode = class {
   }
   onUnmount() {
     assert(this.result, "Invariant: missing context");
-    this.result.onUnmount();
-    if (this.onUnmountCallbacks) {
-      for (const callback of this.onUnmountCallbacks) {
-        callback();
+    if (!(this.result instanceof Error) && this.resultAttached) {
+      this.result.onUnmount();
+      if (this.onUnmountCallbacks) {
+        for (const callback of this.onUnmountCallbacks) {
+          callback();
+        }
       }
     }
+    this.isMounted = false;
   }
   retain() {
     retain(this);
@@ -3398,13 +3569,14 @@ var ComponentRenderNode = class {
         callback();
       }
     }
-    if (this.result) {
+    if (this.result && !(this.result instanceof Error)) {
       release(this.result);
-      this.result = null;
     }
+    this.result = null;
     for (const item of this.owned) {
       release(item);
     }
+    this.emitter = null;
   }
 };
 var _a13, _b13;
@@ -3422,8 +3594,8 @@ var ContextRenderNode = class {
     this[SymDebugName] = debugName ?? `context`;
     this[SymRefcount] = 0;
   }
-  detach(emitter) {
-    this.child.detach(emitter);
+  detach() {
+    this.child.detach();
   }
   attach(emitter, context) {
     const derivedContext = new Map(context);
@@ -3557,12 +3729,12 @@ function* keysHandler(target, event) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.7.1" : "development";
+var VERSION = true ? "0.8.0" : "development";
 export {
   ArrayEventType,
-  AttachmentObserver,
   CalculationErrorType,
   Fragment,
+  IntrinsicObserver,
   InvariantError,
   ModelEventType,
   VERSION,

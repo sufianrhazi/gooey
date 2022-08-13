@@ -1,5 +1,5 @@
 import { ComponentRenderNode, IntrinsicRenderNode, Component } from './rendernode';
-export { AttachmentObserver } from './rendernode';
+export { IntrinsicObserver } from './rendernode';
 export { mount } from './rendernode';
 export declare const Fragment: Component<{
     children?: JSX.Node | JSX.Node[];

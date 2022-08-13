@@ -12,7 +12,11 @@ export declare enum CalculationErrorType {
 }
 declare const CalculationSymbol: unique symbol;
 declare const CalculationUnsubscribeSymbol: unique symbol;
-declare type CalcSubscriptionHandler<T> = (val: T) => void;
+interface CalcSubscriptionHandler<T> {
+    (errorType: undefined, val: T): void;
+    (errorType: CalculationErrorType, val: Error): void;
+    (errorType: CalculationErrorType | undefined, val: Error | T): void;
+}
 interface CalcUnsubscribe<T> {
     (): void;
     _type: typeof CalculationUnsubscribeSymbol;

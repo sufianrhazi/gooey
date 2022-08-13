@@ -1,19 +1,21 @@
 import { Retainable } from './engine';
 import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { ArrayEvent } from './arrayevent';
-import { Calculation } from './calc';
+import { Calculation, CalculationErrorType } from './calc';
 import { Collection, View } from './collection';
+import { noopGenerator } from './util';
 export interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
+    onError: (handler: (e: Error) => JSX.Element | null) => void;
     getContext: <TContext>(context: Context<TContext>, handler?: ((val: TContext) => void) | undefined) => TContext;
 }
 declare const UnusedSymbolForChildrenOmission: unique symbol;
 export declare type Component<TProps = {}> = (props: TProps & {
     [UnusedSymbolForChildrenOmission]?: boolean;
 }, lifecycle: ComponentLifecycle) => JSX.Element | null;
-declare type NodeEmitter = (event: ArrayEvent<Node>) => void;
+declare type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
 declare const ContextType: unique symbol;
 export interface Context<T> extends Component<{
     value: T;
@@ -27,7 +29,7 @@ declare type ContextMap = Map<Context<any>, any>;
 declare const RenderNodeType: unique symbol;
 export interface RenderNode extends Retainable {
     _type: typeof RenderNodeType;
-    detach(emitter: NodeEmitter): void;
+    detach(): void;
     attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
@@ -40,7 +42,7 @@ export interface RenderNode extends Retainable {
 export declare class EmptyRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
     constructor();
-    detach: () => void;
+    detach: typeof noopGenerator;
     attach: () => void;
     onMount: () => void;
     onUnmount: () => void;
@@ -61,9 +63,9 @@ export declare const emptyRenderNode: EmptyRenderNode;
 export declare class TextRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
     private text;
-    private isAttached;
+    private emitter;
     constructor(string: string, debugName?: string);
-    detach(emitter: NodeEmitter): void;
+    detach(): void;
     attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount: () => void;
     onUnmount: () => void;
@@ -72,7 +74,7 @@ export declare class TextRenderNode implements RenderNode {
     [SymDebugName]: string;
     [SymRefcount]: number;
     [SymAlive]: () => void;
-    [SymDead]: () => void;
+    [SymDead](): void;
 }
 /**
  * Renders a foreign managed DOM node
@@ -80,8 +82,9 @@ export declare class TextRenderNode implements RenderNode {
 export declare class ForeignRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
     private node;
+    private emitter;
     constructor(node: Node, debugName?: string);
-    detach(emitter: NodeEmitter): void;
+    detach(): void;
     attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount: () => void;
     onUnmount: () => void;
@@ -90,7 +93,7 @@ export declare class ForeignRenderNode implements RenderNode {
     [SymDebugName]: string;
     [SymRefcount]: number;
     [SymAlive]: () => void;
-    [SymDead]: () => void;
+    [SymDead](): void;
 }
 /**
  * Renders an array of render nodes
@@ -99,8 +102,10 @@ export declare class ArrayRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
     private children;
     private slotSizes;
+    private attached;
+    private emitter;
     constructor(children: RenderNode[], debugName?: string);
-    detach(emitter: NodeEmitter): void;
+    detach(): void;
     attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
@@ -132,7 +137,7 @@ export declare class IntrinsicRenderNode implements RenderNode {
     private createElement;
     private setProp;
     private handleEvent;
-    detach(emitter: NodeEmitter): void;
+    detach(): void;
     attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
@@ -156,14 +161,14 @@ export declare class CalculationRenderNode implements RenderNode {
     private emitter;
     private isCalculatedPendingAdd;
     constructor(calculation: Calculation<any>, debugName?: string);
-    detach(emitter: NodeEmitter): void;
+    detach(): void;
     attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
     release(): void;
     cleanPrior(): void;
-    renderCalculation: (val: any) => void;
+    renderCalculation: (errorType: CalculationErrorType | undefined, val: any) => void;
     [SymDebugName]: string;
     [SymRefcount]: number;
     [SymAlive](): void;
@@ -181,9 +186,9 @@ export declare class CollectionRenderNode implements RenderNode {
     private isMounted;
     private emitter;
     constructor(collection: Collection<any> | View<any>, debugName?: string);
-    detach(emitter: NodeEmitter): void;
+    detach(): void;
     attach(emitter: NodeEmitter, context: ContextMap): void;
-    handleChildEvent(emitter: NodeEmitter, event: ArrayEvent<Node>, child: RenderNode): void;
+    handleChildEvent(event: ArrayEvent<Node> | Error, child: RenderNode): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -197,21 +202,24 @@ export declare class CollectionRenderNode implements RenderNode {
 export declare function renderJSXNode(jsxNode: JSX.Node): RenderNode;
 export declare function renderJSXChildren(children?: JSX.Node | JSX.Node[]): RenderNode[];
 export declare function mount(target: Element, node: RenderNode): () => void;
-export declare enum AttachmentObserverEventType {
-    REMOVE = "remove",
-    ADD = "add"
+export declare enum IntrinsicObserverEventType {
+    MOUNT = "mount",
+    UNMOUNT = "unmount"
 }
-export declare type AttachmentObserverNodeCallback = (node: Node, event: AttachmentObserverEventType) => void;
-export declare type AttachmentObserverElementCallback = (element: Element, event: AttachmentObserverEventType) => void;
-export declare class AttachmentObserverRenderNode implements RenderNode {
+export declare type IntrinsicObserverNodeCallback = (node: Node, event: IntrinsicObserverEventType) => void;
+export declare type IntrinsicObserverElementCallback = (element: Element, event: IntrinsicObserverEventType) => void;
+export declare class IntrinsicObserverRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
-    nodeCallback: AttachmentObserverNodeCallback | undefined;
-    elementCallback: AttachmentObserverElementCallback | undefined;
+    nodeCallback: IntrinsicObserverNodeCallback | undefined;
+    elementCallback: IntrinsicObserverElementCallback | undefined;
     child: RenderNode;
     childNodes: Node[];
-    constructor(nodeCallback: AttachmentObserverNodeCallback | undefined, elementCallback: AttachmentObserverElementCallback | undefined, children: RenderNode[], debugName?: string);
-    handleEvent(emitter: NodeEmitter, event: ArrayEvent<Node>): void;
-    detach(emitter: NodeEmitter): void;
+    emitter: NodeEmitter | null;
+    isMounted: boolean;
+    constructor(nodeCallback: IntrinsicObserverNodeCallback | undefined, elementCallback: IntrinsicObserverElementCallback | undefined, children: RenderNode[], debugName?: string);
+    notify(node: Node, type: IntrinsicObserverEventType): void;
+    handleEvent(event: ArrayEvent<Node> | Error): void;
+    detach(): void;
     attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
@@ -222,9 +230,9 @@ export declare class AttachmentObserverRenderNode implements RenderNode {
     [SymAlive](): void;
     [SymDead](): void;
 }
-export declare const AttachmentObserver: Component<{
-    nodeCallback?: AttachmentObserverNodeCallback;
-    elementCallback?: AttachmentObserverElementCallback;
+export declare const IntrinsicObserver: Component<{
+    nodeCallback?: IntrinsicObserverNodeCallback;
+    elementCallback?: IntrinsicObserverElementCallback;
     children?: JSX.Node | JSX.Node[];
 }>;
 export declare class ComponentRenderNode<TProps> implements RenderNode {
@@ -232,15 +240,21 @@ export declare class ComponentRenderNode<TProps> implements RenderNode {
     Component: Component<TProps>;
     props: TProps | null | undefined;
     children: JSX.Node[];
-    result: RenderNode | null;
+    result: RenderNode | Error | null;
+    resultAttached: boolean;
     onMountCallbacks?: (() => (() => void) | void)[];
     onUnmountCallbacks?: (() => void)[];
     onDestroyCallbacks?: (() => void)[];
     getContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;
     owned: Set<Retainable>;
+    errorHandler: ((e: Error) => RenderNode | null) | null;
+    emitter: NodeEmitter | null;
+    contextMap: ContextMap | null;
+    isMounted: boolean;
     constructor(Component: Component<TProps>, props: TProps | null | undefined, children: JSX.Node[], debugName?: string);
-    detach(emitter: NodeEmitter): void;
+    detach(): void;
     attach(emitter: NodeEmitter, contextMap: ContextMap): void;
+    handleEvent: (event: ArrayEvent<Node> | Error) => void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -256,7 +270,7 @@ export declare class ContextRenderNode<T> implements RenderNode {
     context: Context<T>;
     value: T;
     constructor(context: Context<T>, value: T, children: JSX.Element[], debugName?: string);
-    detach(emitter: NodeEmitter): void;
+    detach(): void;
     attach(emitter: NodeEmitter, context: ContextMap): void;
     onMount(): void;
     onUnmount(): void;
