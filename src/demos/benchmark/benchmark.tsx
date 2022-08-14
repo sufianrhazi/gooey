@@ -3,16 +3,10 @@ import Gooey, {
     model,
     collection,
     calc,
-    flush,
     Component,
     Model,
     Collection,
-    subscribe,
 } from '../../index';
-
-// Disable default flushing
-// eslint-disable-next-line @typescript-eslint/no-empty-function
-subscribe(() => () => {});
 
 function _random(max: number): number {
     return Math.round(Math.random() * 1000) % max;
@@ -132,46 +126,38 @@ const Controls = ({ store }: { store: Model<Store> }) => {
         e.preventDefault();
         store.selected = undefined;
         store.items.splice(0, store.items.length, ...makeRows(1000));
-        flush();
     };
 
     const create10KRows = (e: MouseEvent) => {
         e.preventDefault();
         store.selected = undefined;
         store.items.splice(0, store.items.length, ...makeRows(10000));
-        flush();
     };
 
     const append1KRows = (e: MouseEvent) => {
         e.preventDefault();
-        store.selected = undefined;
         store.items.splice(store.items.length, 0, ...makeRows(1000));
-        flush();
     };
 
     const updateEvery10Rows = (e: MouseEvent) => {
         e.preventDefault();
-        store.selected = undefined;
         for (let i = 0; i < store.items.length; i += 10) {
             store.items[i].label += ' !!!';
         }
-        flush();
     };
 
     const clear = (e: MouseEvent) => {
         e.preventDefault();
         store.selected = undefined;
         store.items.splice(0, store.items.length);
-        flush();
     };
 
     const swapRows = (e: MouseEvent) => {
         e.preventDefault();
         if (store.items.length > 999) {
             store.items.moveSlice(998, 1, 1);
-            store.items.moveSlice(2, 1, 999);
+            store.items.moveSlice(2, 1, 998);
         }
-        flush();
     };
 
     return (
@@ -216,13 +202,11 @@ const Row = ({ store, item }: { store: Model<Store>; item: Model<Item> }) => {
     function selectItem(e: MouseEvent) {
         e.preventDefault();
         store.selected = item.id;
-        flush();
     }
 
     function removeItem(e: MouseEvent) {
         e.preventDefault();
         store.items.reject((otherItem) => item === otherItem);
-        flush();
     }
 
     return (

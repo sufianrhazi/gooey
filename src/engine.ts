@@ -71,7 +71,7 @@ function scheduleFlush() {
     });
 }
 
-function pumpFlush() {
+export function pumpFlush() {
     if (!needsFlush) return;
     if (flushHandle) {
         flushHandle();

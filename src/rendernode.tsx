@@ -6,6 +6,7 @@ import {
     trackCreates,
     untrackReads,
     afterFlush,
+    pumpFlush,
 } from './engine';
 import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { RefObject } from './ref';
@@ -346,6 +347,12 @@ const XmlNamespaceContext = createContext(HTML_NAMESPACE);
  */
 let previousFocusedDetachedElement: Element | null = null;
 
+const EventProps = [
+    { prefix: 'on:', param: false },
+    { prefix: 'oncapture:', param: true },
+    { prefix: 'onpassive:', param: { passive: true } },
+] as const;
+
 /**
  * Renders an intrinsic DOM node
  */
@@ -398,30 +405,25 @@ export class IntrinsicRenderNode implements RenderNode {
         if (this.props) {
             for (const [prop, val] of Object.entries(this.props)) {
                 if (prop === 'ref') continue; // specially handled
-                if (prop.startsWith('oncapture:')) {
-                    element.addEventListener(
-                        prop.slice(10),
-                        (e) => val(e, element),
-                        {
-                            capture: true,
+                if (
+                    EventProps.some(({ prefix, param }) => {
+                        if (prop.startsWith(prefix)) {
+                            element.addEventListener(
+                                prop.slice(prefix.length),
+                                (e) => {
+                                    try {
+                                        val(e, element);
+                                    } finally {
+                                        pumpFlush();
+                                    }
+                                },
+                                param
+                            );
+                            return true;
                         }
-                    );
-                    continue;
-                }
-                if (prop.startsWith('onpassive:')) {
-                    element.addEventListener(
-                        prop.slice(10),
-                        (e) => val(e, element),
-                        {
-                            passive: true,
-                        }
-                    );
-                    continue;
-                }
-                if (prop.startsWith('on:')) {
-                    element.addEventListener(prop.slice(3), (e) =>
-                        val(e, element)
-                    );
+                        return false;
+                    })
+                ) {
                     continue;
                 }
                 if (isCalcUnsubscribe(val) || isCalculation(val)) {

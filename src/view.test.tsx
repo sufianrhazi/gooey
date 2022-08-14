@@ -327,6 +327,31 @@ suite('mount static', () => {
         ]);
     });
 
+    test('on:event handlers flush after triggering', () => {
+        const state = model({
+            count: 0,
+        });
+        mount(
+            testRoot,
+            <div>
+                <div class="count">{calc(() => state.count)}</div>
+                <button on:click={() => state.count++}>click me</button>
+            </div>
+        );
+        testRoot
+            .querySelector('button')
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        assert.is('1', testRoot.querySelector('.count')?.textContent);
+        testRoot
+            .querySelector('button')
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        assert.is('2', testRoot.querySelector('.count')?.textContent);
+        testRoot
+            .querySelector('button')
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        assert.is('3', testRoot.querySelector('.count')?.textContent);
+    });
+
     test('on:event handlers can stop propagation for normal events', () => {
         const events: Element[] = [];
         const onClick = (event: Event, target: Element) => {
