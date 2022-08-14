@@ -4,6 +4,7 @@ import { createElement } from './view';
 export { createElement, IntrinsicObserver, Fragment, mount } from './view';
 export type {
     Component,
+    ComponentLifecycle,
     Context,
     IntrinsicObserverNodeCallback,
     IntrinsicObserverElementCallback,
