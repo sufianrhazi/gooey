@@ -912,6 +912,12 @@ The kinds of events are:
 * `ArrayEventType.SORT` - a subset of the collection was reordered with a new set of indexes; Note: even when `from` is
   greater than zero, `indexes` is zero-indexed.
 
+For convenience, a function `applyArrayEvent` is exported, which allows you to apply an array event to a target array:
+
+```typescript
+function applyArrayEvent<T>(target: T[], event: ArrayEvent<T>): void;
+```
+
 
 ##### `Collection<T>.mapView(mapFn)`
 

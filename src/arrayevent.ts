@@ -57,7 +57,7 @@ export function shiftEvent<T>(
     }
 }
 
-export function applyEvent<T>(target: T[], event: ArrayEvent<T>) {
+export function applyArrayEvent<T>(target: T[], event: ArrayEvent<T>) {
     switch (event.type) {
         case ArrayEventType.SPLICE: {
             if (event.items) {

@@ -14,7 +14,7 @@ import {
     ArrayEvent,
     ArrayEventType,
     shiftEvent,
-    applyEvent,
+    applyArrayEvent,
 } from './arrayevent';
 import {
     isCalculation,
@@ -878,7 +878,7 @@ export class CollectionRenderNode implements RenderNode {
                 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 const index = this.childIndex.get(child)!;
                 shiftEvent(this.slotSizes, index, event);
-                applyEvent(this.childrenNodes, event);
+                applyArrayEvent(this.childrenNodes, event);
             }
             this.emitter(event);
         }
@@ -973,7 +973,7 @@ export class CollectionRenderNode implements RenderNode {
                     }
 
                     // Move slots
-                    applyEvent(this.slotSizes, event);
+                    applyArrayEvent(this.slotSizes, event);
 
                     // Update and emit event
                     event.from = slotStartIndex[event.from];
@@ -1003,9 +1003,9 @@ export class CollectionRenderNode implements RenderNode {
                     }
 
                     // Sort slots
-                    applyEvent(this.slotSizes, event);
+                    applyArrayEvent(this.slotSizes, event);
                     // Sort nested indexes
-                    applyEvent(nestedIndexes, event);
+                    applyArrayEvent(nestedIndexes, event);
 
                     // Update and emit event
                     const sortedIndexes = nestedIndexes
@@ -1202,7 +1202,7 @@ export class IntrinsicObserverRenderNode implements RenderNode {
             }
         }
 
-        applyEvent(this.childNodes, event);
+        applyArrayEvent(this.childNodes, event);
         this.emitter?.(event);
 
         if (event.type === ArrayEventType.SPLICE) {
