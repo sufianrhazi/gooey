@@ -1,5 +1,6 @@
 import Gooey, {
     Component,
+    Collection,
     calc,
     collection,
     flush,
@@ -1599,6 +1600,54 @@ suite('mount collection mapped view', () => {
             ],
             events
         );
+    });
+
+    test('collection of calculations can be spliced properly', () => {
+        const items = collection(['foo', 'bar', 'baz', 'bum']);
+
+        mount(
+            testRoot,
+            <>{items.mapView((item) => calc(() => <>{item}</>))}</>
+        );
+
+        assert.is('foobarbazbum', testRoot.textContent);
+        items.splice(1, 2);
+        flush();
+        assert.is('foobum', testRoot.textContent);
+    });
+
+    test('collection of calculations can be detached and reattached (pre-flush)', () => {
+        const items = collection(['foo', 'bar', 'baz', 'bum']);
+
+        const jsx = <>{items.mapView((item) => calc(() => <>{item}</>))}</>;
+        const unmount = mount(testRoot, jsx);
+        assert.is('foobarbazbum', testRoot.textContent);
+        jsx.retain();
+        unmount();
+        items.shift();
+        items.pop();
+        items.unshift('>>>');
+        items.push('<<<');
+        flush();
+        mount(testRoot, jsx);
+        assert.is('>>>barbaz<<<', testRoot.textContent);
+    });
+
+    test('collection of calculations can be detached and reattached (post-flush)', () => {
+        const items = collection(['foo', 'bar', 'baz', 'bum']);
+
+        const jsx = <>{items.mapView((item) => calc(() => <>{item}</>))}</>;
+        const unmount = mount(testRoot, jsx);
+        assert.is('foobarbazbum', testRoot.textContent);
+        jsx.retain();
+        unmount();
+        items.shift();
+        items.pop();
+        items.unshift('>>>');
+        items.push('<<<');
+        mount(testRoot, jsx);
+        flush();
+        assert.is('>>>barbaz<<<', testRoot.textContent);
     });
 });
 

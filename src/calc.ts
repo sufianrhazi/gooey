@@ -185,9 +185,12 @@ const CalculationSymbol = Symbol('calculation');
 const CalculationUnsubscribeSymbol = Symbol('calculationUnsubscribe');
 
 interface CalcSubscriptionHandler<T> {
-    (errorType: undefined, val: T): void;
-    (errorType: CalculationErrorType, val: Error): void;
-    (errorType: CalculationErrorType | undefined, val: Error | T): void;
+    bivarianceHack(errorType: undefined, val: T): void;
+    bivarianceHack(errorType: CalculationErrorType, val: Error): void;
+    bivarianceHack(
+        errorType: CalculationErrorType | undefined,
+        val: Error | T
+    ): void;
 }
 
 interface CalcUnsubscribe<T> {
@@ -200,7 +203,9 @@ export interface Calculation<T> extends Retainable, Processable {
     (): T;
     onError: (handler: (errorType: CalculationErrorType) => T) => this;
     setCmp: (eq: (a: T, b: T) => boolean) => this;
-    onRecalc: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
+    onRecalc: (
+        handler: CalcSubscriptionHandler<T>['bivarianceHack']
+    ) => CalcUnsubscribe<T>;
     _subscriptions?: Set<CalcSubscriptionHandler<T>>;
     _type: typeof CalculationSymbol;
     _fn: () => T;

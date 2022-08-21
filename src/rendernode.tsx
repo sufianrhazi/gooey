@@ -9,7 +9,7 @@ import {
     pumpFlush,
 } from './engine';
 import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
-import { RefObject } from './ref';
+import { Ref, RefObject } from './ref';
 import { JSXNode, setAttribute, assignProp } from './jsx';
 import {
     ArrayEvent,
@@ -45,7 +45,7 @@ export type Component<TProps = {}> = (
     lifecycle: ComponentLifecycle
 ) => JSX.Element | null;
 
-type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
+export type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
 
 const ContextType = Symbol('context');
 
@@ -79,7 +79,7 @@ export function createContext<T>(val: T): Context<T> {
     return context;
 }
 
-type ContextMap = Map<Context<any>, any>;
+export type ContextMap = Map<Context<any>, any>;
 
 function readContext<T>(contextMap: ContextMap, context: Context<T>): T {
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
@@ -87,7 +87,7 @@ function readContext<T>(contextMap: ContextMap, context: Context<T>): T {
     return context._get();
 }
 
-const RenderNodeType = Symbol('rendernode');
+export const RenderNodeType = Symbol('rendernode');
 
 export interface RenderNode extends Retainable {
     _type: typeof RenderNodeType;
@@ -360,39 +360,27 @@ export class IntrinsicRenderNode implements RenderNode {
     _type: typeof RenderNodeType = RenderNodeType;
     private tagName: string;
     private element: Element | null;
-    private isPreexisting: boolean;
-    private isPreexistingPopulated: boolean;
     private emitter: NodeEmitter | null;
     private xmlNamespace: string | null;
     private childXmlNamespace: string | null;
-    private existingOffset: number;
     private props: Record<string, any> | undefined;
-    private arrayRenderNode: ArrayRenderNode;
+    private children: ArrayRenderNode;
+    private portalRenderNode: PortalRenderNode | null;
     private calculations?: Map<string, Calculation<any>>;
     private calculationSubscriptions?: Set<() => void>;
 
     constructor(
-        elementOrTagName: string | Element,
+        tagName: string,
         props: Record<string, any> | undefined,
         children: RenderNode[],
         debugName?: string
     ) {
         this.emitter = null;
         this.props = props;
-        this.arrayRenderNode = new ArrayRenderNode(children);
-        if (typeof elementOrTagName !== 'string') {
-            this.isPreexisting = true;
-            this.isPreexistingPopulated = false;
-            this.element = elementOrTagName;
-            this.tagName = this.element.tagName;
-            this.existingOffset = elementOrTagName.childNodes.length;
-        } else {
-            this.isPreexisting = false;
-            this.isPreexistingPopulated = false;
-            this.element = null;
-            this.tagName = elementOrTagName;
-            this.existingOffset = 0;
-        }
+        this.children = new ArrayRenderNode(children);
+        this.portalRenderNode = null;
+        this.element = null;
+        this.tagName = tagName;
         this.xmlNamespace = null;
         this.childXmlNamespace = null;
 
@@ -404,7 +392,7 @@ export class IntrinsicRenderNode implements RenderNode {
         const element = document.createElementNS(xmlNamespace, this.tagName);
         if (this.props) {
             for (const [prop, val] of Object.entries(this.props)) {
-                if (prop === 'ref') continue; // specially handled
+                if (prop === 'ref') continue; // specially handled by PortalRenderNode
                 if (
                     EventProps.some(({ prefix, param }) => {
                         if (prop.startsWith(prefix)) {
@@ -479,6 +467,141 @@ export class IntrinsicRenderNode implements RenderNode {
         }
 
         assignProp(element, prop, val);
+    }
+
+    private handleEvent = (event: ArrayEvent<Node> | Error) => {
+        if (event instanceof Error) {
+            this.emitter?.(event);
+            return;
+        }
+        log.assert(false, 'unexpected event from PortalRenderNode');
+    };
+
+    detach() {
+        this.emitter?.({
+            type: ArrayEventType.SPLICE,
+            index: 0,
+            count: 1,
+        });
+        this.emitter = null;
+    }
+
+    attach(emitter: NodeEmitter, context: ContextMap) {
+        log.assert(!this.emitter, 'Invariant: Intrinsic node double attached');
+        this.emitter = emitter;
+
+        const parentXmlNamespace = readContext(context, XmlNamespaceContext);
+        const namespaceTransition =
+            elementNamespaceTransitionMap[parentXmlNamespace]?.[this.tagName];
+        const xmlNamespace = namespaceTransition?.node ?? parentXmlNamespace;
+        const childXmlNamespace =
+            namespaceTransition?.children ?? parentXmlNamespace;
+        if (!this.element || xmlNamespace !== this.xmlNamespace) {
+            this.xmlNamespace = xmlNamespace;
+            this.element = this.createElement(xmlNamespace);
+
+            if (this.portalRenderNode) {
+                this.portalRenderNode.detach();
+                release(this.portalRenderNode);
+            }
+            this.portalRenderNode = new PortalRenderNode(
+                this.element,
+                this.children,
+                this.props?.ref
+            );
+            retain(this.portalRenderNode);
+
+            let subContext = context;
+            if (parentXmlNamespace !== childXmlNamespace) {
+                subContext = new Map(context);
+                subContext.set(XmlNamespaceContext, childXmlNamespace);
+            }
+            this.portalRenderNode.attach(this.handleEvent, subContext);
+        }
+
+        this.emitter?.({
+            type: ArrayEventType.SPLICE,
+            index: 0,
+            count: 0,
+            items: [this.element],
+        });
+    }
+
+    onMount() {
+        this.portalRenderNode?.onMount();
+    }
+
+    onUnmount() {
+        this.portalRenderNode?.onUnmount();
+    }
+
+    retain() {
+        retain(this);
+    }
+
+    release() {
+        release(this);
+    }
+
+    // Retainable
+    [SymDebugName]: string;
+    [SymRefcount]: number;
+    [SymAlive]() {
+        retain(this.children);
+    }
+    [SymDead]() {
+        if (this.calculations) {
+            for (const calculation of this.calculations.values()) {
+                release(calculation);
+            }
+        }
+        if (this.calculationSubscriptions) {
+            for (const unsubscribe of this.calculationSubscriptions) {
+                unsubscribe();
+            }
+            this.calculationSubscriptions.clear();
+        }
+
+        this.element = null;
+        if (this.portalRenderNode) {
+            release(this.portalRenderNode);
+            this.portalRenderNode = null;
+        }
+        release(this.children);
+        this.emitter = null;
+    }
+}
+
+export class PortalRenderNode implements RenderNode {
+    _type: typeof RenderNodeType = RenderNodeType;
+    private tagName: string;
+    private element: Element;
+    private refProp: Ref<Element> | null;
+    private emitter: NodeEmitter | null;
+    private xmlNamespace: string | null;
+    private childXmlNamespace: string | null;
+    private existingOffset: number;
+    private arrayRenderNode: ArrayRenderNode;
+    private calculations?: Map<string, Calculation<any>>;
+    private calculationSubscriptions?: Set<() => void>;
+
+    constructor(
+        element: Element,
+        children: ArrayRenderNode,
+        refProp: Ref<Element> | null,
+        debugName?: string
+    ) {
+        this.emitter = null;
+        this.arrayRenderNode = children;
+        this.element = element;
+        this.refProp = refProp;
+        this.tagName = this.element.tagName;
+        this.existingOffset = element.childNodes.length;
+        this.xmlNamespace = null;
+        this.childXmlNamespace = null;
+
+        this[SymDebugName] = debugName ?? `mount:${this.tagName}`;
+        this[SymRefcount] = 0;
     }
 
     private handleEvent = (event: ArrayEvent<Node> | Error) => {
@@ -563,79 +686,23 @@ export class IntrinsicRenderNode implements RenderNode {
     };
 
     detach() {
-        this.emitter?.({
-            type: ArrayEventType.SPLICE,
-            index: 0,
-            count: 1,
-        });
         this.emitter = null;
+        this.arrayRenderNode.detach();
     }
 
-    attach(emitter: NodeEmitter, context: ContextMap) {
+    attach(emitter: NodeEmitter, contextMap: ContextMap) {
         log.assert(!this.emitter, 'Invariant: Intrinsic node double attached');
         this.emitter = emitter;
-
-        const parentXmlNamespace = readContext(context, XmlNamespaceContext);
-        const namespaceTransition =
-            elementNamespaceTransitionMap[parentXmlNamespace]?.[this.tagName];
-        const xmlNamespace = namespaceTransition?.node ?? parentXmlNamespace;
-        const childXmlNamespace =
-            namespaceTransition?.children ?? parentXmlNamespace;
-        const needsNewElement =
-            !this.isPreexisting &&
-            (!this.element || xmlNamespace !== this.xmlNamespace);
-        if (needsNewElement) {
-            this.xmlNamespace = xmlNamespace;
-            const element = this.createElement(xmlNamespace);
-            if (this.element) {
-                const length = this.element.childNodes.length;
-                for (let i = this.existingOffset; i < length; ++i) {
-                    const node = this.element.childNodes[i];
-                    this.element.removeChild(node);
-                    element.appendChild(node);
-                }
-            }
-            this.element = element;
-            this.existingOffset = 0;
-        }
-
-        if (
-            needsNewElement ||
-            (this.isPreexisting && !this.isPreexistingPopulated)
-        ) {
-            let subContext = context;
-            if (parentXmlNamespace !== childXmlNamespace) {
-                subContext = new Map(context);
-                subContext.set(XmlNamespaceContext, childXmlNamespace);
-            }
-            this.arrayRenderNode.attach(this.handleEvent, subContext);
-            if (this.isPreexisting) {
-                this.isPreexistingPopulated = true;
-            }
-        }
-
-        if (this.emitter) {
-            log.assert(
-                this.element,
-                'Invariant: intrinsic node missing element'
-            );
-            this.emitter({
-                type: ArrayEventType.SPLICE,
-                index: 0,
-                count: 0,
-                items: [this.element],
-            });
-        }
+        this.arrayRenderNode.attach(this.handleEvent, contextMap);
     }
 
     onMount() {
         this.arrayRenderNode.onMount();
-        const ref = this.props?.ref;
-        if (ref) {
-            if (ref instanceof RefObject) {
-                ref.current = this.element;
-            } else if (typeof ref === 'function') {
-                ref(this.element);
+        if (this.refProp) {
+            if (this.refProp instanceof RefObject) {
+                this.refProp.current = this.element;
+            } else if (typeof this.refProp === 'function') {
+                this.refProp(this.element);
             }
         }
         if (
@@ -646,20 +713,21 @@ export class IntrinsicRenderNode implements RenderNode {
             (this.element as any).focus();
         }
     }
+
     onUnmount() {
         if (this.element && document.activeElement === this.element) {
             previousFocusedDetachedElement = this.element;
         }
-        const ref = this.props?.ref;
-        if (ref) {
-            if (ref instanceof RefObject) {
-                ref.current = undefined;
-            } else if (typeof ref === 'function') {
-                ref(undefined);
+        if (this.refProp) {
+            if (this.refProp instanceof RefObject) {
+                this.refProp.current = undefined;
+            } else if (typeof this.refProp === 'function') {
+                this.refProp(undefined);
             }
         }
         this.arrayRenderNode.onUnmount();
     }
+
     retain() {
         retain(this);
     }
@@ -686,13 +754,7 @@ export class IntrinsicRenderNode implements RenderNode {
             this.calculationSubscriptions.clear();
         }
 
-        if (this.isPreexisting) {
-            this.arrayRenderNode.detach();
-        }
         release(this.arrayRenderNode);
-        if (!this.isPreexisting) {
-            this.element = null;
-        }
         this.emitter = null;
     }
 }
@@ -702,99 +764,94 @@ export class IntrinsicRenderNode implements RenderNode {
  */
 export class CalculationRenderNode implements RenderNode {
     _type: typeof RenderNodeType = RenderNodeType;
+    private error: Error | null;
     private renderNode: RenderNode | null;
     private calculation: Calculation<any>;
     private calculationSubscription: (() => void) | null;
     private context: ContextMap | null;
     private isMounted: boolean;
     private emitter: NodeEmitter | null;
-    private isCalculatedPendingAdd: boolean;
 
     constructor(calculation: Calculation<any>, debugName?: string) {
         this.calculation = calculation;
         this.calculationSubscription = null;
+        this.error = null;
         this.renderNode = null;
         this.context = null;
         this.isMounted = false;
         this.emitter = null;
-        this.isCalculatedPendingAdd = false;
 
         this[SymDebugName] =
             debugName ?? `rendercalc:${calculation[SymDebugName]}`;
         this[SymRefcount] = 0;
+
+        this.onRecalc = this.onRecalc.bind(this);
     }
 
     detach() {
-        log.assert(this.renderNode, 'Invariant: missing calculation result');
-        this.renderNode.detach();
+        this.renderNode?.detach();
+        this.context = null;
         this.emitter = null;
     }
 
     attach(emitter: NodeEmitter, context: ContextMap) {
         this.context = context;
         this.emitter = emitter;
-        if (!this.renderNode && !this.isCalculatedPendingAdd) {
-            try {
-                this.renderCalculation(undefined, this.calculation());
-                this.calculationSubscription = this.calculation.onRecalc(
-                    this.renderCalculation
-                );
-            } catch (e) {
-                this.renderCalculation(CalculationErrorType.EXCEPTION, e);
-            }
-        } else if (this.renderNode) {
-            this.renderNode.attach(emitter, context);
+        if (this.error) {
+            emitter(this.error);
+        } else {
+            this.renderNode?.attach(emitter, context);
         }
     }
 
     onMount() {
-        log.assert(
-            this.renderNode || this.isCalculatedPendingAdd,
-            'Invariant: missing calculation result'
-        );
         this.isMounted = true;
-        if (this.renderNode) {
-            this.renderNode.onMount();
-        }
+        this.renderNode?.onMount();
     }
 
     onUnmount() {
-        log.assert(this.renderNode, 'Invariant: missing calculation result');
-        this.renderNode.onUnmount();
+        this.renderNode?.onUnmount();
         this.isMounted = false;
     }
+
     retain() {
         retain(this);
     }
+
     release() {
         release(this);
     }
 
     cleanPrior() {
         if (this.renderNode) {
-            if (this.isMounted) {
-                this.renderNode.onUnmount();
+            if (this.emitter) {
+                if (this.isMounted) {
+                    this.renderNode.onUnmount();
+                }
+                this.renderNode.detach();
             }
-            this.renderNode.detach();
             release(this.renderNode);
+            this.error = null;
             this.renderNode = null;
         }
     }
 
-    renderCalculation = (
+    onRecalc(errorType: undefined, val: any): void;
+    onRecalc(errorType: CalculationErrorType, val: Error): void;
+    onRecalc(
         errorType: CalculationErrorType | undefined,
-        val: any
-    ) => {
+        val: Error | any
+    ): void {
+        this.cleanPrior();
         if (errorType) {
+            this.error = val;
             this.emitter?.(val);
         } else {
-            this.cleanPrior();
             const renderNode = renderJSXNode(val);
-            this.isCalculatedPendingAdd = true;
+            retain(renderNode);
             afterFlush(() => {
-                this.isCalculatedPendingAdd = false;
+                this.cleanPrior(); // it's possible the calculation is notified multiple times in a flush; only care about the last one
                 this.renderNode = renderNode;
-                retain(this.renderNode);
                 if (this.emitter) {
                     // context guaranteed to exist
                     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
@@ -805,13 +862,21 @@ export class CalculationRenderNode implements RenderNode {
                 }
             });
         }
-    };
+    }
 
     // Retainable
     [SymDebugName]: string;
     [SymRefcount]: number;
     [SymAlive]() {
         retain(this.calculation);
+        try {
+            this.onRecalc(undefined, this.calculation());
+            this.calculationSubscription = this.calculation.onRecalc(
+                this.onRecalc
+            );
+        } catch (e) {
+            this.onRecalc(CalculationErrorType.EXCEPTION, wrapError(e));
+        }
     }
     [SymDead]() {
         release(this.calculation);
@@ -824,7 +889,6 @@ export class CollectionRenderNode implements RenderNode {
     _type: typeof RenderNodeType = RenderNodeType;
     private children: RenderNode[];
     private childIndex: Map<RenderNode, number>;
-    private childrenNodes: Node[];
     private slotSizes: number[];
     private collection: Collection<any> | View<any>;
     private unsubscribe?: () => void;
@@ -836,7 +900,6 @@ export class CollectionRenderNode implements RenderNode {
         this.collection = collection;
         this.children = [];
         this.childIndex = new Map();
-        this.childrenNodes = [];
         this.slotSizes = [];
         this.context = null;
         this.isMounted = false;
@@ -846,26 +909,9 @@ export class CollectionRenderNode implements RenderNode {
         this[SymRefcount] = 0;
     }
 
-    detach() {
-        for (const child of this.children) {
-            child.detach();
-        }
-        this.emitter = null;
-    }
-
     attach(emitter: NodeEmitter, context: ContextMap) {
         this.emitter = emitter;
         this.context = context;
-
-        untrackReads(() => {
-            for (const [index, item] of this.collection.entries()) {
-                this.slotSizes.push(0);
-                const child = renderJSXNode(item);
-                retain(child);
-                this.children.push(child);
-                this.childIndex.set(child, index);
-            }
-        });
 
         for (const child of this.children) {
             child.attach((event) => {
@@ -874,13 +920,21 @@ export class CollectionRenderNode implements RenderNode {
         }
     }
 
+    detach() {
+        for (const child of this.children) {
+            child.detach();
+        }
+
+        this.emitter = null;
+        this.context = null;
+    }
+
     handleChildEvent(event: ArrayEvent<Node> | Error, child: RenderNode) {
         if (this.emitter) {
             if (!(event instanceof Error)) {
                 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 const index = this.childIndex.get(child)!;
                 shiftEvent(this.slotSizes, index, event);
-                applyArrayEvent(this.childrenNodes, event);
             }
             this.emitter(event);
         }
@@ -906,8 +960,29 @@ export class CollectionRenderNode implements RenderNode {
         release(this);
     }
 
+    private releaseChild(child: RenderNode) {
+        if (this.emitter && this.context) {
+            if (this.isMounted) {
+                child.onUnmount();
+            }
+            child.detach();
+        }
+        release(child);
+    }
+    private retainChild(child: RenderNode) {
+        retain(child);
+        if (this.emitter && this.context) {
+            child.attach(
+                (event) => this.handleChildEvent(event, child),
+                this.context
+            );
+            if (this.isMounted) {
+                child.onUnmount();
+            }
+        }
+    }
+
     private handleCollectionEvent = (events: ArrayEvent<any>[]) => {
-        log.assert(this.context, 'Invariant: missing context');
         for (const event of events) {
             switch (event.type) {
                 case ArrayEventType.SPLICE: {
@@ -925,28 +1000,14 @@ export class CollectionRenderNode implements RenderNode {
                         ...newChildren
                     );
                     for (const child of removed) {
-                        if (this.isMounted) {
-                            child.onUnmount();
-                        }
-                        child.detach();
-                        release(child);
+                        this.releaseChild(child);
+                        this.childIndex.delete(child);
                     }
                     this.slotSizes.splice(
                         event.index,
                         event.count,
                         ...newChildren.map(() => 0)
                     );
-                    for (const child of newChildren) {
-                        retain(child);
-                        if (this.emitter) {
-                            child.attach((event) => {
-                                this.handleChildEvent(event, child);
-                            }, this.context);
-                        }
-                        if (this.isMounted) {
-                            child.onMount();
-                        }
-                    }
                     if (newChildren.length !== event.count) {
                         for (
                             let i = event.index + newChildren.length;
@@ -956,12 +1017,12 @@ export class CollectionRenderNode implements RenderNode {
                             this.childIndex.set(this.children[i], i);
                         }
                     }
+                    for (const child of newChildren) {
+                        this.retainChild(child);
+                    }
                     break;
                 }
                 case ArrayEventType.MOVE: {
-                    // if we aren't attached, we have no nodes to move
-                    if (!this.emitter) return;
-
                     // Get adjusted data for event
                     const slotStartIndex: number[] = [];
                     let realIndex = 0;
@@ -981,13 +1042,10 @@ export class CollectionRenderNode implements RenderNode {
                     event.from = slotStartIndex[event.from];
                     event.count = realCount;
                     event.to = slotStartIndex[event.to];
-                    this.emitter(event);
+                    this.emitter?.(event);
                     break;
                 }
                 case ArrayEventType.SORT: {
-                    // if we aren't attached, we have no nodes to move
-                    if (!this.emitter) return;
-
                     // Get adjusted data for event
                     let realFrom = 0;
                     for (let i = 0; i < event.from; ++i) {
@@ -1015,7 +1073,7 @@ export class CollectionRenderNode implements RenderNode {
                         .flat();
                     event.from = realFrom;
                     event.indexes = sortedIndexes;
-                    this.emitter(event);
+                    this.emitter?.(event);
                     break;
                 }
             }
@@ -1030,10 +1088,26 @@ export class CollectionRenderNode implements RenderNode {
         this.unsubscribe = this.collection.subscribe(
             this.handleCollectionEvent
         );
+
+        untrackReads(() => {
+            for (const [index, item] of this.collection.entries()) {
+                const child = renderJSXNode(item);
+                this.children.push(child);
+                this.slotSizes.push(0);
+                this.childIndex.set(child, index);
+                this.retainChild(child);
+            }
+        });
     }
     [SymDead]() {
         this.unsubscribe?.();
         release(this.collection);
+        const removed = this.children.splice(0, this.children.length);
+        for (const child of removed) {
+            this.releaseChild(child);
+            this.childIndex.delete(child);
+        }
+        this.slotSizes.splice(0, this.slotSizes.length);
         this.emitter = null;
     }
 }
@@ -1125,9 +1199,14 @@ export function mount(target: Element, node: RenderNode): () => void {
         }
     };
     document.documentElement.addEventListener('focusin', focusMonitor);
-    const root = new IntrinsicRenderNode(target, undefined, [node], 'root');
-    const context = new Map();
+    const root = new PortalRenderNode(
+        target,
+        new ArrayRenderNode([node]),
+        null,
+        'root'
+    );
     retain(root);
+    const context = new Map();
     root.attach((event) => {
         if (event instanceof Error) {
             console.error('Unhandled mount error', event);
@@ -1292,6 +1371,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     emitter: NodeEmitter | null;
     contextMap: ContextMap | null;
     isMounted: boolean;
+    id: number;
 
     constructor(
         Component: Component<TProps>,
@@ -1299,6 +1379,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         children: JSX.Node[],
         debugName?: string
     ) {
+        this.id = Math.random();
         this.Component = Component;
         this.props = props;
         this.children = children;
