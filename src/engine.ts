@@ -45,6 +45,16 @@ function noopScheduler(callback: () => void) {
 }
 
 function defaultScheduler(callback: () => void) {
+    if ((window as any).queueMicrotask) {
+        let cancelled = false;
+        queueMicrotask(() => {
+            if (cancelled) return;
+            callback();
+        });
+        return () => {
+            cancelled = true;
+        };
+    }
     const handle = setTimeout(callback, 0);
     return () => clearTimeout(handle);
 }
