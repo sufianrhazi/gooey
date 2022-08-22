@@ -116,7 +116,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@srhazi/gooey@0.8.0, @srhazi/gooey@workspace:.":
+"@srhazi/gooey@npm:0.8.0":
+  version: 0.8.0
+  resolution: "@srhazi/gooey@npm:0.8.0"
+  checksum: d18ba2de9aaff714fea03b111f0e2ba4e6f9049ea639e83c789ebe68e293262689099978838d1252ac4979b2e7c7d21439c078dd709bc4ea4ba6cdcfdfb1e821
+  languageName: node
+  linkType: hard
+
+"@srhazi/gooey@workspace:.":
   version: 0.0.0-use.local
   resolution: "@srhazi/gooey@workspace:."
   dependencies:

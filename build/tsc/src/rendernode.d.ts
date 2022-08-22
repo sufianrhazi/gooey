@@ -1,5 +1,6 @@
 import { Retainable } from './engine';
 import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
+import { Ref } from './ref';
 import { ArrayEvent } from './arrayevent';
 import { Calculation, CalculationErrorType } from './calc';
 import { Collection, View } from './collection';
@@ -15,7 +16,7 @@ declare const UnusedSymbolForChildrenOmission: unique symbol;
 export declare type Component<TProps = {}> = (props: TProps & {
     [UnusedSymbolForChildrenOmission]?: boolean;
 }, lifecycle: ComponentLifecycle) => JSX.Element | null;
-declare type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
+export declare type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
 declare const ContextType: unique symbol;
 export interface Context<T> extends Component<{
     value: T;
@@ -25,8 +26,8 @@ export interface Context<T> extends Component<{
     _get: () => T;
 }
 export declare function createContext<T>(val: T): Context<T>;
-declare type ContextMap = Map<Context<any>, any>;
-declare const RenderNodeType: unique symbol;
+export declare type ContextMap = Map<Context<any>, any>;
+export declare const RenderNodeType: unique symbol;
 export interface RenderNode extends Retainable {
     _type: typeof RenderNodeType;
     detach(): void;
@@ -123,17 +124,15 @@ export declare class IntrinsicRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
     private tagName;
     private element;
-    private isPreexisting;
-    private isPreexistingPopulated;
     private emitter;
     private xmlNamespace;
     private childXmlNamespace;
-    private existingOffset;
     private props;
-    private arrayRenderNode;
+    private children;
+    private portalRenderNode;
     private calculations?;
     private calculationSubscriptions?;
-    constructor(elementOrTagName: string | Element, props: Record<string, any> | undefined, children: RenderNode[], debugName?: string);
+    constructor(tagName: string, props: Record<string, any> | undefined, children: RenderNode[], debugName?: string);
     private createElement;
     private setProp;
     private handleEvent;
@@ -148,18 +147,43 @@ export declare class IntrinsicRenderNode implements RenderNode {
     [SymAlive](): void;
     [SymDead](): void;
 }
+export declare class PortalRenderNode implements RenderNode {
+    _type: typeof RenderNodeType;
+    private tagName;
+    private element;
+    private refProp;
+    private emitter;
+    private xmlNamespace;
+    private childXmlNamespace;
+    private existingOffset;
+    private arrayRenderNode;
+    private calculations?;
+    private calculationSubscriptions?;
+    constructor(element: Element, children: ArrayRenderNode, refProp: Ref<Element> | null, debugName?: string);
+    private handleEvent;
+    detach(): void;
+    attach(emitter: NodeEmitter, contextMap: ContextMap): void;
+    onMount(): void;
+    onUnmount(): void;
+    retain(): void;
+    release(): void;
+    [SymDebugName]: string;
+    [SymRefcount]: number;
+    [SymAlive](): void;
+    [SymDead](): void;
+}
 /**
  * Renders the result of a calculation
  */
 export declare class CalculationRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
+    private error;
     private renderNode;
     private calculation;
     private calculationSubscription;
     private context;
     private isMounted;
     private emitter;
-    private isCalculatedPendingAdd;
     constructor(calculation: Calculation<any>, debugName?: string);
     detach(): void;
     attach(emitter: NodeEmitter, context: ContextMap): void;
@@ -168,7 +192,8 @@ export declare class CalculationRenderNode implements RenderNode {
     retain(): void;
     release(): void;
     cleanPrior(): void;
-    renderCalculation: (errorType: CalculationErrorType | undefined, val: any) => void;
+    onRecalc(errorType: undefined, val: any): void;
+    onRecalc(errorType: CalculationErrorType, val: Error): void;
     [SymDebugName]: string;
     [SymRefcount]: number;
     [SymAlive](): void;
@@ -178,7 +203,6 @@ export declare class CollectionRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
     private children;
     private childIndex;
-    private childrenNodes;
     private slotSizes;
     private collection;
     private unsubscribe?;
@@ -186,13 +210,15 @@ export declare class CollectionRenderNode implements RenderNode {
     private isMounted;
     private emitter;
     constructor(collection: Collection<any> | View<any>, debugName?: string);
-    detach(): void;
     attach(emitter: NodeEmitter, context: ContextMap): void;
+    detach(): void;
     handleChildEvent(event: ArrayEvent<Node> | Error, child: RenderNode): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
     release(): void;
+    private releaseChild;
+    private retainChild;
     private handleCollectionEvent;
     [SymDebugName]: string;
     [SymRefcount]: number;
@@ -251,6 +277,7 @@ export declare class ComponentRenderNode<TProps> implements RenderNode {
     emitter: NodeEmitter | null;
     contextMap: ContextMap | null;
     isMounted: boolean;
+    id: number;
     constructor(Component: Component<TProps>, props: TProps | null | undefined, children: JSX.Node[], debugName?: string);
     detach(): void;
     attach(emitter: NodeEmitter, contextMap: ContextMap): void;

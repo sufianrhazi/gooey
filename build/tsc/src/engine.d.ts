@@ -15,6 +15,7 @@ export interface Processable {
 }
 export declare function isProcessable(val: any): val is Processable;
 export declare function reset(): void;
+export declare function pumpFlush(): void;
 export declare function subscribe(scheduler?: (callback: () => void) => () => void): void;
 export declare function retain(retainable: Retainable): void;
 export declare function release(retainable: Retainable): void;

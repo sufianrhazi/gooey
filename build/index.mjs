@@ -732,6 +732,17 @@ function noopScheduler(callback) {
   return noop;
 }
 function defaultScheduler(callback) {
+  if (window.queueMicrotask) {
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled)
+        return;
+      callback();
+    });
+    return () => {
+      cancelled = true;
+    };
+  }
   const handle = setTimeout(callback, 0);
   return () => clearTimeout(handle);
 }
@@ -1214,7 +1225,7 @@ function shiftEvent(slotSizes, slotIndex, event) {
       assertExhausted(event);
   }
 }
-function applyEvent(target, event) {
+function applyArrayEvent(target, event) {
   switch (event.type) {
     case "splice" /* SPLICE */: {
       if (event.items) {
@@ -1971,6 +1982,9 @@ var TrackedDataHandle = class {
         if (prop === SymTDHandle) {
           return this;
         }
+        if (prop === SymDebugName) {
+          return debugName;
+        }
         if (prop === SymRefcount || prop === SymAlive || prop === SymDead) {
           return methods[prop];
         }
@@ -2084,7 +2098,7 @@ function makeCollectionPrototype() {
     [SymDebugName]: "collection"
   };
 }
-function makeViewPrototype() {
+function makeViewPrototype(sourceCollection) {
   return {
     _type: "view",
     splice: viewSplice,
@@ -2099,8 +2113,18 @@ function makeViewPrototype() {
     flatMapView,
     subscribe: collectionSubscribe,
     [SymRefcount]: 0,
-    [SymAlive]: viewAlive,
-    [SymDead]: viewDead,
+    [SymAlive]() {
+      retain(sourceCollection);
+      const tdHandle = getTrackedDataHandle(this);
+      assert(tdHandle, "missing tdHandle");
+      retain(tdHandle.fieldMap);
+    },
+    [SymDead]() {
+      const tdHandle = getTrackedDataHandle(this);
+      assert(tdHandle, "missing tdHandle");
+      release(tdHandle.fieldMap);
+      release(sourceCollection);
+    },
     [SymDebugName]: "collection"
   };
 }
@@ -2365,7 +2389,7 @@ function makeFlatMapView(sourceCollection, flatMap, debugName) {
       initialTransform.push(...slot);
     }
   });
-  const derivedCollection = new TrackedDataHandle(initialTransform, ViewHandler, makeViewPrototype(), sourceTDHandle.emitter, function* (target, event) {
+  const derivedCollection = new TrackedDataHandle(initialTransform, ViewHandler, makeViewPrototype(sourceCollection), sourceTDHandle.emitter, function* (target, event) {
     const lengthStart = initialTransform.length;
     yield* arrayEventFlatMap(slotSizes, flatMap, initialTransform, event);
     switch (event.type) {
@@ -2402,16 +2426,6 @@ function makeFlatMapView(sourceCollection, flatMap, debugName) {
     }
   }, debugName ?? "derived");
   return derivedCollection.revocable.proxy;
-}
-function viewAlive() {
-  const tdHandle = getTrackedDataHandle(this);
-  assert(tdHandle, "missing tdHandle");
-  retain(tdHandle.fieldMap);
-}
-function viewDead() {
-  const tdHandle = getTrackedDataHandle(this);
-  assert(tdHandle, "missing tdHandle");
-  release(tdHandle.fieldMap);
 }
 
 // src/rendernode.tsx
@@ -2632,20 +2646,23 @@ var elementNamespaceTransitionMap = {
 };
 var XmlNamespaceContext = createContext(HTML_NAMESPACE);
 var previousFocusedDetachedElement = null;
+var EventProps = [
+  { prefix: "on:", param: false },
+  { prefix: "oncapture:", param: true },
+  { prefix: "onpassive:", param: { passive: true } }
+];
 var _a8, _b8;
 var IntrinsicRenderNode = class {
-  constructor(elementOrTagName, props, children, debugName) {
+  constructor(tagName, props, children, debugName) {
     __publicField(this, "_type", RenderNodeType);
     __publicField(this, "tagName");
     __publicField(this, "element");
-    __publicField(this, "isPreexisting");
-    __publicField(this, "isPreexistingPopulated");
     __publicField(this, "emitter");
     __publicField(this, "xmlNamespace");
     __publicField(this, "childXmlNamespace");
-    __publicField(this, "existingOffset");
     __publicField(this, "props");
-    __publicField(this, "arrayRenderNode");
+    __publicField(this, "children");
+    __publicField(this, "portalRenderNode");
     __publicField(this, "calculations");
     __publicField(this, "calculationSubscriptions");
     __publicField(this, "handleEvent", (event) => {
@@ -2653,68 +2670,16 @@ var IntrinsicRenderNode = class {
         this.emitter?.(event);
         return;
       }
-      assert(this.element, "missing element");
-      switch (event.type) {
-        case "splice" /* SPLICE */: {
-          for (let i = 0; i < event.count; ++i) {
-            this.element.removeChild(this.element.childNodes[this.existingOffset + event.index]);
-          }
-          const referenceNode = event.index < this.element.childNodes.length ? this.element.childNodes[this.existingOffset + event.index] : null;
-          if (event.items) {
-            for (let i = event.items.length - 1; i >= 0; --i) {
-              this.element.insertBefore(event.items[i], referenceNode);
-            }
-          }
-          break;
-        }
-        case "move" /* MOVE */: {
-          const toMove = [];
-          for (let i = 0; i < event.count; ++i) {
-            const node = this.element.childNodes[this.existingOffset + event.from];
-            this.element.removeChild(node);
-            toMove.push(node);
-          }
-          const referenceNode = event.to < this.element.childNodes.length ? this.element.childNodes[this.existingOffset + event.to] : null;
-          for (const node of toMove) {
-            this.element.insertBefore(node, referenceNode);
-          }
-          break;
-        }
-        case "sort" /* SORT */: {
-          const unsorted = [];
-          for (let i = 0; i < event.indexes.length; ++i) {
-            const node = this.element.childNodes[this.existingOffset + event.from];
-            this.element.removeChild(node);
-            unsorted.push(node);
-          }
-          const referenceNode = event.from < this.element.childNodes.length ? this.element.childNodes[this.existingOffset + event.from] : null;
-          for (const index of event.indexes) {
-            this.element.insertBefore(unsorted[index - event.from], referenceNode);
-          }
-          break;
-        }
-        default:
-          assertExhausted(event);
-      }
+      assert(false, "unexpected event from PortalRenderNode");
     });
     __publicField(this, _a8);
     __publicField(this, _b8);
     this.emitter = null;
     this.props = props;
-    this.arrayRenderNode = new ArrayRenderNode(children);
-    if (typeof elementOrTagName !== "string") {
-      this.isPreexisting = true;
-      this.isPreexistingPopulated = false;
-      this.element = elementOrTagName;
-      this.tagName = this.element.tagName;
-      this.existingOffset = elementOrTagName.childNodes.length;
-    } else {
-      this.isPreexisting = false;
-      this.isPreexistingPopulated = false;
-      this.element = null;
-      this.tagName = elementOrTagName;
-      this.existingOffset = 0;
-    }
+    this.children = new ArrayRenderNode(children);
+    this.portalRenderNode = null;
+    this.element = null;
+    this.tagName = tagName;
     this.xmlNamespace = null;
     this.childXmlNamespace = null;
     this[SymDebugName] = debugName ?? `intrinsic:${this.tagName}`;
@@ -2726,20 +2691,19 @@ var IntrinsicRenderNode = class {
       for (const [prop, val] of Object.entries(this.props)) {
         if (prop === "ref")
           continue;
-        if (prop.startsWith("on:capture:")) {
-          element.addEventListener(prop.slice(3), (e) => val(e, element), {
-            capture: true
-          });
-          continue;
-        }
-        if (prop.startsWith("on:passive:")) {
-          element.addEventListener(prop.slice(3), (e) => val(e, element), {
-            passive: true
-          });
-          continue;
-        }
-        if (prop.startsWith("on:")) {
-          element.addEventListener(prop.slice(3), (e) => val(e, element));
+        if (EventProps.some(({ prefix, param }) => {
+          if (prop.startsWith(prefix)) {
+            element.addEventListener(prop.slice(prefix.length), (e) => {
+              try {
+                val(e, element);
+              } finally {
+                pumpFlush();
+              }
+            }, param);
+            return true;
+          }
+          return false;
+        })) {
           continue;
         }
         if (isCalcUnsubscribe(val) || isCalculation(val)) {
@@ -2803,50 +2767,157 @@ var IntrinsicRenderNode = class {
     const namespaceTransition = elementNamespaceTransitionMap[parentXmlNamespace]?.[this.tagName];
     const xmlNamespace = namespaceTransition?.node ?? parentXmlNamespace;
     const childXmlNamespace = namespaceTransition?.children ?? parentXmlNamespace;
-    const needsNewElement = !this.isPreexisting && (!this.element || xmlNamespace !== this.xmlNamespace);
-    if (needsNewElement) {
+    if (!this.element || xmlNamespace !== this.xmlNamespace) {
       this.xmlNamespace = xmlNamespace;
-      const element = this.createElement(xmlNamespace);
-      if (this.element) {
-        const length = this.element.childNodes.length;
-        for (let i = this.existingOffset; i < length; ++i) {
-          const node = this.element.childNodes[i];
-          this.element.removeChild(node);
-          element.appendChild(node);
-        }
+      this.element = this.createElement(xmlNamespace);
+      if (this.portalRenderNode) {
+        this.portalRenderNode.detach();
+        release(this.portalRenderNode);
       }
-      this.element = element;
-      this.existingOffset = 0;
-    }
-    if (needsNewElement || this.isPreexisting && !this.isPreexistingPopulated) {
+      this.portalRenderNode = new PortalRenderNode(this.element, this.children, this.props?.ref);
+      retain(this.portalRenderNode);
       let subContext = context;
       if (parentXmlNamespace !== childXmlNamespace) {
         subContext = new Map(context);
         subContext.set(XmlNamespaceContext, childXmlNamespace);
       }
-      this.arrayRenderNode.attach(this.handleEvent, subContext);
-      if (this.isPreexisting) {
-        this.isPreexistingPopulated = true;
+      this.portalRenderNode.attach(this.handleEvent, subContext);
+    }
+    this.emitter?.({
+      type: "splice" /* SPLICE */,
+      index: 0,
+      count: 0,
+      items: [this.element]
+    });
+  }
+  onMount() {
+    this.portalRenderNode?.onMount();
+  }
+  onUnmount() {
+    this.portalRenderNode?.onUnmount();
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  [(_a8 = SymDebugName, _b8 = SymRefcount, SymAlive)]() {
+    retain(this.children);
+  }
+  [SymDead]() {
+    if (this.calculations) {
+      for (const calculation of this.calculations.values()) {
+        release(calculation);
       }
     }
-    if (this.emitter) {
-      assert(this.element, "Invariant: intrinsic node missing element");
-      this.emitter({
-        type: "splice" /* SPLICE */,
-        index: 0,
-        count: 0,
-        items: [this.element]
-      });
+    if (this.calculationSubscriptions) {
+      for (const unsubscribe of this.calculationSubscriptions) {
+        unsubscribe();
+      }
+      this.calculationSubscriptions.clear();
     }
+    this.element = null;
+    if (this.portalRenderNode) {
+      release(this.portalRenderNode);
+      this.portalRenderNode = null;
+    }
+    release(this.children);
+    this.emitter = null;
+  }
+};
+var _a9, _b9;
+var PortalRenderNode = class {
+  constructor(element, children, refProp, debugName) {
+    __publicField(this, "_type", RenderNodeType);
+    __publicField(this, "tagName");
+    __publicField(this, "element");
+    __publicField(this, "refProp");
+    __publicField(this, "emitter");
+    __publicField(this, "xmlNamespace");
+    __publicField(this, "childXmlNamespace");
+    __publicField(this, "existingOffset");
+    __publicField(this, "arrayRenderNode");
+    __publicField(this, "calculations");
+    __publicField(this, "calculationSubscriptions");
+    __publicField(this, "handleEvent", (event) => {
+      if (event instanceof Error) {
+        this.emitter?.(event);
+        return;
+      }
+      assert(this.element, "missing element");
+      switch (event.type) {
+        case "splice" /* SPLICE */: {
+          for (let i = 0; i < event.count; ++i) {
+            this.element.removeChild(this.element.childNodes[this.existingOffset + event.index]);
+          }
+          const referenceNode = event.index < this.element.childNodes.length ? this.element.childNodes[this.existingOffset + event.index] : null;
+          if (event.items) {
+            for (let i = event.items.length - 1; i >= 0; --i) {
+              this.element.insertBefore(event.items[i], referenceNode);
+            }
+          }
+          break;
+        }
+        case "move" /* MOVE */: {
+          const toMove = [];
+          for (let i = 0; i < event.count; ++i) {
+            const node = this.element.childNodes[this.existingOffset + event.from];
+            this.element.removeChild(node);
+            toMove.push(node);
+          }
+          const referenceNode = event.to < this.element.childNodes.length ? this.element.childNodes[this.existingOffset + event.to] : null;
+          for (const node of toMove) {
+            this.element.insertBefore(node, referenceNode);
+          }
+          break;
+        }
+        case "sort" /* SORT */: {
+          const unsorted = [];
+          for (let i = 0; i < event.indexes.length; ++i) {
+            const node = this.element.childNodes[this.existingOffset + event.from];
+            this.element.removeChild(node);
+            unsorted.push(node);
+          }
+          const referenceNode = event.from < this.element.childNodes.length ? this.element.childNodes[this.existingOffset + event.from] : null;
+          for (const index of event.indexes) {
+            this.element.insertBefore(unsorted[index - event.from], referenceNode);
+          }
+          break;
+        }
+        default:
+          assertExhausted(event);
+      }
+    });
+    __publicField(this, _a9);
+    __publicField(this, _b9);
+    this.emitter = null;
+    this.arrayRenderNode = children;
+    this.element = element;
+    this.refProp = refProp;
+    this.tagName = this.element.tagName;
+    this.existingOffset = element.childNodes.length;
+    this.xmlNamespace = null;
+    this.childXmlNamespace = null;
+    this[SymDebugName] = debugName ?? `mount:${this.tagName}`;
+    this[SymRefcount] = 0;
+  }
+  detach() {
+    this.emitter = null;
+    this.arrayRenderNode.detach();
+  }
+  attach(emitter, contextMap) {
+    assert(!this.emitter, "Invariant: Intrinsic node double attached");
+    this.emitter = emitter;
+    this.arrayRenderNode.attach(this.handleEvent, contextMap);
   }
   onMount() {
     this.arrayRenderNode.onMount();
-    const ref2 = this.props?.ref;
-    if (ref2) {
-      if (ref2 instanceof RefObject) {
-        ref2.current = this.element;
-      } else if (typeof ref2 === "function") {
-        ref2(this.element);
+    if (this.refProp) {
+      if (this.refProp instanceof RefObject) {
+        this.refProp.current = this.element;
+      } else if (typeof this.refProp === "function") {
+        this.refProp(this.element);
       }
     }
     if (this.element && this.element.focus && previousFocusedDetachedElement === this.element) {
@@ -2857,12 +2928,11 @@ var IntrinsicRenderNode = class {
     if (this.element && document.activeElement === this.element) {
       previousFocusedDetachedElement = this.element;
     }
-    const ref2 = this.props?.ref;
-    if (ref2) {
-      if (ref2 instanceof RefObject) {
-        ref2.current = void 0;
-      } else if (typeof ref2 === "function") {
-        ref2(void 0);
+    if (this.refProp) {
+      if (this.refProp instanceof RefObject) {
+        this.refProp.current = void 0;
+      } else if (typeof this.refProp === "function") {
+        this.refProp(void 0);
       }
     }
     this.arrayRenderNode.onUnmount();
@@ -2873,7 +2943,7 @@ var IntrinsicRenderNode = class {
   release() {
     release(this);
   }
-  [(_a8 = SymDebugName, _b8 = SymRefcount, SymAlive)]() {
+  [(_a9 = SymDebugName, _b9 = SymRefcount, SymAlive)]() {
     retain(this.arrayRenderNode);
   }
   [SymDead]() {
@@ -2888,88 +2958,54 @@ var IntrinsicRenderNode = class {
       }
       this.calculationSubscriptions.clear();
     }
-    if (this.isPreexisting) {
-      this.arrayRenderNode.detach();
-    }
     release(this.arrayRenderNode);
-    if (!this.isPreexisting) {
-      this.element = null;
-    }
     this.emitter = null;
   }
 };
-var _a9, _b9;
+var _a10, _b10;
 var CalculationRenderNode = class {
   constructor(calculation, debugName) {
     __publicField(this, "_type", RenderNodeType);
+    __publicField(this, "error");
     __publicField(this, "renderNode");
     __publicField(this, "calculation");
     __publicField(this, "calculationSubscription");
     __publicField(this, "context");
     __publicField(this, "isMounted");
     __publicField(this, "emitter");
-    __publicField(this, "isCalculatedPendingAdd");
-    __publicField(this, "renderCalculation", (errorType, val) => {
-      if (errorType) {
-        this.emitter?.(val);
-      } else {
-        this.cleanPrior();
-        const renderNode = renderJSXNode(val);
-        this.isCalculatedPendingAdd = true;
-        afterFlush(() => {
-          this.isCalculatedPendingAdd = false;
-          this.renderNode = renderNode;
-          retain(this.renderNode);
-          if (this.emitter) {
-            renderNode.attach(this.emitter, this.context);
-          }
-          if (this.isMounted) {
-            renderNode.onMount();
-          }
-        });
-      }
-    });
-    __publicField(this, _a9);
-    __publicField(this, _b9);
+    __publicField(this, _a10);
+    __publicField(this, _b10);
     this.calculation = calculation;
     this.calculationSubscription = null;
+    this.error = null;
     this.renderNode = null;
     this.context = null;
     this.isMounted = false;
     this.emitter = null;
-    this.isCalculatedPendingAdd = false;
     this[SymDebugName] = debugName ?? `rendercalc:${calculation[SymDebugName]}`;
     this[SymRefcount] = 0;
+    this.onRecalc = this.onRecalc.bind(this);
   }
   detach() {
-    assert(this.renderNode, "Invariant: missing calculation result");
-    this.renderNode.detach();
+    this.renderNode?.detach();
+    this.context = null;
     this.emitter = null;
   }
   attach(emitter, context) {
     this.context = context;
     this.emitter = emitter;
-    if (!this.renderNode && !this.isCalculatedPendingAdd) {
-      try {
-        this.renderCalculation(void 0, this.calculation());
-        this.calculationSubscription = this.calculation.onRecalc(this.renderCalculation);
-      } catch (e) {
-        this.renderCalculation(1 /* EXCEPTION */, e);
-      }
-    } else if (this.renderNode) {
-      this.renderNode.attach(emitter, context);
+    if (this.error) {
+      emitter(this.error);
+    } else {
+      this.renderNode?.attach(emitter, context);
     }
   }
   onMount() {
-    assert(this.renderNode || this.isCalculatedPendingAdd, "Invariant: missing calculation result");
     this.isMounted = true;
-    if (this.renderNode) {
-      this.renderNode.onMount();
-    }
+    this.renderNode?.onMount();
   }
   onUnmount() {
-    assert(this.renderNode, "Invariant: missing calculation result");
-    this.renderNode.onUnmount();
+    this.renderNode?.onUnmount();
     this.isMounted = false;
   }
   retain() {
@@ -2980,16 +3016,45 @@ var CalculationRenderNode = class {
   }
   cleanPrior() {
     if (this.renderNode) {
-      if (this.isMounted) {
-        this.renderNode.onUnmount();
+      if (this.emitter) {
+        if (this.isMounted) {
+          this.renderNode.onUnmount();
+        }
+        this.renderNode.detach();
       }
-      this.renderNode.detach();
       release(this.renderNode);
+      this.error = null;
       this.renderNode = null;
     }
   }
-  [(_a9 = SymDebugName, _b9 = SymRefcount, SymAlive)]() {
+  onRecalc(errorType, val) {
+    this.cleanPrior();
+    if (errorType) {
+      this.error = val;
+      this.emitter?.(val);
+    } else {
+      const renderNode = renderJSXNode(val);
+      retain(renderNode);
+      afterFlush(() => {
+        this.cleanPrior();
+        this.renderNode = renderNode;
+        if (this.emitter) {
+          renderNode.attach(this.emitter, this.context);
+        }
+        if (this.isMounted) {
+          renderNode.onMount();
+        }
+      });
+    }
+  }
+  [(_a10 = SymDebugName, _b10 = SymRefcount, SymAlive)]() {
     retain(this.calculation);
+    try {
+      this.onRecalc(void 0, this.calculation());
+      this.calculationSubscription = this.calculation.onRecalc(this.onRecalc);
+    } catch (e) {
+      this.onRecalc(1 /* EXCEPTION */, wrapError(e));
+    }
   }
   [SymDead]() {
     release(this.calculation);
@@ -2997,13 +3062,12 @@ var CalculationRenderNode = class {
     this.emitter = null;
   }
 };
-var _a10, _b10;
+var _a11, _b11;
 var CollectionRenderNode = class {
   constructor(collection2, debugName) {
     __publicField(this, "_type", RenderNodeType);
     __publicField(this, "children");
     __publicField(this, "childIndex");
-    __publicField(this, "childrenNodes");
     __publicField(this, "slotSizes");
     __publicField(this, "collection");
     __publicField(this, "unsubscribe");
@@ -3011,7 +3075,6 @@ var CollectionRenderNode = class {
     __publicField(this, "isMounted");
     __publicField(this, "emitter");
     __publicField(this, "handleCollectionEvent", (events) => {
-      assert(this.context, "Invariant: missing context");
       for (const event of events) {
         switch (event.type) {
           case "splice" /* SPLICE */: {
@@ -3025,34 +3088,21 @@ var CollectionRenderNode = class {
             }
             const removed = this.children.splice(event.index, event.count, ...newChildren);
             for (const child of removed) {
-              if (this.isMounted) {
-                child.onUnmount();
-              }
-              child.detach();
-              release(child);
+              this.releaseChild(child);
+              this.childIndex.delete(child);
             }
             this.slotSizes.splice(event.index, event.count, ...newChildren.map(() => 0));
-            for (const child of newChildren) {
-              retain(child);
-              if (this.emitter) {
-                child.attach((event2) => {
-                  this.handleChildEvent(event2, child);
-                }, this.context);
-              }
-              if (this.isMounted) {
-                child.onMount();
-              }
-            }
             if (newChildren.length !== event.count) {
               for (let i = event.index + newChildren.length; i < this.children.length; ++i) {
                 this.childIndex.set(this.children[i], i);
               }
             }
+            for (const child of newChildren) {
+              this.retainChild(child);
+            }
             break;
           }
           case "move" /* MOVE */: {
-            if (!this.emitter)
-              return;
             const slotStartIndex = [];
             let realIndex = 0;
             for (const slotSize of this.slotSizes) {
@@ -3063,16 +3113,14 @@ var CollectionRenderNode = class {
             for (let i = 0; i < event.count; ++i) {
               realCount += this.slotSizes[event.from + i];
             }
-            applyEvent(this.slotSizes, event);
+            applyArrayEvent(this.slotSizes, event);
             event.from = slotStartIndex[event.from];
             event.count = realCount;
             event.to = slotStartIndex[event.to];
-            this.emitter(event);
+            this.emitter?.(event);
             break;
           }
           case "sort" /* SORT */: {
-            if (!this.emitter)
-              return;
             let realFrom = 0;
             for (let i = 0; i < event.from; ++i) {
               realFrom += this.slotSizes[i];
@@ -3087,23 +3135,22 @@ var CollectionRenderNode = class {
               }
               nestedIndexes.push(slotIndexes);
             }
-            applyEvent(this.slotSizes, event);
-            applyEvent(nestedIndexes, event);
+            applyArrayEvent(this.slotSizes, event);
+            applyArrayEvent(nestedIndexes, event);
             const sortedIndexes = nestedIndexes.slice(event.from).flat();
             event.from = realFrom;
             event.indexes = sortedIndexes;
-            this.emitter(event);
+            this.emitter?.(event);
             break;
           }
         }
       }
     });
-    __publicField(this, _a10);
-    __publicField(this, _b10);
+    __publicField(this, _a11);
+    __publicField(this, _b11);
     this.collection = collection2;
     this.children = [];
     this.childIndex = /* @__PURE__ */ new Map();
-    this.childrenNodes = [];
     this.slotSizes = [];
     this.context = null;
     this.isMounted = false;
@@ -3111,36 +3158,27 @@ var CollectionRenderNode = class {
     this[SymDebugName] = debugName ?? `rendercoll`;
     this[SymRefcount] = 0;
   }
-  detach() {
-    for (const child of this.children) {
-      child.detach();
-    }
-    this.emitter = null;
-  }
   attach(emitter, context) {
     this.emitter = emitter;
     this.context = context;
-    untrackReads(() => {
-      for (const [index, item] of this.collection.entries()) {
-        this.slotSizes.push(0);
-        const child = renderJSXNode(item);
-        retain(child);
-        this.children.push(child);
-        this.childIndex.set(child, index);
-      }
-    });
     for (const child of this.children) {
       child.attach((event) => {
         this.handleChildEvent(event, child);
       }, context);
     }
   }
+  detach() {
+    for (const child of this.children) {
+      child.detach();
+    }
+    this.emitter = null;
+    this.context = null;
+  }
   handleChildEvent(event, child) {
     if (this.emitter) {
       if (!(event instanceof Error)) {
         const index = this.childIndex.get(child);
         shiftEvent(this.slotSizes, index, event);
-        applyEvent(this.childrenNodes, event);
       }
       this.emitter(event);
     }
@@ -3163,13 +3201,46 @@ var CollectionRenderNode = class {
   release() {
     release(this);
   }
-  [(_a10 = SymDebugName, _b10 = SymRefcount, SymAlive)]() {
+  releaseChild(child) {
+    if (this.emitter && this.context) {
+      if (this.isMounted) {
+        child.onUnmount();
+      }
+      child.detach();
+    }
+    release(child);
+  }
+  retainChild(child) {
+    retain(child);
+    if (this.emitter && this.context) {
+      child.attach((event) => this.handleChildEvent(event, child), this.context);
+      if (this.isMounted) {
+        child.onUnmount();
+      }
+    }
+  }
+  [(_a11 = SymDebugName, _b11 = SymRefcount, SymAlive)]() {
     retain(this.collection);
     this.unsubscribe = this.collection.subscribe(this.handleCollectionEvent);
+    untrackReads(() => {
+      for (const [index, item] of this.collection.entries()) {
+        const child = renderJSXNode(item);
+        this.children.push(child);
+        this.slotSizes.push(0);
+        this.childIndex.set(child, index);
+        this.retainChild(child);
+      }
+    });
   }
   [SymDead]() {
     this.unsubscribe?.();
     release(this.collection);
+    const removed = this.children.splice(0, this.children.length);
+    for (const child of removed) {
+      this.releaseChild(child);
+      this.childIndex.delete(child);
+    }
+    this.slotSizes.splice(0, this.slotSizes.length);
     this.emitter = null;
   }
 };
@@ -3238,9 +3309,9 @@ function mount(target, node) {
     }
   };
   document.documentElement.addEventListener("focusin", focusMonitor);
-  const root = new IntrinsicRenderNode(target, void 0, [node], "root");
-  const context = /* @__PURE__ */ new Map();
+  const root = new PortalRenderNode(target, new ArrayRenderNode([node]), null, "root");
   retain(root);
+  const context = /* @__PURE__ */ new Map();
   root.attach((event) => {
     if (event instanceof Error) {
       console.error("Unhandled mount error", event);
@@ -3255,7 +3326,12 @@ function mount(target, node) {
     document.documentElement.removeEventListener("focusin", focusMonitor);
   };
 }
-var _a11, _b11;
+var IntrinsicObserverEventType = /* @__PURE__ */ ((IntrinsicObserverEventType2) => {
+  IntrinsicObserverEventType2["MOUNT"] = "mount";
+  IntrinsicObserverEventType2["UNMOUNT"] = "unmount";
+  return IntrinsicObserverEventType2;
+})(IntrinsicObserverEventType || {});
+var _a12, _b12;
 var IntrinsicObserverRenderNode = class {
   constructor(nodeCallback, elementCallback, children, debugName) {
     __publicField(this, "_type", RenderNodeType);
@@ -3265,8 +3341,8 @@ var IntrinsicObserverRenderNode = class {
     __publicField(this, "childNodes");
     __publicField(this, "emitter");
     __publicField(this, "isMounted");
-    __publicField(this, _a11);
-    __publicField(this, _b11);
+    __publicField(this, _a12);
+    __publicField(this, _b12);
     this.nodeCallback = nodeCallback;
     this.elementCallback = elementCallback;
     this.child = new ArrayRenderNode(children);
@@ -3295,7 +3371,7 @@ var IntrinsicObserverRenderNode = class {
         }
       }
     }
-    applyEvent(this.childNodes, event);
+    applyArrayEvent(this.childNodes, event);
     this.emitter?.(event);
     if (event.type === "splice" /* SPLICE */) {
       if (event.items) {
@@ -3337,7 +3413,7 @@ var IntrinsicObserverRenderNode = class {
   release() {
     release(this);
   }
-  [(_a11 = SymDebugName, _b11 = SymRefcount, SymAlive)]() {
+  [(_a12 = SymDebugName, _b12 = SymRefcount, SymAlive)]() {
     retain(this.child);
   }
   [SymDead]() {
@@ -3348,7 +3424,7 @@ var IntrinsicObserverRenderNode = class {
 var IntrinsicObserver = ({ nodeCallback, elementCallback, children }) => {
   return new IntrinsicObserverRenderNode(nodeCallback, elementCallback, renderJSXChildren(children));
 };
-var _a12, _b12, _c6;
+var _a13, _b13, _c6;
 var ComponentRenderNode = class {
   constructor(Component2, props, children, debugName) {
     __publicField(this, "_type", RenderNodeType);
@@ -3366,6 +3442,7 @@ var ComponentRenderNode = class {
     __publicField(this, "emitter");
     __publicField(this, "contextMap");
     __publicField(this, "isMounted");
+    __publicField(this, "id");
     __publicField(this, "handleEvent", (event) => {
       assert(!(this.result instanceof Error), "Invariant: received event on calculation error");
       if (event instanceof Error && this.errorHandler) {
@@ -3393,9 +3470,10 @@ var ComponentRenderNode = class {
         this.emitter?.(event);
       }
     });
-    __publicField(this, _a12);
-    __publicField(this, _b12);
+    __publicField(this, _a13);
+    __publicField(this, _b13);
     __publicField(this, _c6, noop);
+    this.id = Math.random();
     this.Component = Component2;
     this.props = props;
     this.children = children;
@@ -3563,7 +3641,7 @@ var ComponentRenderNode = class {
   release() {
     release(this);
   }
-  [(_a12 = SymDebugName, _b12 = SymRefcount, _c6 = SymAlive, SymDead)]() {
+  [(_a13 = SymDebugName, _b13 = SymRefcount, _c6 = SymAlive, SymDead)]() {
     if (this.onDestroyCallbacks) {
       for (const callback of this.onDestroyCallbacks) {
         callback();
@@ -3579,15 +3657,15 @@ var ComponentRenderNode = class {
     this.emitter = null;
   }
 };
-var _a13, _b13;
+var _a14, _b14;
 var ContextRenderNode = class {
   constructor(context, value, children, debugName) {
     __publicField(this, "_type", RenderNodeType);
     __publicField(this, "child");
     __publicField(this, "context");
     __publicField(this, "value");
-    __publicField(this, _a13);
-    __publicField(this, _b13);
+    __publicField(this, _a14);
+    __publicField(this, _b14);
     this.context = context;
     this.value = value;
     this.child = new ArrayRenderNode(children);
@@ -3614,7 +3692,7 @@ var ContextRenderNode = class {
   release() {
     release(this);
   }
-  [(_a13 = SymDebugName, _b13 = SymRefcount, SymAlive)]() {
+  [(_a14 = SymDebugName, _b14 = SymRefcount, SymAlive)]() {
     retain(this.child);
   }
   [SymDead]() {
@@ -3691,7 +3769,7 @@ model.keys = function modelKeys(sourceModel, debugName) {
   const sourceTDHandle = getTrackedDataHandle(sourceModel);
   assert(sourceTDHandle, "missing tdHandle");
   const initialKeys = Object.keys(sourceModel);
-  const derivedCollection = new TrackedDataHandle(initialKeys, ViewHandler, makeViewPrototype(), sourceTDHandle.emitter, keysHandler, debugName);
+  const derivedCollection = new TrackedDataHandle(initialKeys, ViewHandler, makeViewPrototype(sourceModel), sourceTDHandle.emitter, keysHandler, debugName);
   return derivedCollection.revocable.proxy;
 };
 function* keysHandler(target, event) {
@@ -3729,15 +3807,17 @@ function* keysHandler(target, event) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.8.0" : "development";
+var VERSION = true ? "0.9.0" : "development";
 export {
   ArrayEventType,
   CalculationErrorType,
   Fragment,
   IntrinsicObserver,
+  IntrinsicObserverEventType,
   InvariantError,
   ModelEventType,
   VERSION,
+  applyArrayEvent,
   calc,
   collection,
   createContext,
