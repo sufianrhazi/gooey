@@ -101,7 +101,7 @@ model.keys = function modelKeys<T extends {}>(
     >(
         initialKeys,
         ViewHandler,
-        makeViewPrototype(),
+        makeViewPrototype(sourceModel),
         sourceTDHandle.emitter,
         keysHandler,
         debugName

@@ -1,35 +1,7 @@
-import { graphviz } from '@hpcc-js/wasm';
-import Gooey, {
-    mount,
-    model,
-    collection,
-    calc,
-    setLogLevel,
-    debug,
-    subscribe,
-    ref,
-} from '../../index';
+import Gooey, { mount, model, calc, setLogLevel } from '../../index';
+import { makeGraphvizDebuggerRef } from '../debug';
 
-const graphvizRef = ref<HTMLDivElement>();
-
-function debugGraph() {
-    graphviz.layout(debug(), 'svg', 'dot').then((svg) => {
-        if (graphvizRef.current) {
-            graphvizRef.current.innerHTML = svg;
-        }
-    });
-}
-
-subscribe((performFlush) => {
-    const handle = setTimeout(() => {
-        performFlush();
-        debugGraph();
-    }, 0);
-    return () => clearTimeout(handle);
-});
-setTimeout(() => {
-    debugGraph();
-}, 0);
+const graphvizRef = makeGraphvizDebuggerRef();
 
 setLogLevel('debug');
 
@@ -45,40 +17,32 @@ const App = () => {
         {
             key: '',
             value: '',
-            keysView: true,
         },
         'state'
     );
-    const keysCollection = collection<string>(
-        Object.keys(bag),
-        'keysCollection'
-    );
+    const keys = model.keys(bag, 'bagKeys');
 
     const onClickSet = () => {
         bag[state.key] = state.value;
-        keysCollection.push(state.key);
     };
 
     const onClickDelete = () => {
         delete bag[state.key];
-        keysCollection.reject((key) => key === state.key);
     };
 
     return (
         <>
-            <h1>Bag demo</h1>
+            <h1>model.keys demo</h1>
             <p>Key items:</p>
             <ul>
                 {calc(
                     () =>
-                        (state.keysView
-                            ? model.keys(bag, 'bagKeys')
-                            : keysCollection
-                        ).mapView(
+                        keys.mapView(
                             (key) => (
                                 <li>
-                                    {key} ={' '}
-                                    {calc(() => bag[key], 'view bag value')}
+                                    {key}
+                                    {' = '}
+                                    {calc(() => bag[key])}
                                 </li>
                             ),
                             'key item mapView'
@@ -90,10 +54,7 @@ const App = () => {
             <p>Filtered items:</p>
             <ul>
                 {calc(() =>
-                    (state.keysView
-                        ? model.keys(bag, 'bagKeys2')
-                        : keysCollection
-                    )
+                    keys
                         .filterView((key) => key.length % 2 === 0)
                         .mapView((key) => (
                             <li>
@@ -106,10 +67,7 @@ const App = () => {
             <p>FlatMap items:</p>
             <ul>
                 {calc(() =>
-                    (state.keysView
-                        ? model.keys(bag, 'bagKeys3')
-                        : keysCollection
-                    )
+                    keys
                         .flatMapView((key) => [key, key])
                         .mapView((key) => (
                             <li>
@@ -156,17 +114,6 @@ const App = () => {
             >
                 delete key
             </button>
-            <label>
-                <input
-                    type="checkbox"
-                    checked={calc(
-                        () => state.keysView,
-                        'checkbox:keysView:checked'
-                    )}
-                    on:input={() => (state.keysView = !state.keysView)}
-                />{' '}
-                model.keys
-            </label>
             <p>key: {calc(() => state.key, 'text:key')}</p>
             <p>value: {calc(() => state.value, 'text:value')}</p>
             <hr />

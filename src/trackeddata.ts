@@ -1,5 +1,5 @@
 import { Retainable, notifyCreate, notifyRead } from './engine';
-import { SymAlive, SymDead, SymRefcount } from './symbols';
+import { SymAlive, SymDead, SymRefcount, SymDebugName } from './symbols';
 import { FieldMap } from './fieldmap';
 import { field as makeField, Field } from './field';
 import { SubscriptionEmitter } from './subscriptionemitter';
@@ -70,6 +70,9 @@ export class TrackedDataHandle<
             get: (prop, receiver) => {
                 if (prop === SymTDHandle) {
                     return this;
+                }
+                if (prop === SymDebugName) {
+                    return debugName;
                 }
                 if (
                     prop === SymRefcount ||

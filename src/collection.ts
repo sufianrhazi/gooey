@@ -97,7 +97,9 @@ export interface ViewImpl<T> extends Retainable {
     subscribe: (handler: (event: ArrayEvent<T>[]) => void) => () => void;
 }
 
-export function makeViewPrototype<T>(): ViewImpl<T> {
+export function makeViewPrototype<T>(
+    sourceCollection: TrackedData<any, any, unknown, unknown>
+): ViewImpl<T> {
     return {
         _type: 'view',
 
@@ -118,8 +120,18 @@ export function makeViewPrototype<T>(): ViewImpl<T> {
 
         // Retainable
         [SymRefcount]: 0,
-        [SymAlive]: viewAlive,
-        [SymDead]: viewDead,
+        [SymAlive](this: View<T>) {
+            retain(sourceCollection);
+            const tdHandle = getTrackedDataHandle(this);
+            log.assert(tdHandle, 'missing tdHandle');
+            retain(tdHandle.fieldMap);
+        },
+        [SymDead](this: View<T>) {
+            const tdHandle = getTrackedDataHandle(this);
+            log.assert(tdHandle, 'missing tdHandle');
+            release(tdHandle.fieldMap);
+            release(sourceCollection);
+        },
         [SymDebugName]: 'collection',
     };
 }
@@ -535,7 +547,7 @@ function makeFlatMapView<T, V>(
     >(
         initialTransform,
         ViewHandler,
-        makeViewPrototype(),
+        makeViewPrototype(sourceCollection),
         sourceTDHandle.emitter,
         function* (target, event) {
             const lengthStart = initialTransform.length;
@@ -606,16 +618,4 @@ function makeFlatMapView<T, V>(
     );
 
     return derivedCollection.revocable.proxy;
-}
-
-function viewAlive<T>(this: View<T>) {
-    const tdHandle = getTrackedDataHandle(this);
-    log.assert(tdHandle, 'missing tdHandle');
-    retain(tdHandle.fieldMap);
-}
-
-function viewDead<T>(this: View<T>) {
-    const tdHandle = getTrackedDataHandle(this);
-    log.assert(tdHandle, 'missing tdHandle');
-    release(tdHandle.fieldMap);
 }

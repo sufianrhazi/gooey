@@ -73,6 +73,35 @@ suite('model', () => {
         release(keys);
     });
 
+    test('model.keys mapped view handles delete', () => {
+        const simple = model<Record<string, any>>({}, 'model');
+        const keys = model.keys(simple);
+        const caps = keys
+            .filterView((key) => key.startsWith('b'))
+            .mapView((key) => key.toUpperCase());
+        retain(keys);
+        retain(caps);
+        assert.arrayEqualsUnsorted([], keys);
+        assert.arrayEqualsUnsorted([], caps);
+        simple.foo = 'a';
+        flush();
+        assert.arrayEqualsUnsorted(['foo'], keys);
+        assert.arrayEqualsUnsorted([], caps);
+        simple.bar = 'a';
+        flush();
+        assert.arrayEqualsUnsorted(['foo', 'bar'], keys);
+        assert.arrayEqualsUnsorted(['BAR'], caps);
+        simple.foo = 'b';
+        flush();
+        assert.arrayEqualsUnsorted(['foo', 'bar'], keys);
+        assert.arrayEqualsUnsorted(['BAR'], caps);
+        delete simple.bar;
+        flush();
+        assert.arrayEqualsUnsorted(['foo'], keys);
+        assert.arrayEqualsUnsorted([], caps);
+        release(keys);
+    });
+
     test('model.keys waits for flush', () => {
         const simple = model<Record<string, any>>({});
         const keys = model.keys(simple);

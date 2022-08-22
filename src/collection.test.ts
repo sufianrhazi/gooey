@@ -2,7 +2,8 @@ import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
 import { collection } from './collection';
 import { calc } from './calc';
-import { reset, flush, retain, subscribe } from './engine';
+import { setLogLevel } from './log';
+import { debug, reset, flush, retain, subscribe } from './engine';
 
 beforeEach(() => {
     reset();
@@ -825,6 +826,150 @@ suite('filterView', () => {
 
         flush();
         assert.deepEqual(['lazy', 'WHAT', 'ZERO'], evenPhrases);
+    });
+});
+
+suite('filterView.mapView', () => {
+    test('produces a filtered view', () => {
+        const numbers = collection([1, 2, 3, 4, 5, 6], 'numbers');
+        const evenNumbers = numbers
+            .filterView((num) => num % 2 === 0)
+            .mapView((num) => -num);
+        retain(evenNumbers);
+        assert.deepEqual([-2, -4, -6], evenNumbers);
+    });
+
+    test('handles push/unshift', () => {
+        const numbers = collection([3, 4, 5, 6, 7], 'numbers');
+        const evenNumbers = numbers
+            .filterView((num) => num % 2 === 0)
+            .mapView((num) => -num);
+        retain(evenNumbers);
+
+        numbers.push(1);
+        numbers.push(2);
+        numbers.unshift(9);
+        numbers.unshift(8);
+
+        flush();
+        assert.deepEqual([-8, -4, -6, -2], evenNumbers);
+    });
+
+    test('handles pop/shift', () => {
+        const numbers = collection([3, 4, 5, 6, 7], 'numbers');
+        const evenNumbers = numbers
+            .filterView((num) => num % 2 === 0)
+            .mapView((num) => -num);
+        retain(evenNumbers);
+
+        numbers.pop(); // 7
+        numbers.shift(); // 3
+        flush();
+        assert.deepEqual([-4, -6], evenNumbers);
+
+        numbers.pop(); // 6
+        numbers.shift(); // 4
+        flush();
+        assert.deepEqual([], evenNumbers);
+    });
+
+    test('handles splice when removing hidden item', () => {
+        const numbers = collection([3, 4, 5, 6, 7], 'numbers');
+        const evenNumbers = numbers
+            .filterView((num) => num % 2 === 0)
+            .mapView((num) => -num);
+        retain(evenNumbers);
+
+        numbers.splice(2, 1, 10, 11, 12); // 5 -> 10, 11, 12
+        flush();
+        assert.deepEqual([-4, -10, -12, -6], evenNumbers);
+    });
+
+    test('handles splice when removing visible item', () => {
+        const numbers = collection([3, 4, 5, 6, 7], 'numbers');
+        const evenNumbers = numbers
+            .filterView((num) => num % 2 === 1)
+            .mapView((num) => -num);
+        retain(evenNumbers);
+
+        numbers.splice(2, 1, 11, 12, 13); // 5 -> 11, 12, 13
+        flush();
+        assert.deepEqual([-3, -11, -13, -7], evenNumbers);
+    });
+
+    test('handles splice when removing both visible and hidden items', () => {
+        const numbers = collection([3, 4, 5, 6, 7], 'numbers');
+        const evenNumbers = numbers
+            .filterView((num) => num % 2 === 1)
+            .mapView((num) => -num);
+        retain(evenNumbers);
+
+        numbers.splice(1, 3, 11, 12, 13); // 4, 5, 6 -> 11, 12, 13
+        flush();
+        assert.deepEqual([-3, -11, -13, -7], evenNumbers);
+    });
+
+    test('handles assignment', () => {
+        const numbers = collection([3, 4, 5, 6, 7], 'numbers');
+        const evenNumbers = numbers
+            .filterView((num) => num % 2 === 0)
+            .mapView((num) => -num);
+        retain(evenNumbers);
+
+        numbers[2] = 1;
+        flush();
+        assert.deepEqual([-4, -6], evenNumbers);
+
+        numbers[2] = 2;
+        flush();
+        assert.deepEqual([-4, -2, -6], evenNumbers);
+    });
+
+    test('handles moveSlice', () => {
+        const three = model({ value: 3 });
+        const four = model({ value: 4 });
+        const five = model({ value: 5 });
+        const six = model({ value: 6 });
+        const seven = model({ value: 7 });
+        const numbers = collection([three, four, five, six, seven], 'numbers');
+        const evenNumbers = numbers
+            .filterView((item) => item.value % 2 === 0)
+            .mapView((num) => ({ num }));
+        retain(evenNumbers);
+
+        assert.deepEqual([{ num: four }, { num: six }], evenNumbers);
+
+        numbers.moveSlice(2, 3, 0);
+        flush();
+        assert.deepEqual([{ num: six }, { num: four }], evenNumbers);
+    });
+
+    test('handles sort', () => {
+        const phrases = collection([
+            'a',
+            'quick',
+            'brown',
+            'fox',
+            'jumps',
+            'over',
+            'the',
+            'lazy',
+            'dog',
+        ]);
+        const evenPhrases = phrases
+            .filterView((phrase) => phrase.length % 2 === 0)
+            .mapView((phrase) => `${phrase}!`);
+        retain(evenPhrases);
+        phrases.sort();
+
+        flush();
+        assert.deepEqual(['lazy!', 'over!'], evenPhrases);
+
+        phrases[7] = 'ZERO';
+        phrases[6] = 'WHAT';
+
+        flush();
+        assert.deepEqual(['lazy!', 'WHAT!', 'ZERO!'], evenPhrases);
     });
 });
 
