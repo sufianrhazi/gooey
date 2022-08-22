@@ -21,18 +21,6 @@ interface Item {
     label: string;
 }
 
-function time<Func extends Function>(fn: Func): Func {
-    const wrapped = (...args: any) => {
-        console.log(`Running ${fn.name}...`);
-        const start = performance.now();
-        const result = fn(...args);
-        const duration = performance.now() - start;
-        console.log(`${fn.name} took ${duration}ms`);
-        return result;
-    };
-    return wrapped as unknown as Func;
-}
-
 const Button: Component<{
     id: string;
     onClick: (e: MouseEvent) => void;
@@ -164,32 +152,32 @@ const Controls = ({ store }: { store: Model<Store> }) => {
         <div class="col-md-6">
             <div class="row">
                 <div class="col-sm-6 smallpad">
-                    <Button onClick={time(create1KRows)} id="run">
+                    <Button onClick={create1KRows} id="run">
                         Create 1,000 rows
                     </Button>
                 </div>
                 <div class="col-sm-6 smallpad">
-                    <Button onClick={time(create10KRows)} id="runlots">
+                    <Button onClick={create10KRows} id="runlots">
                         Create 10,000 rows
                     </Button>
                 </div>
                 <div class="col-sm-6 smallpad">
-                    <Button onClick={time(append1KRows)} id="add">
+                    <Button onClick={append1KRows} id="add">
                         Append 1,000 rows
                     </Button>
                 </div>
                 <div class="col-sm-6 smallpad">
-                    <Button onClick={time(updateEvery10Rows)} id="update">
+                    <Button onClick={updateEvery10Rows} id="update">
                         Update every 10th row
                     </Button>
                 </div>
                 <div class="col-sm-6 smallpad">
-                    <Button onClick={time(clear)} id="clear">
+                    <Button onClick={clear} id="clear">
                         Clear
                     </Button>
                 </div>
                 <div class="col-sm-6 smallpad">
-                    <Button onClick={time(swapRows)} id="swaprows">
+                    <Button onClick={swapRows} id="swaprows">
                         Swap Rows
                     </Button>
                 </div>
@@ -213,12 +201,12 @@ const Row = ({ store, item }: { store: Model<Store>; item: Model<Item> }) => {
         <tr class={calc(() => (store.selected === item.id ? 'danger' : ''))}>
             <td class="col-md-1">{calc(() => item.id)}</td>
             <td class="col-md-4">
-                <a class="lbl" on:click={time(selectItem)}>
+                <a class="lbl" on:click={selectItem}>
                     {calc(() => item.label)}
                 </a>
             </td>
             <td class="col-md-1">
-                <a class="remove" on:click={time(removeItem)}>
+                <a class="remove" on:click={removeItem}>
                     <span
                         class="remove glyphicon glyphicon-remove"
                         aria-hidden="true"
