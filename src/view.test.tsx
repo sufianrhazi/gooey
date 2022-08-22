@@ -1,6 +1,5 @@
 import Gooey, {
     Component,
-    Collection,
     calc,
     collection,
     flush,

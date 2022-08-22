@@ -2,8 +2,7 @@ import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
 import { collection } from './collection';
 import { calc } from './calc';
-import { setLogLevel } from './log';
-import { debug, reset, flush, retain, subscribe } from './engine';
+import { reset, flush, retain, subscribe } from './engine';
 
 beforeEach(() => {
     reset();
