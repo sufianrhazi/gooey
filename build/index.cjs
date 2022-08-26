@@ -3268,7 +3268,7 @@ var CollectionRenderNode = class {
     if (this.emitter && this.context) {
       child.attach((event) => this.handleChildEvent(event, child), this.context);
       if (this.isMounted) {
-        child.onUnmount();
+        child.onMount();
       }
     }
   }
@@ -3860,6 +3860,6 @@ function* keysHandler(target, event) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.9.0" : "development";
+var VERSION = true ? "0.9.1" : "development";
 module.exports = __toCommonJS(src_exports);
 //# sourceMappingURL=index.cjs.map
