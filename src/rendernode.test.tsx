@@ -959,6 +959,52 @@ suite('CollectionRenderNode', () => {
         assert.isTruthy(events[1] instanceof Error);
         assert.is('boom', events[1].message);
     });
+
+    test('calls lifecycle methods when added while mounted', () => {
+        const tracer1 = new TracingRenderNode();
+        const tracer2 = new TracingRenderNode();
+        const items = collection([tracer1]);
+        const node = new CollectionRenderNode(items);
+        const events: any[] = [];
+        const contextMap = new Map();
+        node.retain();
+        node.attach((event) => events.push(event), contextMap);
+        node.onMount();
+        assert.deepEqual(['alive', 'attach', 'onMount'], tracer1.events);
+        assert.deepEqual([], tracer2.events);
+        items.push(tracer2);
+        flush();
+        assert.deepEqual(['alive', 'attach', 'onMount'], tracer1.events);
+        assert.deepEqual(['alive', 'attach', 'onMount'], tracer2.events);
+        items.shift();
+        flush();
+        assert.deepEqual(
+            ['alive', 'attach', 'onMount', 'onUnmount', 'detach', 'dead'],
+            tracer1.events
+        );
+        assert.deepEqual(['alive', 'attach', 'onMount'], tracer2.events);
+    });
+
+    test('calls lifecycle methods when added while unmounted', () => {
+        const tracer1 = new TracingRenderNode();
+        const tracer2 = new TracingRenderNode();
+        const items = collection([tracer1]);
+        const node = new CollectionRenderNode(items);
+        const events: any[] = [];
+        const contextMap = new Map();
+        node.retain();
+        node.attach((event) => events.push(event), contextMap);
+        assert.deepEqual(['alive', 'attach'], tracer1.events);
+        assert.deepEqual([], tracer2.events);
+        items.push(tracer2);
+        flush();
+        assert.deepEqual(['alive', 'attach'], tracer1.events);
+        assert.deepEqual(['alive', 'attach'], tracer2.events);
+        items.shift();
+        flush();
+        assert.deepEqual(['alive', 'attach', 'detach', 'dead'], tracer1.events);
+        assert.deepEqual(['alive', 'attach'], tracer2.events);
+    });
 });
 
 suite('ComponentRenderNode', () => {

@@ -977,7 +977,7 @@ export class CollectionRenderNode implements RenderNode {
                 this.context
             );
             if (this.isMounted) {
-                child.onUnmount();
+                child.onMount();
             }
         }
     }
