@@ -890,7 +890,7 @@ interface JSXInputElementInterface extends JSXElementInterface {
     /** Type of form control */
     type?: FormInputTypeValues | undefined;
     /** Value of the form control */
-    value?: string | undefined;
+    value?: string | number | undefined;
     /** Horizontal dimension */
     width?: string | number | undefined;
 }
@@ -912,7 +912,7 @@ interface JSXLegendElementInterface extends JSXElementInterface {}
 
 interface JSXLIElementInterface extends JSXElementInterface {
     /** Ordinal value of the list item */
-    value?: string | undefined;
+    value?: string | number | undefined;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
