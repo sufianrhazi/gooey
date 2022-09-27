@@ -31,7 +31,7 @@ export class FieldMap implements Retainable {
     getOrMake(prop: string, val: any) {
         let field = this.fieldMap.get(prop);
         if (!field) {
-            field = makeField(prop, val, `${this[SymDebugName]}:${prop}`);
+            field = makeField(val, `${this[SymDebugName]}:${prop}`);
             this.fieldMap.set(prop, field);
 
             if (this[SymRefcount] > 0) {

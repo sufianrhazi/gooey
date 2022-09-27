@@ -44,7 +44,7 @@ export class TrackedDataHandle<
         this.methods = methods;
 
         this.keys = new Set<string>(Object.keys(target));
-        this.keysField = makeField(`${debugName}:@keys`, this.keys.size);
+        this.keysField = makeField(this.keys.size, `${debugName}:@keys`);
 
         this.emitter = new SubscriptionEmitter<TEmitEvent>(debugName);
 

@@ -717,6 +717,52 @@ Create a special type of calculation which produces no value and is not consider
 calculations. Avoid using this function, and consider using `.onRecalc()` instead.
 
 
+#### Fields
+
+Fields are values whose accesses are tracked over time.
+
+When a field is accessed within the execution of a calculation, they act as dependencies for that calculation. When a
+field is modified, it will cause any dependencies to be recalculated on the next flush.
+
+
+##### `field(value)`
+
+```typescript
+type FieldObserver<T> = (val: T) => void;
+
+interface Field<T> {
+    get: () => T;
+    set: (val: T) => void;
+    observe: (observer: FieldObserver<T>) => () => void;
+}
+
+function field<T>(value: T, debugName?: string): Field<T>
+```
+
+Create a field that has an initial value. The optional debugName is only used for diagnostic purposes.
+
+
+##### `.get()`
+
+Read the value associated with the field.
+
+
+##### `.set(newVal)`
+
+Write to the value associated with the field.
+
+
+##### `.observe((newVal) => {/* ... *})`
+
+Observe changes to the value associated with the field. The callback will be called during flush, so if a field is
+written to multiple times prior to a flush, it will only be called once with the last value.
+
+Returns a function which unsubscribes to observations.
+
+Note: The callback will not be called with any field values written _before_ observation starts, even if they occur in the
+same flush.
+
+
 #### Models
 
 Models act like ordinary JavaScript objects.

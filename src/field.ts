@@ -19,24 +19,23 @@ import {
 type FieldObserver<T> = (val: T) => void;
 
 export interface Field<T> extends Processable, Retainable {
-    _name: string;
     _isAlive: boolean;
     get: () => T;
     set: (val: T) => void;
-    update: (val: (prev: T) => T) => void;
     observe: (observer: FieldObserver<T>) => () => void;
     _val: T;
-    _observers?: Set<FieldObserver<T>>;
+    // Map of observer to the clock time
+    _observers?: Map<FieldObserver<T>, number>;
+    _changeClock: number;
 }
 
-export function field<T>(name: string, val: T, debugName?: string): Field<T> {
+export function field<T>(val: T, debugName?: string): Field<T> {
     const field: Field<T> = {
-        _name: name,
         _val: val,
         _isAlive: false,
+        _changeClock: 0,
         get: fieldGet,
         set: fieldSet,
-        update: fieldUpdate,
         observe: fieldObserve,
 
         [SymProcessable]: true,
@@ -44,7 +43,7 @@ export function field<T>(name: string, val: T, debugName?: string): Field<T> {
         [SymAlive]: fieldAlive,
         [SymDead]: fieldDead,
 
-        [SymDebugName]: debugName ?? name,
+        [SymDebugName]: debugName ?? 'field',
         [SymRecalculate]: fieldFlush,
     };
 
@@ -58,16 +57,9 @@ function fieldGet<T>(this: Field<T>): T {
 
 function fieldSet<T>(this: Field<T>, newVal: T) {
     if (newVal !== this._val) {
-        this._val = newVal;
-        if (this._isAlive) {
-            markDirty(this);
+        if (this._observers) {
+            this._changeClock += 1;
         }
-    }
-}
-
-function fieldUpdate<T>(this: Field<T>, updater: (val: T) => T) {
-    const newVal = updater(this._val);
-    if (newVal !== this._val) {
         this._val = newVal;
         if (this._isAlive) {
             markDirty(this);
@@ -76,8 +68,8 @@ function fieldUpdate<T>(this: Field<T>, updater: (val: T) => T) {
 }
 
 function fieldObserve<T>(this: Field<T>, observer: FieldObserver<T>) {
-    if (!this._observers) this._observers = new Set();
-    this._observers.add(observer);
+    if (!this._observers) this._observers = new Map();
+    this._observers.set(observer, this._changeClock);
     return () => this._observers?.delete(observer);
 }
 
@@ -94,9 +86,13 @@ function fieldDead<T>(this: Field<T>) {
 function fieldFlush<T>(this: Field<T>) {
     log.assert(this._isAlive, 'cannot flush dead field');
     if (this._observers) {
-        for (const observer of this._observers) {
-            observer(this._val);
+        for (const [observer, observeClock] of this._observers) {
+            if (observeClock < this._changeClock) {
+                observer(this._val);
+            }
+            this._observers.set(observer, 0);
         }
+        this._changeClock = 0;
     }
     return true;
 }
