@@ -40,17 +40,72 @@ export interface ComponentLifecycle {
 // NOTE: UnusedSymbolForChildrenOmission is present solely for the typechecker to not allow assignment of { children?: JSXNode | JSXNode[] } to TProps if TProps is {}
 // Which allows components to flag type errors when they do not specify a `children` prop, but children are given
 declare const UnusedSymbolForChildrenOmission: unique symbol;
-export type Component<TProps = {}> = (
-    props: TProps & { [UnusedSymbolForChildrenOmission]?: boolean },
+export type EmptyProps = { [UnusedSymbolForChildrenOmission]?: boolean };
+export type Component<TProps = {}> =
+    | FunctionComponent<TProps>
+    | ClassComponentConstructor<TProps>;
+
+export type FunctionComponent<TProps = {}> = (
+    props: TProps & EmptyProps,
     lifecycle: ComponentLifecycle
 ) => JSX.Element | null;
+
+export interface ClassComponentInterface {
+    render?(): JSX.Element | null;
+    onMount?(): (() => void) | void;
+    onUnmount?(): void;
+    onDestroy?(): void;
+    onError?(e: Error): JSX.Element | null;
+    getContext: <TContext>(
+        context: Context<TContext>,
+        handler?: ((val: TContext) => void) | undefined
+    ) => TContext;
+}
+
+export interface ClassComponentContext {
+    getContext: <TContext>(
+        context: Context<TContext>,
+        handler?: ((val: TContext) => void) | undefined
+    ) => TContext;
+}
+
+export interface ClassComponentConstructor<TProps> {
+    new (props: TProps, context: ClassComponentContext): ClassComponent<TProps>;
+}
+
+export function isClassComponent(
+    val: any
+): val is ClassComponentConstructor<unknown> {
+    return val && val.prototype instanceof ClassComponent;
+}
+
+export class ClassComponent<TProps = EmptyProps>
+    implements ClassComponentInterface
+{
+    props: TProps;
+    constructor(props: TProps, context: ClassComponentContext) {
+        this.props = props;
+        this.getContext = context.getContext;
+    }
+
+    render?(): JSX.Element | null;
+    onMount?(): (() => void) | void;
+    onUnmount?(): void;
+    onDestroy?(): void;
+    onError?(e: Error): JSX.Element | null;
+
+    getContext: <TContext>(
+        context: Context<TContext>,
+        handler?: ((val: TContext) => void) | undefined
+    ) => TContext;
+}
 
 export type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
 
 const ContextType = Symbol('context');
 
 export interface Context<T>
-    extends Component<{ value: T; children?: JSX.Node | JSX.Node[] }> {
+    extends FunctionComponent<{ value: T; children?: JSX.Node | JSX.Node[] }> {
     _type: typeof ContextType;
     _get: () => T;
 }
@@ -1209,7 +1264,7 @@ export function mount(target: Element, node: RenderNode): () => void {
     const context = new Map();
     root.attach((event) => {
         if (event instanceof Error) {
-            console.error('Unhandled mount error', event);
+            log.error('Unhandled mount error', event);
             return;
         }
     }, context);
@@ -1355,9 +1410,9 @@ export const IntrinsicObserver: Component<{
     );
 };
 
-export class ComponentRenderNode<TProps> implements RenderNode {
+export class FunctionComponentRenderNode<TProps> implements RenderNode {
     _type: typeof RenderNodeType = RenderNodeType;
-    Component: Component<TProps>;
+    Component: FunctionComponent<TProps>;
     props: TProps | null | undefined;
     children: JSX.Node[];
     result: RenderNode | Error | null;
@@ -1371,15 +1426,13 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     emitter: NodeEmitter | null;
     contextMap: ContextMap | null;
     isMounted: boolean;
-    id: number;
 
     constructor(
-        Component: Component<TProps>,
+        Component: FunctionComponent<TProps>,
         props: TProps | null | undefined,
         children: JSX.Node[],
         debugName?: string
     ) {
-        this.id = Math.random();
         this.Component = Component;
         this.props = props;
         this.children = children;
@@ -1414,7 +1467,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     attach(emitter: NodeEmitter, contextMap: ContextMap) {
         log.assert(
             this[SymRefcount] > 0,
-            'Invariant: dead ComponentRenderNode called setContext'
+            'Invariant: dead FunctionComponentRenderNode called setContext'
         );
         this.emitter = emitter;
         this.contextMap = contextMap;
@@ -1651,6 +1704,33 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         }
         this.emitter = null;
     }
+}
+
+export function classComponentToFunctionComponentRenderNode<TProps>(
+    Component: ClassComponentConstructor<TProps>,
+    props: TProps,
+    children: JSX.Node[]
+) {
+    return new FunctionComponentRenderNode(
+        (props: TProps, lifecycle) => {
+            const instance = new Component(props, {
+                getContext: lifecycle.getContext,
+            });
+            if (!instance.render) return null;
+            if (instance.onDestroy)
+                lifecycle.onDestroy(instance.onDestroy.bind(instance));
+            if (instance.onMount)
+                lifecycle.onMount(instance.onMount.bind(instance));
+            if (instance.onError)
+                lifecycle.onError(instance.onError.bind(instance));
+            if (instance.onUnmount)
+                lifecycle.onUnmount(instance.onUnmount.bind(instance));
+            return instance.render();
+        },
+        props,
+        children,
+        Component.name
+    );
 }
 
 export class ContextRenderNode<T> implements RenderNode {

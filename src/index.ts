@@ -4,12 +4,18 @@ import { createElement } from './view';
 export { createElement, IntrinsicObserver, Fragment, mount } from './view';
 export type {
     Component,
+    EmptyProps,
     ComponentLifecycle,
+    ClassComponentContext,
     Context,
     IntrinsicObserverNodeCallback,
     IntrinsicObserverElementCallback,
 } from './rendernode';
-export { createContext, IntrinsicObserverEventType } from './rendernode';
+export {
+    ClassComponent,
+    createContext,
+    IntrinsicObserverEventType,
+} from './rendernode';
 export type { Model, ModelEvent } from './model';
 export { model, ModelEventType } from './model';
 export { field } from './field';

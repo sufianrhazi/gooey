@@ -3,9 +3,12 @@ import {
     renderJSXNode,
     renderJSXChildren,
     ArrayRenderNode,
-    ComponentRenderNode,
+    FunctionComponentRenderNode,
+    classComponentToFunctionComponentRenderNode,
     IntrinsicRenderNode,
     Component,
+    FunctionComponent,
+    isClassComponent,
 } from './rendernode';
 
 export { IntrinsicObserver } from './rendernode';
@@ -28,6 +31,17 @@ export function createElement<TProps>(
         }
         return new IntrinsicRenderNode(type, props, childNodes);
     }
-    return new ComponentRenderNode(type, props, children);
+    if (isClassComponent(type)) {
+        return classComponentToFunctionComponentRenderNode(
+            type,
+            props,
+            children
+        );
+    }
+    return new FunctionComponentRenderNode(
+        type as FunctionComponent<TProps>,
+        props,
+        children
+    );
 }
 createElement.Fragment = Fragment;

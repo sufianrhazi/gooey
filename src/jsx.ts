@@ -1,6 +1,7 @@
 import { Calculation } from './calc';
 import { Collection, View } from './collection';
 import { RenderNode } from './rendernode';
+import type { ClassComponentInterface } from './rendernode';
 import type { Ref } from './ref';
 
 /**
@@ -65,13 +66,20 @@ declare global {
          * The object property of children
          */
         interface ElementChildrenAttribute {
-            children: {}; // specify children name to use
+            children: {};
         }
 
         /**
-         * Gooey does not support class components
+         * The class property of props
          */
-        type ElementClass = never;
+        interface ElementAttributesProperty {
+            props: {};
+        }
+
+        /**
+         * The class component interface
+         */
+        type ElementClass = ClassComponentInterface;
     }
 }
 

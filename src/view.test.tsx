@@ -1,4 +1,6 @@
 import Gooey, {
+    ClassComponent,
+    ClassComponentContext,
     Component,
     calc,
     collection,
@@ -964,6 +966,482 @@ suite('mount components', () => {
         unmount();
         assert.isFalsy(testRoot.contains(mountedEl));
         assert.assertionCount(3);
+    });
+});
+
+suite('mount class components', () => {
+    test('components are rendered', () => {
+        class Greet extends ClassComponent<{ name: string }> {
+            render() {
+                return <p>Hello {this.props.name}</p>;
+            }
+        }
+        mount(testRoot, <Greet name="world!" />);
+        assert.is(testRoot.innerHTML, '<p>Hello world!</p>');
+    });
+
+    test('components can unmount', () => {
+        class Greet extends ClassComponent<{ name: string }> {
+            render() {
+                return <p>Hello {this.props.name}</p>;
+            }
+        }
+        const unmount = mount(testRoot, <Greet name="world!" />);
+        unmount();
+        assert.is(testRoot.innerHTML, '');
+    });
+
+    test('components with calculations can unmount', () => {
+        class Greet extends ClassComponent<{ name: string }> {
+            render() {
+                const state = model({ name: this.props.name });
+                return <p>Hello {calc(() => state.name)}</p>;
+            }
+        }
+        const unmount = mount(testRoot, <Greet name="world!" />);
+        unmount();
+        assert.is(testRoot.innerHTML, '');
+    });
+
+    test('components can have calculations', () => {
+        const state = model(
+            {
+                name: 'world',
+            },
+            'state'
+        );
+        class Greet extends ClassComponent {
+            render() {
+                return <p>Hello {calc(() => state.name, 'rendername')}</p>;
+            }
+        }
+        mount(testRoot, <Greet />);
+
+        assert.is(testRoot.innerHTML, '<p>Hello world</p>');
+
+        state.name = 'there';
+        flush();
+
+        assert.is(testRoot.innerHTML, '<p>Hello there</p>');
+    });
+
+    test('components with calculations do not change roots', () => {
+        const state = model({
+            name: 'world',
+        });
+        class Greet extends ClassComponent {
+            render() {
+                return <p id="p">Hello {calc(() => state.name)}</p>;
+            }
+        }
+        mount(testRoot, <Greet />);
+
+        const pBefore = testRoot.querySelector('#p');
+
+        state.name = 'there';
+        flush();
+
+        const pAfter = testRoot.querySelector('#p');
+
+        assert.is(pBefore, pAfter);
+    });
+
+    test('components without calculations that read model data *do not* rerender', () => {
+        const state = model({
+            name: 'world',
+        });
+        class Greet extends ClassComponent {
+            render() {
+                const exclaimed = state.name + '!';
+                return <p id="p">Hello {exclaimed}</p>;
+            }
+        }
+        mount(testRoot, <Greet />);
+
+        const pBefore = testRoot.querySelector('#p');
+
+        state.name = 'there';
+        flush();
+
+        const pAfter = testRoot.querySelector('#p');
+
+        assert.is(pBefore, pAfter);
+        assert.is('Hello world!', pAfter?.textContent);
+    });
+
+    test('components can specify an onMount method which is called immediately after mounted', () => {
+        const sequence: string[] = [];
+        let queried: null | Element = null;
+        class Greet extends ClassComponent<{}> {
+            constructor(props: {}, context: ClassComponentContext) {
+                sequence.push('construct');
+                super(props, context);
+            }
+
+            onMount() {
+                sequence.push('onMount');
+                queried = testRoot.querySelector('#p');
+            }
+
+            render() {
+                sequence.push('render');
+                return <p id="p">Hello!</p>;
+            }
+        }
+
+        mount(testRoot, <Greet />);
+
+        assert.deepEqual(['construct', 'render', 'onMount'], sequence);
+        assert.isTruthy(queried);
+        assert.is(testRoot.querySelector('#p'), queried);
+    });
+
+    test('component onMount can return an onUnmount method which gets called after unmount', () => {
+        const sequence: string[] = [];
+        let count = 0;
+        class Greet extends ClassComponent<{}> {
+            constructor(props: {}, context: ClassComponentContext) {
+                sequence.push('construct');
+                super(props, context);
+            }
+
+            onMount() {
+                count++;
+                sequence.push(`onMount:${count}`);
+                return () => {
+                    sequence.push(`onUnmount:${count}`);
+                };
+            }
+
+            render() {
+                sequence.push('render');
+                return <p id="p">Hello!</p>;
+            }
+        }
+
+        const jsx = <Greet />;
+        jsx.retain();
+
+        let unmount = mount(testRoot, jsx);
+        assert.deepEqual(['construct', 'render', 'onMount:1'], sequence);
+        unmount();
+        assert.deepEqual(
+            ['construct', 'render', 'onMount:1', 'onUnmount:1'],
+            sequence
+        );
+        unmount = mount(testRoot, jsx);
+        assert.deepEqual(
+            ['construct', 'render', 'onMount:1', 'onUnmount:1', 'onMount:2'],
+            sequence
+        );
+        unmount();
+        assert.deepEqual(
+            [
+                'construct',
+                'render',
+                'onMount:1',
+                'onUnmount:1',
+                'onMount:2',
+                'onUnmount:2',
+            ],
+            sequence
+        );
+    });
+
+    test('components are provided an onUnmount callback which is called immediately before unmount', () => {
+        const state = model({
+            showingChild: false,
+        });
+        const sequence: string[] = [];
+        let queried: null | Element = null;
+
+        class Child extends ClassComponent<{}> {
+            constructor(props: {}, context: ClassComponentContext) {
+                sequence.push('construct');
+                super(props, context);
+            }
+
+            onMount() {
+                sequence.push('onMount');
+            }
+
+            onUnmount() {
+                queried = testRoot.querySelector('#child');
+                sequence.push('onUnmount');
+            }
+
+            render() {
+                sequence.push('render');
+                return <p id="child">child</p>;
+            }
+        }
+
+        class Parent extends ClassComponent<{}> {
+            render() {
+                return (
+                    <div id="parent">
+                        {calc(() => state.showingChild && <Child />)}
+                    </div>
+                );
+            }
+        }
+
+        mount(testRoot, <Parent />);
+
+        assert.isTruthy(testRoot.querySelector('#parent'));
+        assert.isFalsy(testRoot.querySelector('#child'));
+        assert.deepEqual([], sequence);
+
+        state.showingChild = true;
+        flush();
+
+        assert.isTruthy(testRoot.querySelector('#parent'));
+        assert.isTruthy(testRoot.querySelector('#child'));
+        assert.deepEqual(['construct', 'render', 'onMount'], sequence);
+        const child = testRoot.querySelector('#child');
+
+        state.showingChild = false;
+        flush();
+
+        assert.deepEqual(
+            ['construct', 'render', 'onMount', 'onUnmount'],
+            sequence
+        );
+        assert.isTruthy(testRoot.querySelector('#parent'));
+        assert.isFalsy(testRoot.querySelector('#child'));
+        assert.isTruthy(queried);
+        assert.is(child, queried);
+    });
+
+    test('the children prop is a non-array single value when components receive a single child', () => {
+        class Parent extends ClassComponent<{
+            children: (val: string) => string;
+        }> {
+            render() {
+                return <div id="parent">{this.props.children('hello')}</div>;
+            }
+        }
+        mount(testRoot, <Parent>{(str: string) => str.toUpperCase()}</Parent>);
+        assert.is('HELLO', testRoot.querySelector('#parent')?.textContent);
+    });
+
+    test('the children prop is an array of values when components receive multiple children', () => {
+        class Parent extends ClassComponent<{
+            children: ((val: string) => string)[];
+        }> {
+            render() {
+                return (
+                    <div id="parent">
+                        {this.props.children.map((child) => child('hello'))}
+                    </div>
+                );
+            }
+        }
+
+        mount(
+            testRoot,
+            <Parent>
+                {(str: string) => str.toUpperCase()}
+                {(str: string) => `(${str}!)`}
+            </Parent>
+        );
+        assert.is(
+            'HELLO(hello!)',
+            testRoot.querySelector('#parent')?.textContent
+        );
+    });
+
+    test('the children prop is undefined when components receive no children', () => {
+        class Parent extends ClassComponent<{
+            children?: ((val: string) => string)[];
+        }> {
+            render() {
+                return (
+                    <div id="parent">
+                        {this.props.children === undefined
+                            ? 'empty'
+                            : 'non-empty'}
+                    </div>
+                );
+            }
+        }
+        mount(testRoot, <Parent />);
+        assert.is('empty', testRoot.querySelector('#parent')?.textContent);
+    });
+
+    test('onUnmount called in correct order (children before parent) when entire tree is unmounted', () => {
+        const sequence: string[] = [];
+        class Grandchild extends ClassComponent<{ name: string }> {
+            onMount() {
+                sequence.push(`onMount ${this.props.name}`);
+            }
+
+            onUnmount() {
+                sequence.push(`onUnmount ${this.props.name}`);
+            }
+
+            render() {
+                sequence.push(`render ${this.props.name}`);
+                return <p class="grandchild">{this.props.name}</p>;
+            }
+        }
+
+        class Child extends ClassComponent<{ name: string }> {
+            onMount() {
+                sequence.push(`onMount ${this.props.name}`);
+            }
+
+            onUnmount() {
+                sequence.push(`onUnmount ${this.props.name}`);
+            }
+
+            render() {
+                sequence.push(`render ${this.props.name}`);
+                return (
+                    <p class="child">
+                        <Grandchild name={`${this.props.name} 1`} />
+                        <Grandchild name={`${this.props.name} 2`} />
+                    </p>
+                );
+            }
+        }
+
+        class Parent extends ClassComponent<{}> {
+            render() {
+                return (
+                    <div id="parent">
+                        <Child name="a" />
+                        <Child name="b" />
+                    </div>
+                );
+            }
+        }
+
+        const unmount = mount(testRoot, <Parent />);
+
+        assert.deepEqual(
+            [
+                'render a',
+                'render a 1',
+                'render a 2',
+                'render b',
+                'render b 1',
+                'render b 2',
+                'onMount a 1',
+                'onMount a 2',
+                'onMount a',
+                'onMount b 1',
+                'onMount b 2',
+                'onMount b',
+            ],
+            sequence
+        );
+
+        // clear sequence
+        sequence.splice(0, sequence.length);
+
+        unmount();
+
+        assert.deepEqual(
+            [
+                'onUnmount a 1',
+                'onUnmount a 2',
+                'onUnmount a',
+                'onUnmount b 1',
+                'onUnmount b 2',
+                'onUnmount b',
+            ],
+            sequence
+        );
+    });
+
+    test('children can only be rendered exactly once', () => {
+        class BadComponent extends ClassComponent<{ children: JSX.Element }> {
+            render() {
+                return (
+                    <div>
+                        <div id="left">{this.props.children}</div>
+                        <div id="right">{this.props.children}</div>
+                    </div>
+                );
+            }
+        }
+        assert.throwsMatching(/Invariant: Intrinsic node double attached/, () =>
+            mount(
+                testRoot,
+                <BadComponent>
+                    <p class="child">only once</p>
+                </BadComponent>
+            )
+        );
+    });
+
+    test('children can read contexts correctly', () => {
+        const Context = createContext('no-context');
+
+        class Parent extends ClassComponent<{ children: () => JSX.Element }> {
+            render() {
+                return (
+                    <div>
+                        <div id="child-1">{this.props.children()}</div>
+                        <Context value="child-2">
+                            <div id="child-2">{this.props.children()}</div>
+                        </Context>
+                        <Context value="child-3">
+                            <div id="child-3">{this.props.children()}</div>
+                        </Context>
+                    </div>
+                );
+            }
+        }
+
+        class Child extends ClassComponent<{ name: string }> {
+            render() {
+                const state = model({ value: 'wut' });
+                this.getContext(Context, (value) => (state.value = value));
+                return (
+                    <p>
+                        {calc(() => state.value)}:{this.props.name}
+                    </p>
+                );
+            }
+        }
+
+        // Mount all items with no children passed
+        const unmount = mount(
+            testRoot,
+            <Parent>
+                {() => (
+                    <>
+                        <Child name="one" />
+                        <Child name="two" />
+                    </>
+                )}
+            </Parent>
+        );
+
+        flush();
+
+        assert.deepEqual(
+            [
+                ['no-context:one', 'no-context:two'],
+                ['child-2:one', 'child-2:two'],
+                ['child-3:one', 'child-3:two'],
+            ],
+            [
+                Array.from(testRoot.querySelectorAll('#child-1 p')).map(
+                    (el) => el.textContent
+                ),
+                Array.from(testRoot.querySelectorAll('#child-2 p')).map(
+                    (el) => el.textContent
+                ),
+                Array.from(testRoot.querySelectorAll('#child-3 p')).map(
+                    (el) => el.textContent
+                ),
+            ]
+        );
+
+        unmount();
     });
 });
 

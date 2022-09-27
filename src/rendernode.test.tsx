@@ -10,7 +10,7 @@ import {
     ArrayRenderNode,
     CalculationRenderNode,
     CollectionRenderNode,
-    ComponentRenderNode,
+    FunctionComponentRenderNode,
     ContextRenderNode,
     EmptyRenderNode,
     ForeignRenderNode,
@@ -1007,7 +1007,7 @@ suite('CollectionRenderNode', () => {
     });
 });
 
-suite('ComponentRenderNode', () => {
+suite('FunctionComponentRenderNode', () => {
     test('lifecycle methods called in correct order', () => {
         const events: any[] = [];
         const Ctx = createContext('default');
@@ -1044,7 +1044,7 @@ suite('ComponentRenderNode', () => {
 
         const contextMap = new Map();
 
-        const node = new ComponentRenderNode(Component, {}, []);
+        const node = new FunctionComponentRenderNode(Component, {}, []);
         events.push('0:retain');
         node.retain();
         events.push('1:attach');
@@ -1124,7 +1124,7 @@ suite('ComponentRenderNode', () => {
             return foreign;
         };
 
-        const node = new ComponentRenderNode(Component, {}, []);
+        const node = new FunctionComponentRenderNode(Component, {}, []);
         events.push('0:retain');
         node.retain();
         events.push('1:mount');
@@ -1194,7 +1194,7 @@ suite('ComponentRenderNode', () => {
             return empty;
         };
 
-        const node = new ComponentRenderNode(Component, {}, []);
+        const node = new FunctionComponentRenderNode(Component, {}, []);
         node.retain();
         node.release();
 
@@ -1215,7 +1215,7 @@ suite('ComponentRenderNode', () => {
         };
         const contextMap = new Map([[Ctx, 'override']]);
 
-        const node = new ComponentRenderNode(Component, {}, []);
+        const node = new FunctionComponentRenderNode(Component, {}, []);
         events.push('0:retain');
         node.retain();
         events.push('1:attach');
@@ -1249,7 +1249,7 @@ suite('ComponentRenderNode', () => {
         const contextMap1 = new Map([[Ctx, 'first']]);
         const contextMap2 = new Map([[Ctx, 'second']]);
 
-        const node = new ComponentRenderNode(Component, {}, []);
+        const node = new FunctionComponentRenderNode(Component, {}, []);
         events.push('0:retain');
         node.retain();
         events.push('1:attach');
