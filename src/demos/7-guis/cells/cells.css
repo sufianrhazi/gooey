@@ -1,0 +1,70 @@
+.spreadsheet {
+    position: relative;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+.spreadsheet td {
+    border-right: thin black solid;
+    border-bottom: thin black solid;
+    background-color: white;
+    cursor: cell;
+}
+.spreadsheet th {
+    position: sticky;
+    border: none;
+    left: 0;
+    top: 0;
+    background-color: #ddd;
+    border-right: thin black solid;
+    border-bottom: thin black solid;
+}
+.spreadsheet th.empty {
+    z-index: 1;
+}
+.spreadsheet th[scope="col"] {
+}
+.spreadsheet th[scope="row"] {
+}
+
+.cell {
+    min-width: 80px;
+    width: 80px;
+    height: 22px;
+    padding: 0;
+    white-space: nowrap;
+    scroll-margin-top: 38px;
+    scroll-margin-left: 96px;
+}
+.cell--active:focus {
+    outline: 2px blue solid;
+}
+
+.cell__error {
+    position: relative;
+    background-color: #FFDDDD;
+    font-weight: bold;
+}
+.cell__error:hover .cell__error_detail {
+    display: block;
+    z-index: 1;
+}
+.cell__error_detail {
+    font-size: 12px;
+    font-family: monospace;
+    display: none;
+    position: absolute;
+    border: thin black solid;
+    background-color: #DD8888;
+    white-space: pre;
+}
+
+input[type="text"].cell_input {
+    overflow: visible;
+    border: none;
+    outline: none;
+    font: inherit;
+    line-height: inherit;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+}
