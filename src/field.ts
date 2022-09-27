@@ -50,7 +50,7 @@ export function field<T>(name: string, val: T, debugName?: string): Field<T> {
 
     return field;
 }
-notifyRead;
+
 function fieldGet<T>(this: Field<T>): T {
     notifyRead(this);
     return this._val;
