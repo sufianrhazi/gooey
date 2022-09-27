@@ -12,6 +12,8 @@ export type {
 export { createContext, IntrinsicObserverEventType } from './rendernode';
 export type { Model, ModelEvent } from './model';
 export { model, ModelEventType } from './model';
+export { field } from './field';
+export type { Field } from './field';
 export type { Collection, View } from './collection';
 export type { ArrayEvent } from './arrayevent';
 export { ArrayEventType, applyArrayEvent } from './arrayevent';
