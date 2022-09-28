@@ -223,14 +223,12 @@ const App = () => (
         <h1>Memory test</h1>
         <p>
             A number of test cases to ensure we are properly releasing allocated
-            memory. To get non-zero numbers:
+            memory. To get non-zero/accurate numbers:
         </p>
         <ul>
             <li>
-                In Chrome, launch with{' '}
-                <code>
-                    --js-flags="--expose-gc" --enable-precise-memory-info
-                </code>
+                In Chrome, run an "allocation instrumentation on timeline" in
+                devtools while running
             </li>
             <li>
                 In Firefox, enable the <code>dom.enable_memory_stats</code>{' '}
