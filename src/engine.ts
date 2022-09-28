@@ -82,7 +82,7 @@ function scheduleFlush() {
 }
 
 export function pumpFlush() {
-    if (!needsFlush) return;
+    if (!needsFlush || isFlushing) return;
     if (flushHandle) {
         flushHandle();
         flushHandle = null;
