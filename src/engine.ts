@@ -82,7 +82,7 @@ function scheduleFlush() {
 }
 
 export function pumpFlush() {
-    if (!needsFlush || isFlushing) return;
+    if (!needsFlush) return;
     if (flushHandle) {
         flushHandle();
         flushHandle = null;
@@ -148,10 +148,10 @@ export function flush() {
     isFlushing = true;
     globalDependencyGraph.process();
     isFlushing = false;
-    for (const callback of afterFlushCallbacks) {
+    const toCall = afterFlushCallbacks.splice(0, afterFlushCallbacks.length);
+    for (const callback of toCall) {
         callback();
     }
-    afterFlushCallbacks.splice(0, afterFlushCallbacks.length);
     if (needsFlush) {
         pumpFlush();
     }

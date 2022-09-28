@@ -3700,3 +3700,31 @@ suite('automatic memory management', () => {
         assert.deepEqual([], debugGetGraph()._test_getVertices());
     });
 });
+
+suite('bugs', () => {
+    test('event handler that re-renders attribute does not re-render twice', () => {
+        const state = model({
+            switch: false,
+        });
+        mount(
+            testRoot,
+            <div
+                id="test"
+                data-one={calc(() => (state.switch ? 'on' : 'off'))}
+                data-two={calc(() => (state.switch ? 'yes' : 'no'))}
+                on:click={() => {
+                    state.switch = !state.switch;
+                }}
+            >
+                {calc(() => (state.switch ? <div>on</div> : <div>off</div>))}
+            </div>
+        );
+        console.log(testRoot.outerHTML);
+        testRoot.querySelector('#test')?.dispatchEvent(new MouseEvent('click'));
+        flush();
+        console.log(testRoot.outerHTML);
+        testRoot.querySelector('#test')?.dispatchEvent(new MouseEvent('click'));
+        flush();
+        console.log(testRoot.outerHTML);
+    });
+});
