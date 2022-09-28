@@ -1,7 +1,7 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { field } from './field';
 import { calc, CalculationErrorType } from './calc';
-import { flush, pumpFlush, retain, reset, subscribe } from './engine';
+import { flush, retain, reset, subscribe } from './engine';
 
 beforeEach(() => {
     reset();
@@ -22,7 +22,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['hi', 'hello'], log);
     });
 
-    test('pumpFlush forces a flush', () => {
+    test('flush forces a flush', () => {
         const log: string[] = [];
         const val = field('hi');
         const c = calc(() => {
@@ -31,11 +31,11 @@ suite('flushing behavior', () => {
         retain(c);
         c();
         val.set('hello');
-        pumpFlush();
+        flush();
         assert.deepEqual(['hi', 'hello'], log);
     });
 
-    test('pumpFlush does not trigger a flush if called while flushing', () => {
+    test('flush does not trigger a flush if called while flushing', () => {
         const log: string[] = [];
         const val = field('ready');
         const val2 = field('other');
@@ -43,7 +43,7 @@ suite('flushing behavior', () => {
             const v = val.get();
             if (v === 'go') {
                 val2.set('other 2');
-                pumpFlush();
+                flush();
                 assert.deepEqual(['other'], log);
             }
             return v;
@@ -81,7 +81,7 @@ suite('flushing behavior', () => {
         mainCalc();
         sideCalc();
         val.set('go');
-        pumpFlush();
+        flush();
         assert.deepEqual(['other', 'other 2'], log);
         assert.deepEqual([{ val: 'go' }], mainRecalcs);
         assert.deepEqual([{ val: 'other 2' }], sideRecalcs);

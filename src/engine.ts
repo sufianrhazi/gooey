@@ -77,18 +77,18 @@ function scheduleFlush() {
     flushHandle = flushScheduler(() => {
         needsFlush = false;
         flushHandle = null;
-        flush();
+        flushInner();
     });
 }
 
-export function pumpFlush() {
-    if (!needsFlush) return;
+export function flush() {
+    if (!needsFlush || isFlushing) return;
     if (flushHandle) {
         flushHandle();
         flushHandle = null;
     }
     needsFlush = false;
-    flush();
+    flushInner();
 }
 
 export function subscribe(scheduler?: (callback: () => void) => () => void) {
@@ -144,7 +144,7 @@ function processHandler(vertex: Processable, action: ProcessAction) {
     }
 }
 
-export function flush() {
+function flushInner() {
     isFlushing = true;
     globalDependencyGraph.process();
     isFlushing = false;
@@ -153,7 +153,7 @@ export function flush() {
         callback();
     }
     if (needsFlush) {
-        pumpFlush();
+        flush();
     }
 }
 

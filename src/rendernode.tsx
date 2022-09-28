@@ -6,7 +6,7 @@ import {
     trackCreates,
     untrackReads,
     afterFlush,
-    pumpFlush,
+    flush,
 } from './engine';
 import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { Ref, RefObject } from './ref';
@@ -457,7 +457,7 @@ export class IntrinsicRenderNode implements RenderNode {
                                     try {
                                         val(e, element);
                                     } finally {
-                                        pumpFlush();
+                                        flush();
                                     }
                                 },
                                 param
