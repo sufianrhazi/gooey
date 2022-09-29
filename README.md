@@ -12,13 +12,13 @@ choice to compile things correctly.
 
 In TypeScript, you'll want the following compilerOptions in your `tsconfig.json`:
 
-```
+```json
 {
-  "compilerOptions": {
-    "jsx": "react",
-    "jsxFactory": "Gooey",
-    "jsxFragmentFactory": "Gooey.Fragment",
-  }
+    "compilerOptions": {
+        "jsx": "react",
+        "jsxFactory": "Gooey",
+        "jsxFragmentFactory": "Gooey.Fragment"
+    }
 }
 ```
 
@@ -110,7 +110,7 @@ Adding to our example, here's how we could respond to clicking on that button:
 import Gooey, { mount } from '@srhazi/gooey';
 
 function onLogInClick() {
-    alert("We can respond to events!");
+    alert('We can respond to events!');
 }
 
 mount(
@@ -125,9 +125,7 @@ mount(
             <label for="login-password">Password: </label>
             <input type="password" id="login-password" />
         </div>
-        <button on:click={onLogInClick}>
-            Log in
-        </button>
+        <button on:click={onLogInClick}>Log in</button>
     </fieldset>
 );
 ```
@@ -151,9 +149,10 @@ const state = model({
     password: '',
 });
 
-
 function onLogInClick() {
-    alert(`Attempt login with username=${state.username} and password=${state.password}`);
+    alert(
+        `Attempt login with username=${state.username} and password=${state.password}`
+    );
 }
 
 mount(
@@ -163,7 +162,9 @@ mount(
         <div>
             <label for="login-username">Username: </label>
             <input
-                on:input={(event, inputEl) => { state.username = inputEl.value; }}
+                on:input={(event, inputEl) => {
+                    state.username = inputEl.value;
+                }}
                 type="text"
                 id="login-username"
                 minlength="3"
@@ -172,13 +173,17 @@ mount(
         <div>
             <label for="login-password">Password: </label>
             <input
-                on:input={(event, inputEl) => { state.password = inputEl.value; }}
+                on:input={(event, inputEl) => {
+                    state.password = inputEl.value;
+                }}
                 type="password"
                 id="login-password"
             />
         </div>
         <button
-            disabled={calc(() => state.username.length < 3 || state.password.length === 0)}
+            disabled={calc(
+                () => state.username.length < 3 || state.password.length === 0
+            )}
             on:click={onLogInClick}
         >
             Log in
@@ -207,7 +212,7 @@ Our example is getting big and relies on global state. Let's pull our authentica
 tidy it up a bit, so it can be reusable and have isolated state:
 
 ```typescript
-import { Component, model, calc, mount } from '@srhazi/gooey';
+import Gooey, { Component, model, calc, mount } from '@srhazi/gooey';
 
 let id = 0;
 
@@ -233,24 +238,170 @@ const LabeledInput: Component<{
 
 type OnAuthenticationSubmit = (username: string, password: string) => void;
 
-const AuthenticationForm: Component<{ onSubmit: OnAuthenticationSubmit }> = ({ onSubmit }) => {
+const AuthenticationForm: Component<{ onSubmit: OnAuthenticationSubmit }> = ({
+    onSubmit,
+}) => {
     const state = model({ username: '', password: '' });
 
     const onSubmitClick = () => {
-        onSubmit(state.username, state.password)
+        onSubmit(state.username, state.password);
     };
 
-    const calcIsInvalid = calc(() => state.username.length < 3 || state.password.length === 0);
+    const calcIsInvalid = calc(
+        () => state.username.length < 3 || state.password.length === 0
+    );
 
     return (
         <fieldset>
             <legend>Example Login</legend>
-            <LabelInput type="text" minlength="3" onUpdate={(val) => { state.username = val; }}>Username</LabelInput>
-            <LabelInput type="password"  onUpdate={(val) => { state.password = val; }}>Password</LabelInput>
-            <button disabled={calcIsInvalid} on:click={onSubmitClick}>Log in</button>
+            <LabeledInput
+                type="text"
+                minlength="3"
+                onUpdate={(val) => {
+                    state.username = val;
+                }}
+            >
+                Username
+            </LabeledInput>
+            <LabeledInput
+                type="password"
+                onUpdate={(val) => {
+                    state.password = val;
+                }}
+            >
+                Password
+            </LabeledInput>
+            <button disabled={calcIsInvalid} on:click={onSubmitClick}>
+                Log in
+            </button>
         </fieldset>
     );
 };
+
+mount(
+    document.body,
+    <>
+        <AuthenticationForm
+            onSubmit={(username, password) =>
+                alert(`Submit one: ${username} + ${password}`)
+            }
+        />
+        <AuthenticationForm
+            onSubmit={(username, password) =>
+                alert(`Submit two: ${username} + ${password}`)
+            }
+        />
+    </>
+);
+```
+
+### Class Components
+
+Sometimes a component grows large enough to have many functions defined in its body alongside lifecycle methods, and it
+would be a bit clearer to collect these into a single class with methods.
+
+That being said, this is entirely a matter of taste. Function components and class components have the exact same
+capabilities.
+
+Here's the above example ported to use class components.
+
+```typescript
+import Gooey, {
+    Model,
+    ClassComponent,
+    ClassComponentContext,
+    model,
+    calc,
+    mount,
+} from '@srhazi/gooey';
+let id = 0;
+
+interface LabeledInputProps {
+    children: JSX.Node;
+    onUpdate: (value: string) => void;
+    minlength?: string;
+    type?: 'text' | 'password';
+}
+
+class LabeledInput extends ClassComponent<LabeledInputProps> {
+    uniqueId: string;
+
+    constructor(props: LabeledInputProps, context: ClassComponentContext) {
+        super(props, context);
+        this.uniqueId = `input_${id++}`;
+    }
+
+    render() {
+        return (
+            <div>
+                <label for={this.uniqueId}>{this.props.children}: </label>
+                <input
+                    id={this.uniqueId}
+                    type={this.props.type ?? 'text'}
+                    minlength={this.props.minlength}
+                    on:input={(event, inputEl) =>
+                        this.props.onUpdate(inputEl.value)
+                    }
+                />
+            </div>
+        );
+    }
+}
+
+interface AuthenticationFormProps {
+    onSubmit: (username: string, password: string) => void;
+}
+class AuthenticationForm extends ClassComponent<AuthenticationFormProps> {
+    state: Model<{ username: string; password: string }>;
+
+    constructor(
+        props: AuthenticationFormProps,
+        context: ClassComponentContext
+    ) {
+        super(props, context);
+        this.state = model({ username: '', password: '' });
+    }
+
+    onSubmitClick = () => {
+        this.props.onSubmit(this.state.username, this.state.password);
+    };
+
+    onUpdateUsername = (val: string) => {
+        this.state.username = val;
+    };
+
+    onUpdatePassword = (val: string) => {
+        this.state.password = val;
+    };
+
+    calcIsInvalid = calc(
+        () => this.state.username.length < 3 || this.state.password.length === 0
+    );
+
+    render() {
+        return (
+            <fieldset>
+                <legend>Example Login</legend>
+                <LabeledInput
+                    type="text"
+                    minlength="3"
+                    onUpdate={this.onUpdateUsername}
+                >
+                    Username
+                </LabeledInput>
+                <LabeledInput type="password" onUpdate={this.onUpdatePassword}>
+                    Password
+                </LabeledInput>
+                <button
+                    disabled={this.calcIsInvalid}
+                    on:click={this.onSubmitClick}
+                >
+                    Log in
+                </button>
+            </fieldset>
+        );
+    }
+}
 
 mount(
     document.body,
@@ -282,10 +433,12 @@ The following example renders three lines:
 
 
 ```typescript
+import Gooey, { Component, createContext, mount } from '@srhazi/gooey';
+
 const Color = createContext('red');
 
 const MyComponent: Component = (props, { getContext }) => {
-    return <div>The context is {getContext(Color)}</div>
+    return <div>The context is {getContext(Color)}</div>;
 };
 
 mount(
@@ -311,7 +464,7 @@ lifecycle events that occur:
 If a component renders child components, those child lifecycle events are called _before_ the parent lifecycle
 events are called.
 
-```
+```typescript
 interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
     onUnmount: (callback: () => void) => void;
@@ -319,7 +472,7 @@ interface ComponentLifecycle {
     onError: (handler: (e: Error) => JSX.Element | null) => void;
     getContext: <TContext>(
         context: Context<TContext>,
-        handler?: (val: TContext) => void
+        handler?: ((val: TContext) => void) | undefined
     ) => TContext;
 }
 ```
@@ -352,18 +505,18 @@ An example of this would be to draw on a canvas. Here's an example component whi
 a canvas text:
 
 ```typescript
-import Gooey, { Component, ref } from '@srhazi/gooey';
+import Gooey, { Component, mount, ref } from '@srhazi/gooey';
 
 const CanvasText: Component<{ text: string }> = ({ text }, { onMount }) => {
     const canvasRef = ref<HTMLCanvasElement>();
     onMount(() => {
-        const ctx = canvasRef.current?.getContext("2d");
-        if (!ctx) return
-        ctx.font = "50px serif";
+        const ctx = canvasRef.current?.getContext('2d');
+        if (!ctx) return;
+        ctx.font = '50px serif';
         ctx.lineWidth = 5;
-        ctx.strokeStyle = "#FF00FF";
-        ctx.fillStyle = "#FFDDFF";
-        ctx.font = "50px serif";
+        ctx.strokeStyle = '#FF00FF';
+        ctx.fillStyle = '#FFDDFF';
+        ctx.font = '50px serif';
         ctx.strokeText(text, 10, 75, 480);
         ctx.fillText(text, 10, 75, 480);
     });
@@ -392,7 +545,7 @@ used.
 To tap into these events, component functions receive a second `ComponentLifecycle` parameter, which allows
 for hooking into the specific lifecycle events that occur:
 
-```
+```typescript
 interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
     onUnmount: (callback: () => void) => void;
@@ -509,7 +662,7 @@ This is probably best demonstrated with an example, which shows how to add items
 collection:
 
 ```typescript
-import Gooey, { ref, collection } from '@srhazi/gooey';
+import Gooey, { calc, collection, mount, ref } from '@srhazi/gooey';
 const items = collection<string>(['this', 'is', 'an', 'example']);
 const inputRef = ref<HTMLInputElement>();
 
@@ -518,7 +671,7 @@ const onAddClick = () => {
         items.push(inputRef.current.value);
         inputRef.current.value = '';
     }
-}
+};
 
 const onSortClick = () => items.sort();
 const onReverseClick = () => items.reverse();
@@ -602,7 +755,7 @@ Set the current log level.
 
 Calculations act like and can be called as if they were ordinary JavaScript functions.
 
-When actively used (manually retained, present within mounted JSX, has onRecalc subscribers, or is an active
+When actively used (manually retained, present within mounted JSX, has `onRecalc()` subscribers, or is an active
 dependency), calculations are memoized which automatically track their dependencies and are recalculated when
 their dependencies change.
 
@@ -632,7 +785,8 @@ interface Calculation<T> {
 function calc<T>(fn: () => T, debugName?: string | undefined): Calculation<T>
 ```
 
-Create a calculation.
+Create a calculation. The optional `debugName` is only used for diagnostic purposes.
+
 
 ##### `Calculation<T>.onError(handler)`
 
@@ -685,7 +839,6 @@ enum CalculationErrorType {
 interface CalcSubscriptionHandler<T> {
     (errorType: undefined, val: T): void;
     (errorType: CalculationErrorType, val: Error): void;
-    (errorType: CalculationErrorType | undefined, val: Error | T): void;
 }
 
 interface CalcUnsubscribe<T> {
@@ -729,7 +882,7 @@ interface Field<T> {
 function field<T>(value: T, debugName?: string): Field<T>
 ```
 
-Create a field that has an initial value. The optional debugName is only used for diagnostic purposes.
+Create a field that has an initial value. The optional `debugName` is only used for diagnostic purposes.
 
 
 ##### `.get()`
@@ -768,7 +921,7 @@ function model<T extends {}>(obj: T, debugName?: string | undefined): Model<T>
 ```
 
 Create a model object, which is initialized from the provided `target`. Avoid mutating `target` after creating
-a model.
+a model. The optional `debugName` is only used for diagnostic purposes.
 
 
 ##### `model.subscribe(targetModel, handler)`
@@ -805,7 +958,7 @@ model.keys<T extends {}>(sourceModel: Model<T>, debugName?: string | undefined):
 ```
 
 Creates a read-only collection which contains the keys of a model. As keys are added to / removed from the
-model, the collection is updated accordingly.
+model, the collection is updated accordingly. The optional `debugName` is only used for diagnostic purposes.
 
 
 #### Collections &amp; Views
@@ -823,8 +976,8 @@ Note: Collections are designed to be _mutated_ over time. Unlike other framework
 
 ##### Arraylike collection methods
 
-Collections _are_ effectively a subclass of plain JavaScript arrays, which means methods that you'd normally use to
-mutate an Array are present on a collection. These include:
+Collections _are_ plain JavaScript arrays, with a few additional methods. This means methods that you'd normally use to
+mutate an `Array` are present on a `Collection`. These include:
 
 * `push`
 * `pop`
@@ -871,9 +1024,13 @@ export interface Collection<T> {
 function collection<T>(items: T[], debugName?: string | undefined): Collection<T>
 ```
 
-Create a collection initially populated with `items`. Avoid mutating `items` after creating a collection.
+Create a collection initially populated with `items`. Avoid mutating `items` after creating a collection. The optional
+`debugName` is only used for diagnostic purposes.
 
 Note: `mapView`, `filterView`, and `flatMapView` return `View` types, which are like read-only collections.
+
+Note: Additional methods that live on `Array.prototype` that may not be listed in the above are present on `Collection`
+objects, and will behave correctly.
 
 
 ##### `Collection<T>.reject(callbackFn)`
@@ -900,8 +1057,10 @@ Efficiently _move_ sequences of items from a starting `fromIndex` to a ending `t
 offset _after_ removing `count` items from `fromIndex`. Consider this function to be equivalent to:
 `collection.splice(toIndex, 0, ...collection.splice(fromIndex, count))`
 
-Note: the difference between two splice operations is that moveSlice does not cause mapped/filtered views to be
-re-mapped/re-filtered.
+Note: the difference between two splice operations is that `moveSlice` does not cause mapped/filtered views to be
+re-mapped/re-filtered. This means that if a collection's `mapView()` is a JSX node, `moveSlice` will cause the
+underlying DOM nodes to be _relocated_ to the target location in the destination array, as opposed to being removed and
+rendered anew.
 
 
 ##### `Collection<T>.subscribe(handler)`
@@ -966,12 +1125,15 @@ interface Collection<T> {
 }
 ```
 
-Produce a read-only View from a collection that holds transformed items. As items are added to, removed from, resorted,
-and reassigned within the target collection, the derived View will hold mapped versions of those items by calling the
-provided `mapFn`.
+Produce a read-only `View` from a collection that holds transformed items. As items are added to, removed from,
+resorted, and reassigned within the target collection, the derived `View` will hold mapped versions of those items by
+calling the provided `mapFn`. The optional `debugName` is only used for diagnostic purposes.
+
+Note: Unlike `map`, `mapView`'s callback function **does not** take an index or a reference to the original array as
+parameters.
 
 
-##### `Collection<T>.flatMapView(filterFn)`
+##### `Collection<T>.filterView(filterFn)`
 
 ```typescript
 interface Collection<T> {
@@ -982,8 +1144,9 @@ interface Collection<T> {
 }
 ```
 
-Produce a read-only View from a collection that holds filtered items. As items are added to, removed from, resorted, and
-reassigned within the target collection, the derived View will hold items that pass the provided filter `filterFn`.
+Produce a read-only `View` from a collection that holds filtered items. As items are added to, removed from, resorted,
+and reassigned within the target collection, the derived `View` will hold items that pass the provided filter
+`filterFn`. The optional `debugName` is only used for diagnostic purposes.
 
 
 ##### `Collection<T>.flatMapView(flatMapFn)`
@@ -997,11 +1160,11 @@ interface Collection<T> {
 }
 ```
 
-Produce a read-only View from a collection that holds flatMapped items .As items are added to, removed from,
-resorted, and reassigned within the target collection, the derived View will hold items that pass the provided filter
-`fn`.
+Produce a read-only View from a collection that holds transformed sequences of items. As items are added to, removed
+from, resorted, and reassigned within the target collection, the derived View will hold the set of items returned from
+the mapping `flatMapFn`, in order. The optional `debugName` is only used for diagnostic purposes.
 
-Fun fact: `.filterView` and `.mapView` internally do nothing but call `.flatMapView`, which is more generalized.
+Fun fact: `.filterView` and `.mapView` internally do nothing but call `.flatMapView`, which is generalized.
 
 
 ### Rendering HTML with JSX
@@ -1012,8 +1175,10 @@ Gooey is a tool to create UI applications, and it is recommended (but not requir
 If you are unfamiliar with JSX, please read [React's documentation: Introducing
 JSX](https://reactjs.org/docs/introducing-jsx.html), but do note:
 * Unlike React (where you must write `className`, `htmlFor`, and other odd intrinsic element prop names), Gooey aims for
-  to be written like html. `<label class="fancy-container" for="target-id"></label>` is perfectly valid in Gooey. Do not
-  follow any of the advice in the [DOM Elements React documentation](https://reactjs.org/docs/dom-elements.html).
+  to be written like html. `<label class="fancy-container" for="target-id"></label>` is perfectly valid in Gooey.
+* **Do not** follow any of the advice in the
+  [DOM Elements React documentation](https://reactjs.org/docs/dom-elements.html), as that is meant to solve problems
+  only React has created.
 
 
 #### Default export: `createElement(type, props, ...children)`
@@ -1030,14 +1195,15 @@ function createElement<TProps>(
 ): IntrinsicRenderNode | ComponentRenderNode<TProps>
 ```
 
-This function is the factory for writing JSX.
+This function is the factory for writing JSX. Normally, you don't need to ever call this function by name, calls are
+created when JSX is compiled to JavaScript.
 
 If a string is passed as `type`, you'll be rendering an intrinsic element: some native HTML, SVG, or MathML (where supported)
 element. The provided props map to the HTML/SVG/MathML attributes, plus some special props to allow you to bind event
 handlers and perform other actions.
 
-If a function is passed as `type`, you'll be rendering component: either some special built-in component (like a `Context` or a
-`IntrinsicObserver`), or a user-created component.
+If a function is passed as `type`, you'll be rendering component: either some special built-in component (like a
+`Context` or a `IntrinsicObserver`), or a user-created component.
 
 The type of evaluating a JSX expression (the return type of `createElement`) is `JSX.Element`, which in Gooey is called
 `RenderNode`.
@@ -1122,7 +1288,8 @@ The non-standard `JSX.Node` type represents the type that is valid as children o
   * `string` values are rendered as `Text`.
   * `number` and `bigint` values are converted to strings via `.toString()` and rendered as `Text`.
   * `boolean`, `null`, and `undefined` values do not render to anything.
-  * `Function` and `symbol` types log a warning and do not render to anything.
+  * `Function` and `symbol` types do not render to anything, but log a warning. These may only be useful as `children`
+    passed to components.
   * `Element` (as in DOM `Element`) values are rendered as-is. That is to say, if a native Element is passed as a child in
     a JSX expression, that element will be rendered in the correct position.
   * `RenderNode` values are rendered as-is.
@@ -1143,19 +1310,24 @@ function mount(target: Element, jsx: RenderNode): () => void
 Mount and render a JSX `node` to a `target` DOM element. Returns a function that unmounts the `node`.
 
 Note: It is recommended, but not necessary for the `target` DOM element to be empty. Rendering will be performed at the
-end of the existing children. Behavior is undefined if the set of children changes while JSX is mounted.
+end of the existing children. Behavior is undefined if the set of `target`'s child nodes are changed outside of Gooey's
+knowledge while JSX is mounted.
+
+Note: Mounting is cheap. Do not hesitate to mount to multiple areas of the DOM (i.e. it's perfectly safe to mount to
+document.head to add additional nodes in the document head, or mount to the title element to provide a dynamic title.).
 
 
 #### Components: `Component<Props>`
 
 ```typescript
-export interface ComponentLifecycle {
+interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
+    onError: (handler: (e: Error) => JSX.Element | null) => void;
     getContext: <TContext>(
         context: Context<TContext>,
-        handler?: ((val: TContext) => void) | undefined
+        handler?: (val: TContext) => void
     ) => TContext;
 }
 
@@ -1175,6 +1347,9 @@ The lifecycle methods are:
   that gets called immediately before the component is detached from the DOM.
 * `onUnmount`: Gets called immediately before the component is attached to the DOM.
 * `onDestroy`: Gets called after all of the retainers release the component.
+* `onError`: Gets called if an uncaught exception is thrown while rendering this component or any of its children
+  (unless caught). If provided, the `handler` "catches" the exception and returns JSX which will replace the component's
+  JSX.
 * `getContext`: Reads a value from the provided context. The optional callback is called **before** `onMount` and can be
   used to observe context changes when a component is relocated.
 
@@ -1191,21 +1366,22 @@ which allows you to express multiple pieces of JSX side-by-side.
 It can be used to express grouped JSX, often using the `<>{contents}</>` syntax:
 
 ```typescript
-const Definition: Component<{ term: JSX.Node, children: JSX.Node }> = ({ term, children }) => (
-  <>
-    <dt>{term}</dt>
-    <dd>{children>}</dd>
-  </>
+const Definition: Component<{ term: JSX.Node; children: JSX.Node }> = ({ term, children }) => (
+    <>
+        <dt>{term}</dt>
+        <dd>{children}</dd>
+    </>
 );
 
-mount(document.body, (
-  <dl>
-    <Definition term="Gooey">a focused web framework designed to be predictable, fast, and flexible</Definition>
-    <Definition term="React">A JavaScript library for building user interfaces</Definition>
-    <Definition term="SolidJS">Simple and performant reactivity for building user interfaces</Definition>
-    <Definition term="Vue.js">An approachable, performant and versatile framework for building web user interfaces</Definition>
-    <Definition term="Svelte">a radical new approach to building user interfaces</Definition>
-  </dl>
+mount(
+    document.body,
+    <dl>
+        <Definition term="Gooey">a focused web framework designed to be predictable, fast, and flexible</Definition>
+        <Definition term="React">A JavaScript library for building user interfaces</Definition>
+        <Definition term="SolidJS">Simple and performant reactivity for building user interfaces</Definition>
+        <Definition term="Vue.js">An approachable, performant and versatile framework for building web user interfaces</Definition>
+        <Definition term="Svelte">a radical new approach to building user interfaces</Definition>
+    </dl>
 );
 ```
 
@@ -1219,10 +1395,15 @@ interface RenderNode {
 }
 ```
 
-`RenderNode` instances may hold state. For example, an intrinsic node will hold the native DOM `Element` reference that
-it will render to; component nodes will hold the child nodes rendered by the component. While a RenderNode is
-`mount()ed` to the DOM, it is `retain()`ed; when it is unmounted from the DOM, it is `release()`d. If there are no
-retainers for a RenderNode, any state it holds onto is destroyed. If you wish to maintain the state of a `RenderNode`
+Normally when JSX is rendered, the underlying DOM elements and values allocated by component functions are created from
+scratch when mounted, and destroyed when unmounted.
+
+If you wish to allow a piece of JSX to survive after being unmounted, so it may be remounted again without recreating
+the underlying DOM elements or re-executing the component function, you may call `.retain()` to increment the reference
+count. Calling `.release()` will decrement the reference count. When an unmounted component no longer has any
+references, it is destroyed.
+
+It is an error to attempt to mount a piece of JSX multiple times simultaneously.
 
 
 #### Contexts: `createContext`
@@ -1241,7 +1422,6 @@ upon creation) is used.
 
 The optional callback provided to `getContext()` gets called _prior_ to mounting (prior to the `onMount` component
 lifecycle event event).
-
 
 
 #### `IntrinsicObserver`
@@ -1323,14 +1503,9 @@ should return a function that prevents it from calling `performFlush` in the fut
 By passing `undefined` as the scheduler, automatic processing is disabled and the global dependency graph is not
 automatically processed.
 
-The default scheduler is:
-
-```typescript
-function defaultScheduler(callback: () => void) {
-    const handle = setTimeout(callback, 0);
-    return () => clearTimeout(handle);
-}
-```
+The default scheduler schedules processing at the end of the event loop via
+[queueMicrotask](https://developer.mozilla.org/en-US/docs/Web/API/queueMicrotask) (if possible, if not via
+`setTimeout(performFlush, 0)`.
 
 
 #### `flush()`
@@ -1339,7 +1514,13 @@ function defaultScheduler(callback: () => void) {
 function flush(): void
 ```
 
-Manually trigger processing of the global dependency graph. With typical operation, this should not need be called.
+Manually trigger processing of the global dependency graph.
+
+An example of how this is useful is in an event handler to synchronously update UI prior to leaving the event handler
+(so that you may transition focus to an element that is revealed via state change).
+
+Note: if called while processing the global dependency graph (i.e. within a calculation body while recalculating), the
+function call does nothing and is a no-op.
 
 
 #### `debug()` and `debugSubscribe()`
@@ -1357,3 +1538,6 @@ function debugSubscribe(fn: (label: string, graphviz: string) => void): () => vo
 
 Subscribe to a stream of [graphviz](https://graphviz.org/) representations of the global dependency graph. Returns a
 function to unsubscribe from the stream.
+
+Note: this function can produce a tremendous amount of information. It is meant to be used while diagnosing small,
+isolated reproducible cases.
