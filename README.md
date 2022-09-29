@@ -755,7 +755,7 @@ Set the current log level.
 
 Calculations act like and can be called as if they were ordinary JavaScript functions.
 
-When actively used (manually retained, present within mounted JSX, has `onRecalc()` subscribers, or is an active
+When actively used (manually retained, present within mounted JSX, has `.subscribe()` subscribers, or is an active
 dependency), calculations are memoized which automatically track their dependencies and are recalculated when
 their dependencies change.
 
@@ -775,7 +775,7 @@ interface Calculation<T> {
     (): T;
     onError: (handler: (errorType: CalculationErrorType, error: Error) => T) => this;
     setCmp: (eq: (a: T, b: T) => boolean) => this;
-    onRecalc: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
+    subscribe: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
 }
 ```
 
@@ -828,7 +828,7 @@ returns true, things that depend on the calculation will not be notified that a 
 By default, this comparison function is strict equality: `(a, b) => a === b`.
 
 
-##### `Calculation<T>.onRecalc(handler)`
+##### `Calculation<T>.subscribe(handler)`
 
 ```typescript
 enum CalculationErrorType {
@@ -846,12 +846,12 @@ interface CalcUnsubscribe<T> {
 }
 
 interface Calculation<T> {
-    onRecalc: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
+    subscribe: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
 }
 ```
 
-Add a subscription to the calculation. The `handler` will be called with the new result after the calculation
-is recalculated. The returned value is a function which can be called to unsubscribe from the subscription.
+Subscribe to calculation recalculations. The `handler` will be called with the new result each time the calculation is
+recalculated. The returned value is a function which can be called to unsubscribe from the subscription.
 
 If the result of the recalculation is not an error, the `errorType` parameter will be undefined and `val` will be the
 result of the calculation.

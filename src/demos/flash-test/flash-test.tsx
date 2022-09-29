@@ -14,7 +14,7 @@ const TickProcessor: Component = () => {
 Flash rate: ${calculateRate()}
 `
     );
-    textCalc.onRecalc(() => {
+    textCalc.subscribe(() => {
         const now = performance.now();
         if (lastTask === 0) {
             lastTask = now;

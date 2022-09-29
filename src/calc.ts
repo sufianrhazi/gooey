@@ -203,7 +203,7 @@ export interface Calculation<T> extends Retainable, Processable {
     (): T;
     onError: (handler: CalcErrorHandler<T>) => this;
     setCmp: (eq: (a: T, b: T) => boolean) => this;
-    onRecalc: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
+    subscribe: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
     _subscriptions?: Set<CalcSubscriptionHandler<T>>;
     _type: typeof CalculationSymbol;
     _fn: () => T;
@@ -237,7 +237,7 @@ function calcSetCmp<T>(this: Calculation<T>, eq: (a: T, b: T) => boolean) {
     return this;
 }
 
-function calcOnRecalc<T>(
+function calcSubscribe<T>(
     this: Calculation<T>,
     handler: CalcSubscriptionHandler<T>
 ): CalcUnsubscribe<T> {
@@ -566,7 +566,7 @@ export function calc<T>(fn: () => T, debugName?: string) {
         _type: CalculationSymbol,
         onError: calcSetError,
         setCmp: calcSetCmp,
-        onRecalc: calcOnRecalc,
+        subscribe: calcSubscribe,
 
         // Retainable
         [SymAlive]: calculationAlive,

@@ -57,7 +57,7 @@ suite('flushing behavior', () => {
         retain(sideCalc);
         const mainRecalcs: any[] = [];
         const sideRecalcs: any[] = [];
-        mainCalc.onRecalc((errorType, val) => {
+        mainCalc.subscribe((errorType, val) => {
             if (errorType) {
                 mainRecalcs.push({
                     errorType: CalculationErrorType[errorType],
@@ -67,7 +67,7 @@ suite('flushing behavior', () => {
                 mainRecalcs.push({ val });
             }
         });
-        sideCalc.onRecalc((errorType, val) => {
+        sideCalc.subscribe((errorType, val) => {
             if (errorType) {
                 sideRecalcs.push({
                     errorType: CalculationErrorType[errorType],

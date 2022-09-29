@@ -490,7 +490,7 @@ export class IntrinsicRenderNode implements RenderNode {
                     const currentVal = calculation();
                     this.setProp(element, prop, currentVal);
                     this.calculationSubscriptions.add(
-                        calculation.onRecalc((error, updatedVal) => {
+                        calculation.subscribe((error, updatedVal) => {
                             if (error) {
                                 log.error('Unhandled error in bound prop', {
                                     prop,
@@ -840,7 +840,7 @@ export class CalculationRenderNode implements RenderNode {
             debugName ?? `rendercalc:${calculation[SymDebugName]}`;
         this[SymRefcount] = 0;
 
-        this.onRecalc = this.onRecalc.bind(this);
+        this.subscribe = this.subscribe.bind(this);
     }
 
     detach() {
@@ -891,9 +891,9 @@ export class CalculationRenderNode implements RenderNode {
         }
     }
 
-    onRecalc(errorType: undefined, val: any): void;
-    onRecalc(errorType: CalculationErrorType, val: Error): void;
-    onRecalc(errorType: undefined | CalculationErrorType, val: Error): void {
+    subscribe(errorType: undefined, val: any): void;
+    subscribe(errorType: CalculationErrorType, val: Error): void;
+    subscribe(errorType: undefined | CalculationErrorType, val: Error): void {
         this.cleanPrior();
         if (errorType) {
             this.error = val;
@@ -922,12 +922,12 @@ export class CalculationRenderNode implements RenderNode {
     [SymAlive]() {
         retain(this.calculation);
         try {
-            this.onRecalc(undefined, this.calculation());
-            this.calculationSubscription = this.calculation.onRecalc(
-                this.onRecalc
+            this.subscribe(undefined, this.calculation());
+            this.calculationSubscription = this.calculation.subscribe(
+                this.subscribe
             );
         } catch (e) {
-            this.onRecalc(CalculationErrorType.EXCEPTION, wrapError(e));
+            this.subscribe(CalculationErrorType.EXCEPTION, wrapError(e));
         }
     }
     [SymDead]() {
