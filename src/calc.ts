@@ -188,6 +188,11 @@ interface CalcSubscriptionHandlerHack<T> {
 type CalcSubscriptionHandler<T> =
     CalcSubscriptionHandlerHack<T>['bivarianceHack'];
 
+interface CalcErrorHandlerHack<T> {
+    bivarianceHack(errorType: CalculationErrorType, val: Error): T;
+}
+type CalcErrorHandler<T> = CalcErrorHandlerHack<T>['bivarianceHack'];
+
 interface CalcUnsubscribe<T> {
     (): void;
     _type: typeof CalculationUnsubscribeSymbol;
@@ -196,14 +201,14 @@ interface CalcUnsubscribe<T> {
 
 export interface Calculation<T> extends Retainable, Processable {
     (): T;
-    onError: (handler: (errorType: CalculationErrorType) => T) => this;
+    onError: (handler: CalcErrorHandler<T>) => this;
     setCmp: (eq: (a: T, b: T) => boolean) => this;
     onRecalc: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
     _subscriptions?: Set<CalcSubscriptionHandler<T>>;
     _type: typeof CalculationSymbol;
     _fn: () => T;
     _eq: (a: T, b: T) => boolean;
-    _errorHandler?: (errorType: CalculationErrorType) => T;
+    _errorHandler?: CalcErrorHandler<T>;
     _state: CalculationState;
     _retained?: Set<Retainable | (Processable & Retainable)>;
     _val?: T;
@@ -222,10 +227,7 @@ function strictEqual<T>(a: T, b: T) {
     return a === b;
 }
 
-function calcSetError<T>(
-    this: Calculation<T>,
-    handler: (errorType: CalculationErrorType) => T
-) {
+function calcSetError<T>(this: Calculation<T>, handler: CalcErrorHandler<T>) {
     this._errorHandler = handler;
     return this;
 }
@@ -341,11 +343,15 @@ function calculationCall<T>(calculation: Calculation<T>): T {
                 if (errorHandler) {
                     result = untrackReads(
                         () =>
-                            errorHandler(
-                                isActiveCycle
-                                    ? CalculationErrorType.CYCLE
-                                    : CalculationErrorType.EXCEPTION
-                            ),
+                            isActiveCycle
+                                ? errorHandler(
+                                      CalculationErrorType.CYCLE,
+                                      new Error('Cycle')
+                                  )
+                                : errorHandler(
+                                      CalculationErrorType.EXCEPTION,
+                                      exception
+                                  ),
                         calculation[SymDebugName]
                     );
                 }
@@ -510,7 +516,11 @@ function calculationCycle<T>(this: Calculation<T>) {
             const errorHandler = this._errorHandler;
             if (errorHandler) {
                 this._val = untrackReads(
-                    () => errorHandler(CalculationErrorType.CYCLE),
+                    () =>
+                        errorHandler(
+                            CalculationErrorType.CYCLE,
+                            new Error('Cycle')
+                        ),
                     this[SymDebugName]
                 );
                 this._state = CalculationState.CACHED;
@@ -519,11 +529,11 @@ function calculationCycle<T>(this: Calculation<T>) {
                 this._state = CalculationState.ERROR;
                 this._error = Sentinel;
                 if (this._subscriptions) {
-                    const error = new Error(
-                        'Calculation found to be in a cycle'
-                    );
                     for (const subscription of this._subscriptions) {
-                        subscription(CalculationErrorType.CYCLE, error);
+                        subscription(
+                            CalculationErrorType.CYCLE,
+                            new Error('Cycle')
+                        );
                     }
                 }
                 return true; // Errors always propagate

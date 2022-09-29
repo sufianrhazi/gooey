@@ -773,7 +773,7 @@ the things it depends on are updated.
 ```typescript
 interface Calculation<T> {
     (): T;
-    onError: (handler: (errorType: CalculationErrorType) => T) => this;
+    onError: (handler: (errorType: CalculationErrorType, error: Error) => T) => this;
     setCmp: (eq: (a: T, b: T) => boolean) => this;
     onRecalc: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
 }
@@ -797,7 +797,7 @@ enum CalculationErrorType {
 }
 
 interface Calculation<T> {
-    onError: (handler: (errorType: CalculationErrorType) => T) => this;
+    onError: (handler: (errorType: CalculationErrorType, error: Error) => T) => this;
 }
 ```
 

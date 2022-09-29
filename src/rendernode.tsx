@@ -893,16 +893,13 @@ export class CalculationRenderNode implements RenderNode {
 
     onRecalc(errorType: undefined, val: any): void;
     onRecalc(errorType: CalculationErrorType, val: Error): void;
-    onRecalc(
-        errorType: CalculationErrorType | undefined,
-        val: Error | any
-    ): void {
+    onRecalc(errorType: undefined | CalculationErrorType, val: Error): void {
         this.cleanPrior();
         if (errorType) {
             this.error = val;
             this.emitter?.(val);
         } else {
-            const renderNode = renderJSXNode(val);
+            const renderNode = renderJSXNode(val as any);
             retain(renderNode);
             afterFlush(() => {
                 this.cleanPrior(); // it's possible the calculation is notified multiple times in a flush; only care about the last one
