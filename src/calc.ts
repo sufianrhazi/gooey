@@ -184,10 +184,6 @@ const CalculationUnsubscribeSymbol = Symbol('calculationUnsubscribe');
 interface CalcSubscriptionHandlerHack<T> {
     bivarianceHack(errorType: undefined, val: T): void;
     bivarianceHack(errorType: CalculationErrorType, val: Error): void;
-    bivarianceHack(
-        errorType: CalculationErrorType | undefined,
-        val: Error | T
-    ): void;
 }
 type CalcSubscriptionHandler<T> =
     CalcSubscriptionHandlerHack<T>['bivarianceHack'];
