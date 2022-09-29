@@ -479,6 +479,12 @@ export class Graph<TVertex> {
         );
         reverseList.splice(reverseList.indexOf(fromId), 1);
 
+        // If we are removing a self-cycle, clear the self cycle bit
+        if (fromId === toId) {
+            this.vertexBitsById[fromId] =
+                this.vertexBitsById[fromId] & ~VERTEX_BIT_SELF_CYCLE;
+        }
+
         // If the removed edge is between two nodes in a cycle, it _may_ break the cycle
         const fromCycleInfo = this.cycleInfoById[fromId];
         const toCycleInfo = this.cycleInfoById[toId];
@@ -735,12 +741,8 @@ export class Graph<TVertex> {
 
             // If cycles remain after recalculating an informed cycle, the recalculation failed to break the cycle, so
             // we need to call the process handler with CYCLE actions to correctly set their error state
-            if (
-                cycleInfo ||
-                this.vertexBitsById[vertexId] & VERTEX_BIT_SELF_CYCLE
-            ) {
-                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                for (const cycleId of recheckIds!) {
+            if (recheckIds) {
+                for (const cycleId of recheckIds) {
                     const isStillCycle =
                         this.vertexBitsById[cycleId] &
                         (VERTEX_BIT_CYCLE | VERTEX_BIT_SELF_CYCLE);

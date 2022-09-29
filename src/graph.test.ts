@@ -957,4 +957,118 @@ suite('Graph Cycles', () => {
             process()
         );
     });
+
+    test('cycle type: self cycle after dependency change', () => {
+        let log: any[] = [];
+        let addSelfEdge = false;
+        const graph = new Graph<TNode>((node: TNode, action: ProcessAction) => {
+            log.push({ node, action });
+            if (
+                node === b &&
+                action === ProcessAction.RECALCULATE &&
+                addSelfEdge
+            ) {
+                graph.addEdge(b, b, Graph.EDGE_HARD);
+            }
+            return true;
+        });
+        graph.addVertex(a);
+        graph.addVertex(b);
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+
+        graph.markVertexDirty(a);
+        graph.process();
+
+        assert.deepEqual(
+            [
+                { node: a, action: ProcessAction.INVALIDATE },
+                { node: a, action: ProcessAction.RECALCULATE },
+                { node: b, action: ProcessAction.INVALIDATE },
+                { node: b, action: ProcessAction.RECALCULATE },
+            ],
+            log
+        );
+
+        log = [];
+        addSelfEdge = true;
+        graph.markVertexDirty(a);
+        graph.process();
+
+        assert.deepEqual(
+            [
+                { node: a, action: ProcessAction.INVALIDATE },
+                { node: a, action: ProcessAction.RECALCULATE },
+                { node: b, action: ProcessAction.INVALIDATE },
+                { node: b, action: ProcessAction.RECALCULATE },
+                { node: b, action: ProcessAction.CYCLE },
+            ],
+            log
+        );
+    });
+
+    test('cycle type: self cycle after dependency change that gets fixed', () => {
+        let log: any[] = [];
+        let addSelfEdge = false;
+        let removeSelfEdge = false;
+        const graph = new Graph<TNode>((node: TNode, action: ProcessAction) => {
+            log.push({ node, action });
+            if (node === b && action === ProcessAction.RECALCULATE) {
+                if (removeSelfEdge) {
+                    graph.removeEdge(b, b, Graph.EDGE_HARD);
+                }
+                if (addSelfEdge) {
+                    graph.addEdge(b, b, Graph.EDGE_HARD);
+                }
+            }
+            return true;
+        });
+        graph.addVertex(a);
+        graph.addVertex(b);
+        graph.addEdge(a, b, Graph.EDGE_HARD);
+
+        graph.markVertexDirty(a);
+        graph.process();
+
+        assert.deepEqual(
+            [
+                { node: a, action: ProcessAction.INVALIDATE },
+                { node: a, action: ProcessAction.RECALCULATE },
+                { node: b, action: ProcessAction.INVALIDATE },
+                { node: b, action: ProcessAction.RECALCULATE },
+            ],
+            log
+        );
+
+        log = [];
+        addSelfEdge = true;
+        graph.markVertexDirty(a);
+        graph.process();
+
+        assert.deepEqual(
+            [
+                { node: a, action: ProcessAction.INVALIDATE },
+                { node: a, action: ProcessAction.RECALCULATE },
+                { node: b, action: ProcessAction.INVALIDATE },
+                { node: b, action: ProcessAction.RECALCULATE },
+                { node: b, action: ProcessAction.CYCLE },
+            ],
+            log
+        );
+
+        log = [];
+        addSelfEdge = false;
+        removeSelfEdge = true;
+        graph.markVertexDirty(a);
+        graph.process();
+
+        assert.deepEqual(
+            [
+                { node: a, action: ProcessAction.INVALIDATE },
+                { node: a, action: ProcessAction.RECALCULATE },
+                { node: b, action: ProcessAction.INVALIDATE },
+                { node: b, action: ProcessAction.RECALCULATE },
+            ],
+            log
+        );
+    });
 });
