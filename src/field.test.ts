@@ -1,6 +1,6 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { field } from './field';
-import { retain, release, reset, flush, subscribe } from './engine';
+import { retain, reset, flush, subscribe } from './engine';
 import { calc } from './calc';
 
 beforeEach(() => {
@@ -40,7 +40,7 @@ suite('field', () => {
     test('subscriptions called on flush', () => {
         const log: string[] = [];
         const simple = field('init');
-        simple.observe((val) => log.push(val));
+        simple.subscribe((val) => log.push(val));
         retain(simple);
         assert.deepEqual([], log);
         simple.set('one');
@@ -53,31 +53,31 @@ suite('field', () => {
         assert.deepEqual(['one', 'three'], log);
     });
 
-    test('subscriptions stopped with unobserve (unobserve after write)', () => {
+    test('subscriptions stopped with unsubscribe (unsubscribe after write)', () => {
         const log: string[] = [];
         const simple = field('init');
-        const unobserve = simple.observe((val) => log.push(val));
+        const unsubscribe = simple.subscribe((val) => log.push(val));
         retain(simple);
         assert.deepEqual([], log);
         simple.set('one');
         flush();
         assert.deepEqual(['one'], log);
         simple.set('two');
-        unobserve();
+        unsubscribe();
         flush();
         assert.deepEqual(['one'], log);
     });
 
-    test('subscriptions stopped with unobserve (unobserve before write)', () => {
+    test('subscriptions stopped with unsubscribe (unsubscribe before write)', () => {
         const log: string[] = [];
         const simple = field('init');
-        const unobserve = simple.observe((val) => log.push(val));
+        const unsubscribe = simple.subscribe((val) => log.push(val));
         retain(simple);
         assert.deepEqual([], log);
         simple.set('one');
         flush();
         assert.deepEqual(['one'], log);
-        unobserve();
+        unsubscribe();
         simple.set('two');
         flush();
         assert.deepEqual(['one'], log);
@@ -89,7 +89,7 @@ suite('field', () => {
         retain(simple);
         assert.deepEqual([], log);
         simple.set('one');
-        simple.observe((val) => log.push(val));
+        simple.subscribe((val) => log.push(val));
         flush();
         assert.deepEqual([], log);
         simple.set('two');

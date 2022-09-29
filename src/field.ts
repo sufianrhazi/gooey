@@ -16,16 +16,16 @@ import {
     SymRefcount,
 } from './symbols';
 
-type FieldObserver<T> = (val: T) => void;
+type FieldSubscriber<T> = (val: T) => void;
 
 export interface Field<T> extends Processable, Retainable {
     _isAlive: boolean;
     get: () => T;
     set: (val: T) => void;
-    observe: (observer: FieldObserver<T>) => () => void;
+    subscribe: (subscriber: FieldSubscriber<T>) => () => void;
     _val: T;
-    // Map of observer to the clock time
-    _observers?: Map<FieldObserver<T>, number>;
+    // Map of subscriber to the clock time
+    _subscribers?: Map<FieldSubscriber<T>, number>;
     _changeClock: number;
 }
 
@@ -36,7 +36,7 @@ export function field<T>(val: T, debugName?: string): Field<T> {
         _changeClock: 0,
         get: fieldGet,
         set: fieldSet,
-        observe: fieldObserve,
+        subscribe: fieldSubscribe,
 
         [SymProcessable]: true,
         [SymRefcount]: 0,
@@ -57,7 +57,7 @@ function fieldGet<T>(this: Field<T>): T {
 
 function fieldSet<T>(this: Field<T>, newVal: T) {
     if (newVal !== this._val) {
-        if (this._observers) {
+        if (this._subscribers) {
             this._changeClock += 1;
         }
         this._val = newVal;
@@ -67,10 +67,10 @@ function fieldSet<T>(this: Field<T>, newVal: T) {
     }
 }
 
-function fieldObserve<T>(this: Field<T>, observer: FieldObserver<T>) {
-    if (!this._observers) this._observers = new Map();
-    this._observers.set(observer, this._changeClock);
-    return () => this._observers?.delete(observer);
+function fieldSubscribe<T>(this: Field<T>, subscriber: FieldSubscriber<T>) {
+    if (!this._subscribers) this._subscribers = new Map();
+    this._subscribers.set(subscriber, this._changeClock);
+    return () => this._subscribers?.delete(subscriber);
 }
 
 function fieldAlive<T>(this: Field<T>) {
@@ -85,12 +85,12 @@ function fieldDead<T>(this: Field<T>) {
 
 function fieldFlush<T>(this: Field<T>) {
     log.assert(this._isAlive, 'cannot flush dead field');
-    if (this._observers) {
-        for (const [observer, observeClock] of this._observers) {
+    if (this._subscribers) {
+        for (const [subscriber, observeClock] of this._subscribers) {
             if (observeClock < this._changeClock) {
-                observer(this._val);
+                subscriber(this._val);
             }
-            this._observers.set(observer, 0);
+            this._subscribers.set(subscriber, 0);
         }
         this._changeClock = 0;
     }

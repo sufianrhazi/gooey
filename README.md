@@ -871,12 +871,12 @@ field is modified, it will cause any dependencies to be recalculated on the next
 ##### `field(value)`
 
 ```typescript
-type FieldObserver<T> = (val: T) => void;
+type FieldSubscriber<T> = (val: T) => void;
 
 interface Field<T> {
     get: () => T;
     set: (val: T) => void;
-    observe: (observer: FieldObserver<T>) => () => void;
+    subscribe: (observer: FieldSubscriber<T>) => () => void;
 }
 
 function field<T>(value: T, debugName?: string): Field<T>
@@ -895,15 +895,15 @@ Read the value associated with the field.
 Write to the value associated with the field.
 
 
-##### `.observe((newVal) => {/* ... *})`
+##### `.subscribe((newVal) => {/* ... *})`
 
-Observe changes to the value associated with the field. The callback will be called during flush, so if a field is
+Subscribe to changes to the value associated with the field. The callback will be called during flush, so if a field is
 written to multiple times prior to a flush, it will only be called once with the last value.
 
-Returns a function which unsubscribes to observations.
+Returns a function which unsubscribes to changes.
 
-Note: The callback will not be called with any field values written _before_ observation starts, even if they occur in the
-same flush.
+Note: The callback will not be called with any field values written _before_ subscription starts, even if they occur in
+the same flush.
 
 
 #### Models
