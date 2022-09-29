@@ -24,7 +24,7 @@ export type { Collection, View } from './collection';
 export type { ArrayEvent } from './arrayevent';
 export { ArrayEventType, applyArrayEvent } from './arrayevent';
 export { collection } from './collection';
-export { calc, effect, CalculationErrorType } from './calc';
+export { calc, CalculationErrorType } from './calc';
 export type { Calculation } from './calc';
 export {
     reset,

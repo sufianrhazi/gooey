@@ -707,16 +707,6 @@ If the result of the recalculation is an uncaught error, the `errorType` will be
 instance.
 
 
-##### `effect(fn)`
-
-```typescript
-function effect<T>(fn: () => void, debugName?: string | undefined): Calculation<void>
-```
-
-Create a special type of calculation which produces no value and is not considered a dependency of other
-calculations. Avoid using this function, and consider using `.onRecalc()` instead.
-
-
 #### Fields
 
 Fields are values whose accesses are tracked over time.

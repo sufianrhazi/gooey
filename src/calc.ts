@@ -12,8 +12,6 @@
  *
  * A calculation may be in an error state, in which any calls to it raise an exception.
  *
- * A calculation may be a special “effect” calculation, which means it does not return any value.
- *
  *
  * #### Calculation Caching
  *
@@ -62,10 +60,9 @@
  * #### Calculation Execution
  *
  * When a calculation’s function is being executed, all calls to other calculations (cached or uncached) or fields are
- * tracked. The only exception is when a calculation calls an “effect” calculation, which does not return a value and as
- * a result cannot cause data to flow from effect to callee. These tracked accesses are added to the directed graph as
- * inbound, “hard” edges: from the item being accessed (either a calculation or a field) and to the calculation
- * performing the access. Each execution replaces all inbound “hard” edges.
+ * tracked. These tracked accesses are added to the directed graph as inbound, “hard” edges: from the item being
+ * accessed (either a calculation or a field) and to the calculation performing the access. Each execution replaces all
+ * inbound “hard” edges.
  *
  * This tracking of access is shallow. That is to say:
  * * There is a stack of active calculations
@@ -211,7 +208,6 @@ export interface Calculation<T> extends Retainable, Processable {
     _fn: () => T;
     _eq: (a: T, b: T) => boolean;
     _errorHandler?: (errorType: CalculationErrorType) => T;
-    _isEffect: boolean;
     _state: CalculationState;
     _retained?: Set<Retainable | (Processable & Retainable)>;
     _val?: T;
@@ -271,9 +267,7 @@ class CycleError extends Error {
 }
 
 function calculationCall<T>(calculation: Calculation<T>): T {
-    if (!calculation._isEffect) {
-        notifyRead(calculation);
-    }
+    notifyRead(calculation);
 
     const state = calculation._state;
     switch (state) {
@@ -558,42 +552,6 @@ export function calc<T>(fn: () => T, debugName?: string) {
     const calculationData = {
         // Dynamic members
         _fn: fn,
-        _isEffect: false,
-        _state: CalculationState.DEAD,
-        _call: calculationCall,
-        _eq: strictEqual,
-
-        // Statically defined
-        _type: CalculationSymbol,
-        onError: calcSetError,
-        setCmp: calcSetCmp,
-        onRecalc: calcOnRecalc,
-
-        // Retainable
-        [SymAlive]: calculationAlive,
-        [SymDead]: calculationDead,
-        [SymRefcount]: 0,
-
-        // Processable
-        [SymProcessable]: true,
-        [SymDebugName]: debugName ?? fn.name,
-        [SymRecalculate]: calculationRecalculate,
-        [SymCycle]: calculationCycle,
-        [SymInvalidate]: calculationInvalidate,
-    } as const;
-    const calculation: Calculation<T> = Object.assign(
-        () => calculationCall(calculation),
-        calculationData
-    );
-    notifyCreate(calculation);
-    return calculation;
-}
-
-export function effect<T>(fn: () => T, debugName?: string) {
-    const calculationData = {
-        // Dynamic members
-        _fn: fn,
-        _isEffect: true,
         _state: CalculationState.DEAD,
         _call: calculationCall,
         _eq: strictEqual,

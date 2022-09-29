@@ -4053,7 +4053,7 @@ if (2 < 1) {
 }
 
 suite('automatic memory management', () => {
-    test('component with calculation, effect leaves empty graph', () => {
+    test('component with calculation leaves empty graph', () => {
         const Item: Component<{ name: string }> = ({ name }, { onMount }) => {
             const state = model(
                 {
