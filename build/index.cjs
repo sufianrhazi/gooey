@@ -31,6 +31,7 @@ var src_exports = {};
 __export(src_exports, {
   ArrayEventType: () => ArrayEventType,
   CalculationErrorType: () => CalculationErrorType,
+  ClassComponent: () => ClassComponent,
   Fragment: () => Fragment,
   IntrinsicObserver: () => IntrinsicObserver,
   IntrinsicObserverEventType: () => IntrinsicObserverEventType,
@@ -45,7 +46,7 @@ __export(src_exports, {
   debug: () => debug2,
   debugSubscribe: () => debugSubscribe,
   default: () => src_default,
-  effect: () => effect,
+  field: () => field,
   flush: () => flush,
   getLogLevel: () => getLogLevel,
   model: () => model,
@@ -412,6 +413,9 @@ var Graph = class {
     forwardList.splice(forwardList.indexOf(toId), 1);
     this.reverseAdjacencyEither[toId].splice(this.reverseAdjacencyEither[toId].indexOf(fromId), 1);
     reverseList.splice(reverseList.indexOf(fromId), 1);
+    if (fromId === toId) {
+      this.vertexBitsById[fromId] = this.vertexBitsById[fromId] & ~VERTEX_BIT_SELF_CYCLE;
+    }
     const fromCycleInfo = this.cycleInfoById[fromId];
     const toCycleInfo = this.cycleInfoById[toId];
     if (fromCycleInfo && toCycleInfo && fromCycleInfo === toCycleInfo) {
@@ -582,7 +586,7 @@ var Graph = class {
         }
         this.toReorderIds.clear();
       }
-      if (cycleInfo || this.vertexBitsById[vertexId] & VERTEX_BIT_SELF_CYCLE) {
+      if (recheckIds) {
         for (const cycleId of recheckIds) {
           const isStillCycle = this.vertexBitsById[cycleId] & (VERTEX_BIT_CYCLE | VERTEX_BIT_SELF_CYCLE);
           if (isStillCycle) {
@@ -818,18 +822,18 @@ function scheduleFlush() {
   flushHandle = flushScheduler(() => {
     needsFlush = false;
     flushHandle = null;
-    flush();
+    flushInner();
   });
 }
-function pumpFlush() {
-  if (!needsFlush)
+function flush() {
+  if (!needsFlush || isFlushing)
     return;
   if (flushHandle) {
     flushHandle();
     flushHandle = null;
   }
   needsFlush = false;
-  flush();
+  flushInner();
 }
 function subscribe(scheduler) {
   flushScheduler = scheduler ?? noopScheduler;
@@ -862,16 +866,16 @@ function processHandler(vertex, action) {
       assertExhausted(action, "unknown action");
   }
 }
-function flush() {
+function flushInner() {
   isFlushing = true;
   globalDependencyGraph.process();
   isFlushing = false;
-  for (const callback of afterFlushCallbacks) {
+  const toCall = afterFlushCallbacks.splice(0, afterFlushCallbacks.length);
+  for (const callback of toCall) {
     callback();
   }
-  afterFlushCallbacks.splice(0, afterFlushCallbacks.length);
   if (needsFlush) {
-    pumpFlush();
+    flush();
   }
 }
 function afterFlush(fn) {
@@ -991,14 +995,14 @@ function debugSubscribe(fn) {
 }
 
 // src/ref.ts
-var RefObject = class {
+var Ref = class {
   constructor(current) {
     __publicField(this, "current");
     this.current = current;
   }
 };
 function ref(val) {
-  return new RefObject(val);
+  return new Ref(val);
 }
 
 // src/jsx.ts
@@ -1423,7 +1427,7 @@ function calcSetCmp(eq) {
   this._eq = eq;
   return this;
 }
-function calcOnRecalc(handler) {
+function calcSubscribe(handler) {
   if (!this._subscriptions) {
     this._subscriptions = /* @__PURE__ */ new Set();
   }
@@ -1445,9 +1449,7 @@ var CycleError = class extends Error {
   }
 };
 function calculationCall(calculation) {
-  if (!calculation._isEffect) {
-    notifyRead(calculation);
-  }
+  notifyRead(calculation);
   const state = calculation._state;
   switch (state) {
     case 4 /* DEAD */:
@@ -1495,7 +1497,7 @@ function calculationCall(calculation) {
         }
         const errorHandler = calculation._errorHandler;
         if (errorHandler) {
-          result = untrackReads(() => errorHandler(isActiveCycle ? 0 /* CYCLE */ : 1 /* EXCEPTION */), calculation[SymDebugName]);
+          result = untrackReads(() => isActiveCycle ? errorHandler(0 /* CYCLE */, new Error("Cycle")) : errorHandler(1 /* EXCEPTION */, exception), calculation[SymDebugName]);
         }
         if (isActiveCycle) {
           markCycleInformed(calculation);
@@ -1638,16 +1640,15 @@ function calculationCycle() {
       this._state = 0 /* READY */;
       const errorHandler = this._errorHandler;
       if (errorHandler) {
-        this._val = untrackReads(() => errorHandler(0 /* CYCLE */), this[SymDebugName]);
+        this._val = untrackReads(() => errorHandler(0 /* CYCLE */, new Error("Cycle")), this[SymDebugName]);
         this._state = 2 /* CACHED */;
         unmarkDirty(this);
       } else {
         this._state = 3 /* ERROR */;
         this._error = Sentinel;
         if (this._subscriptions) {
-          const error2 = new Error("Calculation found to be in a cycle");
           for (const subscription of this._subscriptions) {
-            subscription(0 /* CYCLE */, error2);
+            subscription(0 /* CYCLE */, new Error("Cycle"));
           }
         }
         return true;
@@ -1670,38 +1671,13 @@ function calculationCycle() {
 function calc(fn, debugName) {
   const calculationData = {
     _fn: fn,
-    _isEffect: false,
     _state: 4 /* DEAD */,
     _call: calculationCall,
     _eq: strictEqual,
     _type: CalculationSymbol,
     onError: calcSetError,
     setCmp: calcSetCmp,
-    onRecalc: calcOnRecalc,
-    [SymAlive]: calculationAlive,
-    [SymDead]: calculationDead,
-    [SymRefcount]: 0,
-    [SymProcessable]: true,
-    [SymDebugName]: debugName ?? fn.name,
-    [SymRecalculate]: calculationRecalculate,
-    [SymCycle]: calculationCycle,
-    [SymInvalidate]: calculationInvalidate
-  };
-  const calculation = Object.assign(() => calculationCall(calculation), calculationData);
-  notifyCreate(calculation);
-  return calculation;
-}
-function effect(fn, debugName) {
-  const calculationData = {
-    _fn: fn,
-    _isEffect: true,
-    _state: 4 /* DEAD */,
-    _call: calculationCall,
-    _eq: strictEqual,
-    _type: CalculationSymbol,
-    onError: calcSetError,
-    setCmp: calcSetCmp,
-    onRecalc: calcOnRecalc,
+    subscribe: calcSubscribe,
     [SymAlive]: calculationAlive,
     [SymDead]: calculationDead,
     [SymRefcount]: 0,
@@ -1717,20 +1693,19 @@ function effect(fn, debugName) {
 }
 
 // src/field.ts
-function field(name, val, debugName) {
+function field(val, debugName) {
   const field2 = {
-    _name: name,
     _val: val,
     _isAlive: false,
+    _changeClock: 0,
     get: fieldGet,
     set: fieldSet,
-    update: fieldUpdate,
-    observe: fieldObserve,
+    subscribe: fieldSubscribe,
     [SymProcessable]: true,
     [SymRefcount]: 0,
     [SymAlive]: fieldAlive,
     [SymDead]: fieldDead,
-    [SymDebugName]: debugName ?? name,
+    [SymDebugName]: debugName ?? "field",
     [SymRecalculate]: fieldFlush
   };
   return field2;
@@ -1741,26 +1716,20 @@ function fieldGet() {
 }
 function fieldSet(newVal) {
   if (newVal !== this._val) {
+    if (this._subscribers) {
+      this._changeClock += 1;
+    }
     this._val = newVal;
     if (this._isAlive) {
       markDirty(this);
     }
   }
 }
-function fieldUpdate(updater) {
-  const newVal = updater(this._val);
-  if (newVal !== this._val) {
-    this._val = newVal;
-    if (this._isAlive) {
-      markDirty(this);
-    }
-  }
-}
-function fieldObserve(observer) {
-  if (!this._observers)
-    this._observers = /* @__PURE__ */ new Set();
-  this._observers.add(observer);
-  return () => this._observers?.delete(observer);
+function fieldSubscribe(subscriber) {
+  if (!this._subscribers)
+    this._subscribers = /* @__PURE__ */ new Map();
+  this._subscribers.set(subscriber, this._changeClock);
+  return () => this._subscribers?.delete(subscriber);
 }
 function fieldAlive() {
   this._isAlive = true;
@@ -1772,10 +1741,14 @@ function fieldDead() {
 }
 function fieldFlush() {
   assert(this._isAlive, "cannot flush dead field");
-  if (this._observers) {
-    for (const observer of this._observers) {
-      observer(this._val);
+  if (this._subscribers) {
+    for (const [subscriber, observeClock] of this._subscribers) {
+      if (observeClock < this._changeClock) {
+        subscriber(this._val);
+      }
+      this._subscribers.set(subscriber, 0);
     }
+    this._changeClock = 0;
   }
   return true;
 }
@@ -1797,7 +1770,7 @@ var FieldMap = class {
   getOrMake(prop, val) {
     let field2 = this.fieldMap.get(prop);
     if (!field2) {
-      field2 = field(prop, val, `${this[SymDebugName]}:${prop}`);
+      field2 = field(val, `${this[SymDebugName]}:${prop}`);
       this.fieldMap.set(prop, field2);
       if (this[SymRefcount] > 0) {
         retain(field2);
@@ -2019,7 +1992,7 @@ var TrackedDataHandle = class {
     this.target = target;
     this.methods = methods;
     this.keys = new Set(Object.keys(target));
-    this.keysField = field(`${debugName}:@keys`, this.keys.size);
+    this.keysField = field(this.keys.size, `${debugName}:@keys`);
     this.emitter = new SubscriptionEmitter(debugName);
     if (derivedEmitter && handleEvent) {
       this.consumer = new SubscriptionConsumer(target, derivedEmitter, this.emitter, handleEvent, debugName);
@@ -2482,6 +2455,17 @@ function makeFlatMapView(sourceCollection, flatMap, debugName) {
 }
 
 // src/rendernode.tsx
+function isClassComponent(val) {
+  return val && val.prototype instanceof ClassComponent;
+}
+var ClassComponent = class {
+  constructor(props, context) {
+    __publicField(this, "props");
+    __publicField(this, "getContext");
+    this.props = props;
+    this.getContext = context.getContext;
+  }
+};
 var ContextType = Symbol("context");
 function createContext(val) {
   const contextBody = {
@@ -2750,7 +2734,7 @@ var IntrinsicRenderNode = class {
               try {
                 val(e, element);
               } finally {
-                pumpFlush();
+                flush();
               }
             }, param);
             return true;
@@ -2776,7 +2760,7 @@ var IntrinsicRenderNode = class {
           retain(calculation);
           const currentVal = calculation();
           this.setProp(element, prop, currentVal);
-          this.calculationSubscriptions.add(calculation.onRecalc((error2, updatedVal) => {
+          this.calculationSubscriptions.add(calculation.subscribe((error2, updatedVal) => {
             if (error2) {
               error("Unhandled error in bound prop", {
                 prop,
@@ -2967,7 +2951,7 @@ var PortalRenderNode = class {
   onMount() {
     this.arrayRenderNode.onMount();
     if (this.refProp) {
-      if (this.refProp instanceof RefObject) {
+      if (this.refProp instanceof Ref) {
         this.refProp.current = this.element;
       } else if (typeof this.refProp === "function") {
         this.refProp(this.element);
@@ -2982,7 +2966,7 @@ var PortalRenderNode = class {
       previousFocusedDetachedElement = this.element;
     }
     if (this.refProp) {
-      if (this.refProp instanceof RefObject) {
+      if (this.refProp instanceof Ref) {
         this.refProp.current = void 0;
       } else if (typeof this.refProp === "function") {
         this.refProp(void 0);
@@ -3037,7 +3021,7 @@ var CalculationRenderNode = class {
     this.emitter = null;
     this[SymDebugName] = debugName ?? `rendercalc:${calculation[SymDebugName]}`;
     this[SymRefcount] = 0;
-    this.onRecalc = this.onRecalc.bind(this);
+    this.subscribe = this.subscribe.bind(this);
   }
   detach() {
     this.renderNode?.detach();
@@ -3080,7 +3064,7 @@ var CalculationRenderNode = class {
       this.renderNode = null;
     }
   }
-  onRecalc(errorType, val) {
+  subscribe(errorType, val) {
     this.cleanPrior();
     if (errorType) {
       this.error = val;
@@ -3103,10 +3087,10 @@ var CalculationRenderNode = class {
   [(_a10 = SymDebugName, _b10 = SymRefcount, SymAlive)]() {
     retain(this.calculation);
     try {
-      this.onRecalc(void 0, this.calculation());
-      this.calculationSubscription = this.calculation.onRecalc(this.onRecalc);
+      this.subscribe(void 0, this.calculation());
+      this.calculationSubscription = this.calculation.subscribe(this.subscribe);
     } catch (e) {
-      this.onRecalc(1 /* EXCEPTION */, wrapError(e));
+      this.subscribe(1 /* EXCEPTION */, wrapError(e));
     }
   }
   [SymDead]() {
@@ -3367,7 +3351,7 @@ function mount(target, node) {
   const context = /* @__PURE__ */ new Map();
   root.attach((event) => {
     if (event instanceof Error) {
-      console.error("Unhandled mount error", event);
+      error("Unhandled mount error", event);
       return;
     }
   }, context);
@@ -3478,7 +3462,7 @@ var IntrinsicObserver = ({ nodeCallback, elementCallback, children }) => {
   return new IntrinsicObserverRenderNode(nodeCallback, elementCallback, renderJSXChildren(children));
 };
 var _a13, _b13, _c6;
-var ComponentRenderNode = class {
+var FunctionComponentRenderNode = class {
   constructor(Component2, props, children, debugName) {
     __publicField(this, "_type", RenderNodeType);
     __publicField(this, "Component");
@@ -3495,7 +3479,6 @@ var ComponentRenderNode = class {
     __publicField(this, "emitter");
     __publicField(this, "contextMap");
     __publicField(this, "isMounted");
-    __publicField(this, "id");
     __publicField(this, "handleEvent", (event) => {
       assert(!(this.result instanceof Error), "Invariant: received event on calculation error");
       if (event instanceof Error && this.errorHandler) {
@@ -3526,7 +3509,6 @@ var ComponentRenderNode = class {
     __publicField(this, _a13);
     __publicField(this, _b13);
     __publicField(this, _c6, noop);
-    this.id = Math.random();
     this.Component = Component2;
     this.props = props;
     this.children = children;
@@ -3552,7 +3534,7 @@ var ComponentRenderNode = class {
     this.contextMap = null;
   }
   attach(emitter, contextMap) {
-    assert(this[SymRefcount] > 0, "Invariant: dead ComponentRenderNode called setContext");
+    assert(this[SymRefcount] > 0, "Invariant: dead FunctionComponentRenderNode called setContext");
     this.emitter = emitter;
     this.contextMap = contextMap;
     if (!this.result) {
@@ -3710,6 +3692,24 @@ var ComponentRenderNode = class {
     this.emitter = null;
   }
 };
+function classComponentToFunctionComponentRenderNode(Component2, props, children) {
+  return new FunctionComponentRenderNode((props2, lifecycle) => {
+    const instance = new Component2(props2, {
+      getContext: lifecycle.getContext
+    });
+    if (!instance.render)
+      return null;
+    if (instance.onDestroy)
+      lifecycle.onDestroy(instance.onDestroy.bind(instance));
+    if (instance.onMount)
+      lifecycle.onMount(instance.onMount.bind(instance));
+    if (instance.onError)
+      lifecycle.onError(instance.onError.bind(instance));
+    if (instance.onUnmount)
+      lifecycle.onUnmount(instance.onUnmount.bind(instance));
+    return instance.render();
+  }, props, children, Component2.name);
+}
 var _a14, _b14;
 var ContextRenderNode = class {
   constructor(context, value, children, debugName) {
@@ -3765,7 +3765,10 @@ function createElement(type, props, ...children) {
     }
     return new IntrinsicRenderNode(type, props, childNodes);
   }
-  return new ComponentRenderNode(type, props, children);
+  if (isClassComponent(type)) {
+    return classComponentToFunctionComponentRenderNode(type, props, children);
+  }
+  return new FunctionComponentRenderNode(type, props, children);
 }
 createElement.Fragment = Fragment;
 

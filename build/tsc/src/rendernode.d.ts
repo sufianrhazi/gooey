@@ -1,6 +1,6 @@
 import { Retainable } from './engine';
 import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
-import { Ref } from './ref';
+import { RefObjectOrCallback } from './ref';
 import { ArrayEvent } from './arrayevent';
 import { Calculation, CalculationErrorType } from './calc';
 import { Collection, View } from './collection';
@@ -13,12 +13,39 @@ export interface ComponentLifecycle {
     getContext: <TContext>(context: Context<TContext>, handler?: ((val: TContext) => void) | undefined) => TContext;
 }
 declare const UnusedSymbolForChildrenOmission: unique symbol;
-export declare type Component<TProps = {}> = (props: TProps & {
+export declare type EmptyProps = {
     [UnusedSymbolForChildrenOmission]?: boolean;
-}, lifecycle: ComponentLifecycle) => JSX.Element | null;
+};
+export declare type Component<TProps = {}> = FunctionComponent<TProps> | ClassComponentConstructor<TProps>;
+export declare type FunctionComponent<TProps = {}> = (props: TProps & EmptyProps, lifecycle: ComponentLifecycle) => JSX.Element | null;
+export interface ClassComponentInterface {
+    render?(): JSX.Element | null;
+    onMount?(): (() => void) | void;
+    onUnmount?(): void;
+    onDestroy?(): void;
+    onError?(e: Error): JSX.Element | null;
+    getContext: <TContext>(context: Context<TContext>, handler?: ((val: TContext) => void) | undefined) => TContext;
+}
+export interface ClassComponentContext {
+    getContext: <TContext>(context: Context<TContext>, handler?: ((val: TContext) => void) | undefined) => TContext;
+}
+export interface ClassComponentConstructor<TProps> {
+    new (props: TProps, context: ClassComponentContext): ClassComponent<TProps>;
+}
+export declare function isClassComponent(val: any): val is ClassComponentConstructor<unknown>;
+export declare class ClassComponent<TProps = EmptyProps> implements ClassComponentInterface {
+    props: TProps;
+    constructor(props: TProps, context: ClassComponentContext);
+    render?(): JSX.Element | null;
+    onMount?(): (() => void) | void;
+    onUnmount?(): void;
+    onDestroy?(): void;
+    onError?(e: Error): JSX.Element | null;
+    getContext: <TContext>(context: Context<TContext>, handler?: ((val: TContext) => void) | undefined) => TContext;
+}
 export declare type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
 declare const ContextType: unique symbol;
-export interface Context<T> extends Component<{
+export interface Context<T> extends FunctionComponent<{
     value: T;
     children?: JSX.Node | JSX.Node[];
 }> {
@@ -159,7 +186,7 @@ export declare class PortalRenderNode implements RenderNode {
     private arrayRenderNode;
     private calculations?;
     private calculationSubscriptions?;
-    constructor(element: Element, children: ArrayRenderNode, refProp: Ref<Element> | null, debugName?: string);
+    constructor(element: Element, children: ArrayRenderNode, refProp: RefObjectOrCallback<Element> | null, debugName?: string);
     private handleEvent;
     detach(): void;
     attach(emitter: NodeEmitter, contextMap: ContextMap): void;
@@ -192,8 +219,8 @@ export declare class CalculationRenderNode implements RenderNode {
     retain(): void;
     release(): void;
     cleanPrior(): void;
-    onRecalc(errorType: undefined, val: any): void;
-    onRecalc(errorType: CalculationErrorType, val: Error): void;
+    subscribe(errorType: undefined, val: any): void;
+    subscribe(errorType: CalculationErrorType, val: Error): void;
     [SymDebugName]: string;
     [SymRefcount]: number;
     [SymAlive](): void;
@@ -261,9 +288,9 @@ export declare const IntrinsicObserver: Component<{
     elementCallback?: IntrinsicObserverElementCallback;
     children?: JSX.Node | JSX.Node[];
 }>;
-export declare class ComponentRenderNode<TProps> implements RenderNode {
+export declare class FunctionComponentRenderNode<TProps> implements RenderNode {
     _type: typeof RenderNodeType;
-    Component: Component<TProps>;
+    Component: FunctionComponent<TProps>;
     props: TProps | null | undefined;
     children: JSX.Node[];
     result: RenderNode | Error | null;
@@ -277,8 +304,7 @@ export declare class ComponentRenderNode<TProps> implements RenderNode {
     emitter: NodeEmitter | null;
     contextMap: ContextMap | null;
     isMounted: boolean;
-    id: number;
-    constructor(Component: Component<TProps>, props: TProps | null | undefined, children: JSX.Node[], debugName?: string);
+    constructor(Component: FunctionComponent<TProps>, props: TProps | null | undefined, children: JSX.Node[], debugName?: string);
     detach(): void;
     attach(emitter: NodeEmitter, contextMap: ContextMap): void;
     handleEvent: (event: ArrayEvent<Node> | Error) => void;
@@ -291,6 +317,7 @@ export declare class ComponentRenderNode<TProps> implements RenderNode {
     [SymAlive]: () => void;
     [SymDead](): void;
 }
+export declare function classComponentToFunctionComponentRenderNode<TProps>(Component: ClassComponentConstructor<TProps>, props: TProps, children: JSX.Node[]): FunctionComponentRenderNode<TProps>;
 export declare class ContextRenderNode<T> implements RenderNode {
     _type: typeof RenderNodeType;
     child: RenderNode;

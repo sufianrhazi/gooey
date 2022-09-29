@@ -15,11 +15,10 @@ export interface Processable {
 }
 export declare function isProcessable(val: any): val is Processable;
 export declare function reset(): void;
-export declare function pumpFlush(): void;
+export declare function flush(): void;
 export declare function subscribe(scheduler?: (callback: () => void) => () => void): void;
 export declare function retain(retainable: Retainable): void;
 export declare function release(retainable: Retainable): void;
-export declare function flush(): void;
 export declare function afterFlush(fn: () => void): void;
 export declare function addVertex(vertex: Processable): void;
 export declare function removeVertex(vertex: Processable): void;

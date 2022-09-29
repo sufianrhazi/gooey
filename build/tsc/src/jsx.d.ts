@@ -1,7 +1,8 @@
 import { Calculation } from './calc';
 import { Collection, View } from './collection';
 import { RenderNode } from './rendernode';
-import type { Ref } from './ref';
+import type { ClassComponentInterface } from './rendernode';
+import type { RefObjectOrCallback } from './ref';
 /**
  * The core type that can be used as a child or root of a JSX expression
  */
@@ -42,9 +43,15 @@ declare global {
             children: {};
         }
         /**
-         * Gooey does not support class components
+         * The class property of props
          */
-        type ElementClass = never;
+        interface ElementAttributesProperty {
+            props: {};
+        }
+        /**
+         * The class component interface
+         */
+        type ElementClass = ClassComponentInterface;
     }
 }
 export declare function setAttribute(element: Element, attributeName: string, val: unknown): void;
@@ -362,7 +369,7 @@ interface JSXInputElementInterface extends JSXElementInterface {
     /** Type of form control */
     type?: FormInputTypeValues | undefined;
     /** Value of the form control */
-    value?: string | undefined;
+    value?: string | number | undefined;
     /** Horizontal dimension */
     width?: string | number | undefined;
 }
@@ -380,7 +387,7 @@ interface JSXLegendElementInterface extends JSXElementInterface {
 }
 interface JSXLIElementInterface extends JSXElementInterface {
     /** Ordinal value of the list item */
-    value?: string | undefined;
+    value?: string | number | undefined;
 }
 interface JSXLinkElementInterface extends JSXElementInterface {
     /** Address of the hyperlink */
@@ -667,7 +674,7 @@ declare type EventHandler<TEvent extends Event, TElement extends Element> = unde
     bivarianceHack(event: TEvent, target: TElement): void;
 }['bivarianceHack'];
 interface JSXRefProps<TElement extends Element> {
-    ref?: undefined | Ref<TElement>;
+    ref?: undefined | RefObjectOrCallback<TElement>;
 }
 interface JSXAttrProps {
     [key: `attr:${string}`]: Calculation<any> | any;

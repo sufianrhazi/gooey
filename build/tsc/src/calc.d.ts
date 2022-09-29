@@ -15,9 +15,12 @@ declare const CalculationUnsubscribeSymbol: unique symbol;
 interface CalcSubscriptionHandlerHack<T> {
     bivarianceHack(errorType: undefined, val: T): void;
     bivarianceHack(errorType: CalculationErrorType, val: Error): void;
-    bivarianceHack(errorType: CalculationErrorType | undefined, val: Error | T): void;
 }
 declare type CalcSubscriptionHandler<T> = CalcSubscriptionHandlerHack<T>['bivarianceHack'];
+interface CalcErrorHandlerHack<T> {
+    bivarianceHack(errorType: CalculationErrorType, val: Error): T;
+}
+declare type CalcErrorHandler<T> = CalcErrorHandlerHack<T>['bivarianceHack'];
 interface CalcUnsubscribe<T> {
     (): void;
     _type: typeof CalculationUnsubscribeSymbol;
@@ -25,15 +28,14 @@ interface CalcUnsubscribe<T> {
 }
 export interface Calculation<T> extends Retainable, Processable {
     (): T;
-    onError: (handler: (errorType: CalculationErrorType) => T) => this;
+    onError: (handler: CalcErrorHandler<T>) => this;
     setCmp: (eq: (a: T, b: T) => boolean) => this;
-    onRecalc: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
+    subscribe: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
     _subscriptions?: Set<CalcSubscriptionHandler<T>>;
     _type: typeof CalculationSymbol;
     _fn: () => T;
     _eq: (a: T, b: T) => boolean;
-    _errorHandler?: (errorType: CalculationErrorType) => T;
-    _isEffect: boolean;
+    _errorHandler?: CalcErrorHandler<T>;
     _state: CalculationState;
     _retained?: Set<Retainable | (Processable & Retainable)>;
     _val?: T;
@@ -42,6 +44,5 @@ export interface Calculation<T> extends Retainable, Processable {
 export declare function isCalculation(val: any): val is Calculation<unknown>;
 export declare function isCalcUnsubscribe(val: any): val is CalcUnsubscribe<unknown>;
 export declare function calc<T>(fn: () => T, debugName?: string): Calculation<T>;
-export declare function effect<T>(fn: () => T, debugName?: string): Calculation<T>;
 export {};
 //# sourceMappingURL=calc.d.ts.map
