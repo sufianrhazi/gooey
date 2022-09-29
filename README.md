@@ -1069,15 +1069,15 @@ Note: In rare cases, intrinsic element props correspond to DOM Interface attribu
 #### Refs
 
 ```typescript
-interface RefObject<T> {
+interface Ref<T> {
     current: T | undefined;
 }
 
-function ref<T>(val?: T): RefObject<T>
+function ref<T>(val?: T): Ref<T>
 
 type RefCallback<T> = (val: T | undefined) => void;
 
-type Ref<T> = RefObject<T> | RefCallback<T>;
+type RefObjectOrCallback<T> = Ref<T> | RefCallback<T>;
 ```
 
 Refs are values that can be passed as the special `ref` prop on intrinsic elements. Components do not have default

@@ -9,7 +9,7 @@ import {
     flush,
 } from './engine';
 import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
-import { Ref, RefObject } from './ref';
+import { RefObjectOrCallback, Ref } from './ref';
 import { JSXNode, setAttribute, assignProp } from './jsx';
 import {
     ArrayEvent,
@@ -631,7 +631,7 @@ export class PortalRenderNode implements RenderNode {
     _type: typeof RenderNodeType = RenderNodeType;
     private tagName: string;
     private element: Element;
-    private refProp: Ref<Element> | null;
+    private refProp: RefObjectOrCallback<Element> | null;
     private emitter: NodeEmitter | null;
     private xmlNamespace: string | null;
     private childXmlNamespace: string | null;
@@ -643,7 +643,7 @@ export class PortalRenderNode implements RenderNode {
     constructor(
         element: Element,
         children: ArrayRenderNode,
-        refProp: Ref<Element> | null,
+        refProp: RefObjectOrCallback<Element> | null,
         debugName?: string
     ) {
         this.emitter = null;
@@ -754,7 +754,7 @@ export class PortalRenderNode implements RenderNode {
     onMount() {
         this.arrayRenderNode.onMount();
         if (this.refProp) {
-            if (this.refProp instanceof RefObject) {
+            if (this.refProp instanceof Ref) {
                 this.refProp.current = this.element;
             } else if (typeof this.refProp === 'function') {
                 this.refProp(this.element);
@@ -774,7 +774,7 @@ export class PortalRenderNode implements RenderNode {
             previousFocusedDetachedElement = this.element;
         }
         if (this.refProp) {
-            if (this.refProp instanceof RefObject) {
+            if (this.refProp instanceof Ref) {
                 this.refProp.current = undefined;
             } else if (typeof this.refProp === 'function') {
                 this.refProp(undefined);

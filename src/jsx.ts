@@ -2,7 +2,7 @@ import { Calculation } from './calc';
 import { Collection, View } from './collection';
 import { RenderNode } from './rendernode';
 import type { ClassComponentInterface } from './rendernode';
-import type { Ref } from './ref';
+import type { RefObjectOrCallback } from './ref';
 
 /**
  * The core type that can be used as a child or root of a JSX expression
@@ -1273,7 +1273,7 @@ type EventHandler<TEvent extends Event, TElement extends Element> =
       }['bivarianceHack'];
 
 interface JSXRefProps<TElement extends Element> {
-    ref?: undefined | Ref<TElement>;
+    ref?: undefined | RefObjectOrCallback<TElement>;
 }
 
 interface JSXAttrProps {

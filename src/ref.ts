@@ -1,7 +1,7 @@
 /**
  * A ref object that can be passed to native elements.
  */
-export class RefObject<T> {
+export class Ref<T> {
     current: T | undefined;
     constructor(current?: T | undefined) {
         this.current = current;
@@ -11,8 +11,8 @@ export class RefObject<T> {
 /**
  * Make a ref object that can be passed to native elements.
  */
-export function ref<T>(val?: T): RefObject<T> {
-    return new RefObject(val);
+export function ref<T>(val?: T): Ref<T> {
+    return new Ref(val);
 }
 
 /**
@@ -24,4 +24,4 @@ export type RefCallback<T> = (val: T | undefined) => void;
  * Ref types may be passed as the ref prop to intrinsic elements to obtain a
  * reference to the underlying Element
  */
-export type Ref<T> = RefObject<T> | RefCallback<T>;
+export type RefObjectOrCallback<T> = Ref<T> | RefCallback<T>;

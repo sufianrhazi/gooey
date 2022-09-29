@@ -37,7 +37,7 @@ export {
 } from './engine';
 
 export { InvariantError } from './types';
-export type { Ref, RefObject, RefCallback } from './ref';
+export type { RefObjectOrCallback, Ref, RefCallback } from './ref';
 export { ref } from './ref';
 
 export default createElement;
