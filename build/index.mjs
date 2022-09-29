@@ -3809,7 +3809,7 @@ function* keysHandler(target, event) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.9.1" : "development";
+var VERSION = true ? "0.10.0" : "development";
 export {
   ArrayEventType,
   CalculationErrorType,
