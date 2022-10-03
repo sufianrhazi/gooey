@@ -18,6 +18,7 @@ export const TemperatureConverter: Component = () => {
                     type="text"
                     value={calc(() => state.celsius)}
                     on:input={(e, el) => {
+                        state.celsius = el.value;
                         const parsed = parseFloat(el.value);
                         if (isNaN(parsed)) return;
                         state.fahrenheit = format(c2f(parsed));
@@ -31,6 +32,7 @@ export const TemperatureConverter: Component = () => {
                     type="text"
                     value={calc(() => state.fahrenheit)}
                     on:input={(e, el) => {
+                        state.fahrenheit = el.value;
                         const parsed = parseFloat(el.value);
                         if (isNaN(parsed)) return;
                         state.celsius = format(f2c(parsed));
