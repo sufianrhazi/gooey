@@ -142,7 +142,6 @@ const VERTEX_BIT_CYCLE_INFORMED /* * */ = 0b1000;
 
 interface DebugAttributes {
     isActive: boolean;
-    group?: {};
     name: string;
 }
 

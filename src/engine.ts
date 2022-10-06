@@ -336,7 +336,6 @@ export function debug(activeVertex?: Processable, label?: string) {
     return globalDependencyGraph.debug((vertex) => {
         return {
             isActive: vertex === activeVertex,
-            group: undefined,
             name: `${vertex[SymDebugName]} (rc=${
                 (vertex as any)[SymRefcount]
             })`,
@@ -348,7 +347,6 @@ export function debugSubscribe(fn: (label: string, graphviz: string) => void) {
     return globalDependencyGraph.debugSubscribe((vertex) => {
         return {
             isActive: false,
-            group: undefined,
             name: vertex[SymDebugName],
         };
     }, fn);
