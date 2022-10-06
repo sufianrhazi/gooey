@@ -18,11 +18,12 @@ import {
     NodeEmitter,
     mount,
     Component,
-    HTML_NAMESPACE,
 } from './rendernode';
 import { ArrayEventType } from './arrayevent';
 import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
+
+const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
 
@@ -248,8 +249,8 @@ suite('IntrinsicRenderNode', () => {
             [
                 '0: retain',
                 'alive',
-                '1: mount',
                 'attach',
+                '1: mount',
                 'onMount',
                 '2: unmount',
                 'onUnmount',
@@ -283,8 +284,8 @@ suite('IntrinsicRenderNode', () => {
             [
                 '0: retain',
                 'alive',
-                '1: mount',
                 'attach',
+                '1: mount',
                 'onMount',
                 '2: unmount',
                 'onUnmount',
@@ -569,7 +570,7 @@ suite('CalculationRenderNode', () => {
         );
     });
 
-    test('errors on attach are passed through', () => {
+    test('synchronous errors on attach are passed up', () => {
         const state = model({
             isError: true,
         });
@@ -851,7 +852,7 @@ suite('CollectionRenderNode', () => {
         assert.is('last', events[4].items[0].data);
     });
 
-    test('errors on attach are passed through', () => {
+    test('synchronous errors on attach are passed up', () => {
         const state = model({
             isError: true,
         });
@@ -909,11 +910,11 @@ suite('CollectionRenderNode', () => {
         assert.is('boom', events[4].message);
     });
 
-    test('errors on recalc while detached are passed through when attached', () => {
+    test('errors on recalc while detached occur but are ignored', () => {
         const state = model({
             isError: false,
         });
-        const events: any[] = [];
+        let events: any[] = [];
         const constantCalc = calc(() => {
             events.push('calc');
             if (state.isError) throw new Error('boom');
@@ -925,19 +926,22 @@ suite('CollectionRenderNode', () => {
             events.push(event);
         }, HTML_NAMESPACE);
         node.detach();
-        events.splice(0, events.length);
+        events = [];
 
         state.isError = true;
         flush();
+        // We are not attached, so we don't get an error event
+        assert.is(1, events.length);
+        assert.is('calc', events[0]);
+        events = [];
 
         node.attach((event) => {
             events.push(event);
         }, HTML_NAMESPACE);
 
-        assert.is(2, events.length);
-        assert.is('calc', events[0]);
-        assert.isTruthy(events[1] instanceof Error);
-        assert.is('boom', events[1].message);
+        assert.is(1, events.length);
+        assert.isTruthy(events[0] instanceof Error);
+        assert.is('boom', events[0].message);
     });
 
     test('calls lifecycle methods when added while mounted', () => {
@@ -1034,8 +1038,8 @@ suite('FunctionComponentRenderNode', () => {
         assert.deepEqual(
             [
                 '0:retain',
-                '1:attach',
                 'Component:render',
+                '1:attach',
                 {
                     type: 'splice',
                     index: 0,
@@ -1106,8 +1110,8 @@ suite('FunctionComponentRenderNode', () => {
         assert.deepEqual(
             [
                 '0:retain',
-                '1:mount',
                 'Component:render',
+                '1:mount',
                 'Component:onMount',
                 '2:unmount',
                 'Component:onUnmount',
@@ -1156,7 +1160,7 @@ suite('FunctionComponentRenderNode', () => {
         node.retain();
         node.release();
 
-        assert.deepEqual([], events);
+        assert.deepEqual(['Component:render', 'Component:onDestroy'], events);
     });
 });
 

@@ -545,6 +545,36 @@ suite('mount calculations', () => {
 
         assert.is(okBefore, okAfter);
     });
+
+    test('calculations run while detached', () => {
+        const state = model({ attr: 'hello', content: 'one' });
+        const log: string[] = [];
+        const jsx = (
+            <div
+                id="ok"
+                data-attr={calc(() => {
+                    log.push(`recalc:${state.attr}`);
+                    return state.attr;
+                })}
+            >
+                {calc(() => state.content)}
+            </div>
+        );
+        jsx.retain();
+        const unmount = mount(testRoot, jsx);
+        const divEl = testRoot.querySelector('#ok');
+        unmount();
+        assert.deepEqual(['recalc:hello'], log);
+        assert.deepEqual('hello', divEl?.getAttribute('data-attr'));
+        assert.deepEqual('one', divEl?.textContent);
+        state.attr = 'goodbye';
+        flush();
+        assert.deepEqual(['recalc:hello', 'recalc:goodbye'], log);
+        assert.deepEqual('goodbye', divEl?.getAttribute('data-attr'));
+        state.content = 'two';
+        flush();
+        assert.deepEqual('two', divEl?.textContent);
+    });
 });
 
 suite('mount components', () => {
@@ -3011,6 +3041,27 @@ suite('rendered node reuse', () => {
 });
 
 suite('error handling', () => {
+    test('component error throwing while rendering throws when mounting component', () => {
+        const Exploder: Component = () => {
+            throw new Error('kaboom');
+        };
+        assert.throwsMatching(/kaboom/, () => mount(testRoot, <Exploder />));
+    });
+
+    test('component error throwing while rendering throws when mounting deeply nested component', () => {
+        const Exploder: Component = () => {
+            throw new Error('kaboom');
+        };
+        assert.throwsMatching(/kaboom/, () =>
+            mount(
+                testRoot,
+                <div>
+                    <Exploder />
+                </div>
+            )
+        );
+    });
+
     test('components can catch render errors', () => {
         const Exploder: Component = () => {
             throw new Error('oh no');
@@ -3070,7 +3121,7 @@ suite('error handling', () => {
         );
     });
 
-    test('components can catch render errors when children rerendered', () => {
+    test('components can catch render errors when calculation children rerendered', () => {
         const Exploder: Component = () => {
             throw new Error('oh no');
         };
@@ -3909,12 +3960,9 @@ suite('bugs', () => {
                 {calc(() => (state.switch ? <div>on</div> : <div>off</div>))}
             </div>
         );
-        console.log(testRoot.outerHTML);
         testRoot.querySelector('#test')?.dispatchEvent(new MouseEvent('click'));
         flush();
-        console.log(testRoot.outerHTML);
         testRoot.querySelector('#test')?.dispatchEvent(new MouseEvent('click'));
         flush();
-        console.log(testRoot.outerHTML);
     });
 });
