@@ -1,6 +1,5 @@
 import Gooey, {
     ClassComponent,
-    ClassComponentContext,
     EmptyProps,
     Model,
     model,
@@ -34,8 +33,8 @@ export class Cells extends ClassComponent {
 
     tableRef: Ref<HTMLTableElement>;
 
-    constructor(props: EmptyProps, context: ClassComponentContext) {
-        super(props, context);
+    constructor(props: EmptyProps) {
+        super(props);
 
         this.cellState = new SpreadsheetState();
 

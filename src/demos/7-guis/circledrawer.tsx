@@ -2,7 +2,6 @@ import Gooey, {
     Model,
     ClassComponent,
     Ref,
-    ClassComponentContext,
     Calculation,
     Collection,
     collection,
@@ -96,8 +95,8 @@ export class CircleDrawer extends ClassComponent {
     svgContainerEl: Ref<HTMLDivElement>;
     actions: Action[];
 
-    constructor(props: {}, context: ClassComponentContext) {
-        super(props, context);
+    constructor(props: {}) {
+        super(props);
 
         this.undoStack = new UndoStack(collection([]), {
             doAction: (state: Collection<Circle>, action: Action) => {

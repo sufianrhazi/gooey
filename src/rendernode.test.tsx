@@ -3,15 +3,12 @@ import { calc } from './calc';
 import { collection } from './collection';
 import { model } from './model';
 import {
-    Context,
-    createContext,
     RenderNode,
     RenderNodeType,
     ArrayRenderNode,
     CalculationRenderNode,
     CollectionRenderNode,
     FunctionComponentRenderNode,
-    ContextRenderNode,
     EmptyRenderNode,
     ForeignRenderNode,
     IntrinsicObserverRenderNode,
@@ -19,9 +16,9 @@ import {
     IntrinsicRenderNode,
     TextRenderNode,
     NodeEmitter,
-    ContextMap,
     mount,
     Component,
+    HTML_NAMESPACE,
 } from './rendernode';
 import { ArrayEventType } from './arrayevent';
 import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
@@ -39,7 +36,6 @@ class TracingRenderNode implements RenderNode {
     public _type: typeof RenderNodeType = RenderNodeType;
     public events: any[];
     public emitter: NodeEmitter | null;
-    public contextMap: ContextMap | null;
     public [SymRefcount]: number;
     public [SymDebugName]: string;
 
@@ -48,7 +44,6 @@ class TracingRenderNode implements RenderNode {
         this[SymRefcount] = 0;
         this[SymDebugName] = 'TracingRenderNode';
         this.emitter = null;
-        this.contextMap = null;
     }
 
     log(event: any) {
@@ -63,9 +58,8 @@ class TracingRenderNode implements RenderNode {
         this.events.push('detach');
     }
 
-    attach(emitter: NodeEmitter, contextMap: ContextMap) {
+    attach(emitter: NodeEmitter) {
         this.emitter = emitter;
-        this.contextMap = contextMap;
         this.events.push('attach');
     }
 
@@ -385,10 +379,9 @@ suite('CalculationRenderNode', () => {
         const node = new CalculationRenderNode(greet);
         node.retain();
         const events: any[] = [];
-        const contextMap = new Map();
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
 
         assert.is(1, events.length);
         assert.is('splice', events[0].type);
@@ -410,10 +403,9 @@ suite('CalculationRenderNode', () => {
         const node = new CalculationRenderNode(greet);
         node.retain();
         const events: any[] = [];
-        const contextMap = new Map();
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
 
         state.name = 'goodbye';
         flush();
@@ -453,10 +445,9 @@ suite('CalculationRenderNode', () => {
         const node = new CalculationRenderNode(greet);
         node.retain();
         const events: any[] = [];
-        const contextMap = new Map();
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
         node.detach();
 
         state.name = 'goodbye';
@@ -488,10 +479,9 @@ suite('CalculationRenderNode', () => {
         const node = new CalculationRenderNode(greet);
         node.retain();
         const events: any[] = [];
-        const contextMap = new Map();
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
         node.detach();
 
         state.name = 'goodbye';
@@ -499,7 +489,7 @@ suite('CalculationRenderNode', () => {
 
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
 
         assert.is('splice', events[0].type);
         assert.is(0, events[0].index);
@@ -526,14 +516,13 @@ suite('CalculationRenderNode', () => {
         const constantCalc = calc(() => tracer);
         const node = new CalculationRenderNode(constantCalc);
         const events: any[] = [];
-        const contextMap = new Map();
 
         tracer.log('0: retain');
         node.retain();
         tracer.log('1: attach');
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
         tracer.log('2: mount');
         node.onMount();
         tracer.log('3: unmount');
@@ -547,7 +536,7 @@ suite('CalculationRenderNode', () => {
         tracer.log('7: attach');
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
         tracer.log('8: attach');
         node.detach();
         tracer.log('9: release');
@@ -591,11 +580,10 @@ suite('CalculationRenderNode', () => {
             return 'ok';
         });
         const node = new CalculationRenderNode(constantCalc);
-        const contextMap = new Map();
         node.retain();
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
         assert.is(2, events.length);
         assert.is('calc', events[0]);
         assert.isTruthy(events[1] instanceof Error);
@@ -613,11 +601,10 @@ suite('CalculationRenderNode', () => {
             return 'ok';
         });
         const node = new CalculationRenderNode(constantCalc);
-        const contextMap = new Map();
         node.retain();
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
 
         assert.is(2, events.length);
         assert.is('calc', events[0]);
@@ -648,11 +635,10 @@ suite('ArrayRenderNode', () => {
         const tracer3 = new TracingRenderNode();
         const node = new ArrayRenderNode([tracer1, tracer2, tracer3]);
         const events: any[] = [];
-        const contextMap = new Map();
         node.retain();
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
         const div1 = document.createElement('div');
         const div2 = document.createElement('div');
         const div3 = document.createElement('div');
@@ -754,10 +740,9 @@ suite('CollectionRenderNode', () => {
         const node = new CollectionRenderNode(items);
         node.retain();
         const events: any[] = [];
-        const contextMap = new Map();
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
 
         assert.is(2, events.length);
         assert.is('splice', events[0].type);
@@ -777,10 +762,9 @@ suite('CollectionRenderNode', () => {
         const node = new CollectionRenderNode(items);
         node.retain();
         const events: any[] = [];
-        const contextMap = new Map();
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
 
         events.splice(0, events.length);
         items.unshift('first');
@@ -819,10 +803,9 @@ suite('CollectionRenderNode', () => {
         const node = new CollectionRenderNode(items);
         node.retain();
         const events: any[] = [];
-        const contextMap = new Map();
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
         node.detach();
 
         events.splice(0, events.length);
@@ -834,7 +817,7 @@ suite('CollectionRenderNode', () => {
         assert.is(0, events.length);
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
 
         assert.is(5, events.length);
         assert.is('splice', events[0].type);
@@ -879,11 +862,10 @@ suite('CollectionRenderNode', () => {
             return 'ok';
         });
         const node = new CalculationRenderNode(constantCalc);
-        const contextMap = new Map();
         node.retain();
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
         assert.is(2, events.length);
         assert.is('calc', events[0]);
         assert.isTruthy(events[1] instanceof Error);
@@ -901,11 +883,10 @@ suite('CollectionRenderNode', () => {
             return 'ok';
         });
         const node = new CalculationRenderNode(constantCalc);
-        const contextMap = new Map();
         node.retain();
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
 
         assert.is(2, events.length);
         assert.is('calc', events[0]);
@@ -939,11 +920,10 @@ suite('CollectionRenderNode', () => {
             return 'ok';
         });
         const node = new CalculationRenderNode(constantCalc);
-        const contextMap = new Map();
         node.retain();
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
         node.detach();
         events.splice(0, events.length);
 
@@ -952,7 +932,7 @@ suite('CollectionRenderNode', () => {
 
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
 
         assert.is(2, events.length);
         assert.is('calc', events[0]);
@@ -966,9 +946,8 @@ suite('CollectionRenderNode', () => {
         const items = collection([tracer1]);
         const node = new CollectionRenderNode(items);
         const events: any[] = [];
-        const contextMap = new Map();
         node.retain();
-        node.attach((event) => events.push(event), contextMap);
+        node.attach((event) => events.push(event), HTML_NAMESPACE);
         node.onMount();
         assert.deepEqual(['alive', 'attach', 'onMount'], tracer1.events);
         assert.deepEqual([], tracer2.events);
@@ -991,9 +970,8 @@ suite('CollectionRenderNode', () => {
         const items = collection([tracer1]);
         const node = new CollectionRenderNode(items);
         const events: any[] = [];
-        const contextMap = new Map();
         node.retain();
-        node.attach((event) => events.push(event), contextMap);
+        node.attach((event) => events.push(event), HTML_NAMESPACE);
         assert.deepEqual(['alive', 'attach'], tracer1.events);
         assert.deepEqual([], tracer2.events);
         items.push(tracer2);
@@ -1010,13 +988,12 @@ suite('CollectionRenderNode', () => {
 suite('FunctionComponentRenderNode', () => {
     test('lifecycle methods called in correct order', () => {
         const events: any[] = [];
-        const Ctx = createContext('default');
         const div = document.createElement('div');
         const foreign = new ForeignRenderNode(div);
 
         const Component: Component = (
             _props,
-            { onMount, onDestroy, onUnmount, getContext }
+            { onMount, onDestroy, onUnmount }
         ) => {
             onMount(() => {
                 events.push('Component:onMount');
@@ -1033,16 +1010,10 @@ suite('FunctionComponentRenderNode', () => {
                 events.push('Component:onDestroy');
             });
 
-            const value = getContext(Ctx, (newVal) => {
-                events.push(`Component:getContext:${newVal}`);
-            });
-
-            events.push(`Component:render:${value}`);
+            events.push(`Component:render`);
 
             return foreign;
         };
-
-        const contextMap = new Map();
 
         const node = new FunctionComponentRenderNode(Component, {}, []);
         events.push('0:retain');
@@ -1050,7 +1021,7 @@ suite('FunctionComponentRenderNode', () => {
         events.push('1:attach');
         node.attach((event) => {
             events.push(event);
-        }, contextMap);
+        }, HTML_NAMESPACE);
         events.push('2:onMount');
         node.onMount();
         events.push('3:onUnmount');
@@ -1064,8 +1035,7 @@ suite('FunctionComponentRenderNode', () => {
             [
                 '0:retain',
                 '1:attach',
-                'Component:render:default', // Note: components are lazily rendered on attach because they need to be able to read context
-                'Component:getContext:default',
+                'Component:render',
                 {
                     type: 'splice',
                     index: 0,
@@ -1092,13 +1062,12 @@ suite('FunctionComponentRenderNode', () => {
 
     test('can be detached and reattached while retained', () => {
         const events: any[] = [];
-        const Ctx = createContext('default');
         const div = document.createElement('div');
         const foreign = new ForeignRenderNode(div);
 
         const Component: Component = (
             _props,
-            { onMount, onDestroy, onUnmount, getContext }
+            { onMount, onDestroy, onUnmount }
         ) => {
             onMount(() => {
                 events.push('Component:onMount');
@@ -1115,11 +1084,7 @@ suite('FunctionComponentRenderNode', () => {
                 events.push('Component:onDestroy');
             });
 
-            const value = getContext(Ctx, (newVal) => {
-                events.push(`Component:getContext:${newVal}`);
-            });
-
-            events.push(`Component:render:${value}`);
+            events.push(`Component:render`);
 
             return foreign;
         };
@@ -1142,14 +1107,12 @@ suite('FunctionComponentRenderNode', () => {
             [
                 '0:retain',
                 '1:mount',
-                'Component:render:default',
-                'Component:getContext:default',
+                'Component:render',
                 'Component:onMount',
                 '2:unmount',
                 'Component:onUnmount',
                 'Component:onMount cleanup',
                 '3:mount',
-                'Component:getContext:default',
                 'Component:onMount',
                 '4:unmount',
                 'Component:onUnmount',
@@ -1163,12 +1126,11 @@ suite('FunctionComponentRenderNode', () => {
 
     test('can be retained and released without attach', () => {
         const events: any[] = [];
-        const Ctx = createContext('default');
         const empty = new EmptyRenderNode();
 
         const Component: Component = (
             _props,
-            { onMount, onDestroy, onUnmount, getContext }
+            { onMount, onDestroy, onUnmount }
         ) => {
             onMount(() => {
                 events.push('Component:onMount');
@@ -1185,11 +1147,7 @@ suite('FunctionComponentRenderNode', () => {
                 events.push('Component:onDestroy');
             });
 
-            const value = getContext(Ctx, (newVal) => {
-                events.push(`Component:getContext:${newVal}`);
-            });
-
-            events.push(`Component:render:${value}`);
+            events.push(`Component:render`);
 
             return empty;
         };
@@ -1200,127 +1158,16 @@ suite('FunctionComponentRenderNode', () => {
 
         assert.deepEqual([], events);
     });
-
-    test('context overrides on first attach are read synchronously and asynchronously', () => {
-        const events: any[] = [];
-        const Ctx = createContext('default');
-        const empty = new EmptyRenderNode();
-
-        const Component: Component = (_props, { getContext }) => {
-            const value = getContext(Ctx, (newVal) => {
-                events.push(`Component:getContext:${newVal}`);
-            });
-            events.push(`Component:render:${value}`);
-            return empty;
-        };
-        const contextMap = new Map([[Ctx, 'override']]);
-
-        const node = new FunctionComponentRenderNode(Component, {}, []);
-        events.push('0:retain');
-        node.retain();
-        events.push('1:attach');
-        node.attach((event) => {
-            events.push(event);
-        }, contextMap);
-
-        assert.deepEqual(
-            [
-                '0:retain',
-                '1:attach',
-                'Component:render:override', // Note: components are lazily rendered on attach because they need to be able to read context
-                'Component:getContext:override',
-            ],
-            events
-        );
-    });
-
-    test('context overrides on subsequent attach are read asynchronously', () => {
-        const events: any[] = [];
-        const Ctx = createContext('default');
-        const empty = new EmptyRenderNode();
-
-        const Component: Component = (_props, { getContext }) => {
-            const value = getContext(Ctx, (newVal) => {
-                events.push(`Component:getContext:${newVal}`);
-            });
-            events.push(`Component:render:${value}`);
-            return empty;
-        };
-        const contextMap1 = new Map([[Ctx, 'first']]);
-        const contextMap2 = new Map([[Ctx, 'second']]);
-
-        const node = new FunctionComponentRenderNode(Component, {}, []);
-        events.push('0:retain');
-        node.retain();
-        events.push('1:attach');
-        node.attach((event) => {
-            events.push(event);
-        }, contextMap1);
-        events.push('2:detach');
-        node.detach();
-        events.push('3:attach');
-        node.attach((event) => {
-            events.push(event);
-        }, contextMap2);
-        events.push('4:detach');
-        node.detach();
-
-        assert.deepEqual(
-            [
-                '0:retain',
-                '1:attach',
-                'Component:render:first', // Note: components are lazily rendered on attach because they need to be able to read context
-                'Component:getContext:first',
-                '2:detach',
-                '3:attach',
-                'Component:getContext:second',
-                '4:detach',
-            ],
-            events
-        );
-    });
-});
-
-suite('ContextRenderNode', () => {
-    test('renders children normally', () => {
-        const tracer = new TracingRenderNode();
-        const Ctx = createContext('default');
-        const contextMap = new Map<Context<any>, any>();
-        const node = new ContextRenderNode(Ctx, 'override', [tracer]);
-        node.retain();
-        node.attach((event) => tracer.log(event), contextMap);
-        node.onMount();
-        node.onUnmount();
-        node.detach();
-        node.release();
-        assert.deepEqual(
-            ['alive', 'attach', 'onMount', 'onUnmount', 'detach', 'dead'],
-            tracer.events
-        );
-    });
-
-    test('passes context to children', () => {
-        const tracer = new TracingRenderNode();
-        const Ctx = createContext('default');
-        const contextMap = new Map<Context<any>, any>();
-        contextMap.set(Ctx, 'whatever');
-        const node = new ContextRenderNode(Ctx, 'override', [tracer]);
-        node.retain();
-        node.attach((event) => tracer.log(event), contextMap);
-        assert.isNot(tracer.contextMap, contextMap);
-        assert.is('override', tracer.contextMap?.get(Ctx));
-    });
 });
 
 suite('IntrinsicObserverRenderNode', () => {
     test('renders children normally', () => {
         const tracer = new TracingRenderNode();
-        const contextMap = new Map();
         const node = new IntrinsicObserverRenderNode(undefined, undefined, [
             tracer,
         ]);
         node.retain();
-        node.attach((event) => tracer.log(event), contextMap);
+        node.attach((event) => tracer.log(event), HTML_NAMESPACE);
         node.onMount();
         node.onUnmount();
         node.detach();
@@ -1333,7 +1180,6 @@ suite('IntrinsicObserverRenderNode', () => {
 
     test('calls callback with existing nodes on mount and unmount', () => {
         const tracer = new TracingRenderNode();
-        const contextMap = new Map();
         const nodeCalls: [Node, IntrinsicObserverEventType][] = [];
         const elementCalls: [Element, IntrinsicObserverEventType][] = [];
         const node = new IntrinsicObserverRenderNode(
@@ -1346,7 +1192,7 @@ suite('IntrinsicObserverRenderNode', () => {
         const div = document.createElement('div');
 
         node.retain();
-        node.attach((event) => tracer.log(event), contextMap);
+        node.attach((event) => tracer.log(event), HTML_NAMESPACE);
         tracer.emitter?.({
             type: ArrayEventType.SPLICE,
             index: 0,
@@ -1393,7 +1239,6 @@ suite('IntrinsicObserverRenderNode', () => {
 
     test('calls callback with added/removed nodes while mounted', () => {
         const tracer = new TracingRenderNode();
-        const contextMap = new Map();
         const nodeCalls: [Node, IntrinsicObserverEventType][] = [];
         const elementCalls: [Element, IntrinsicObserverEventType][] = [];
         const node = new IntrinsicObserverRenderNode(
@@ -1406,7 +1251,7 @@ suite('IntrinsicObserverRenderNode', () => {
         const div = document.createElement('div');
 
         node.retain();
-        node.attach((event) => tracer.log(event), contextMap);
+        node.attach((event) => tracer.log(event), HTML_NAMESPACE);
         node.onMount();
 
         tracer.emitter?.({

@@ -1,6 +1,5 @@
 import Gooey, {
     ClassComponent,
-    ClassComponentContext,
     Component,
     calc,
     collection,
@@ -9,7 +8,6 @@ import Gooey, {
     Model,
     mount,
     reset,
-    createContext,
     subscribe,
     IntrinsicObserver,
 } from './index';
@@ -875,75 +873,6 @@ suite('mount components', () => {
         );
     });
 
-    test('children can read contexts correctly', () => {
-        const Context = createContext('no-context');
-
-        const Parent: Component<{ children: () => JSX.Element }> = ({
-            children,
-        }) => {
-            return (
-                <div>
-                    <div id="child-1">{children()}</div>
-                    <Context value="child-2">
-                        <div id="child-2">{children()}</div>
-                    </Context>
-                    <Context value="child-3">
-                        <div id="child-3">{children()}</div>
-                    </Context>
-                </div>
-            );
-        };
-
-        const Child: Component<{ name: string }> = (
-            { name },
-            { getContext }
-        ) => {
-            const state = model({ value: 'wut' });
-            getContext(Context, (value) => (state.value = value));
-            return (
-                <p>
-                    {calc(() => state.value)}:{name}
-                </p>
-            );
-        };
-
-        // Mount all items with no children passed
-        const unmount = mount(
-            testRoot,
-            <Parent>
-                {() => (
-                    <>
-                        <Child name="one" />
-                        <Child name="two" />
-                    </>
-                )}
-            </Parent>
-        );
-
-        flush();
-
-        assert.deepEqual(
-            [
-                ['no-context:one', 'no-context:two'],
-                ['child-2:one', 'child-2:two'],
-                ['child-3:one', 'child-3:two'],
-            ],
-            [
-                Array.from(testRoot.querySelectorAll('#child-1 p')).map(
-                    (el) => el.textContent
-                ),
-                Array.from(testRoot.querySelectorAll('#child-2 p')).map(
-                    (el) => el.textContent
-                ),
-                Array.from(testRoot.querySelectorAll('#child-3 p')).map(
-                    (el) => el.textContent
-                ),
-            ]
-        );
-
-        unmount();
-    });
-
     test('ref called immediately after mount and immediately before unmount', () => {
         let mountedEl: Element | null = null;
         const unmount = mount(
@@ -1073,9 +1002,9 @@ suite('mount class components', () => {
         const sequence: string[] = [];
         let queried: null | Element = null;
         class Greet extends ClassComponent<{}> {
-            constructor(props: {}, context: ClassComponentContext) {
+            constructor(props: {}) {
+                super(props);
                 sequence.push('construct');
-                super(props, context);
             }
 
             onMount() {
@@ -1100,9 +1029,9 @@ suite('mount class components', () => {
         const sequence: string[] = [];
         let count = 0;
         class Greet extends ClassComponent<{}> {
-            constructor(props: {}, context: ClassComponentContext) {
+            constructor(props: {}) {
                 sequence.push('construct');
-                super(props, context);
+                super(props);
             }
 
             onMount() {
@@ -1156,9 +1085,9 @@ suite('mount class components', () => {
         let queried: null | Element = null;
 
         class Child extends ClassComponent<{}> {
-            constructor(props: {}, context: ClassComponentContext) {
+            constructor(props: {}) {
                 sequence.push('construct');
-                super(props, context);
+                super(props);
             }
 
             onMount() {
@@ -1374,74 +1303,6 @@ suite('mount class components', () => {
                 </BadComponent>
             )
         );
-    });
-
-    test('children can read contexts correctly', () => {
-        const Context = createContext('no-context');
-
-        class Parent extends ClassComponent<{ children: () => JSX.Element }> {
-            render() {
-                return (
-                    <div>
-                        <div id="child-1">{this.props.children()}</div>
-                        <Context value="child-2">
-                            <div id="child-2">{this.props.children()}</div>
-                        </Context>
-                        <Context value="child-3">
-                            <div id="child-3">{this.props.children()}</div>
-                        </Context>
-                    </div>
-                );
-            }
-        }
-
-        class Child extends ClassComponent<{ name: string }> {
-            render() {
-                const state = model({ value: 'wut' });
-                this.getContext(Context, (value) => (state.value = value));
-                return (
-                    <p>
-                        {calc(() => state.value)}:{this.props.name}
-                    </p>
-                );
-            }
-        }
-
-        // Mount all items with no children passed
-        const unmount = mount(
-            testRoot,
-            <Parent>
-                {() => (
-                    <>
-                        <Child name="one" />
-                        <Child name="two" />
-                    </>
-                )}
-            </Parent>
-        );
-
-        flush();
-
-        assert.deepEqual(
-            [
-                ['no-context:one', 'no-context:two'],
-                ['child-2:one', 'child-2:two'],
-                ['child-3:one', 'child-3:two'],
-            ],
-            [
-                Array.from(testRoot.querySelectorAll('#child-1 p')).map(
-                    (el) => el.textContent
-                ),
-                Array.from(testRoot.querySelectorAll('#child-2 p')).map(
-                    (el) => el.textContent
-                ),
-                Array.from(testRoot.querySelectorAll('#child-3 p')).map(
-                    (el) => el.textContent
-                ),
-            ]
-        );
-
-        unmount();
     });
 });
 
@@ -2272,154 +2133,6 @@ suite('foreign elements', () => {
             'yes',
             testRoot.querySelector('#host')?.getAttribute('data-host')
         );
-    });
-});
-
-suite('createContext', () => {
-    test('uses default context value when missing', () => {
-        const CtxA = createContext<string>('hello');
-        const CtxB = createContext<number>(42);
-        const MyComponent: Component<{ id: string }> = (
-            { id },
-            { getContext }
-        ) => {
-            const state = model({
-                a: 'boop',
-                b: 0,
-            });
-            getContext(CtxA, (a) => {
-                state.a = a;
-            });
-            getContext(CtxB, (b) => {
-                state.b = b;
-            });
-
-            return (
-                <div id={id}>
-                    CtxA={calc(() => state.a)}, CtxB={calc(() => state.b)}
-                </div>
-            );
-        };
-        mount(
-            testRoot,
-            <div>
-                <MyComponent id="neither" />
-            </div>
-        );
-        flush();
-        assert.is(
-            'CtxA=hello, CtxB=42',
-            testRoot.querySelector('#neither')!.textContent
-        );
-    });
-
-    test('can have multiple different contexts', () => {
-        const CtxA = createContext<string>('hello');
-        const CtxB = createContext<number>(42);
-        const MyComponent: Component<{ id: string }> = (
-            { id },
-            { getContext }
-        ) => {
-            const state = model({
-                a: 'boop',
-                b: 0,
-            });
-            getContext(CtxA, (a) => {
-                state.a = a;
-            });
-            getContext(CtxB, (b) => {
-                state.b = b;
-            });
-            return (
-                <div id={id}>
-                    CtxA={calc(() => state.a)}, CtxB={calc(() => state.b)}
-                </div>
-            );
-        };
-        mount(
-            testRoot,
-            <div>
-                <CtxA value="outer">
-                    <CtxB value={999}>
-                        <MyComponent id="outer-first" />
-                    </CtxB>
-                </CtxA>
-                <CtxB value={111}>
-                    <CtxA value="inner">
-                        <MyComponent id="inner-first" />
-                    </CtxA>
-                </CtxB>
-            </div>
-        );
-
-        flush();
-
-        assert.is(
-            'CtxA=outer, CtxB=999',
-            testRoot.querySelector('#outer-first')!.textContent
-        );
-        assert.is(
-            'CtxA=inner, CtxB=111',
-            testRoot.querySelector('#inner-first')!.textContent
-        );
-    });
-
-    test('changing context can be observed while moved', () => {
-        const Ctx = createContext<string>('default');
-        const state = model({
-            slot: 'a',
-        });
-
-        const MyComponent: Component<{}> = (_props, { getContext }) => {
-            const localState = model({
-                val: getContext(Ctx, (val) => {
-                    localState.val = val;
-                }),
-            });
-            return <div>val: {calc(() => localState.val)}</div>;
-        };
-
-        const myComponent = <MyComponent />;
-        myComponent.retain();
-        const unmount = mount(
-            testRoot,
-            <div>
-                <div id="a">
-                    {calc(() => state.slot === 'a' && myComponent)}
-                </div>
-                <Ctx value="b">
-                    <div id="b">
-                        {calc(() => state.slot === 'b' && myComponent)}
-                    </div>
-                </Ctx>
-                <Ctx value="c">
-                    <div id="c">
-                        {calc(() => state.slot === 'c' && myComponent)}
-                    </div>
-                </Ctx>
-            </div>
-        );
-
-        assert.is('val: default', testRoot.querySelector('#a')?.textContent);
-        assert.is('', testRoot.querySelector('#b')?.textContent);
-        assert.is('', testRoot.querySelector('#c')?.textContent);
-        state.slot = 'b';
-        flush();
-        assert.is('', testRoot.querySelector('#a')?.textContent);
-        assert.is('val: b', testRoot.querySelector('#b')?.textContent);
-        assert.is('', testRoot.querySelector('#c')?.textContent);
-        state.slot = 'c';
-        flush();
-        assert.is('', testRoot.querySelector('#a')?.textContent);
-        assert.is('', testRoot.querySelector('#b')?.textContent);
-        assert.is('val: c', testRoot.querySelector('#c')?.textContent);
-        state.slot = 'a';
-        flush();
-        assert.is('val: default', testRoot.querySelector('#a')?.textContent);
-        assert.is('', testRoot.querySelector('#b')?.textContent);
-        assert.is('', testRoot.querySelector('#c')?.textContent);
-        unmount();
-        myComponent.release();
     });
 });
 

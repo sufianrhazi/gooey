@@ -31,10 +31,6 @@ export interface ComponentLifecycle {
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
     onError: (handler: (e: Error) => JSX.Element | null) => void;
-    getContext: <TContext>(
-        context: Context<TContext>,
-        handler?: ((val: TContext) => void) | undefined
-    ) => TContext;
 }
 
 // NOTE: UnusedSymbolForChildrenOmission is present solely for the typechecker to not allow assignment of { children?: JSXNode | JSXNode[] } to TProps if TProps is {}
@@ -56,21 +52,10 @@ export interface ClassComponentInterface {
     onUnmount?(): void;
     onDestroy?(): void;
     onError?(e: Error): JSX.Element | null;
-    getContext: <TContext>(
-        context: Context<TContext>,
-        handler?: ((val: TContext) => void) | undefined
-    ) => TContext;
-}
-
-export interface ClassComponentContext {
-    getContext: <TContext>(
-        context: Context<TContext>,
-        handler?: ((val: TContext) => void) | undefined
-    ) => TContext;
 }
 
 export interface ClassComponentConstructor<TProps> {
-    new (props: TProps, context: ClassComponentContext): ClassComponent<TProps>;
+    new (props: TProps): ClassComponent<TProps>;
 }
 
 export function isClassComponent(
@@ -83,9 +68,8 @@ export class ClassComponent<TProps = EmptyProps>
     implements ClassComponentInterface
 {
     props: TProps;
-    constructor(props: TProps, context: ClassComponentContext) {
+    constructor(props: TProps) {
         this.props = props;
-        this.getContext = context.getContext;
     }
 
     render?(): JSX.Element | null;
@@ -93,61 +77,16 @@ export class ClassComponent<TProps = EmptyProps>
     onUnmount?(): void;
     onDestroy?(): void;
     onError?(e: Error): JSX.Element | null;
-
-    getContext: <TContext>(
-        context: Context<TContext>,
-        handler?: ((val: TContext) => void) | undefined
-    ) => TContext;
 }
 
 export type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
-
-const ContextType = Symbol('context');
-
-export interface Context<T>
-    extends FunctionComponent<{ value: T; children?: JSX.Node | JSX.Node[] }> {
-    _type: typeof ContextType;
-    _get: () => T;
-}
-
-export function createContext<T>(val: T): Context<T> {
-    const contextBody = {
-        _type: ContextType,
-        _get: () => val,
-    } as const;
-    const context: Context<T> = Object.assign(
-        ({
-            value,
-            children,
-        }: {
-            value: T;
-            children?: JSX.Node | JSX.Node[];
-        }) => {
-            return new ContextRenderNode<T>(
-                context,
-                value,
-                renderJSXChildren(children)
-            );
-        },
-        contextBody
-    );
-    return context;
-}
-
-export type ContextMap = Map<Context<any>, any>;
-
-function readContext<T>(contextMap: ContextMap, context: Context<T>): T {
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    if (contextMap.has(context)) return contextMap.get(context)!;
-    return context._get();
-}
 
 export const RenderNodeType = Symbol('rendernode');
 
 export interface RenderNode extends Retainable {
     _type: typeof RenderNodeType;
     detach(): void;
-    attach(emitter: NodeEmitter, context: ContextMap): void;
+    attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -208,7 +147,7 @@ export class TextRenderNode implements RenderNode {
         this.emitter = null;
     }
 
-    attach(emitter: NodeEmitter, context: ContextMap) {
+    attach(emitter: NodeEmitter) {
         log.assert(!this.emitter, 'Invariant: Text node double attached');
         this.emitter = emitter;
         this.emitter?.({
@@ -258,7 +197,7 @@ export class ForeignRenderNode implements RenderNode {
         this.emitter = null;
     }
 
-    attach(emitter: NodeEmitter, context: ContextMap) {
+    attach(emitter: NodeEmitter) {
         log.assert(!this.emitter, 'Invariant: Foreign node double attached');
         this.emitter = emitter;
         this.emitter?.({
@@ -317,7 +256,7 @@ export class ArrayRenderNode implements RenderNode {
         this.emitter = null;
     }
 
-    attach(emitter: NodeEmitter, context: ContextMap) {
+    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
         this.emitter = emitter;
         for (const [index, child] of this.children.entries()) {
             child.attach((event) => {
@@ -329,7 +268,7 @@ export class ArrayRenderNode implements RenderNode {
                         this.emitter(event);
                     }
                 }
-            }, context);
+            }, parentXmlNamespace);
             this.attached[index] = true;
         }
     }
@@ -367,7 +306,7 @@ export class ArrayRenderNode implements RenderNode {
     }
 }
 
-const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
+export const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const MATHML_NAMESPACE = 'http://www.w3.org/1998/Math/MathML';
 
@@ -392,8 +331,6 @@ const elementNamespaceTransitionMap: Record<
         },
     },
 } as const;
-
-const XmlNamespaceContext = createContext(HTML_NAMESPACE);
 
 /**
  * If an intrinsic element is detached when it has focused, this holds a reference to the element.
@@ -541,11 +478,10 @@ export class IntrinsicRenderNode implements RenderNode {
         this.emitter = null;
     }
 
-    attach(emitter: NodeEmitter, context: ContextMap) {
+    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
         log.assert(!this.emitter, 'Invariant: Intrinsic node double attached');
         this.emitter = emitter;
 
-        const parentXmlNamespace = readContext(context, XmlNamespaceContext);
         const namespaceTransition =
             elementNamespaceTransitionMap[parentXmlNamespace]?.[this.tagName];
         const xmlNamespace = namespaceTransition?.node ?? parentXmlNamespace;
@@ -566,12 +502,7 @@ export class IntrinsicRenderNode implements RenderNode {
             );
             retain(this.portalRenderNode);
 
-            let subContext = context;
-            if (parentXmlNamespace !== childXmlNamespace) {
-                subContext = new Map(context);
-                subContext.set(XmlNamespaceContext, childXmlNamespace);
-            }
-            this.portalRenderNode.attach(this.handleEvent, subContext);
+            this.portalRenderNode.attach(this.handleEvent, childXmlNamespace);
         }
 
         this.emitter?.({
@@ -633,8 +564,6 @@ export class PortalRenderNode implements RenderNode {
     private element: Element;
     private refProp: RefObjectOrCallback<Element> | null;
     private emitter: NodeEmitter | null;
-    private xmlNamespace: string | null;
-    private childXmlNamespace: string | null;
     private existingOffset: number;
     private arrayRenderNode: ArrayRenderNode;
     private calculations?: Map<string, Calculation<any>>;
@@ -652,8 +581,6 @@ export class PortalRenderNode implements RenderNode {
         this.refProp = refProp;
         this.tagName = this.element.tagName;
         this.existingOffset = element.childNodes.length;
-        this.xmlNamespace = null;
-        this.childXmlNamespace = null;
 
         this[SymDebugName] = debugName ?? `mount:${this.tagName}`;
         this[SymRefcount] = 0;
@@ -745,10 +672,14 @@ export class PortalRenderNode implements RenderNode {
         this.arrayRenderNode.detach();
     }
 
-    attach(emitter: NodeEmitter, contextMap: ContextMap) {
+    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
         log.assert(!this.emitter, 'Invariant: Intrinsic node double attached');
         this.emitter = emitter;
-        this.arrayRenderNode.attach(this.handleEvent, contextMap);
+        this.arrayRenderNode.attach(
+            this.handleEvent,
+            // Note: portal elements & namespaces are weird! parentXmlNamespace is not quite the right word -- it's the "child" XML namespace.
+            parentXmlNamespace
+        );
     }
 
     onMount() {
@@ -823,18 +754,18 @@ export class CalculationRenderNode implements RenderNode {
     private renderNode: RenderNode | null;
     private calculation: Calculation<any>;
     private calculationSubscription: (() => void) | null;
-    private context: ContextMap | null;
     private isMounted: boolean;
     private emitter: NodeEmitter | null;
+    private parentXmlNamespace: string | null;
 
     constructor(calculation: Calculation<any>, debugName?: string) {
         this.calculation = calculation;
         this.calculationSubscription = null;
         this.error = null;
         this.renderNode = null;
-        this.context = null;
         this.isMounted = false;
         this.emitter = null;
+        this.parentXmlNamespace = null;
 
         this[SymDebugName] =
             debugName ?? `rendercalc:${calculation[SymDebugName]}`;
@@ -845,17 +776,16 @@ export class CalculationRenderNode implements RenderNode {
 
     detach() {
         this.renderNode?.detach();
-        this.context = null;
         this.emitter = null;
     }
 
-    attach(emitter: NodeEmitter, context: ContextMap) {
-        this.context = context;
+    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
         this.emitter = emitter;
+        this.parentXmlNamespace = parentXmlNamespace;
         if (this.error) {
             emitter(this.error);
         } else {
-            this.renderNode?.attach(emitter, context);
+            this.renderNode?.attach(emitter, parentXmlNamespace);
         }
     }
 
@@ -904,10 +834,8 @@ export class CalculationRenderNode implements RenderNode {
             afterFlush(() => {
                 this.cleanPrior(); // it's possible the calculation is notified multiple times in a flush; only care about the last one
                 this.renderNode = renderNode;
-                if (this.emitter) {
-                    // context guaranteed to exist
-                    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                    renderNode.attach(this.emitter, this.context!);
+                if (this.emitter && this.parentXmlNamespace) {
+                    renderNode.attach(this.emitter, this.parentXmlNamespace);
                 }
                 if (this.isMounted) {
                     renderNode.onMount();
@@ -944,31 +872,31 @@ export class CollectionRenderNode implements RenderNode {
     private slotSizes: number[];
     private collection: Collection<any> | View<any>;
     private unsubscribe?: () => void;
-    private context: ContextMap | null;
     private isMounted: boolean;
     private emitter: NodeEmitter | null;
+    private parentXmlNamespace: string | null;
 
     constructor(collection: Collection<any> | View<any>, debugName?: string) {
         this.collection = collection;
         this.children = [];
         this.childIndex = new Map();
         this.slotSizes = [];
-        this.context = null;
         this.isMounted = false;
         this.emitter = null;
+        this.parentXmlNamespace = null;
 
         this[SymDebugName] = debugName ?? `rendercoll`;
         this[SymRefcount] = 0;
     }
 
-    attach(emitter: NodeEmitter, context: ContextMap) {
+    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
         this.emitter = emitter;
-        this.context = context;
+        this.parentXmlNamespace = parentXmlNamespace;
 
         for (const child of this.children) {
             child.attach((event) => {
                 this.handleChildEvent(event, child);
-            }, context);
+            }, parentXmlNamespace);
         }
     }
 
@@ -978,7 +906,6 @@ export class CollectionRenderNode implements RenderNode {
         }
 
         this.emitter = null;
-        this.context = null;
     }
 
     handleChildEvent(event: ArrayEvent<Node> | Error, child: RenderNode) {
@@ -1013,7 +940,7 @@ export class CollectionRenderNode implements RenderNode {
     }
 
     private releaseChild(child: RenderNode) {
-        if (this.emitter && this.context) {
+        if (this.emitter) {
             if (this.isMounted) {
                 child.onUnmount();
             }
@@ -1023,10 +950,10 @@ export class CollectionRenderNode implements RenderNode {
     }
     private retainChild(child: RenderNode) {
         retain(child);
-        if (this.emitter && this.context) {
+        if (this.emitter && this.parentXmlNamespace) {
             child.attach(
                 (event) => this.handleChildEvent(event, child),
-                this.context
+                this.parentXmlNamespace
             );
             if (this.isMounted) {
                 child.onMount();
@@ -1258,13 +1185,12 @@ export function mount(target: Element, node: RenderNode): () => void {
         'root'
     );
     retain(root);
-    const context = new Map();
     root.attach((event) => {
         if (event instanceof Error) {
             log.error('Unhandled mount error', event);
             return;
         }
-    }, context);
+    }, target.namespaceURI ?? HTML_NAMESPACE);
     root.onMount();
     return () => {
         root.onUnmount();
@@ -1354,11 +1280,11 @@ export class IntrinsicObserverRenderNode implements RenderNode {
         this.emitter = null;
     }
 
-    attach(emitter: NodeEmitter, context: ContextMap) {
+    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
         this.emitter = emitter;
         this.child.attach((event) => {
             this.handleEvent(event);
-        }, context);
+        }, parentXmlNamespace);
     }
 
     onMount() {
@@ -1417,11 +1343,10 @@ export class FunctionComponentRenderNode<TProps> implements RenderNode {
     onMountCallbacks?: (() => (() => void) | void)[];
     onUnmountCallbacks?: (() => void)[];
     onDestroyCallbacks?: (() => void)[];
-    getContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;
     owned: Set<Retainable>;
     errorHandler: ((e: Error) => RenderNode | null) | null;
     emitter: NodeEmitter | null;
-    contextMap: ContextMap | null;
+    parentXmlNamespace: string | null;
     isMounted: boolean;
 
     constructor(
@@ -1438,7 +1363,7 @@ export class FunctionComponentRenderNode<TProps> implements RenderNode {
         this.isMounted = false;
 
         this.emitter = null;
-        this.contextMap = null;
+        this.parentXmlNamespace = null;
         this.result = null;
         this.resultAttached = false;
 
@@ -1458,16 +1383,15 @@ export class FunctionComponentRenderNode<TProps> implements RenderNode {
         this.result.detach();
         this.resultAttached = false;
         this.emitter = null;
-        this.contextMap = null;
     }
 
-    attach(emitter: NodeEmitter, contextMap: ContextMap) {
+    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
         log.assert(
             this[SymRefcount] > 0,
-            'Invariant: dead FunctionComponentRenderNode called setContext'
+            'Invariant: dead FunctionComponentRenderNode called attach'
         );
         this.emitter = emitter;
-        this.contextMap = contextMap;
+        this.parentXmlNamespace = parentXmlNamespace;
         if (!this.result) {
             let callbacksAllowed = true;
             const lifecycle: ComponentLifecycle = {
@@ -1494,28 +1418,6 @@ export class FunctionComponentRenderNode<TProps> implements RenderNode {
                     );
                     if (!this.onDestroyCallbacks) this.onDestroyCallbacks = [];
                     this.onDestroyCallbacks.push(handler);
-                },
-                // "extends unknown" needed to avoid syntax ambiguity with type parameter in jsx
-                // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-constraint
-                getContext: <TContext extends unknown>(
-                    context: Context<TContext>,
-                    handler?: ((val: TContext) => void) | undefined
-                ) => {
-                    log.assert(
-                        callbacksAllowed,
-                        'getContext must be called in component body'
-                    );
-                    if (handler) {
-                        if (!this.getContextCallbacks)
-                            this.getContextCallbacks = new Map();
-                        let callbacks = this.getContextCallbacks.get(context);
-                        if (!callbacks) {
-                            callbacks = [];
-                            this.getContextCallbacks.set(context, callbacks);
-                        }
-                        callbacks.push(handler);
-                    }
-                    return readContext(contextMap, context);
                 },
                 onError: (errorHandler: (e: Error) => RenderNode | null) => {
                     log.assert(
@@ -1569,25 +1471,11 @@ export class FunctionComponentRenderNode<TProps> implements RenderNode {
                 this.result = jsxResult;
             }
         }
-        if (this.getContextCallbacks) {
-            for (const [
-                Context,
-                callbacks,
-            ] of this.getContextCallbacks.entries()) {
-                const value = contextMap.has(Context)
-                    ? contextMap.get(Context)
-                    : Context._get();
-                for (const callback of callbacks) {
-                    callback(value);
-                }
-            }
-        }
-
-        log.assert(this.result, 'Invariant: missing context');
+        log.assert(this.result, 'Invariant: missing result');
         if (this.result instanceof Error) {
-            this.emitter?.(this.result);
+            emitter(this.result);
         } else {
-            this.result.attach(this.handleEvent, contextMap);
+            this.result.attach(this.handleEvent, parentXmlNamespace);
             this.resultAttached = true;
         }
     }
@@ -1616,10 +1504,10 @@ export class FunctionComponentRenderNode<TProps> implements RenderNode {
             retain(this.result);
 
             log.assert(
-                this.emitter && this.contextMap,
+                this.emitter && this.parentXmlNamespace,
                 'Invariant: received event while unattached'
             );
-            this.result.attach(this.handleEvent, this.contextMap);
+            this.result.attach(this.handleEvent, this.parentXmlNamespace);
             this.resultAttached = true;
 
             if (this.isMounted) {
@@ -1632,7 +1520,7 @@ export class FunctionComponentRenderNode<TProps> implements RenderNode {
 
     onMount() {
         this.isMounted = true;
-        log.assert(this.result, 'Invariant: missing context');
+        log.assert(this.result, 'Invariant: missing result');
         if (this.result instanceof Error) {
             return;
         }
@@ -1661,7 +1549,7 @@ export class FunctionComponentRenderNode<TProps> implements RenderNode {
     }
 
     onUnmount() {
-        log.assert(this.result, 'Invariant: missing context');
+        log.assert(this.result, 'Invariant: missing result');
         if (!(this.result instanceof Error) && this.resultAttached) {
             this.result.onUnmount();
             if (this.onUnmountCallbacks) {
@@ -1710,9 +1598,7 @@ export function classComponentToFunctionComponentRenderNode<TProps>(
 ) {
     return new FunctionComponentRenderNode(
         (props: TProps, lifecycle) => {
-            const instance = new Component(props, {
-                getContext: lifecycle.getContext,
-            });
+            const instance = new Component(props);
             if (!instance.render) return null;
             if (instance.onDestroy)
                 lifecycle.onDestroy(instance.onDestroy.bind(instance));
@@ -1728,59 +1614,4 @@ export function classComponentToFunctionComponentRenderNode<TProps>(
         children,
         Component.name
     );
-}
-
-export class ContextRenderNode<T> implements RenderNode {
-    _type: typeof RenderNodeType = RenderNodeType;
-    child: RenderNode;
-    context: Context<T>;
-    value: T;
-
-    constructor(
-        context: Context<T>,
-        value: T,
-        children: JSX.Element[],
-        debugName?: string
-    ) {
-        this.context = context;
-        this.value = value;
-        this.child = new ArrayRenderNode(children);
-        this[SymDebugName] = debugName ?? `context`;
-        this[SymRefcount] = 0;
-    }
-
-    detach() {
-        this.child.detach();
-    }
-
-    attach(emitter: NodeEmitter, context: ContextMap) {
-        const derivedContext = new Map(context);
-        derivedContext.set(this.context, this.value);
-
-        this.child.attach(emitter, derivedContext);
-    }
-
-    onMount() {
-        this.child.onMount();
-    }
-
-    onUnmount() {
-        this.child.onUnmount();
-    }
-    retain() {
-        retain(this);
-    }
-    release() {
-        release(this);
-    }
-
-    // Retainable
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive]() {
-        retain(this.child);
-    }
-    [SymDead]() {
-        release(this.child);
-    }
 }

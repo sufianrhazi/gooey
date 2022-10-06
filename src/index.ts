@@ -6,16 +6,10 @@ export type {
     Component,
     EmptyProps,
     ComponentLifecycle,
-    ClassComponentContext,
-    Context,
     IntrinsicObserverNodeCallback,
     IntrinsicObserverElementCallback,
 } from './rendernode';
-export {
-    ClassComponent,
-    createContext,
-    IntrinsicObserverEventType,
-} from './rendernode';
+export { ClassComponent, IntrinsicObserverEventType } from './rendernode';
 export type { Model, ModelEvent } from './model';
 export { model, ModelEventType } from './model';
 export { field } from './field';

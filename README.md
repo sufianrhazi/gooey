@@ -309,7 +309,6 @@ Here's the above example ported to use class components.
 import Gooey, {
     Model,
     ClassComponent,
-    ClassComponentContext,
     model,
     calc,
     mount,
@@ -326,8 +325,8 @@ interface LabeledInputProps {
 class LabeledInput extends ClassComponent<LabeledInputProps> {
     uniqueId: string;
 
-    constructor(props: LabeledInputProps, context: ClassComponentContext) {
-        super(props, context);
+    constructor(props: LabeledInputProps) {
+        super(props);
         this.uniqueId = `input_${id++}`;
     }
 
@@ -355,10 +354,9 @@ class AuthenticationForm extends ClassComponent<AuthenticationFormProps> {
     state: Model<{ username: string; password: string }>;
 
     constructor(
-        props: AuthenticationFormProps,
-        context: ClassComponentContext
+        props: AuthenticationFormProps
     ) {
-        super(props, context);
+        super(props);
         this.state = model({ username: '', password: '' });
     }
 
@@ -420,42 +418,6 @@ mount(
 );
 ```
 
-### Contexts
-
-Contexts are JSX nodes that allow their descendent components to read the value associated with them. They may
-be nested, which causes the value associated with the closest context to be read.
-
-The following example renders three lines:
-
-1. The context is red
-2. The context is green
-3. The context is blue
-
-
-```typescript
-import Gooey, { Component, createContext, mount } from '@srhazi/gooey';
-
-const Color = createContext('red');
-
-const MyComponent: Component = (props, { getContext }) => {
-    return <div>The context is {getContext(Color)}</div>;
-};
-
-mount(
-    document.body,
-    <div>
-        <MyComponent />
-        <Color value="green">
-            <MyComponent />
-        </Color>
-        <Color value="blue">
-            <MyComponent />
-        </Color>
-    </div>
-);
-```
-
-
 ### Component Lifecycles
 
 Component functions receive a second `ComponentLifecycle` parameter, which allows components to hook into the
@@ -470,10 +432,6 @@ interface ComponentLifecycle {
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
     onError: (handler: (e: Error) => JSX.Element | null) => void;
-    getContext: <TContext>(
-        context: Context<TContext>,
-        handler?: ((val: TContext) => void) | undefined
-    ) => TContext;
 }
 ```
 
@@ -483,7 +441,6 @@ interface ComponentLifecycle {
 * `onDestroy`: Gets called after all of the retainers release the component.
 * `onError`: Gets called if any unhandled exception is thrown while rendering / rerendering children. The returned JSX
   will be rendered as the components contents.
-* `getContext`: Gets called **before** onMount if the corresponding context has changed.
 
 
 ### Intrinsic Refs
@@ -551,10 +508,6 @@ interface ComponentLifecycle {
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
     onError: (handler: (e: Error) => JSX.Element | null) => void;
-    getContext: <TContext>(
-        context: Context<TContext>,
-        handler?: (val: TContext) => void
-    ) => TContext;
 }
 ```
 
@@ -564,7 +517,6 @@ interface ComponentLifecycle {
 * `onDestroy`: Gets called after all of the retainers release the component.
 * `onError`: Gets called if any unhandled exception is thrown while rendering / rerendering children. The returned JSX
   will be rendered as the components contents.
-* `getContext`: Gets called **before** `onMount` if the corresponding context has changed.
 
 Visually, this means that the component lifecycle looks like this:
 
@@ -572,8 +524,8 @@ Visually, this means that the component lifecycle looks like this:
                 component                  onMount
     +-------+  func called  +----------+  is called   +----------+
     | inert | ------------> | detached | -----------> | attached |
-    +-------+               +----------+  getContext  +----------+
-        ^                      |    ^  called if changed    |
+    +-------+               +----------+              +----------+
+        ^                      |    ^                       |
         |                      |    |                       |
         +----------------------+    +-----------------------+
                onDestroy                    onUnmount
@@ -583,22 +535,19 @@ Visually, this means that the component lifecycle looks like this:
 The standard lifecycle sequence for a component that mounts, does not move, and unmounts is:
 
 1. The component function is called 
-2. The `getContext` callbacks are called
-3. The `onMount` callbacks are called
-4. The `onUnmount` callbacks are called
-5. The `onDestroy` callbacks are called
+2. The `onMount` callbacks are called
+3. The `onUnmount` callbacks are called
+4. The `onDestroy` callbacks are called
 
 The standard mount lifecycle sequence for a component that mounts is:
 
 1. The component function is called 
-2. The `getContext` callbacks are called
-3. The `onMount` callbacks are called
+2. The `onMount` callbacks are called
 
 If a mounted component is relocated, the lifecycle sequence is:
 
 1. The `onUnmount` callbacks are called
-2. The `getContext` callbacks are optionally called, if the contexts have changed
-3. The `onMount` callbacks are called
+2. The `onMount` callbacks are called
 
 
 ### Component children
@@ -1202,8 +1151,8 @@ If a string is passed as `type`, you'll be rendering an intrinsic element: some 
 element. The provided props map to the HTML/SVG/MathML attributes, plus some special props to allow you to bind event
 handlers and perform other actions.
 
-If a function is passed as `type`, you'll be rendering component: either some special built-in component (like a
-`Context` or a `IntrinsicObserver`), or a user-created component.
+If a function is passed as `type`, you'll be rendering component: either some special built-in component (like an
+`IntrinsicObserver`), or a user-created component.
 
 The type of evaluating a JSX expression (the return type of `createElement`) is `JSX.Element`, which in Gooey is called
 `RenderNode`.
@@ -1325,10 +1274,6 @@ interface ComponentLifecycle {
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
     onError: (handler: (e: Error) => JSX.Element | null) => void;
-    getContext: <TContext>(
-        context: Context<TContext>,
-        handler?: (val: TContext) => void
-    ) => TContext;
 }
 
 type Component<TProps = {}> = (props: TProps, lifecycle: ComponentLifecycle) => JSX.Element | null;
@@ -1350,8 +1295,6 @@ The lifecycle methods are:
 * `onError`: Gets called if an uncaught exception is thrown while rendering this component or any of its children
   (unless caught). If provided, the `handler` "catches" the exception and returns JSX which will replace the component's
   JSX.
-* `getContext`: Reads a value from the provided context. The optional callback is called **before** `onMount` and can be
-  used to observe context changes when a component is relocated.
 
 
 #### `Fragment` (`<>...</>`)
@@ -1404,24 +1347,6 @@ count. Calling `.release()` will decrement the reference count. When an unmounte
 references, it is destroyed.
 
 It is an error to attempt to mount a piece of JSX multiple times simultaneously.
-
-
-#### Contexts: `createContext`
-
-```typescript
-interface Context<T> extends Component<{ value: T; children?: JSX.Node | JSX.Node[] }> { /* private internals */ }
-
-function createContext<T>(val: T): Context<T>
-```
-
-A `Context` is a JSX node that allows child JSX to access a corresponding value. `Component` functions can read contexts
-with the `getContext()` lifecycle handler.
-
-The closest ancestor context is the one which provides the value. If there is no ancestor, the default value (provided
-upon creation) is used.
-
-The optional callback provided to `getContext()` gets called _prior_ to mounting (prior to the `onMount` component
-lifecycle event event).
 
 
 #### `IntrinsicObserver`
