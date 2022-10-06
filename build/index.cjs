@@ -41,7 +41,6 @@ __export(src_exports, {
   applyArrayEvent: () => applyArrayEvent,
   calc: () => calc,
   collection: () => collection,
-  createContext: () => createContext,
   createElement: () => createElement,
   debug: () => debug2,
   debugSubscribe: () => debugSubscribe,
@@ -979,7 +978,6 @@ function debug2(activeVertex, label) {
   return globalDependencyGraph.debug((vertex) => {
     return {
       isActive: vertex === activeVertex,
-      group: void 0,
       name: `${vertex[SymDebugName]} (rc=${vertex[SymRefcount]})`
     };
   }, label);
@@ -988,7 +986,6 @@ function debugSubscribe(fn) {
   return globalDependencyGraph.debugSubscribe((vertex) => {
     return {
       isActive: false,
-      group: void 0,
       name: vertex[SymDebugName]
     };
   }, fn);
@@ -2459,32 +2456,11 @@ function isClassComponent(val) {
   return val && val.prototype instanceof ClassComponent;
 }
 var ClassComponent = class {
-  constructor(props, context) {
+  constructor(props) {
     __publicField(this, "props");
-    __publicField(this, "getContext");
     this.props = props;
-    this.getContext = context.getContext;
   }
 };
-var ContextType = Symbol("context");
-function createContext(val) {
-  const contextBody = {
-    _type: ContextType,
-    _get: () => val
-  };
-  const context = Object.assign(({
-    value,
-    children
-  }) => {
-    return new ContextRenderNode(context, value, renderJSXChildren(children));
-  }, contextBody);
-  return context;
-}
-function readContext(contextMap, context) {
-  if (contextMap.has(context))
-    return contextMap.get(context);
-  return context._get();
-}
 var RenderNodeType = Symbol("rendernode");
 var _a4, _b4, _c3, _d;
 var EmptyRenderNode = class {
@@ -2530,7 +2506,7 @@ var TextRenderNode = class {
     this.emitter?.({ type: "splice" /* SPLICE */, index: 0, count: 1 });
     this.emitter = null;
   }
-  attach(emitter, context) {
+  attach(emitter) {
     assert(!this.emitter, "Invariant: Text node double attached");
     this.emitter = emitter;
     this.emitter?.({
@@ -2570,7 +2546,7 @@ var ForeignRenderNode = class {
     this.emitter?.({ type: "splice" /* SPLICE */, index: 0, count: 1 });
     this.emitter = null;
   }
-  attach(emitter, context) {
+  attach(emitter) {
     assert(!this.emitter, "Invariant: Foreign node double attached");
     this.emitter = emitter;
     this.emitter?.({
@@ -2616,7 +2592,7 @@ var ArrayRenderNode = class {
     }
     this.emitter = null;
   }
-  attach(emitter, context) {
+  attach(emitter, parentXmlNamespace) {
     this.emitter = emitter;
     for (const [index, child] of this.children.entries()) {
       child.attach((event) => {
@@ -2628,7 +2604,7 @@ var ArrayRenderNode = class {
             this.emitter(event);
           }
         }
-      }, context);
+      }, parentXmlNamespace);
       this.attached[index] = true;
     }
   }
@@ -2681,7 +2657,6 @@ var elementNamespaceTransitionMap = {
     }
   }
 };
-var XmlNamespaceContext = createContext(HTML_NAMESPACE);
 var previousFocusedDetachedElement = null;
 var EventProps = [
   { prefix: "on:", param: false },
@@ -2797,10 +2772,9 @@ var IntrinsicRenderNode = class {
     });
     this.emitter = null;
   }
-  attach(emitter, context) {
+  attach(emitter, parentXmlNamespace) {
     assert(!this.emitter, "Invariant: Intrinsic node double attached");
     this.emitter = emitter;
-    const parentXmlNamespace = readContext(context, XmlNamespaceContext);
     const namespaceTransition = elementNamespaceTransitionMap[parentXmlNamespace]?.[this.tagName];
     const xmlNamespace = namespaceTransition?.node ?? parentXmlNamespace;
     const childXmlNamespace = namespaceTransition?.children ?? parentXmlNamespace;
@@ -2813,12 +2787,7 @@ var IntrinsicRenderNode = class {
       }
       this.portalRenderNode = new PortalRenderNode(this.element, this.children, this.props?.ref);
       retain(this.portalRenderNode);
-      let subContext = context;
-      if (parentXmlNamespace !== childXmlNamespace) {
-        subContext = new Map(context);
-        subContext.set(XmlNamespaceContext, childXmlNamespace);
-      }
-      this.portalRenderNode.attach(this.handleEvent, subContext);
+      this.portalRenderNode.attach(this.handleEvent, childXmlNamespace);
     }
     this.emitter?.({
       type: "splice" /* SPLICE */,
@@ -2871,8 +2840,6 @@ var PortalRenderNode = class {
     __publicField(this, "element");
     __publicField(this, "refProp");
     __publicField(this, "emitter");
-    __publicField(this, "xmlNamespace");
-    __publicField(this, "childXmlNamespace");
     __publicField(this, "existingOffset");
     __publicField(this, "arrayRenderNode");
     __publicField(this, "calculations");
@@ -2934,8 +2901,6 @@ var PortalRenderNode = class {
     this.refProp = refProp;
     this.tagName = this.element.tagName;
     this.existingOffset = element.childNodes.length;
-    this.xmlNamespace = null;
-    this.childXmlNamespace = null;
     this[SymDebugName] = debugName ?? `mount:${this.tagName}`;
     this[SymRefcount] = 0;
   }
@@ -2943,10 +2908,10 @@ var PortalRenderNode = class {
     this.emitter = null;
     this.arrayRenderNode.detach();
   }
-  attach(emitter, contextMap) {
+  attach(emitter, parentXmlNamespace) {
     assert(!this.emitter, "Invariant: Intrinsic node double attached");
     this.emitter = emitter;
-    this.arrayRenderNode.attach(this.handleEvent, contextMap);
+    this.arrayRenderNode.attach(this.handleEvent, parentXmlNamespace);
   }
   onMount() {
     this.arrayRenderNode.onMount();
@@ -3007,34 +2972,33 @@ var CalculationRenderNode = class {
     __publicField(this, "renderNode");
     __publicField(this, "calculation");
     __publicField(this, "calculationSubscription");
-    __publicField(this, "context");
     __publicField(this, "isMounted");
     __publicField(this, "emitter");
+    __publicField(this, "parentXmlNamespace");
     __publicField(this, _a10);
     __publicField(this, _b10);
     this.calculation = calculation;
     this.calculationSubscription = null;
     this.error = null;
     this.renderNode = null;
-    this.context = null;
     this.isMounted = false;
     this.emitter = null;
+    this.parentXmlNamespace = null;
     this[SymDebugName] = debugName ?? `rendercalc:${calculation[SymDebugName]}`;
     this[SymRefcount] = 0;
     this.subscribe = this.subscribe.bind(this);
   }
   detach() {
     this.renderNode?.detach();
-    this.context = null;
     this.emitter = null;
   }
-  attach(emitter, context) {
-    this.context = context;
+  attach(emitter, parentXmlNamespace) {
     this.emitter = emitter;
+    this.parentXmlNamespace = parentXmlNamespace;
     if (this.error) {
       emitter(this.error);
     } else {
-      this.renderNode?.attach(emitter, context);
+      this.renderNode?.attach(emitter, parentXmlNamespace);
     }
   }
   onMount() {
@@ -3075,8 +3039,8 @@ var CalculationRenderNode = class {
       afterFlush(() => {
         this.cleanPrior();
         this.renderNode = renderNode;
-        if (this.emitter) {
-          renderNode.attach(this.emitter, this.context);
+        if (this.emitter && this.parentXmlNamespace) {
+          renderNode.attach(this.emitter, this.parentXmlNamespace);
         }
         if (this.isMounted) {
           renderNode.onMount();
@@ -3108,9 +3072,9 @@ var CollectionRenderNode = class {
     __publicField(this, "slotSizes");
     __publicField(this, "collection");
     __publicField(this, "unsubscribe");
-    __publicField(this, "context");
     __publicField(this, "isMounted");
     __publicField(this, "emitter");
+    __publicField(this, "parentXmlNamespace");
     __publicField(this, "handleCollectionEvent", (events) => {
       for (const event of events) {
         switch (event.type) {
@@ -3189,19 +3153,19 @@ var CollectionRenderNode = class {
     this.children = [];
     this.childIndex = /* @__PURE__ */ new Map();
     this.slotSizes = [];
-    this.context = null;
     this.isMounted = false;
     this.emitter = null;
+    this.parentXmlNamespace = null;
     this[SymDebugName] = debugName ?? `rendercoll`;
     this[SymRefcount] = 0;
   }
-  attach(emitter, context) {
+  attach(emitter, parentXmlNamespace) {
     this.emitter = emitter;
-    this.context = context;
+    this.parentXmlNamespace = parentXmlNamespace;
     for (const child of this.children) {
       child.attach((event) => {
         this.handleChildEvent(event, child);
-      }, context);
+      }, parentXmlNamespace);
     }
   }
   detach() {
@@ -3209,7 +3173,6 @@ var CollectionRenderNode = class {
       child.detach();
     }
     this.emitter = null;
-    this.context = null;
   }
   handleChildEvent(event, child) {
     if (this.emitter) {
@@ -3239,7 +3202,7 @@ var CollectionRenderNode = class {
     release(this);
   }
   releaseChild(child) {
-    if (this.emitter && this.context) {
+    if (this.emitter) {
       if (this.isMounted) {
         child.onUnmount();
       }
@@ -3249,8 +3212,8 @@ var CollectionRenderNode = class {
   }
   retainChild(child) {
     retain(child);
-    if (this.emitter && this.context) {
-      child.attach((event) => this.handleChildEvent(event, child), this.context);
+    if (this.emitter && this.parentXmlNamespace) {
+      child.attach((event) => this.handleChildEvent(event, child), this.parentXmlNamespace);
       if (this.isMounted) {
         child.onMount();
       }
@@ -3348,13 +3311,12 @@ function mount(target, node) {
   document.documentElement.addEventListener("focusin", focusMonitor);
   const root = new PortalRenderNode(target, new ArrayRenderNode([node]), null, "root");
   retain(root);
-  const context = /* @__PURE__ */ new Map();
   root.attach((event) => {
     if (event instanceof Error) {
       error("Unhandled mount error", event);
       return;
     }
-  }, context);
+  }, target.namespaceURI ?? HTML_NAMESPACE);
   root.onMount();
   return () => {
     root.onUnmount();
@@ -3424,11 +3386,11 @@ var IntrinsicObserverRenderNode = class {
     this.child.detach();
     this.emitter = null;
   }
-  attach(emitter, context) {
+  attach(emitter, parentXmlNamespace) {
     this.emitter = emitter;
     this.child.attach((event) => {
       this.handleEvent(event);
-    }, context);
+    }, parentXmlNamespace);
   }
   onMount() {
     this.child.onMount();
@@ -3473,11 +3435,10 @@ var FunctionComponentRenderNode = class {
     __publicField(this, "onMountCallbacks");
     __publicField(this, "onUnmountCallbacks");
     __publicField(this, "onDestroyCallbacks");
-    __publicField(this, "getContextCallbacks");
     __publicField(this, "owned");
     __publicField(this, "errorHandler");
     __publicField(this, "emitter");
-    __publicField(this, "contextMap");
+    __publicField(this, "parentXmlNamespace");
     __publicField(this, "isMounted");
     __publicField(this, "handleEvent", (event) => {
       assert(!(this.result instanceof Error), "Invariant: received event on calculation error");
@@ -3496,8 +3457,8 @@ var FunctionComponentRenderNode = class {
         const handledResult = this.errorHandler(event);
         this.result = handledResult ? renderJSXNode(handledResult) : emptyRenderNode;
         retain(this.result);
-        assert(this.emitter && this.contextMap, "Invariant: received event while unattached");
-        this.result.attach(this.handleEvent, this.contextMap);
+        assert(this.emitter && this.parentXmlNamespace, "Invariant: received event while unattached");
+        this.result.attach(this.handleEvent, this.parentXmlNamespace);
         this.resultAttached = true;
         if (this.isMounted) {
           this.result.onMount();
@@ -3516,7 +3477,7 @@ var FunctionComponentRenderNode = class {
     this.errorHandler = null;
     this.isMounted = false;
     this.emitter = null;
-    this.contextMap = null;
+    this.parentXmlNamespace = null;
     this.result = null;
     this.resultAttached = false;
     this[SymDebugName] = debugName ?? `component`;
@@ -3531,12 +3492,11 @@ var FunctionComponentRenderNode = class {
     this.result.detach();
     this.resultAttached = false;
     this.emitter = null;
-    this.contextMap = null;
   }
-  attach(emitter, contextMap) {
-    assert(this[SymRefcount] > 0, "Invariant: dead FunctionComponentRenderNode called setContext");
+  attach(emitter, parentXmlNamespace) {
+    assert(this[SymRefcount] > 0, "Invariant: dead FunctionComponentRenderNode called attach");
     this.emitter = emitter;
-    this.contextMap = contextMap;
+    this.parentXmlNamespace = parentXmlNamespace;
     if (!this.result) {
       let callbacksAllowed = true;
       const lifecycle = {
@@ -3557,20 +3517,6 @@ var FunctionComponentRenderNode = class {
           if (!this.onDestroyCallbacks)
             this.onDestroyCallbacks = [];
           this.onDestroyCallbacks.push(handler);
-        },
-        getContext: (context, handler) => {
-          assert(callbacksAllowed, "getContext must be called in component body");
-          if (handler) {
-            if (!this.getContextCallbacks)
-              this.getContextCallbacks = /* @__PURE__ */ new Map();
-            let callbacks = this.getContextCallbacks.get(context);
-            if (!callbacks) {
-              callbacks = [];
-              this.getContextCallbacks.set(context, callbacks);
-            }
-            callbacks.push(handler);
-          }
-          return readContext(contextMap, context);
         },
         onError: (errorHandler) => {
           assert(callbacksAllowed, "onError must be called in component body");
@@ -3611,28 +3557,17 @@ var FunctionComponentRenderNode = class {
         this.result = jsxResult;
       }
     }
-    if (this.getContextCallbacks) {
-      for (const [
-        Context,
-        callbacks
-      ] of this.getContextCallbacks.entries()) {
-        const value = contextMap.has(Context) ? contextMap.get(Context) : Context._get();
-        for (const callback of callbacks) {
-          callback(value);
-        }
-      }
-    }
-    assert(this.result, "Invariant: missing context");
+    assert(this.result, "Invariant: missing result");
     if (this.result instanceof Error) {
-      this.emitter?.(this.result);
+      emitter(this.result);
     } else {
-      this.result.attach(this.handleEvent, contextMap);
+      this.result.attach(this.handleEvent, parentXmlNamespace);
       this.resultAttached = true;
     }
   }
   onMount() {
     this.isMounted = true;
-    assert(this.result, "Invariant: missing context");
+    assert(this.result, "Invariant: missing result");
     if (this.result instanceof Error) {
       return;
     }
@@ -3659,7 +3594,7 @@ var FunctionComponentRenderNode = class {
     }
   }
   onUnmount() {
-    assert(this.result, "Invariant: missing context");
+    assert(this.result, "Invariant: missing result");
     if (!(this.result instanceof Error) && this.resultAttached) {
       this.result.onUnmount();
       if (this.onUnmountCallbacks) {
@@ -3694,9 +3629,7 @@ var FunctionComponentRenderNode = class {
 };
 function classComponentToFunctionComponentRenderNode(Component2, props, children) {
   return new FunctionComponentRenderNode((props2, lifecycle) => {
-    const instance = new Component2(props2, {
-      getContext: lifecycle.getContext
-    });
+    const instance = new Component2(props2);
     if (!instance.render)
       return null;
     if (instance.onDestroy)
@@ -3710,48 +3643,6 @@ function classComponentToFunctionComponentRenderNode(Component2, props, children
     return instance.render();
   }, props, children, Component2.name);
 }
-var _a14, _b14;
-var ContextRenderNode = class {
-  constructor(context, value, children, debugName) {
-    __publicField(this, "_type", RenderNodeType);
-    __publicField(this, "child");
-    __publicField(this, "context");
-    __publicField(this, "value");
-    __publicField(this, _a14);
-    __publicField(this, _b14);
-    this.context = context;
-    this.value = value;
-    this.child = new ArrayRenderNode(children);
-    this[SymDebugName] = debugName ?? `context`;
-    this[SymRefcount] = 0;
-  }
-  detach() {
-    this.child.detach();
-  }
-  attach(emitter, context) {
-    const derivedContext = new Map(context);
-    derivedContext.set(this.context, this.value);
-    this.child.attach(emitter, derivedContext);
-  }
-  onMount() {
-    this.child.onMount();
-  }
-  onUnmount() {
-    this.child.onUnmount();
-  }
-  retain() {
-    retain(this);
-  }
-  release() {
-    release(this);
-  }
-  [(_a14 = SymDebugName, _b14 = SymRefcount, SymAlive)]() {
-    retain(this.child);
-  }
-  [SymDead]() {
-    release(this.child);
-  }
-};
 
 // src/view.ts
 var Fragment = ({
@@ -3863,6 +3754,6 @@ function* keysHandler(target, event) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.10.0" : "development";
+var VERSION = true ? "0.11.0" : "development";
 module.exports = __toCommonJS(src_exports);
 //# sourceMappingURL=index.cjs.map

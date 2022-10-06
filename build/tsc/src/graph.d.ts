@@ -14,7 +14,6 @@ export declare enum ProcessAction {
 }
 interface DebugAttributes {
     isActive: boolean;
-    group?: {};
     name: string;
 }
 declare type DebugFormatter<TVertex> = (vertex: TVertex) => DebugAttributes;

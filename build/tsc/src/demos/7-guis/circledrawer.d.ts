@@ -1,4 +1,4 @@
-import { Model, ClassComponent, Ref, ClassComponentContext, Calculation, Collection } from '../..';
+import { Model, ClassComponent, Ref, Calculation, Collection } from '../..';
 import { WindowPosition } from './window';
 declare class UndoStack<TAction, TResult> {
     accum: TResult;
@@ -40,7 +40,7 @@ export declare class CircleDrawer extends ClassComponent {
     }>;
     svgContainerEl: Ref<HTMLDivElement>;
     actions: Action[];
-    constructor(props: {}, context: ClassComponentContext);
+    constructor(props: {});
     renderChildWindow(): import("../../rendernode").RenderNode;
     onMount(): () => void;
     onUndoClick: () => void;

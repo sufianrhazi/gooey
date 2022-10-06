@@ -1,4 +1,4 @@
-import { ClassComponent, ClassComponentContext, EmptyProps, Model, Ref } from '../../..';
+import { ClassComponent, EmptyProps, Model, Ref } from '../../..';
 import { SpreadsheetState } from './spreadsheet-state';
 import { Position } from './utils';
 import { CellApi } from './cell';
@@ -12,7 +12,7 @@ export declare class Cells extends ClassComponent {
         editing: false;
     }>;
     tableRef: Ref<HTMLTableElement>;
-    constructor(props: EmptyProps, context: ClassComponentContext);
+    constructor(props: EmptyProps);
     moveFocusTo(position: Position): void;
     onKeyDown: (e: KeyboardEvent, tableEl: HTMLTableElement) => void;
     renderCell(position: Position): import("../../../rendernode").RenderNode;

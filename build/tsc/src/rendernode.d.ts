@@ -10,7 +10,6 @@ export interface ComponentLifecycle {
     onUnmount: (callback: () => void) => void;
     onDestroy: (callback: () => void) => void;
     onError: (handler: (e: Error) => JSX.Element | null) => void;
-    getContext: <TContext>(context: Context<TContext>, handler?: ((val: TContext) => void) | undefined) => TContext;
 }
 declare const UnusedSymbolForChildrenOmission: unique symbol;
 export declare type EmptyProps = {
@@ -24,41 +23,26 @@ export interface ClassComponentInterface {
     onUnmount?(): void;
     onDestroy?(): void;
     onError?(e: Error): JSX.Element | null;
-    getContext: <TContext>(context: Context<TContext>, handler?: ((val: TContext) => void) | undefined) => TContext;
-}
-export interface ClassComponentContext {
-    getContext: <TContext>(context: Context<TContext>, handler?: ((val: TContext) => void) | undefined) => TContext;
 }
 export interface ClassComponentConstructor<TProps> {
-    new (props: TProps, context: ClassComponentContext): ClassComponent<TProps>;
+    new (props: TProps): ClassComponent<TProps>;
 }
 export declare function isClassComponent(val: any): val is ClassComponentConstructor<unknown>;
 export declare class ClassComponent<TProps = EmptyProps> implements ClassComponentInterface {
     props: TProps;
-    constructor(props: TProps, context: ClassComponentContext);
+    constructor(props: TProps);
     render?(): JSX.Element | null;
     onMount?(): (() => void) | void;
     onUnmount?(): void;
     onDestroy?(): void;
     onError?(e: Error): JSX.Element | null;
-    getContext: <TContext>(context: Context<TContext>, handler?: ((val: TContext) => void) | undefined) => TContext;
 }
 export declare type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
-declare const ContextType: unique symbol;
-export interface Context<T> extends FunctionComponent<{
-    value: T;
-    children?: JSX.Node | JSX.Node[];
-}> {
-    _type: typeof ContextType;
-    _get: () => T;
-}
-export declare function createContext<T>(val: T): Context<T>;
-export declare type ContextMap = Map<Context<any>, any>;
 export declare const RenderNodeType: unique symbol;
 export interface RenderNode extends Retainable {
     _type: typeof RenderNodeType;
     detach(): void;
-    attach(emitter: NodeEmitter, context: ContextMap): void;
+    attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -94,7 +78,7 @@ export declare class TextRenderNode implements RenderNode {
     private emitter;
     constructor(string: string, debugName?: string);
     detach(): void;
-    attach(emitter: NodeEmitter, context: ContextMap): void;
+    attach(emitter: NodeEmitter): void;
     onMount: () => void;
     onUnmount: () => void;
     retain(): void;
@@ -113,7 +97,7 @@ export declare class ForeignRenderNode implements RenderNode {
     private emitter;
     constructor(node: Node, debugName?: string);
     detach(): void;
-    attach(emitter: NodeEmitter, context: ContextMap): void;
+    attach(emitter: NodeEmitter): void;
     onMount: () => void;
     onUnmount: () => void;
     retain(): void;
@@ -134,7 +118,7 @@ export declare class ArrayRenderNode implements RenderNode {
     private emitter;
     constructor(children: RenderNode[], debugName?: string);
     detach(): void;
-    attach(emitter: NodeEmitter, context: ContextMap): void;
+    attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -144,6 +128,7 @@ export declare class ArrayRenderNode implements RenderNode {
     [SymAlive](): void;
     [SymDead](): void;
 }
+export declare const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 /**
  * Renders an intrinsic DOM node
  */
@@ -164,7 +149,7 @@ export declare class IntrinsicRenderNode implements RenderNode {
     private setProp;
     private handleEvent;
     detach(): void;
-    attach(emitter: NodeEmitter, context: ContextMap): void;
+    attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -180,8 +165,6 @@ export declare class PortalRenderNode implements RenderNode {
     private element;
     private refProp;
     private emitter;
-    private xmlNamespace;
-    private childXmlNamespace;
     private existingOffset;
     private arrayRenderNode;
     private calculations?;
@@ -189,7 +172,7 @@ export declare class PortalRenderNode implements RenderNode {
     constructor(element: Element, children: ArrayRenderNode, refProp: RefObjectOrCallback<Element> | null, debugName?: string);
     private handleEvent;
     detach(): void;
-    attach(emitter: NodeEmitter, contextMap: ContextMap): void;
+    attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -208,12 +191,12 @@ export declare class CalculationRenderNode implements RenderNode {
     private renderNode;
     private calculation;
     private calculationSubscription;
-    private context;
     private isMounted;
     private emitter;
+    private parentXmlNamespace;
     constructor(calculation: Calculation<any>, debugName?: string);
     detach(): void;
-    attach(emitter: NodeEmitter, context: ContextMap): void;
+    attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -233,11 +216,11 @@ export declare class CollectionRenderNode implements RenderNode {
     private slotSizes;
     private collection;
     private unsubscribe?;
-    private context;
     private isMounted;
     private emitter;
+    private parentXmlNamespace;
     constructor(collection: Collection<any> | View<any>, debugName?: string);
-    attach(emitter: NodeEmitter, context: ContextMap): void;
+    attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     detach(): void;
     handleChildEvent(event: ArrayEvent<Node> | Error, child: RenderNode): void;
     onMount(): void;
@@ -273,7 +256,7 @@ export declare class IntrinsicObserverRenderNode implements RenderNode {
     notify(node: Node, type: IntrinsicObserverEventType): void;
     handleEvent(event: ArrayEvent<Node> | Error): void;
     detach(): void;
-    attach(emitter: NodeEmitter, context: ContextMap): void;
+    attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     onMount(): void;
     onUnmount(): void;
     retain(): void;
@@ -298,15 +281,14 @@ export declare class FunctionComponentRenderNode<TProps> implements RenderNode {
     onMountCallbacks?: (() => (() => void) | void)[];
     onUnmountCallbacks?: (() => void)[];
     onDestroyCallbacks?: (() => void)[];
-    getContextCallbacks?: Map<Context<any>, ((val: any) => void)[]>;
     owned: Set<Retainable>;
     errorHandler: ((e: Error) => RenderNode | null) | null;
     emitter: NodeEmitter | null;
-    contextMap: ContextMap | null;
+    parentXmlNamespace: string | null;
     isMounted: boolean;
     constructor(Component: FunctionComponent<TProps>, props: TProps | null | undefined, children: JSX.Node[], debugName?: string);
     detach(): void;
-    attach(emitter: NodeEmitter, contextMap: ContextMap): void;
+    attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     handleEvent: (event: ArrayEvent<Node> | Error) => void;
     onMount(): void;
     onUnmount(): void;
@@ -318,22 +300,5 @@ export declare class FunctionComponentRenderNode<TProps> implements RenderNode {
     [SymDead](): void;
 }
 export declare function classComponentToFunctionComponentRenderNode<TProps>(Component: ClassComponentConstructor<TProps>, props: TProps, children: JSX.Node[]): FunctionComponentRenderNode<TProps>;
-export declare class ContextRenderNode<T> implements RenderNode {
-    _type: typeof RenderNodeType;
-    child: RenderNode;
-    context: Context<T>;
-    value: T;
-    constructor(context: Context<T>, value: T, children: JSX.Element[], debugName?: string);
-    detach(): void;
-    attach(emitter: NodeEmitter, context: ContextMap): void;
-    onMount(): void;
-    onUnmount(): void;
-    retain(): void;
-    release(): void;
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive](): void;
-    [SymDead](): void;
-}
 export {};
 //# sourceMappingURL=rendernode.d.ts.map
