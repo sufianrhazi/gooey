@@ -2639,6 +2639,214 @@ var ArrayRenderNode = class {
 var HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 var SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 var MATHML_NAMESPACE = "http://www.w3.org/1998/Math/MathML";
+var ELEMENT_NAMESPACE_GUESS = {
+  a: HTML_NAMESPACE,
+  abbr: HTML_NAMESPACE,
+  address: HTML_NAMESPACE,
+  area: HTML_NAMESPACE,
+  article: HTML_NAMESPACE,
+  aside: HTML_NAMESPACE,
+  audio: HTML_NAMESPACE,
+  b: HTML_NAMESPACE,
+  base: HTML_NAMESPACE,
+  bdi: HTML_NAMESPACE,
+  bdo: HTML_NAMESPACE,
+  blockquote: HTML_NAMESPACE,
+  body: HTML_NAMESPACE,
+  br: HTML_NAMESPACE,
+  button: HTML_NAMESPACE,
+  canvas: HTML_NAMESPACE,
+  caption: HTML_NAMESPACE,
+  cite: HTML_NAMESPACE,
+  code: HTML_NAMESPACE,
+  col: HTML_NAMESPACE,
+  colgroup: HTML_NAMESPACE,
+  data: HTML_NAMESPACE,
+  datalist: HTML_NAMESPACE,
+  dd: HTML_NAMESPACE,
+  del: HTML_NAMESPACE,
+  details: HTML_NAMESPACE,
+  dfn: HTML_NAMESPACE,
+  dialog: HTML_NAMESPACE,
+  div: HTML_NAMESPACE,
+  dl: HTML_NAMESPACE,
+  dt: HTML_NAMESPACE,
+  em: HTML_NAMESPACE,
+  embed: HTML_NAMESPACE,
+  fieldset: HTML_NAMESPACE,
+  figcaption: HTML_NAMESPACE,
+  figure: HTML_NAMESPACE,
+  footer: HTML_NAMESPACE,
+  form: HTML_NAMESPACE,
+  h1: HTML_NAMESPACE,
+  h2: HTML_NAMESPACE,
+  h3: HTML_NAMESPACE,
+  h4: HTML_NAMESPACE,
+  h5: HTML_NAMESPACE,
+  h6: HTML_NAMESPACE,
+  head: HTML_NAMESPACE,
+  header: HTML_NAMESPACE,
+  hgroup: HTML_NAMESPACE,
+  hr: HTML_NAMESPACE,
+  html: HTML_NAMESPACE,
+  i: HTML_NAMESPACE,
+  iframe: HTML_NAMESPACE,
+  img: HTML_NAMESPACE,
+  input: HTML_NAMESPACE,
+  ins: HTML_NAMESPACE,
+  kbd: HTML_NAMESPACE,
+  label: HTML_NAMESPACE,
+  legend: HTML_NAMESPACE,
+  li: HTML_NAMESPACE,
+  link: HTML_NAMESPACE,
+  main: HTML_NAMESPACE,
+  map: HTML_NAMESPACE,
+  mark: HTML_NAMESPACE,
+  menu: HTML_NAMESPACE,
+  meta: HTML_NAMESPACE,
+  meter: HTML_NAMESPACE,
+  nav: HTML_NAMESPACE,
+  noscript: HTML_NAMESPACE,
+  object: HTML_NAMESPACE,
+  ol: HTML_NAMESPACE,
+  optgroup: HTML_NAMESPACE,
+  option: HTML_NAMESPACE,
+  output: HTML_NAMESPACE,
+  p: HTML_NAMESPACE,
+  picture: HTML_NAMESPACE,
+  pre: HTML_NAMESPACE,
+  progress: HTML_NAMESPACE,
+  q: HTML_NAMESPACE,
+  rp: HTML_NAMESPACE,
+  rt: HTML_NAMESPACE,
+  ruby: HTML_NAMESPACE,
+  s: HTML_NAMESPACE,
+  samp: HTML_NAMESPACE,
+  script: HTML_NAMESPACE,
+  section: HTML_NAMESPACE,
+  select: HTML_NAMESPACE,
+  slot: HTML_NAMESPACE,
+  small: HTML_NAMESPACE,
+  source: HTML_NAMESPACE,
+  span: HTML_NAMESPACE,
+  strong: HTML_NAMESPACE,
+  style: HTML_NAMESPACE,
+  sub: HTML_NAMESPACE,
+  summary: HTML_NAMESPACE,
+  sup: HTML_NAMESPACE,
+  table: HTML_NAMESPACE,
+  tbody: HTML_NAMESPACE,
+  td: HTML_NAMESPACE,
+  template: HTML_NAMESPACE,
+  textarea: HTML_NAMESPACE,
+  tfoot: HTML_NAMESPACE,
+  th: HTML_NAMESPACE,
+  thead: HTML_NAMESPACE,
+  time: HTML_NAMESPACE,
+  title: HTML_NAMESPACE,
+  tr: HTML_NAMESPACE,
+  track: HTML_NAMESPACE,
+  u: HTML_NAMESPACE,
+  ul: HTML_NAMESPACE,
+  var: HTML_NAMESPACE,
+  video: HTML_NAMESPACE,
+  wbr: HTML_NAMESPACE,
+  animate: SVG_NAMESPACE,
+  animateMotion: SVG_NAMESPACE,
+  animateTransform: SVG_NAMESPACE,
+  circle: SVG_NAMESPACE,
+  clipPath: SVG_NAMESPACE,
+  defs: SVG_NAMESPACE,
+  desc: SVG_NAMESPACE,
+  discard: SVG_NAMESPACE,
+  ellipse: SVG_NAMESPACE,
+  feBlend: SVG_NAMESPACE,
+  feColorMatrix: SVG_NAMESPACE,
+  feComponentTransfer: SVG_NAMESPACE,
+  feComposite: SVG_NAMESPACE,
+  feConvolveMatrix: SVG_NAMESPACE,
+  feDiffuseLighting: SVG_NAMESPACE,
+  feDisplacementMap: SVG_NAMESPACE,
+  feDistantLight: SVG_NAMESPACE,
+  feDropShadow: SVG_NAMESPACE,
+  feFlood: SVG_NAMESPACE,
+  feFuncA: SVG_NAMESPACE,
+  feFuncB: SVG_NAMESPACE,
+  feFuncG: SVG_NAMESPACE,
+  feFuncR: SVG_NAMESPACE,
+  feGaussianBlur: SVG_NAMESPACE,
+  feImage: SVG_NAMESPACE,
+  feMerge: SVG_NAMESPACE,
+  feMergeNode: SVG_NAMESPACE,
+  feMorphology: SVG_NAMESPACE,
+  feOffset: SVG_NAMESPACE,
+  fePointLight: SVG_NAMESPACE,
+  feSpecularLighting: SVG_NAMESPACE,
+  feSpotLight: SVG_NAMESPACE,
+  feTile: SVG_NAMESPACE,
+  feTurbulence: SVG_NAMESPACE,
+  filter: SVG_NAMESPACE,
+  foreignObject: SVG_NAMESPACE,
+  g: SVG_NAMESPACE,
+  hatch: SVG_NAMESPACE,
+  hatchpath: SVG_NAMESPACE,
+  image: SVG_NAMESPACE,
+  line: SVG_NAMESPACE,
+  linearGradient: SVG_NAMESPACE,
+  marker: SVG_NAMESPACE,
+  mask: SVG_NAMESPACE,
+  metadata: SVG_NAMESPACE,
+  mpath: SVG_NAMESPACE,
+  path: SVG_NAMESPACE,
+  pattern: SVG_NAMESPACE,
+  polygon: SVG_NAMESPACE,
+  polyline: SVG_NAMESPACE,
+  radialGradient: SVG_NAMESPACE,
+  rect: SVG_NAMESPACE,
+  set: SVG_NAMESPACE,
+  stop: SVG_NAMESPACE,
+  svg: SVG_NAMESPACE,
+  switch: SVG_NAMESPACE,
+  symbol: SVG_NAMESPACE,
+  text: SVG_NAMESPACE,
+  textPath: SVG_NAMESPACE,
+  tspan: SVG_NAMESPACE,
+  use: SVG_NAMESPACE,
+  view: SVG_NAMESPACE,
+  math: MATHML_NAMESPACE,
+  maction: MATHML_NAMESPACE,
+  annotation: MATHML_NAMESPACE,
+  "annotation-xml": MATHML_NAMESPACE,
+  menclose: MATHML_NAMESPACE,
+  merror: MATHML_NAMESPACE,
+  mfenced: MATHML_NAMESPACE,
+  mfrac: MATHML_NAMESPACE,
+  mi: MATHML_NAMESPACE,
+  mmultiscripts: MATHML_NAMESPACE,
+  mn: MATHML_NAMESPACE,
+  none: MATHML_NAMESPACE,
+  mo: MATHML_NAMESPACE,
+  mover: MATHML_NAMESPACE,
+  mpadded: MATHML_NAMESPACE,
+  mphantom: MATHML_NAMESPACE,
+  mprescripts: MATHML_NAMESPACE,
+  mroot: MATHML_NAMESPACE,
+  mrow: MATHML_NAMESPACE,
+  ms: MATHML_NAMESPACE,
+  semantics: MATHML_NAMESPACE,
+  mspace: MATHML_NAMESPACE,
+  msqrt: MATHML_NAMESPACE,
+  mstyle: MATHML_NAMESPACE,
+  msub: MATHML_NAMESPACE,
+  msup: MATHML_NAMESPACE,
+  msubsup: MATHML_NAMESPACE,
+  mtable: MATHML_NAMESPACE,
+  mtd: MATHML_NAMESPACE,
+  mtext: MATHML_NAMESPACE,
+  mtr: MATHML_NAMESPACE,
+  munder: MATHML_NAMESPACE,
+  munderover: MATHML_NAMESPACE
+};
 var elementNamespaceTransitionMap = {
   [HTML_NAMESPACE]: {
     svg: {
@@ -2670,6 +2878,7 @@ var IntrinsicRenderNode = class {
     __publicField(this, "tagName");
     __publicField(this, "element");
     __publicField(this, "emitter");
+    __publicField(this, "detachedError");
     __publicField(this, "xmlNamespace");
     __publicField(this, "childXmlNamespace");
     __publicField(this, "props");
@@ -2679,14 +2888,20 @@ var IntrinsicRenderNode = class {
     __publicField(this, "calculationSubscriptions");
     __publicField(this, "handleEvent", (event) => {
       if (event instanceof Error) {
-        this.emitter?.(event);
+        if (this.emitter) {
+          this.emitter(event);
+        } else {
+          warn("Unhandled error on detached IntrinsicRenderNode", this[SymDebugName], event);
+          this.detachedError = event;
+        }
         return;
       }
-      assert(false, "unexpected event from PortalRenderNode");
+      assert(false, "unexpected event from IntrinsicRenderNode");
     });
     __publicField(this, _a8);
     __publicField(this, _b8);
     this.emitter = null;
+    this.detachedError = null;
     this.props = props;
     this.children = new ArrayRenderNode(children);
     this.portalRenderNode = null;
@@ -2772,12 +2987,7 @@ var IntrinsicRenderNode = class {
     });
     this.emitter = null;
   }
-  attach(emitter, parentXmlNamespace) {
-    assert(!this.emitter, "Invariant: Intrinsic node double attached");
-    this.emitter = emitter;
-    const namespaceTransition = elementNamespaceTransitionMap[parentXmlNamespace]?.[this.tagName];
-    const xmlNamespace = namespaceTransition?.node ?? parentXmlNamespace;
-    const childXmlNamespace = namespaceTransition?.children ?? parentXmlNamespace;
+  ensureElement(xmlNamespace, childXmlNamespace) {
     if (!this.element || xmlNamespace !== this.xmlNamespace) {
       this.xmlNamespace = xmlNamespace;
       this.element = this.createElement(xmlNamespace);
@@ -2789,11 +2999,24 @@ var IntrinsicRenderNode = class {
       retain(this.portalRenderNode);
       this.portalRenderNode.attach(this.handleEvent, childXmlNamespace);
     }
+    return this.element;
+  }
+  attach(emitter, parentXmlNamespace) {
+    assert(!this.emitter, "Invariant: Intrinsic node double attached");
+    this.emitter = emitter;
+    if (this.detachedError) {
+      this.emitter(this.detachedError);
+      return;
+    }
+    const namespaceTransition = elementNamespaceTransitionMap[parentXmlNamespace]?.[this.tagName];
+    const xmlNamespace = namespaceTransition?.node ?? parentXmlNamespace;
+    const childXmlNamespace = namespaceTransition?.children ?? parentXmlNamespace;
+    const element = this.ensureElement(xmlNamespace, childXmlNamespace);
     this.emitter?.({
       type: "splice" /* SPLICE */,
       index: 0,
       count: 0,
-      items: [this.element]
+      items: [element]
     });
   }
   onMount() {
@@ -2809,7 +3032,9 @@ var IntrinsicRenderNode = class {
     release(this);
   }
   [(_a8 = SymDebugName, _b8 = SymRefcount, SymAlive)]() {
+    const xmlNamespaceGuess = ELEMENT_NAMESPACE_GUESS[this.tagName] || HTML_NAMESPACE;
     retain(this.children);
+    this.ensureElement(xmlNamespaceGuess, this.tagName === "foreignObject" ? HTML_NAMESPACE : xmlNamespaceGuess);
   }
   [SymDead]() {
     if (this.calculations) {
@@ -2846,7 +3071,11 @@ var PortalRenderNode = class {
     __publicField(this, "calculationSubscriptions");
     __publicField(this, "handleEvent", (event) => {
       if (event instanceof Error) {
-        this.emitter?.(event);
+        if (this.emitter) {
+          this.emitter(event);
+        } else {
+          warn("Unhandled error on detached PortalRenderNode");
+        }
         return;
       }
       assert(this.element, "missing element");
@@ -3032,7 +3261,11 @@ var CalculationRenderNode = class {
     this.cleanPrior();
     if (errorType) {
       this.error = val;
-      this.emitter?.(val);
+      if (this.emitter) {
+        this.emitter(val);
+      } else {
+        warn("Unhandled error on detached CalculationRenderNode", val);
+      }
     } else {
       const renderNode = renderJSXNode(val);
       retain(renderNode);
@@ -3311,12 +3544,18 @@ function mount(target, node) {
   document.documentElement.addEventListener("focusin", focusMonitor);
   const root = new PortalRenderNode(target, new ArrayRenderNode([node]), null, "root");
   retain(root);
+  let syncError;
   root.attach((event) => {
     if (event instanceof Error) {
+      syncError = event;
       error("Unhandled mount error", event);
       return;
     }
   }, target.namespaceURI ?? HTML_NAMESPACE);
+  if (syncError) {
+    release(root);
+    throw syncError;
+  }
   root.onMount();
   return () => {
     root.onUnmount();
@@ -3359,7 +3598,11 @@ var IntrinsicObserverRenderNode = class {
   }
   handleEvent(event) {
     if (event instanceof Error) {
-      this.emitter?.(event);
+      if (this.emitter) {
+        this.emitter(event);
+      } else {
+        warn("Unhandled error on detached IntrinsicObserverRenderNode", event);
+      }
       return;
     }
     if (event.type === "splice" /* SPLICE */) {
@@ -3423,7 +3666,7 @@ var IntrinsicObserverRenderNode = class {
 var IntrinsicObserver = ({ nodeCallback, elementCallback, children }) => {
   return new IntrinsicObserverRenderNode(nodeCallback, elementCallback, renderJSXChildren(children));
 };
-var _a13, _b13, _c6;
+var _a13, _b13;
 var FunctionComponentRenderNode = class {
   constructor(Component2, props, children, debugName) {
     __publicField(this, "_type", RenderNodeType);
@@ -3457,9 +3700,10 @@ var FunctionComponentRenderNode = class {
         const handledResult = this.errorHandler(event);
         this.result = handledResult ? renderJSXNode(handledResult) : emptyRenderNode;
         retain(this.result);
-        assert(this.emitter && this.parentXmlNamespace, "Invariant: received event while unattached");
-        this.result.attach(this.handleEvent, this.parentXmlNamespace);
-        this.resultAttached = true;
+        if (this.emitter && this.parentXmlNamespace) {
+          this.result.attach(this.handleEvent, this.parentXmlNamespace);
+          this.resultAttached = true;
+        }
         if (this.isMounted) {
           this.result.onMount();
         }
@@ -3469,7 +3713,6 @@ var FunctionComponentRenderNode = class {
     });
     __publicField(this, _a13);
     __publicField(this, _b13);
-    __publicField(this, _c6, noop);
     this.Component = Component2;
     this.props = props;
     this.children = children;
@@ -3493,10 +3736,7 @@ var FunctionComponentRenderNode = class {
     this.resultAttached = false;
     this.emitter = null;
   }
-  attach(emitter, parentXmlNamespace) {
-    assert(this[SymRefcount] > 0, "Invariant: dead FunctionComponentRenderNode called attach");
-    this.emitter = emitter;
-    this.parentXmlNamespace = parentXmlNamespace;
+  ensureResult() {
     if (!this.result) {
       let callbacksAllowed = true;
       const lifecycle = {
@@ -3557,11 +3797,17 @@ var FunctionComponentRenderNode = class {
         this.result = jsxResult;
       }
     }
-    assert(this.result, "Invariant: missing result");
-    if (this.result instanceof Error) {
-      emitter(this.result);
+    return this.result;
+  }
+  attach(emitter, parentXmlNamespace) {
+    assert(this[SymRefcount] > 0, "Invariant: dead FunctionComponentRenderNode called attach");
+    this.emitter = emitter;
+    this.parentXmlNamespace = parentXmlNamespace;
+    const result = this.ensureResult();
+    if (result instanceof Error) {
+      emitter(result);
     } else {
-      this.result.attach(this.handleEvent, parentXmlNamespace);
+      result.attach(this.handleEvent, parentXmlNamespace);
       this.resultAttached = true;
     }
   }
@@ -3611,7 +3857,10 @@ var FunctionComponentRenderNode = class {
   release() {
     release(this);
   }
-  [(_a13 = SymDebugName, _b13 = SymRefcount, _c6 = SymAlive, SymDead)]() {
+  [(_a13 = SymDebugName, _b13 = SymRefcount, SymAlive)]() {
+    this.ensureResult();
+  }
+  [SymDead]() {
     if (this.onDestroyCallbacks) {
       for (const callback of this.onDestroyCallbacks) {
         callback();
@@ -3754,6 +4003,6 @@ function* keysHandler(target, event) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.11.0" : "development";
+var VERSION = true ? "0.11.1" : "development";
 module.exports = __toCommonJS(src_exports);
 //# sourceMappingURL=index.cjs.map

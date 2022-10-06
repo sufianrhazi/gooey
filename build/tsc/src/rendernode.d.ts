@@ -128,7 +128,6 @@ export declare class ArrayRenderNode implements RenderNode {
     [SymAlive](): void;
     [SymDead](): void;
 }
-export declare const HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
 /**
  * Renders an intrinsic DOM node
  */
@@ -137,6 +136,7 @@ export declare class IntrinsicRenderNode implements RenderNode {
     private tagName;
     private element;
     private emitter;
+    private detachedError;
     private xmlNamespace;
     private childXmlNamespace;
     private props;
@@ -149,6 +149,7 @@ export declare class IntrinsicRenderNode implements RenderNode {
     private setProp;
     private handleEvent;
     detach(): void;
+    ensureElement(xmlNamespace: string, childXmlNamespace: string): Element;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     onMount(): void;
     onUnmount(): void;
@@ -288,6 +289,7 @@ export declare class FunctionComponentRenderNode<TProps> implements RenderNode {
     isMounted: boolean;
     constructor(Component: FunctionComponent<TProps>, props: TProps | null | undefined, children: JSX.Node[], debugName?: string);
     detach(): void;
+    private ensureResult;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     handleEvent: (event: ArrayEvent<Node> | Error) => void;
     onMount(): void;
@@ -296,7 +298,7 @@ export declare class FunctionComponentRenderNode<TProps> implements RenderNode {
     release(): void;
     [SymDebugName]: string;
     [SymRefcount]: number;
-    [SymAlive]: () => void;
+    [SymAlive](): void;
     [SymDead](): void;
 }
 export declare function classComponentToFunctionComponentRenderNode<TProps>(Component: ClassComponentConstructor<TProps>, props: TProps, children: JSX.Node[]): FunctionComponentRenderNode<TProps>;
