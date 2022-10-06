@@ -3643,7 +3643,6 @@ if (2 < 1) {
                     return <div>nope</div>;
                 }
             }
-            /* @ts-expect-error */
             assert.isFalsy(receiveJSXElement(<MyClass />));
         });
     });

@@ -15,6 +15,7 @@ const onRoll = (sides: number) => {
 };
 
 mount(
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     document.getElementById('dice-roller')!,
     <>
         <p>Dice Roller</p>

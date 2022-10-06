@@ -13,4 +13,5 @@ const App: Component = () => {
     );
 };
 
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 mount(document.getElementById('button-clicker')!, <App />);
