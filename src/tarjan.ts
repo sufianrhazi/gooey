@@ -6,7 +6,7 @@ type Vertex = {
 };
 
 export function tarjanStronglyConnected(
-    reverseAdjacency: Readonly<Record<number, readonly number[]>>,
+    reverseAdjacency: readonly (readonly number[])[],
     topologicalIndexById: readonly (number | undefined)[],
     lowerBound: number,
     upperBound: number,
