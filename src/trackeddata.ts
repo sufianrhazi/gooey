@@ -43,9 +43,6 @@ export class TrackedDataHandle<
         this.target = target;
         this.methods = methods;
 
-        this.keys = new Set<string>(Object.keys(target));
-        this.keysField = new Field(this.keys.size, `${debugName}:@keys`);
-
         this.emitter = new SubscriptionEmitter<TEmitEvent>(debugName);
 
         if (derivedEmitter && handleEvent) {
@@ -60,7 +57,14 @@ export class TrackedDataHandle<
             this.consumer = null;
         }
 
-        this.fieldMap = new FieldMap(this.consumer, this.emitter, debugName);
+        this.keys = new Set<string>(Object.keys(target));
+        this.keysField = new Field(this.keys.size, `${debugName}:@keys`);
+        this.fieldMap = new FieldMap(
+            this.keysField,
+            this.consumer,
+            this.emitter,
+            debugName
+        );
 
         const emitEvent = (event: TEmitEvent) => {
             this.emitter.addEvent(event);
@@ -94,6 +98,7 @@ export class TrackedDataHandle<
                 }
                 const value = Reflect.get(this.target, prop, receiver);
                 const field = this.fieldMap.getOrMake(prop, value);
+                notifyRead(this.revocable.proxy);
                 notifyRead(field);
                 return value;
             },
@@ -116,6 +121,7 @@ export class TrackedDataHandle<
                 }
                 const value = Reflect.has(target, prop);
                 const field = this.fieldMap.getOrMake(prop, value);
+                notifyRead(this.revocable.proxy);
                 notifyRead(field);
                 return value;
             },

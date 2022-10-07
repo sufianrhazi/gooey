@@ -295,9 +295,7 @@ function calculationCall<T>(calculation: Calculation<T>): T {
             }
             break;
         case CalculationState.READY: {
-            const calculationReads: Set<
-                Retainable | (Retainable & Processable)
-            > = new Set();
+            const calculationReads: Set<Retainable> = new Set();
             let result: T | Sentinel = Sentinel;
             let exception: any;
             calculation._state = CalculationState.CALLING;

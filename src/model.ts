@@ -103,46 +103,67 @@ model.keys = function modelKeys<T extends {}>(
         ViewHandler,
         makeViewPrototype(sourceModel),
         sourceTDHandle.emitter,
-        keysHandler,
+        function* keysHandler(
+            target: string[],
+            event: ModelEvent
+        ): IterableIterator<ArrayEvent<string>> {
+            switch (event.type) {
+                case ModelEventType.DEL: {
+                    const index = target.indexOf(event.prop);
+                    if (index !== -1) {
+                        const prevLength = target.length;
+                        target.splice(index, 1);
+                        const newLength = target.length;
+
+                        // Invalidate ranges
+                        for (let i = index; i < target.length; ++i) {
+                            derivedCollection.fieldMap.set(
+                                i.toString(),
+                                target[i]
+                            );
+                        }
+                        for (let i = newLength; i < prevLength; ++i) {
+                            derivedCollection.fieldMap.delete(i.toString());
+                        }
+                        derivedCollection.fieldMap.set('length', target.length);
+
+                        yield {
+                            type: ArrayEventType.SPLICE,
+                            index,
+                            count: 1,
+                            items: [],
+                        };
+                    }
+                    break;
+                }
+                case ModelEventType.ADD: {
+                    const length = target.length;
+                    target.push(event.prop);
+
+                    // Invalidate ranges
+                    derivedCollection.fieldMap.set(
+                        length.toString(),
+                        event.prop
+                    );
+                    derivedCollection.fieldMap.set('length', target.length);
+
+                    yield {
+                        type: ArrayEventType.SPLICE,
+                        index: length,
+                        count: 0,
+                        items: [event.prop],
+                    };
+                    break;
+                }
+                case ModelEventType.SET:
+                    // Preexisting key
+                    break;
+                default:
+                    log.assertExhausted(event);
+            }
+        },
         debugName
     );
 
     return derivedCollection.revocable.proxy;
 };
-
-function* keysHandler(
-    target: string[],
-    event: ModelEvent
-): IterableIterator<ArrayEvent<string>> {
-    switch (event.type) {
-        case ModelEventType.DEL: {
-            const index = target.indexOf(event.prop);
-            if (index !== -1) {
-                target.splice(index, 1);
-                yield {
-                    type: ArrayEventType.SPLICE,
-                    index,
-                    count: 1,
-                    items: [],
-                };
-            }
-            break;
-        }
-        case ModelEventType.ADD: {
-            const length = target.length;
-            target.push(event.prop);
-            yield {
-                type: ArrayEventType.SPLICE,
-                index: length,
-                count: 0,
-                items: [event.prop],
-            };
-            break;
-        }
-        case ModelEventType.SET:
-            // Preexisting key
-            break;
-        default:
-            log.assertExhausted(event);
-    }
-}

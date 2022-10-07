@@ -32,7 +32,7 @@ export function isProcessable(val: any): val is Processable {
 }
 
 let globalDependencyGraph = new Graph<Processable>(processHandler);
-let trackReadSets: (Set<Retainable | (Retainable & Processable)> | null)[] = [];
+let trackReadSets: (Set<Retainable> | null)[] = [];
 let trackCreateSets: (Set<Retainable> | null)[] = [];
 let isFlushing = false;
 let afterFlushCallbacks: (() => void)[] = [];
@@ -236,7 +236,7 @@ export function markCycleInformed(vertex: Processable) {
 }
 
 export function trackReads<T>(
-    set: Set<Retainable | (Retainable & Processable)>,
+    set: Set<Retainable>,
     fn: () => T,
     debugName?: string
 ): T {
@@ -315,7 +315,7 @@ export function notifyCreate(retainable: Retainable) {
     }
 }
 
-export function notifyRead(dependency: Retainable & Processable) {
+export function notifyRead(dependency: Retainable) {
     if (trackReadSets.length === 0) return;
     const calculationReads = trackReadSets[trackReadSets.length - 1];
     if (calculationReads) {

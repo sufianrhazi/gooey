@@ -10,6 +10,7 @@ import { SymDebugName, SymAlive, SymDead, SymRefcount } from './symbols';
 import { Field } from './field';
 
 export class FieldMap implements Retainable {
+    private keysField: Field<number>;
     private fieldMap: Map<string, Field<any>>;
     private consumer: (Retainable & Processable) | null;
     private emitter: (Retainable & Processable) | null;
@@ -18,11 +19,13 @@ export class FieldMap implements Retainable {
     [SymRefcount] = 0;
 
     constructor(
+        keysField: Field<number>,
         consumer: (Retainable & Processable) | null,
         emitter: (Retainable & Processable) | null,
         debugName?: string
     ) {
         this[SymDebugName] = debugName ?? 'fieldmap';
+        this.keysField = keysField;
         this.fieldMap = new Map();
         this.consumer = consumer;
         this.emitter = emitter;
@@ -68,6 +71,11 @@ export class FieldMap implements Retainable {
             if (this.consumer) removeSoftEdge(this.consumer, field);
             release(field);
         }
+
+        if (this.emitter) removeSoftEdge(this.keysField, this.emitter);
+        if (this.consumer) removeSoftEdge(this.consumer, this.keysField);
+        release(this.keysField);
+
         if (this.emitter) release(this.emitter);
         if (this.consumer) release(this.consumer);
     }
@@ -75,6 +83,11 @@ export class FieldMap implements Retainable {
     [SymAlive]() {
         if (this.emitter) retain(this.emitter);
         if (this.consumer) retain(this.consumer);
+
+        retain(this.keysField);
+        if (this.emitter) addSoftEdge(this.keysField, this.emitter);
+        if (this.consumer) addSoftEdge(this.consumer, this.keysField);
+
         for (const field of this.fieldMap.values()) {
             retain(field);
             if (this.emitter) addSoftEdge(field, this.emitter);

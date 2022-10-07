@@ -241,6 +241,58 @@ suite('calc', () => {
         assert.is(2, b);
         assert.deepEqual(['call', 'call'], calls);
     });
+
+    test('retains collections appropriately', () => {
+        const numbers = collection([1, 2, 3]);
+        const sum = calc(() => numbers.reduce((acc, val) => acc + val, 0));
+        const values: any[] = [];
+        sum.subscribe((err, val) => values.push(val));
+        assert.deepEqual([], values);
+        numbers.push(4);
+        flush();
+        assert.deepEqual([1 + 2 + 3 + 4], values);
+        numbers[0] = 5;
+        flush();
+        assert.deepEqual([1 + 2 + 3 + 4, 5 + 2 + 3 + 4], values);
+    });
+
+    test('retains derived collections appropriately', () => {
+        const numbers = collection([1, 2, 3]);
+        const doubled = numbers.mapView((num) => num * 2);
+        const sum = calc(() => doubled.reduce((acc, val) => acc + val, 0));
+        const values: any[] = [];
+        sum.subscribe((err, val) => values.push(val));
+        assert.deepEqual([], values);
+        numbers.push(4);
+        flush();
+        assert.deepEqual([(1 + 2 + 3 + 4) * 2], values);
+        numbers[0] = 5;
+        flush();
+        assert.deepEqual([(1 + 2 + 3 + 4) * 2, (5 + 2 + 3 + 4) * 2], values);
+    });
+
+    test('retains model keys appropriately', () => {
+        const bag = model<Record<string, any>>({});
+        const keys = model.keys(bag);
+        const size = calc(() => keys.length);
+        const values: any[] = [];
+        size.subscribe((err, val) => values.push(val));
+        assert.deepEqual([], values);
+        bag.foo = 'bar';
+        flush();
+        assert.deepEqual([1], values);
+        bag.baz = 'bum';
+        flush();
+        assert.deepEqual([1, 2], values);
+        bag.foo = 'overwrite';
+        bag.baz = 'overwrite';
+        flush();
+        assert.deepEqual([1, 2], values);
+        delete bag.foo;
+        delete bag.unused;
+        flush();
+        assert.deepEqual([1, 2, 1], values);
+    });
 });
 
 suite('cycles', () => {
