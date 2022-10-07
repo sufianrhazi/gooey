@@ -29,12 +29,12 @@ export declare function removeSoftEdge(fromVertex: Processable, toVertex: Proces
 export declare function markDirty(vertex: Processable): void;
 export declare function unmarkDirty(vertex: Processable): void;
 export declare function markCycleInformed(vertex: Processable): void;
-export declare function trackReads<T>(set: Set<Retainable | (Retainable & Processable)>, fn: () => T, debugName?: string): T;
+export declare function trackReads<T>(set: Set<Retainable>, fn: () => T, debugName?: string): T;
 export declare function untrackReads<T>(fn: () => T, debugName?: string): T;
 export declare function trackCreates<T>(set: Set<Retainable | (Retainable & Processable)>, fn: () => T, debugName?: string): T;
 export declare function untrackCreates<T>(fn: () => T, debugName?: string): T;
 export declare function notifyCreate(retainable: Retainable): void;
-export declare function notifyRead(dependency: Retainable & Processable): void;
+export declare function notifyRead(dependency: Retainable): void;
 export declare function debug(activeVertex?: Processable, label?: string): string;
 export declare function debugSubscribe(fn: (label: string, graphviz: string) => void): () => void;
 export declare function debugGetGraph(): Graph<Processable>;

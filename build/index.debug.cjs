@@ -1446,12 +1446,15 @@ function calcSetCmp(eq) {
   return this;
 }
 function calcSubscribe(handler) {
+  retain(this);
+  this();
   if (!this._subscriptions) {
     this._subscriptions = /* @__PURE__ */ new Set();
   }
   this._subscriptions.add(handler);
   const unsubscribe = () => {
     this._subscriptions?.delete(handler);
+    release(this);
   };
   const unsubscribeData = {
     _type: CalculationUnsubscribeSymbol,
@@ -1711,76 +1714,82 @@ function calc(fn, debugName) {
 }
 
 // src/field.ts
-function field(val, debugName) {
-  const field2 = {
-    _val: val,
-    _isAlive: false,
-    _changeClock: 0,
-    get: fieldGet,
-    set: fieldSet,
-    subscribe: fieldSubscribe,
-    [SymProcessable]: true,
-    [SymRefcount]: 0,
-    [SymAlive]: fieldAlive,
-    [SymDead]: fieldDead,
-    [SymDebugName]: debugName ?? "field",
-    [SymRecalculate]: fieldFlush
-  };
-  return field2;
-}
-function fieldGet() {
-  notifyRead(this);
-  return this._val;
-}
-function fieldSet(newVal) {
-  if (newVal !== this._val) {
-    if (this._subscribers) {
-      this._changeClock += 1;
-    }
-    this._val = newVal;
-    if (this._isAlive) {
-      markDirty(this);
-    }
-  }
-}
-function fieldSubscribe(subscriber) {
-  if (!this._subscribers)
-    this._subscribers = /* @__PURE__ */ new Map();
-  this._subscribers.set(subscriber, this._changeClock);
-  return () => this._subscribers?.delete(subscriber);
-}
-function fieldAlive() {
-  this._isAlive = true;
-  addVertex(this);
-}
-function fieldDead() {
-  removeVertex(this);
-  this._isAlive = false;
-}
-function fieldFlush() {
-  assert(this._isAlive, "cannot flush dead field");
-  if (this._subscribers) {
-    for (const [subscriber, observeClock] of this._subscribers) {
-      if (observeClock < this._changeClock) {
-        subscriber(this._val);
-      }
-      this._subscribers.set(subscriber, 0);
-    }
+var _a, _b, _c;
+var Field = class {
+  constructor(val, debugName) {
+    __publicField(this, "_isAlive");
+    __publicField(this, "_val");
+    __publicField(this, "_subscribers");
+    __publicField(this, "_changeClock");
+    __publicField(this, _a);
+    __publicField(this, _b);
+    __publicField(this, _c);
+    this._val = val;
+    this._isAlive = false;
     this._changeClock = 0;
+    this[SymProcessable] = true;
+    this[SymRefcount] = 0;
+    this[SymDebugName] = debugName ?? "field";
   }
-  return true;
+  get() {
+    notifyRead(this);
+    return this._val;
+  }
+  set(newVal) {
+    if (newVal !== this._val) {
+      if (this._subscribers) {
+        this._changeClock += 1;
+      }
+      this._val = newVal;
+      if (this._isAlive) {
+        markDirty(this);
+      }
+    }
+  }
+  subscribe(subscriber) {
+    if (!this._subscribers)
+      this._subscribers = /* @__PURE__ */ new Map();
+    this._subscribers.set(subscriber, this._changeClock);
+    return () => this._subscribers?.delete(subscriber);
+  }
+  [(_a = SymProcessable, _b = SymRefcount, _c = SymDebugName, SymAlive)]() {
+    this._isAlive = true;
+    addVertex(this);
+  }
+  [SymDead]() {
+    removeVertex(this);
+    this._isAlive = false;
+  }
+  [SymRecalculate]() {
+    assert(this._isAlive, "cannot flush dead field");
+    if (this._subscribers) {
+      for (const [subscriber, observeClock] of this._subscribers) {
+        if (observeClock < this._changeClock) {
+          subscriber(this._val);
+        }
+        this._subscribers.set(subscriber, 0);
+      }
+      this._changeClock = 0;
+    }
+    return true;
+  }
+};
+function field(val, debugName) {
+  return new Field(val, debugName);
 }
 
 // src/fieldmap.ts
-var _a, _b;
+var _a2, _b2;
 var FieldMap = class {
-  constructor(consumer, emitter, debugName) {
+  constructor(keysField, consumer, emitter, debugName) {
+    __publicField(this, "keysField");
     __publicField(this, "fieldMap");
     __publicField(this, "consumer");
     __publicField(this, "emitter");
-    __publicField(this, _a);
-    __publicField(this, _b, 0);
+    __publicField(this, _a2);
+    __publicField(this, _b2, 0);
     this[SymDebugName] = debugName ?? "fieldmap";
+    this.keysField = keysField;
     this.fieldMap = /* @__PURE__ */ new Map();
     this.consumer = consumer;
     this.emitter = emitter;
@@ -1788,7 +1797,7 @@ var FieldMap = class {
   getOrMake(prop, val) {
     let field2 = this.fieldMap.get(prop);
     if (!field2) {
-      field2 = field(val, `${this[SymDebugName]}:${prop}`);
+      field2 = new Field(val, `${this[SymDebugName]}:${prop}`);
       this.fieldMap.set(prop, field2);
       if (this[SymRefcount] > 0) {
         retain(field2);
@@ -1818,7 +1827,7 @@ var FieldMap = class {
       }
     }
   }
-  [(_a = SymDebugName, _b = SymRefcount, SymDead)]() {
+  [(_a2 = SymDebugName, _b2 = SymRefcount, SymDead)]() {
     for (const field2 of this.fieldMap.values()) {
       if (this.emitter)
         removeSoftEdge(field2, this.emitter);
@@ -1826,6 +1835,11 @@ var FieldMap = class {
         removeSoftEdge(this.consumer, field2);
       release(field2);
     }
+    if (this.emitter)
+      removeSoftEdge(this.keysField, this.emitter);
+    if (this.consumer)
+      removeSoftEdge(this.consumer, this.keysField);
+    release(this.keysField);
     if (this.emitter)
       release(this.emitter);
     if (this.consumer)
@@ -1836,6 +1850,11 @@ var FieldMap = class {
       retain(this.emitter);
     if (this.consumer)
       retain(this.consumer);
+    retain(this.keysField);
+    if (this.emitter)
+      addSoftEdge(this.keysField, this.emitter);
+    if (this.consumer)
+      addSoftEdge(this.consumer, this.keysField);
     for (const field2 of this.fieldMap.values()) {
       retain(field2);
       if (this.emitter)
@@ -1847,16 +1866,16 @@ var FieldMap = class {
 };
 
 // src/subscriptionemitter.ts
-var _a2, _b2, _c;
+var _a3, _b3, _c2;
 var SubscriptionEmitter = class {
   constructor(debugName) {
     __publicField(this, "subscribers");
     __publicField(this, "subscriberOffset");
     __publicField(this, "events");
     __publicField(this, "isActive");
-    __publicField(this, _a2);
-    __publicField(this, _b2);
-    __publicField(this, _c);
+    __publicField(this, _a3);
+    __publicField(this, _b3);
+    __publicField(this, _c2);
     this.subscribers = [];
     this.subscriberOffset = [];
     this.events = [];
@@ -1865,7 +1884,7 @@ var SubscriptionEmitter = class {
     this[SymProcessable] = true;
     this[SymDebugName] = `emitter:${debugName}`;
   }
-  [(_a2 = SymProcessable, _b2 = SymDebugName, SymRecalculate)]() {
+  [(_a3 = SymProcessable, _b3 = SymDebugName, SymRecalculate)]() {
     for (let i = 0; i < this.subscribers.length; ++i) {
       const subscriber = this.subscribers[i];
       subscriber(this.events, this.subscriberOffset[i]);
@@ -1874,7 +1893,7 @@ var SubscriptionEmitter = class {
     this.events.splice(0, this.events.length);
     return true;
   }
-  [(_c = SymRefcount, SymAlive)]() {
+  [(_c2 = SymRefcount, SymAlive)]() {
     this.isActive = true;
     addVertex(this);
   }
@@ -1919,7 +1938,7 @@ var SubscriptionEmitter = class {
 };
 
 // src/subscriptionconsumer.ts
-var _a3, _b3, _c2;
+var _a4, _b4, _c3;
 var SubscriptionConsumer = class {
   constructor(target, sourceEmitter, transformEmitter, handler, debugName) {
     __publicField(this, "target");
@@ -1929,9 +1948,9 @@ var SubscriptionConsumer = class {
     __publicField(this, "sourceEmitter");
     __publicField(this, "transformEmitter");
     __publicField(this, "unsubscribe");
-    __publicField(this, _a3);
-    __publicField(this, _b3);
-    __publicField(this, _c2);
+    __publicField(this, _a4);
+    __publicField(this, _b4);
+    __publicField(this, _c3);
     this.target = target;
     this.handler = handler;
     this.events = [];
@@ -1942,7 +1961,7 @@ var SubscriptionConsumer = class {
     this[SymProcessable] = true;
     this[SymDebugName] = `consumer:${debugName}`;
   }
-  [(_a3 = SymProcessable, _b3 = SymDebugName, SymRecalculate)]() {
+  [(_a4 = SymProcessable, _b4 = SymDebugName, SymRecalculate)]() {
     for (const event of this.events) {
       for (const emitEvent of this.handler(this.target, event)) {
         this.transformEmitter.addEvent(emitEvent);
@@ -1951,7 +1970,7 @@ var SubscriptionConsumer = class {
     this.events.splice(0, this.events.length);
     return false;
   }
-  [(_c2 = SymRefcount, SymAlive)]() {
+  [(_c3 = SymRefcount, SymAlive)]() {
     this.isActive = true;
     addVertex(this);
     retain(this.sourceEmitter);
@@ -2009,15 +2028,15 @@ var TrackedDataHandle = class {
     __publicField(this, "revocable");
     this.target = target;
     this.methods = methods;
-    this.keys = new Set(Object.keys(target));
-    this.keysField = field(this.keys.size, `${debugName}:@keys`);
     this.emitter = new SubscriptionEmitter(debugName);
     if (derivedEmitter && handleEvent) {
       this.consumer = new SubscriptionConsumer(target, derivedEmitter, this.emitter, handleEvent, debugName);
     } else {
       this.consumer = null;
     }
-    this.fieldMap = new FieldMap(this.consumer, this.emitter, debugName);
+    this.keys = new Set(Object.keys(target));
+    this.keysField = new Field(this.keys.size, `${debugName}:@keys`);
+    this.fieldMap = new FieldMap(this.keysField, this.consumer, this.emitter, debugName);
     const emitEvent = (event) => {
       this.emitter.addEvent(event);
     };
@@ -2040,6 +2059,7 @@ var TrackedDataHandle = class {
         }
         const value = Reflect.get(this.target, prop, receiver);
         const field2 = this.fieldMap.getOrMake(prop, value);
+        notifyRead(this.revocable.proxy);
         notifyRead(field2);
         return value;
       },
@@ -2058,6 +2078,7 @@ var TrackedDataHandle = class {
         }
         const value = Reflect.has(target, prop);
         const field2 = this.fieldMap.getOrMake(prop, value);
+        notifyRead(this.revocable.proxy);
         notifyRead(field2);
         return value;
       },
@@ -2483,7 +2504,7 @@ var ClassComponent = class {
   }
 };
 var RenderNodeType = Symbol("rendernode");
-var _a4, _b4, _c3, _d;
+var _a5, _b5, _c4, _d;
 var EmptyRenderNode = class {
   constructor() {
     __publicField(this, "_type", RenderNodeType);
@@ -2491,9 +2512,9 @@ var EmptyRenderNode = class {
     __publicField(this, "attach", noop);
     __publicField(this, "onMount", noop);
     __publicField(this, "onUnmount", noop);
-    __publicField(this, _a4);
-    __publicField(this, _b4);
-    __publicField(this, _c3, noop);
+    __publicField(this, _a5);
+    __publicField(this, _b5);
+    __publicField(this, _c4, noop);
     __publicField(this, _d, noop);
     this[SymDebugName] = "empty";
     this[SymRefcount] = 0;
@@ -2505,9 +2526,9 @@ var EmptyRenderNode = class {
     release(this);
   }
 };
-_a4 = SymDebugName, _b4 = SymRefcount, _c3 = SymAlive, _d = SymDead;
+_a5 = SymDebugName, _b5 = SymRefcount, _c4 = SymAlive, _d = SymDead;
 var emptyRenderNode = new EmptyRenderNode();
-var _a5, _b5, _c4;
+var _a6, _b6, _c5;
 var TextRenderNode = class {
   constructor(string, debugName) {
     __publicField(this, "_type", RenderNodeType);
@@ -2515,9 +2536,9 @@ var TextRenderNode = class {
     __publicField(this, "emitter");
     __publicField(this, "onMount", noop);
     __publicField(this, "onUnmount", noop);
-    __publicField(this, _a5);
-    __publicField(this, _b5);
-    __publicField(this, _c4, noop);
+    __publicField(this, _a6);
+    __publicField(this, _b6);
+    __publicField(this, _c5, noop);
     this.text = document.createTextNode(string);
     this.emitter = null;
     this[SymDebugName] = debugName ?? "text";
@@ -2543,11 +2564,11 @@ var TextRenderNode = class {
   release() {
     release(this);
   }
-  [(_a5 = SymDebugName, _b5 = SymRefcount, _c4 = SymAlive, SymDead)]() {
+  [(_a6 = SymDebugName, _b6 = SymRefcount, _c5 = SymAlive, SymDead)]() {
     this.emitter = null;
   }
 };
-var _a6, _b6, _c5;
+var _a7, _b7, _c6;
 var ForeignRenderNode = class {
   constructor(node, debugName) {
     __publicField(this, "_type", RenderNodeType);
@@ -2555,9 +2576,9 @@ var ForeignRenderNode = class {
     __publicField(this, "emitter");
     __publicField(this, "onMount", noop);
     __publicField(this, "onUnmount", noop);
-    __publicField(this, _a6);
-    __publicField(this, _b6);
-    __publicField(this, _c5, noop);
+    __publicField(this, _a7);
+    __publicField(this, _b7);
+    __publicField(this, _c6, noop);
     this.node = node;
     this.emitter = null;
     this[SymDebugName] = debugName ?? "foreign";
@@ -2583,11 +2604,11 @@ var ForeignRenderNode = class {
   release() {
     release(this);
   }
-  [(_a6 = SymDebugName, _b6 = SymRefcount, _c5 = SymAlive, SymDead)]() {
+  [(_a7 = SymDebugName, _b7 = SymRefcount, _c6 = SymAlive, SymDead)]() {
     this.emitter = null;
   }
 };
-var _a7, _b7;
+var _a8, _b8;
 var ArrayRenderNode = class {
   constructor(children, debugName) {
     __publicField(this, "_type", RenderNodeType);
@@ -2595,8 +2616,8 @@ var ArrayRenderNode = class {
     __publicField(this, "slotSizes");
     __publicField(this, "attached");
     __publicField(this, "emitter");
-    __publicField(this, _a7);
-    __publicField(this, _b7);
+    __publicField(this, _a8);
+    __publicField(this, _b8);
     this.children = children;
     this.slotSizes = children.map(() => 0);
     this.attached = children.map(() => false);
@@ -2645,7 +2666,7 @@ var ArrayRenderNode = class {
   release() {
     release(this);
   }
-  [(_a7 = SymDebugName, _b7 = SymRefcount, SymAlive)]() {
+  [(_a8 = SymDebugName, _b8 = SymRefcount, SymAlive)]() {
     for (const child of this.children) {
       retain(child);
     }
@@ -2892,7 +2913,7 @@ var EventProps = [
   { prefix: "oncapture:", param: true },
   { prefix: "onpassive:", param: { passive: true } }
 ];
-var _a8, _b8;
+var _a9, _b9;
 var IntrinsicRenderNode = class {
   constructor(tagName, props, children, debugName) {
     __publicField(this, "_type", RenderNodeType);
@@ -2919,8 +2940,8 @@ var IntrinsicRenderNode = class {
       }
       assert(false, "unexpected event from IntrinsicRenderNode");
     });
-    __publicField(this, _a8);
-    __publicField(this, _b8);
+    __publicField(this, _a9);
+    __publicField(this, _b9);
     this.emitter = null;
     this.detachedError = null;
     this.props = props;
@@ -3052,7 +3073,7 @@ var IntrinsicRenderNode = class {
   release() {
     release(this);
   }
-  [(_a8 = SymDebugName, _b8 = SymRefcount, SymAlive)]() {
+  [(_a9 = SymDebugName, _b9 = SymRefcount, SymAlive)]() {
     const xmlNamespaceGuess = ELEMENT_NAMESPACE_GUESS[this.tagName] || HTML_NAMESPACE;
     retain(this.children);
     this.ensureElement(xmlNamespaceGuess, this.tagName === "foreignObject" ? HTML_NAMESPACE : xmlNamespaceGuess);
@@ -3078,7 +3099,7 @@ var IntrinsicRenderNode = class {
     this.emitter = null;
   }
 };
-var _a9, _b9;
+var _a10, _b10;
 var PortalRenderNode = class {
   constructor(element, children, refProp, debugName) {
     __publicField(this, "_type", RenderNodeType);
@@ -3143,8 +3164,8 @@ var PortalRenderNode = class {
           assertExhausted(event);
       }
     });
-    __publicField(this, _a9);
-    __publicField(this, _b9);
+    __publicField(this, _a10);
+    __publicField(this, _b10);
     this.emitter = null;
     this.arrayRenderNode = children;
     this.element = element;
@@ -3195,7 +3216,7 @@ var PortalRenderNode = class {
   release() {
     release(this);
   }
-  [(_a9 = SymDebugName, _b9 = SymRefcount, SymAlive)]() {
+  [(_a10 = SymDebugName, _b10 = SymRefcount, SymAlive)]() {
     retain(this.arrayRenderNode);
   }
   [SymDead]() {
@@ -3214,7 +3235,7 @@ var PortalRenderNode = class {
     this.emitter = null;
   }
 };
-var _a10, _b10;
+var _a11, _b11;
 var CalculationRenderNode = class {
   constructor(calculation, debugName) {
     __publicField(this, "_type", RenderNodeType);
@@ -3225,8 +3246,8 @@ var CalculationRenderNode = class {
     __publicField(this, "isMounted");
     __publicField(this, "emitter");
     __publicField(this, "parentXmlNamespace");
-    __publicField(this, _a10);
-    __publicField(this, _b10);
+    __publicField(this, _a11);
+    __publicField(this, _b11);
     this.calculation = calculation;
     this.calculationSubscription = null;
     this.error = null;
@@ -3302,22 +3323,22 @@ var CalculationRenderNode = class {
       });
     }
   }
-  [(_a10 = SymDebugName, _b10 = SymRefcount, SymAlive)]() {
-    retain(this.calculation);
+  [(_a11 = SymDebugName, _b11 = SymRefcount, SymAlive)]() {
     try {
-      this.subscribe(void 0, this.calculation());
       this.calculationSubscription = this.calculation.subscribe(this.subscribe);
+      this.subscribe(void 0, this.calculation());
     } catch (e) {
       this.subscribe(1 /* EXCEPTION */, wrapError(e));
     }
   }
   [SymDead]() {
-    release(this.calculation);
+    this.calculationSubscription?.();
+    this.calculationSubscription = null;
     this.cleanPrior();
     this.emitter = null;
   }
 };
-var _a11, _b11;
+var _a12, _b12;
 var CollectionRenderNode = class {
   constructor(collection2, debugName) {
     __publicField(this, "_type", RenderNodeType);
@@ -3401,8 +3422,8 @@ var CollectionRenderNode = class {
         }
       }
     });
-    __publicField(this, _a11);
-    __publicField(this, _b11);
+    __publicField(this, _a12);
+    __publicField(this, _b12);
     this.collection = collection2;
     this.children = [];
     this.childIndex = /* @__PURE__ */ new Map();
@@ -3473,7 +3494,7 @@ var CollectionRenderNode = class {
       }
     }
   }
-  [(_a11 = SymDebugName, _b11 = SymRefcount, SymAlive)]() {
+  [(_a12 = SymDebugName, _b12 = SymRefcount, SymAlive)]() {
     retain(this.collection);
     this.unsubscribe = this.collection.subscribe(this.handleCollectionEvent);
     untrackReads(() => {
@@ -3590,7 +3611,7 @@ var IntrinsicObserverEventType = /* @__PURE__ */ ((IntrinsicObserverEventType2) 
   IntrinsicObserverEventType2["UNMOUNT"] = "unmount";
   return IntrinsicObserverEventType2;
 })(IntrinsicObserverEventType || {});
-var _a12, _b12;
+var _a13, _b13;
 var IntrinsicObserverRenderNode = class {
   constructor(nodeCallback, elementCallback, children, debugName) {
     __publicField(this, "_type", RenderNodeType);
@@ -3600,8 +3621,8 @@ var IntrinsicObserverRenderNode = class {
     __publicField(this, "childNodes");
     __publicField(this, "emitter");
     __publicField(this, "isMounted");
-    __publicField(this, _a12);
-    __publicField(this, _b12);
+    __publicField(this, _a13);
+    __publicField(this, _b13);
     this.nodeCallback = nodeCallback;
     this.elementCallback = elementCallback;
     this.child = new ArrayRenderNode(children);
@@ -3676,7 +3697,7 @@ var IntrinsicObserverRenderNode = class {
   release() {
     release(this);
   }
-  [(_a12 = SymDebugName, _b12 = SymRefcount, SymAlive)]() {
+  [(_a13 = SymDebugName, _b13 = SymRefcount, SymAlive)]() {
     retain(this.child);
   }
   [SymDead]() {
@@ -3687,7 +3708,7 @@ var IntrinsicObserverRenderNode = class {
 var IntrinsicObserver = ({ nodeCallback, elementCallback, children }) => {
   return new IntrinsicObserverRenderNode(nodeCallback, elementCallback, renderJSXChildren(children));
 };
-var _a13, _b13;
+var _a14, _b14;
 var FunctionComponentRenderNode = class {
   constructor(Component2, props, children, debugName) {
     __publicField(this, "_type", RenderNodeType);
@@ -3732,8 +3753,8 @@ var FunctionComponentRenderNode = class {
         this.emitter?.(event);
       }
     });
-    __publicField(this, _a13);
-    __publicField(this, _b13);
+    __publicField(this, _a14);
+    __publicField(this, _b14);
     this.Component = Component2;
     this.props = props;
     this.children = children;
@@ -3878,7 +3899,7 @@ var FunctionComponentRenderNode = class {
   release() {
     release(this);
   }
-  [(_a13 = SymDebugName, _b13 = SymRefcount, SymAlive)]() {
+  [(_a14 = SymDebugName, _b14 = SymRefcount, SymAlive)]() {
     this.ensureResult();
   }
   [SymDead]() {
@@ -3986,44 +4007,54 @@ model.keys = function modelKeys(sourceModel, debugName) {
   const sourceTDHandle = getTrackedDataHandle(sourceModel);
   assert(sourceTDHandle, "missing tdHandle");
   const initialKeys = Object.keys(sourceModel);
-  const derivedCollection = new TrackedDataHandle(initialKeys, ViewHandler, makeViewPrototype(sourceModel), sourceTDHandle.emitter, keysHandler, debugName);
-  return derivedCollection.revocable.proxy;
-};
-function* keysHandler(target, event) {
-  switch (event.type) {
-    case "del" /* DEL */: {
-      const index = target.indexOf(event.prop);
-      if (index !== -1) {
-        target.splice(index, 1);
+  const derivedCollection = new TrackedDataHandle(initialKeys, ViewHandler, makeViewPrototype(sourceModel), sourceTDHandle.emitter, function* keysHandler(target, event) {
+    switch (event.type) {
+      case "del" /* DEL */: {
+        const index = target.indexOf(event.prop);
+        if (index !== -1) {
+          const prevLength = target.length;
+          target.splice(index, 1);
+          const newLength = target.length;
+          for (let i = index; i < target.length; ++i) {
+            derivedCollection.fieldMap.set(i.toString(), target[i]);
+          }
+          for (let i = newLength; i < prevLength; ++i) {
+            derivedCollection.fieldMap.delete(i.toString());
+          }
+          derivedCollection.fieldMap.set("length", target.length);
+          yield {
+            type: "splice" /* SPLICE */,
+            index,
+            count: 1,
+            items: []
+          };
+        }
+        break;
+      }
+      case "add" /* ADD */: {
+        const length = target.length;
+        target.push(event.prop);
+        derivedCollection.fieldMap.set(length.toString(), event.prop);
+        derivedCollection.fieldMap.set("length", target.length);
         yield {
           type: "splice" /* SPLICE */,
-          index,
-          count: 1,
-          items: []
+          index: length,
+          count: 0,
+          items: [event.prop]
         };
+        break;
       }
-      break;
+      case "set" /* SET */:
+        break;
+      default:
+        assertExhausted(event);
     }
-    case "add" /* ADD */: {
-      const length = target.length;
-      target.push(event.prop);
-      yield {
-        type: "splice" /* SPLICE */,
-        index: length,
-        count: 0,
-        items: [event.prop]
-      };
-      break;
-    }
-    case "set" /* SET */:
-      break;
-    default:
-      assertExhausted(event);
-  }
-}
+  }, debugName);
+  return derivedCollection.revocable.proxy;
+};
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.11.1" : "development";
+var VERSION = true ? "0.11.2" : "development";
 module.exports = __toCommonJS(src_exports);
 //# sourceMappingURL=index.debug.cjs.map
