@@ -144,6 +144,7 @@ import {
     notifyRead,
     addHardEdge,
     addVertex,
+    retain,
     release,
     removeHardEdge,
     removeVertex,
@@ -241,12 +242,15 @@ function calcSubscribe<T>(
     this: Calculation<T>,
     handler: CalcSubscriptionHandler<T>
 ): CalcUnsubscribe<T> {
+    retain(this);
+    this();
     if (!this._subscriptions) {
         this._subscriptions = new Set();
     }
     this._subscriptions.add(handler);
     const unsubscribe = () => {
         this._subscriptions?.delete(handler);
+        release(this);
     };
     const unsubscribeData = {
         _type: CalculationUnsubscribeSymbol,

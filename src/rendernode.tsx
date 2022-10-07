@@ -1115,18 +1115,18 @@ export class CalculationRenderNode implements RenderNode {
     [SymDebugName]: string;
     [SymRefcount]: number;
     [SymAlive]() {
-        retain(this.calculation);
         try {
-            this.subscribe(undefined, this.calculation());
             this.calculationSubscription = this.calculation.subscribe(
                 this.subscribe
             );
+            this.subscribe(undefined, this.calculation());
         } catch (e) {
             this.subscribe(CalculationErrorType.EXCEPTION, wrapError(e));
         }
     }
     [SymDead]() {
-        release(this.calculation);
+        this.calculationSubscription?.();
+        this.calculationSubscription = null;
         this.cleanPrior();
         this.emitter = null;
     }

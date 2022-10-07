@@ -51,6 +51,52 @@ suite('calc', () => {
         release(calculation);
     });
 
+    test('emits event when subscribed', () => {
+        const calls: string[] = [];
+        const dependency = model(
+            {
+                value: 1,
+            },
+            'model'
+        );
+        const calculation = calc(() => {
+            calls.push('call');
+            return dependency.value;
+        }, 'calculation');
+        const events: any[] = [];
+        const unsubscribe = calculation.subscribe((err, val) => {
+            events.push({ err, val });
+        });
+
+        assert.deepEqual(['call'], calls);
+        assert.deepEqual([], events);
+        dependency.value = 2;
+        flush();
+        assert.deepEqual(['call', 'call'], calls);
+        assert.deepEqual([{ err: undefined, val: 2 }], events);
+        dependency.value = 3;
+        flush();
+        assert.deepEqual(['call', 'call', 'call'], calls);
+        assert.deepEqual(
+            [
+                { err: undefined, val: 2 },
+                { err: undefined, val: 3 },
+            ],
+            events
+        );
+        unsubscribe();
+        dependency.value = 4;
+        flush();
+        assert.deepEqual(['call', 'call', 'call'], calls);
+        assert.deepEqual(
+            [
+                { err: undefined, val: 2 },
+                { err: undefined, val: 3 },
+            ],
+            events
+        );
+    });
+
     test('reruns when collection dependency changes', () => {
         const calls: string[] = [];
         const dependency = collection(['item 1']);
@@ -181,6 +227,19 @@ suite('calc', () => {
         assert.deepEqual(['call a', 'call a', 'call b', 'call b'], calls);
 
         release(calculation);
+    });
+
+    test('is not memoized when not retained multiple times', () => {
+        const calls: string[] = [];
+        const calculation = calc(() => {
+            calls.push('call');
+            return 1 + 1;
+        });
+        const a = calculation();
+        const b = calculation();
+        assert.is(2, a);
+        assert.is(2, b);
+        assert.deepEqual(['call', 'call'], calls);
     });
 });
 
