@@ -7,7 +7,7 @@ import {
     release,
 } from './engine';
 import { SymDebugName, SymAlive, SymDead, SymRefcount } from './symbols';
-import { field as makeField, Field } from './field';
+import { Field } from './field';
 
 export class FieldMap implements Retainable {
     private fieldMap: Map<string, Field<any>>;
@@ -31,7 +31,7 @@ export class FieldMap implements Retainable {
     getOrMake(prop: string, val: any) {
         let field = this.fieldMap.get(prop);
         if (!field) {
-            field = makeField(val, `${this[SymDebugName]}:${prop}`);
+            field = new Field(val, `${this[SymDebugName]}:${prop}`);
             this.fieldMap.set(prop, field);
 
             if (this[SymRefcount] > 0) {
