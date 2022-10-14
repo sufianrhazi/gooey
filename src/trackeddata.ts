@@ -1,7 +1,15 @@
 import { Retainable, notifyCreate, notifyRead } from './engine';
-import { SymAlive, SymDead, SymRefcount, SymDebugName } from './symbols';
+import {
+    SymAlive,
+    SymDead,
+    SymRefcount,
+    SymDebugName,
+    SymProcessable,
+    isGooeySymbol,
+} from './symbols';
 import { FieldMap } from './fieldmap';
 import { Field } from './field';
+import * as log from './log';
 import { SubscriptionEmitter } from './subscriptionemitter';
 import { SubscriptionConsumer } from './subscriptionconsumer';
 
@@ -78,6 +86,9 @@ export class TrackedDataHandle<
                 if (prop === SymDebugName) {
                     return debugName;
                 }
+                if (prop === SymProcessable) {
+                    return false;
+                }
                 if (
                     prop === SymRefcount ||
                     prop === SymAlive ||
@@ -96,6 +107,11 @@ export class TrackedDataHandle<
                 if (prop in methods) {
                     return (methods as any)[prop];
                 }
+                DEBUG &&
+                    log.assert(
+                        !isGooeySymbol(prop),
+                        'TrackedData accessor got unexpected internal symbol'
+                    );
                 const value = Reflect.get(this.target, prop, receiver);
                 const field = this.fieldMap.getOrMake(prop, value);
                 notifyRead(this.revocable.proxy);
@@ -103,6 +119,11 @@ export class TrackedDataHandle<
                 return value;
             },
             peekHas: (prop) => {
+                DEBUG &&
+                    log.assert(
+                        !isGooeySymbol(prop),
+                        'TrackedData accessor got unexpected internal symbol'
+                    );
                 return Reflect.has(target, prop);
             },
             has: (prop) => {
@@ -113,11 +134,19 @@ export class TrackedDataHandle<
                 ) {
                     return prop in methods;
                 }
-                if (typeof prop === 'symbol') {
-                    return Reflect.has(target, prop);
+                if (prop === SymProcessable) {
+                    return true;
                 }
                 if (prop in methods) {
                     return true;
+                }
+                DEBUG &&
+                    log.assert(
+                        !isGooeySymbol(prop),
+                        'TrackedData accessor got unexpected internal symbol'
+                    );
+                if (typeof prop === 'symbol') {
+                    return Reflect.has(this.target, prop);
                 }
                 const value = Reflect.has(target, prop);
                 const field = this.fieldMap.getOrMake(prop, value);
@@ -130,11 +159,16 @@ export class TrackedDataHandle<
                     methods[prop as typeof SymRefcount] = value;
                     return true;
                 }
-                if (typeof prop === 'symbol') {
-                    return Reflect.set(target, prop, value, receiver);
-                }
                 if (prop in methods) {
                     return false; // Prevent writes to owned methods
+                }
+                DEBUG &&
+                    log.assert(
+                        !isGooeySymbol(prop),
+                        'TrackedData accessor got unexpected internal symbol'
+                    );
+                if (typeof prop === 'symbol') {
+                    return Reflect.set(this.target, prop, value, receiver);
                 }
                 const hadProp = Reflect.has(target, prop);
                 const field = this.fieldMap.getOrMake(prop, value);
@@ -149,15 +183,21 @@ export class TrackedDataHandle<
                 if (
                     prop === SymRefcount ||
                     prop === SymAlive ||
-                    prop === SymDead
+                    prop === SymDead ||
+                    prop === SymProcessable
                 ) {
-                    return false; // nope
-                }
-                if (typeof prop === 'symbol') {
-                    return Reflect.deleteProperty(target, prop);
+                    return false; // Prevent deletes of internal symbols
                 }
                 if (prop in methods) {
                     return false; // Prevent deletes of owned methods
+                }
+                DEBUG &&
+                    log.assert(
+                        !isGooeySymbol(prop),
+                        'TrackedData accessor got unexpected internal symbol'
+                    );
+                if (typeof prop === 'symbol') {
+                    return Reflect.deleteProperty(this.target, prop);
                 }
                 const hadProp = Reflect.has(target, prop);
                 const result = Reflect.deleteProperty(target, prop);

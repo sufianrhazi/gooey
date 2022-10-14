@@ -344,6 +344,32 @@ suite('collection', () => {
         assert.is(1, view.length);
         assert.is(true, calculation());
     });
+
+    test('collections can be iterated over in a calculation', () => {
+        const strings = collection<string>(['foo', 'bar', 'baz']);
+        const calculation = calc(() => {
+            let all = '';
+            for (const str of strings) {
+                all += str;
+            }
+            return all;
+        });
+
+        retain(calculation);
+        assert.is('foobarbaz', calculation());
+
+        strings.push('bum');
+        flush();
+        assert.is('foobarbazbum', calculation());
+
+        strings.splice(1, 2, '-');
+        flush();
+        assert.is('foo-bum', calculation());
+
+        strings[1] = 'bar';
+        flush();
+        assert.is('foobarbum', calculation());
+    });
 });
 
 suite('mapView', () => {
