@@ -370,6 +370,84 @@ suite('collection', () => {
         flush();
         assert.is('foobarbum', calculation());
     });
+
+    test('collections keys can be iterated over in a calculation', () => {
+        const strings = collection<string>(['foo', 'bar', 'baz']);
+        const calculation = calc(() => {
+            let all = '';
+            for (const idx of strings.keys()) {
+                all += strings[idx];
+            }
+            return all;
+        });
+
+        retain(calculation);
+        assert.is('foobarbaz', calculation());
+
+        strings.push('bum');
+        flush();
+        assert.is('foobarbazbum', calculation());
+
+        strings.splice(1, 2, '-');
+        flush();
+        assert.is('foo-bum', calculation());
+
+        strings[1] = 'bar';
+        flush();
+        assert.is('foobarbum', calculation());
+    });
+
+    test('collections values can be iterated over in a calculation', () => {
+        const strings = collection<string>(['foo', 'bar', 'baz']);
+        const calculation = calc(() => {
+            let all = '';
+            for (const str of strings.values()) {
+                all += str;
+            }
+            return all;
+        });
+
+        retain(calculation);
+        assert.is('foobarbaz', calculation());
+
+        strings.push('bum');
+        flush();
+        assert.is('foobarbazbum', calculation());
+
+        strings.splice(1, 2, '-');
+        flush();
+        assert.is('foo-bum', calculation());
+
+        strings[1] = 'bar';
+        flush();
+        assert.is('foobarbum', calculation());
+    });
+
+    test('collections entries can be iterated over in a calculation', () => {
+        const strings = collection<string>(['foo', 'bar', 'baz']);
+        const calculation = calc(() => {
+            let all = '';
+            for (const entry of strings.entries()) {
+                all += entry[1];
+            }
+            return all;
+        });
+
+        retain(calculation);
+        assert.is('foobarbaz', calculation());
+
+        strings.push('bum');
+        flush();
+        assert.is('foobarbazbum', calculation());
+
+        strings.splice(1, 2, '-');
+        flush();
+        assert.is('foo-bum', calculation());
+
+        strings[1] = 'bar';
+        flush();
+        assert.is('foobarbum', calculation());
+    });
 });
 
 suite('mapView', () => {
