@@ -1,7 +1,7 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
 import { collection } from './collection';
-import { Calculation, calc } from './calc';
+import { Calculation, CalculationErrorType, calc } from './calc';
 import { flush, retain, release, reset, subscribe } from './engine';
 
 beforeEach(() => {
@@ -95,6 +95,47 @@ suite('calc', () => {
             ],
             events
         );
+    });
+
+    test('emits error event when subscribed and no error handler', () => {
+        const calls: string[] = [];
+        const state = model({
+            crash: false,
+        });
+        const calculation = calc(() => {
+            calls.push('call');
+            if (state.crash) throw new Error('ruh roh');
+        });
+        const events: any[] = [];
+        calculation.subscribe((err, val) => {
+            events.push({ err, val });
+        });
+
+        assert.deepEqual(['call'], calls);
+        state.crash = true;
+        flush();
+        assert.deepEqual(['call', 'call'], calls);
+        assert.is(events.length, 1);
+        assert.is(events[0].err, CalculationErrorType.EXCEPTION);
+        assert.is(events[0].val.message, 'ruh roh');
+    });
+
+    test('ignores exception on subscription and no handler', () => {
+        const calls: string[] = [];
+        const state = model({
+            crash: true,
+        });
+        const calculation = calc(() => {
+            calls.push('call');
+            if (state.crash) throw new Error('ruh roh');
+        });
+        const events: any[] = [];
+        calculation.subscribe((err, val) => {
+            events.push({ err, val });
+        });
+
+        assert.deepEqual(['call'], calls);
+        assert.deepEqual([], events);
     });
 
     test('reruns when collection dependency changes', () => {

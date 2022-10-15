@@ -243,7 +243,11 @@ function calcSubscribe<T>(
     handler: CalcSubscriptionHandler<T>
 ): CalcUnsubscribe<T> {
     retain(this);
-    this();
+    try {
+        this();
+    } catch (e) {
+        // Intentionally ignore exception
+    }
     if (!this._subscriptions) {
         this._subscriptions = new Set();
     }
