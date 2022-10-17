@@ -9,8 +9,6 @@ import Gooey, {
     getLogLevel,
     model,
     mount,
-    release,
-    retain,
     setLogLevel,
     reset,
     subscribe,
@@ -455,7 +453,7 @@ suite('perf tests', () => {
         await assert.medianRuntimeLessThan(1, (measure) => {
             for (let i = 0; i < COUNT; ++i) {
                 const calculation = calc(() => i);
-                retain(calculation);
+                calculation.retain();
                 calculations.push(calculation);
             }
             measure(() => {
@@ -464,7 +462,7 @@ suite('perf tests', () => {
                 }
             });
             for (let i = 0; i < COUNT; ++i) {
-                release(calculations[i]);
+                calculations[i].release();
             }
             calculations.splice(0, calculations.length);
         });
@@ -477,7 +475,7 @@ suite('perf tests', () => {
             measure(() => {
                 for (let i = 0; i < COUNT; ++i) {
                     const calculation = calc(() => i);
-                    retain(calculation);
+                    calculation.retain();
                     calculations.push(calculation);
                 }
             });
@@ -485,7 +483,7 @@ suite('perf tests', () => {
                 calculations[i]();
             }
             for (let i = 0; i < COUNT; ++i) {
-                release(calculations[i]);
+                calculations[i].release();
             }
             calculations = [];
         });
@@ -497,7 +495,7 @@ suite('perf tests', () => {
         await assert.medianRuntimeLessThan(1, (measure) => {
             for (let i = 0; i < COUNT; ++i) {
                 const calculation = calc(() => i);
-                retain(calculation);
+                calculation.retain();
                 calculations.push(calculation);
             }
             for (let i = 0; i < COUNT; ++i) {
@@ -505,7 +503,7 @@ suite('perf tests', () => {
             }
             measure(() => {
                 for (let i = 0; i < COUNT; ++i) {
-                    release(calculations[i]);
+                    calculations[i].release();
                 }
             });
             calculations.splice(0, calculations.length);
@@ -520,7 +518,7 @@ suite('perf tests', () => {
             const calculation = calc(() => {
                 return i + modelObj.num;
             });
-            retain(calculation);
+            calculation.retain();
             calculation();
             calculations.push(calculation);
         }
@@ -531,7 +529,7 @@ suite('perf tests', () => {
             });
         });
         for (let i = 0; i < COUNT; ++i) {
-            release(calculations[i]);
+            calculations[i].release();
         }
     });
 

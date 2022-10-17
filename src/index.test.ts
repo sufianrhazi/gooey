@@ -103,7 +103,7 @@ suite('behavior', () => {
         };
 
         const app = makeTodoListRenderer(todoList);
-        gooey.retain(app);
+        app.retain();
 
         return {
             model0,

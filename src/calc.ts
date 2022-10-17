@@ -205,6 +205,8 @@ export interface Calculation<T> extends Retainable, Processable {
     onError: (handler: CalcErrorHandler<T>) => this;
     setCmp: (eq: (a: T, b: T) => boolean) => this;
     subscribe: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
+    retain: () => void;
+    release: () => void;
     _subscriptions?: Set<CalcSubscriptionHandler<T>>;
     _type: typeof CalculationSymbol;
     _fn: () => T;
@@ -261,6 +263,14 @@ function calcSubscribe<T>(
         calculation: this,
     } as const;
     return Object.assign(unsubscribe, unsubscribeData);
+}
+
+function calcRetain<T>(this: Calculation<T>) {
+    retain(this);
+}
+
+function calcRelease<T>(this: Calculation<T>) {
+    retain(this);
 }
 
 class CycleError extends Error {
@@ -573,6 +583,8 @@ export function calc<T>(fn: () => T, debugName?: string) {
         onError: calcSetError,
         setCmp: calcSetCmp,
         subscribe: calcSubscribe,
+        retain: calcRetain,
+        release: calcRelease,
 
         // Retainable
         [SymAlive]: calculationAlive,
