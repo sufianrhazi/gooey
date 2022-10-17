@@ -1613,7 +1613,7 @@ export const IntrinsicObserver: Component<{
     );
 };
 
-export class FunctionComponentRenderNode<TProps> implements RenderNode {
+export class ComponentRenderNode<TProps> implements RenderNode {
     _type: typeof RenderNodeType = RenderNodeType;
     Component: FunctionComponent<TProps>;
     props: TProps | null | undefined;
@@ -1751,7 +1751,7 @@ export class FunctionComponentRenderNode<TProps> implements RenderNode {
     attach(emitter: NodeEmitter, parentXmlNamespace: string) {
         log.assert(
             this[SymRefcount] > 0,
-            'Invariant: dead FunctionComponentRenderNode called attach'
+            'Invariant: dead ComponentRenderNode called attach'
         );
         this.emitter = emitter;
         this.parentXmlNamespace = parentXmlNamespace;
@@ -1880,7 +1880,7 @@ export function classComponentToFunctionComponentRenderNode<TProps>(
     props: TProps,
     children: JSX.Node[]
 ) {
-    return new FunctionComponentRenderNode(
+    return new ComponentRenderNode(
         (props: TProps, lifecycle) => {
             const instance = new Component(props);
             if (!instance.render) return null;

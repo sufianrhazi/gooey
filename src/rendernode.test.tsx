@@ -8,7 +8,7 @@ import {
     ArrayRenderNode,
     CalculationRenderNode,
     CollectionRenderNode,
-    FunctionComponentRenderNode,
+    ComponentRenderNode,
     EmptyRenderNode,
     ForeignRenderNode,
     IntrinsicObserverRenderNode,
@@ -989,7 +989,7 @@ suite('CollectionRenderNode', () => {
     });
 });
 
-suite('FunctionComponentRenderNode', () => {
+suite('ComponentRenderNode', () => {
     test('lifecycle methods called in correct order', () => {
         const events: any[] = [];
         const div = document.createElement('div');
@@ -1019,7 +1019,7 @@ suite('FunctionComponentRenderNode', () => {
             return foreign;
         };
 
-        const node = new FunctionComponentRenderNode(Component, {}, []);
+        const node = new ComponentRenderNode(Component, {}, []);
         events.push('0:retain');
         node.retain();
         events.push('1:attach');
@@ -1093,7 +1093,7 @@ suite('FunctionComponentRenderNode', () => {
             return foreign;
         };
 
-        const node = new FunctionComponentRenderNode(Component, {}, []);
+        const node = new ComponentRenderNode(Component, {}, []);
         events.push('0:retain');
         node.retain();
         events.push('1:mount');
@@ -1156,7 +1156,7 @@ suite('FunctionComponentRenderNode', () => {
             return empty;
         };
 
-        const node = new FunctionComponentRenderNode(Component, {}, []);
+        const node = new ComponentRenderNode(Component, {}, []);
         node.retain();
         node.release();
 

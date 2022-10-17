@@ -3,7 +3,8 @@ import {
     renderJSXNode,
     renderJSXChildren,
     ArrayRenderNode,
-    FunctionComponentRenderNode,
+    ComponentRenderNode,
+    ClassComponentConstructor,
     classComponentToFunctionComponentRenderNode,
     IntrinsicRenderNode,
     Component,
@@ -23,7 +24,7 @@ export function createElement<TProps>(
     type: string | Component<TProps>,
     props: TProps,
     ...children: JSX.Node[]
-) {
+): IntrinsicRenderNode | ComponentRenderNode<TProps> {
     if (typeof type === 'string') {
         const childNodes: RenderNode[] = [];
         for (const jsxNode of children) {
@@ -32,13 +33,13 @@ export function createElement<TProps>(
         return new IntrinsicRenderNode(type, props, childNodes);
     }
     if (isClassComponent(type)) {
-        return classComponentToFunctionComponentRenderNode(
-            type,
+        return classComponentToFunctionComponentRenderNode<TProps>(
+            type as ClassComponentConstructor<TProps>,
             props,
             children
         );
     }
-    return new FunctionComponentRenderNode(
+    return new ComponentRenderNode<TProps>(
         type as FunctionComponent<TProps>,
         props,
         children
