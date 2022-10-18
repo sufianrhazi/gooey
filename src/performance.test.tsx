@@ -1,6 +1,7 @@
 import Gooey, {
     Calculation,
     Collection,
+    Component,
     LogLevel,
     Model,
     calc,
@@ -632,6 +633,104 @@ suite('perf tests', () => {
             measure(() => {
                 graph.process();
             });
+        });
+    });
+});
+
+suite('application benchmarks', () => {
+    const measure = (name: string, fn: () => void) => {
+        return () => {
+            fn();
+            flush();
+        };
+    };
+
+    const Benchmark: Component = () => {
+        const items = collection<Model<{ val: number }>>([]);
+        let itemId = 0;
+
+        const add1kItems = measure('add1k', () => {
+            for (let i = 0; i < 1000; ++i) {
+                items.push(model({ val: itemId++ }));
+            }
+        });
+
+        const updateItems = measure('update', () => {
+            items.forEach((item) => (item.val *= 2));
+        });
+
+        const clearItems = measure('clear', () => {
+            items.splice(0, items.length);
+        });
+
+        return (
+            <div>
+                <p>
+                    <button data-add on:click={add1kItems}>
+                        Add 1k items
+                    </button>
+                    <button data-update on:click={updateItems}>
+                        Update items
+                    </button>
+                    <button data-clear on:click={clearItems}>
+                        Clear items
+                    </button>
+                </p>
+                <ul style="height: 100px; overflow: auto; contain: strict">
+                    {items.mapView((item) => (
+                        <li>{calc(() => item.val)}</li>
+                    ))}
+                </ul>
+            </div>
+        );
+    };
+
+    test('add 1k', async () => {
+        await assert.medianRuntimeLessThan(4, (measure) => {
+            const unmount = mount(testRoot, <Benchmark />);
+            const add = testRoot.querySelector('[data-add]')!;
+            measure(() => {
+                add.dispatchEvent(new Event('click'));
+            });
+            unmount();
+        });
+    });
+
+    test('append 1k', async () => {
+        await assert.medianRuntimeLessThan(4, (measure) => {
+            const unmount = mount(testRoot, <Benchmark />);
+            const add = testRoot.querySelector('[data-add]')!;
+            add.dispatchEvent(new Event('click'));
+            measure(() => {
+                add.dispatchEvent(new Event('click'));
+            });
+            unmount();
+        });
+    });
+
+    test('update 1k', async () => {
+        await assert.medianRuntimeLessThan(4, (measure) => {
+            const unmount = mount(testRoot, <Benchmark />);
+            const add = testRoot.querySelector('[data-add]')!;
+            const update = testRoot.querySelector('[data-update]')!;
+            add.dispatchEvent(new Event('click'));
+            measure(() => {
+                update.dispatchEvent(new Event('click'));
+            });
+            unmount();
+        });
+    });
+
+    test('clear 1k', async () => {
+        await assert.medianRuntimeLessThan(4, (measure) => {
+            const unmount = mount(testRoot, <Benchmark />);
+            const add = testRoot.querySelector('[data-add]')!;
+            const clear = testRoot.querySelector('[data-clear]')!;
+            add.dispatchEvent(new Event('click'));
+            measure(() => {
+                clear.dispatchEvent(new Event('click'));
+            });
+            unmount();
         });
     });
 });
