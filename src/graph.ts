@@ -167,17 +167,11 @@ export class Graph<TVertex> {
     /** Mapping of id -> CycleInfo */
     protected cycleInfoById: (CycleInfo | undefined)[];
 
-    /** Mapping of id -> soft edges in the forward direction */
-    protected forwardAdjacencySoft: number[][];
-
     /** Mapping of id -> hard edges in the forward direction */
     protected forwardAdjacencyHard: number[][];
 
     /** Mapping of id -> hard|soft edges in the forward direction */
     protected forwardAdjacencyEither: number[][];
-
-    /** Mapping of id -> soft edges in the reverse direction */
-    protected reverseAdjacencySoft: number[][];
 
     /** Mapping of id -> hard edges in the reverse direction */
     protected reverseAdjacencyHard: number[][];
@@ -224,10 +218,8 @@ export class Graph<TVertex> {
         this.topologicalIndexById = [];
         this.topologicalOrdering = [];
 
-        this.forwardAdjacencySoft = [];
         this.forwardAdjacencyHard = [];
         this.forwardAdjacencyEither = [];
-        this.reverseAdjacencySoft = [];
         this.reverseAdjacencyHard = [];
         this.reverseAdjacencyEither = [];
 
@@ -270,10 +262,8 @@ export class Graph<TVertex> {
         this.topologicalIndexById[id] = index;
         this.topologicalOrdering[index] = id;
 
-        this.forwardAdjacencySoft[id] = [];
         this.forwardAdjacencyHard[id] = [];
         this.forwardAdjacencyEither[id] = [];
-        this.reverseAdjacencySoft[id] = [];
         this.reverseAdjacencyHard[id] = [];
         this.reverseAdjacencyEither[id] = [];
     }
@@ -378,29 +368,17 @@ export class Graph<TVertex> {
         log.assert(fromId, 'addEdge from vertex not found');
         log.assert(toId, 'addEdge to vertex not found');
 
-        let forwardList: number[];
-        let reverseList: number[];
-        switch (kind) {
-            case EdgeColor.EDGE_SOFT:
-                forwardList = this.forwardAdjacencySoft[fromId];
-                reverseList = this.reverseAdjacencySoft[toId];
-                break;
-            case EdgeColor.EDGE_HARD:
-                forwardList = this.forwardAdjacencyHard[fromId];
-                reverseList = this.reverseAdjacencyHard[toId];
-                break;
-            default:
-                log.assertExhausted(kind, 'invalid kind');
-        }
         DEBUG &&
             log.assert(
                 !this.forwardAdjacencyEither[fromId].includes(toId),
                 'addEdge duplicate'
             );
         this.forwardAdjacencyEither[fromId].push(toId);
-        forwardList.push(toId);
         this.reverseAdjacencyEither[toId].push(fromId);
-        reverseList.push(fromId);
+        if (kind === EdgeColor.EDGE_HARD) {
+            this.forwardAdjacencyHard[fromId].push(toId);
+            this.reverseAdjacencyHard[toId].push(fromId);
+        }
 
         if (
             fromId === toId &&
@@ -447,20 +425,6 @@ export class Graph<TVertex> {
         log.assert(fromId, 'removeEdge from vertex not found');
         log.assert(toId, 'removeEdge to vertex not found');
 
-        let forwardList: number[];
-        let reverseList: number[];
-        switch (kind) {
-            case EdgeColor.EDGE_SOFT:
-                forwardList = this.forwardAdjacencySoft[fromId];
-                reverseList = this.reverseAdjacencySoft[toId];
-                break;
-            case EdgeColor.EDGE_HARD:
-                forwardList = this.forwardAdjacencyHard[fromId];
-                reverseList = this.reverseAdjacencyHard[toId];
-                break;
-            default:
-                log.assertExhausted(kind, 'invalid kind');
-        }
         DEBUG &&
             log.assert(
                 this.forwardAdjacencyEither[fromId].includes(toId),
@@ -471,12 +435,20 @@ export class Graph<TVertex> {
             this.forwardAdjacencyEither[fromId].indexOf(toId),
             1
         );
-        forwardList.splice(forwardList.indexOf(toId), 1);
         this.reverseAdjacencyEither[toId].splice(
             this.reverseAdjacencyEither[toId].indexOf(fromId),
             1
         );
-        reverseList.splice(reverseList.indexOf(fromId), 1);
+        if (kind === EdgeColor.EDGE_HARD) {
+            this.forwardAdjacencyHard[fromId].splice(
+                this.forwardAdjacencyHard[fromId].indexOf(toId),
+                1
+            );
+            this.reverseAdjacencyHard[toId].splice(
+                this.reverseAdjacencyHard[toId].indexOf(fromId),
+                1
+            );
+        }
 
         // If we are removing a self-cycle, clear the self cycle bit
         if (fromId === toId) {
@@ -907,14 +879,14 @@ export class Graph<TVertex> {
         }
 
         for (let id = 0; id < this.vertexById.length; ++id) {
-            if (this.forwardAdjacencySoft[id]) {
-                for (const toId of this.forwardAdjacencySoft[id]) {
-                    lines.push(`  v_${id} -> v_${toId} [style="dotted"];`);
-                }
-            }
-            if (this.forwardAdjacencyHard[id]) {
-                for (const toId of this.forwardAdjacencyHard[id]) {
-                    lines.push(`  v_${id} -> v_${toId};`);
+            const hard = new Set(this.forwardAdjacencyHard[id] || []);
+            if (this.forwardAdjacencyEither[id]) {
+                for (const toId of this.forwardAdjacencyEither[id]) {
+                    if (hard.has(toId)) {
+                        lines.push(`  v_${id} -> v_${toId};`);
+                    } else {
+                        lines.push(`  v_${id} -> v_${toId} [style="dotted"];`);
+                    }
                 }
             }
         }
