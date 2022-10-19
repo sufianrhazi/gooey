@@ -1071,4 +1071,75 @@ suite('Graph Cycles', () => {
             log
         );
     });
+
+    suite('getReachable', () => {
+        class TestGraph<T> extends Graph<T> {
+            getVertexById(vertexId: number) {
+                return this.vertexById[vertexId];
+            }
+
+            public getReachable(
+                lowerBound: number,
+                upperBound: number,
+                toReorder: Set<number>
+            ) {
+                return super.getReachable(lowerBound, upperBound, toReorder);
+            }
+
+            public getOrder() {
+                const vertices: (T | undefined)[] = [];
+                for (let i = 0; i < this.topologicalOrdering.length; ++i) {
+                    vertices.push(
+                        this.vertexById[this.topologicalOrdering.arr[i]]
+                    );
+                }
+                return vertices;
+            }
+        }
+
+        test('identifies reachable subset', () => {
+            const graph = new TestGraph<any>(() => false);
+
+            const a = { name: 'a' };
+            const b = { name: 'b' };
+            const c = { name: 'c' };
+            const x = { name: 'x' };
+            const d = { name: 'd' };
+            const e = { name: 'e' };
+            const f = { name: 'f' };
+            const g = { name: 'g' };
+
+            graph.addVertex(a);
+            graph.addVertex(b);
+            graph.addVertex(c);
+            graph.addVertex(x);
+            graph.addVertex(d);
+            graph.addVertex(e);
+            graph.addVertex(f);
+            graph.addVertex(g);
+
+            graph.addEdge(a, b, Graph.EDGE_HARD);
+            graph.addEdge(a, f, Graph.EDGE_HARD);
+            graph.addEdge(b, c, Graph.EDGE_HARD);
+            graph.addEdge(c, e, Graph.EDGE_HARD);
+            graph.addEdge(x, e, Graph.EDGE_HARD);
+            graph.addEdge(d, e, Graph.EDGE_HARD);
+            graph.addEdge(e, f, Graph.EDGE_HARD);
+            graph.addEdge(f, g, Graph.EDGE_HARD);
+            graph.addEdge(e, c, Graph.EDGE_HARD);
+
+            graph.getOrder();
+            assert.deepEqual([a, b, c, x, d, e, f, g], graph.getOrder());
+
+            const reachable = graph.getReachable(
+                1,
+                5,
+                new Set([graph._test_getVertexInfo(e)!.id])
+            );
+            const reachableVertices = [...reachable].map((vertexId) =>
+                graph.getVertexById(vertexId)
+            );
+            assert.arrayEqualsUnsorted([b, x, c, d, e], reachableVertices);
+        });
+    });
 });

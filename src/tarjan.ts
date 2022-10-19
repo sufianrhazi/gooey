@@ -20,7 +20,11 @@ export function tarjanStronglyConnected(
     function* getDepenencies(nodeId: number) {
         for (const toId of reverseAdjacency[nodeId]) {
             const toIndex = topologicalIndexById[toId];
-            if (toIndex > 0 && lowerBound <= toIndex && toIndex <= upperBound) {
+            if (
+                toIndex >= 0 &&
+                lowerBound <= toIndex &&
+                toIndex <= upperBound
+            ) {
                 yield toId;
             }
         }
