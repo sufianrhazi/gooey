@@ -2,7 +2,7 @@ import { Processable, Retainable } from './engine';
 import { SymProcessable, SymDebugName, SymDead, SymAlive, SymRecalculate, SymRefcount } from './symbols';
 declare type FieldSubscriber<T> = (val: T) => void;
 export declare class Field<T> implements Processable, Retainable {
-    private _isAlive;
+    private _isAlive?;
     private _val;
     private _subscribers?;
     private _changeClock;

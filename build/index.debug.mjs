@@ -1,15 +1,7 @@
-var __defProp = Object.defineProperty;
-var __defNormalProp = (obj, key, value) => key in obj ? __defProp(obj, key, { enumerable: true, configurable: true, writable: true, value }) : obj[key] = value;
-var __publicField = (obj, key, value) => {
-  __defNormalProp(obj, typeof key !== "symbol" ? key + "" : key, value);
-  return value;
-};
-
 // src/types.ts
 var InvariantError = class extends Error {
   constructor(msg, detail) {
     super(msg);
-    __publicField(this, "detail");
     this.detail = detail;
   }
 };
@@ -83,8 +75,6 @@ function assertExhausted(context, ...items) {
 // src/util.ts
 var noop = () => {
 };
-function* noopGenerator() {
-}
 var uniqueid = (() => {
   let id = 1;
   return () => id++;
@@ -167,21 +157,6 @@ var VERTEX_BIT_SELF_CYCLE = 4;
 var VERTEX_BIT_CYCLE_INFORMED = 8;
 var Graph = class {
   constructor(processHandler2) {
-    __publicField(this, "availableIds");
-    __publicField(this, "availableIndices");
-    __publicField(this, "nextId");
-    __publicField(this, "vertexToId");
-    __publicField(this, "vertexById");
-    __publicField(this, "vertexBitsById");
-    __publicField(this, "cycleInfoById");
-    __publicField(this, "forwardAdjacencyHard");
-    __publicField(this, "forwardAdjacencyEither");
-    __publicField(this, "topologicalIndexById");
-    __publicField(this, "topologicalOrdering");
-    __publicField(this, "startVertexIndex");
-    __publicField(this, "toReorderIds");
-    __publicField(this, "debugSubscriptions");
-    __publicField(this, "_processHandler");
     this._processHandler = processHandler2;
     this.nextId = 1;
     this.availableIds = [];
@@ -688,8 +663,8 @@ ${customAttrs.name}`
     };
   }
 };
-__publicField(Graph, "EDGE_SOFT", 1 /* EDGE_SOFT */);
-__publicField(Graph, "EDGE_HARD", 2 /* EDGE_HARD */);
+Graph.EDGE_SOFT = 1 /* EDGE_SOFT */;
+Graph.EDGE_HARD = 2 /* EDGE_HARD */;
 if (false) {
   Graph.prototype._test_getVertices = function _test_getVertices() {
     return this.vertexById.filter((vertex) => !!vertex);
@@ -956,7 +931,6 @@ function debugSubscribe(fn) {
 // src/ref.ts
 var Ref = class {
   constructor(current) {
-    __publicField(this, "current");
     this.current = current;
   }
 };
@@ -1415,7 +1389,6 @@ function calcRelease() {
 var CycleError = class extends Error {
   constructor(msg, sourceCalculation) {
     super(msg);
-    __publicField(this, "sourceCalculation");
     this.sourceCalculation = sourceCalculation;
   }
 };
@@ -1666,16 +1639,8 @@ function calc(fn, debugName) {
 }
 
 // src/field.ts
-var _a, _b, _c;
 var Field = class {
   constructor(val, debugName) {
-    __publicField(this, "_isAlive");
-    __publicField(this, "_val");
-    __publicField(this, "_subscribers");
-    __publicField(this, "_changeClock");
-    __publicField(this, _a);
-    __publicField(this, _b);
-    __publicField(this, _c);
     this._val = val;
     this._isAlive = false;
     this._changeClock = 0;
@@ -1704,7 +1669,7 @@ var Field = class {
     this._subscribers.set(subscriber, this._changeClock);
     return () => this._subscribers?.delete(subscriber);
   }
-  [(_a = SymProcessable, _b = SymRefcount, _c = SymDebugName, SymAlive)]() {
+  [(SymProcessable, SymRefcount, SymDebugName, SymAlive)]() {
     this._isAlive = true;
     addVertex(this);
   }
@@ -1731,15 +1696,9 @@ function field(val, debugName) {
 }
 
 // src/fieldmap.ts
-var _a2, _b2;
 var FieldMap = class {
   constructor(keysField, consumer, emitter, debugName) {
-    __publicField(this, "keysField");
-    __publicField(this, "fieldMap");
-    __publicField(this, "consumer");
-    __publicField(this, "emitter");
-    __publicField(this, _a2);
-    __publicField(this, _b2, 0);
+    this[SymRefcount] = 0;
     this[SymDebugName] = debugName ?? "fieldmap";
     this.keysField = keysField;
     this.fieldMap = /* @__PURE__ */ new Map();
@@ -1779,7 +1738,7 @@ var FieldMap = class {
       }
     }
   }
-  [(_a2 = SymDebugName, _b2 = SymRefcount, SymDead)]() {
+  [(SymDebugName, SymRefcount, SymDead)]() {
     for (const field2 of this.fieldMap.values()) {
       if (this.emitter)
         removeSoftEdge(field2, this.emitter);
@@ -1818,25 +1777,8 @@ var FieldMap = class {
 };
 
 // src/subscriptionemitter.ts
-var _a3, _b3, _c2;
 var SubscriptionEmitter = class {
-  constructor(debugName) {
-    __publicField(this, "subscribers");
-    __publicField(this, "subscriberOffset");
-    __publicField(this, "events");
-    __publicField(this, "isActive");
-    __publicField(this, _a3);
-    __publicField(this, _b3);
-    __publicField(this, _c2);
-    this.subscribers = [];
-    this.subscriberOffset = [];
-    this.events = [];
-    this.isActive = false;
-    this[SymRefcount] = 0;
-    this[SymProcessable] = true;
-    this[SymDebugName] = `emitter:${debugName}`;
-  }
-  [(_a3 = SymProcessable, _b3 = SymDebugName, SymRecalculate)]() {
+  [(SymProcessable, SymDebugName, SymRecalculate)]() {
     for (let i = 0; i < this.subscribers.length; ++i) {
       const subscriber = this.subscribers[i];
       subscriber(this.events, this.subscriberOffset[i]);
@@ -1845,7 +1787,7 @@ var SubscriptionEmitter = class {
     this.events.splice(0, this.events.length);
     return true;
   }
-  [(_c2 = SymRefcount, SymAlive)]() {
+  [(SymRefcount, SymAlive)]() {
     this.isActive = true;
     addVertex(this);
   }
@@ -1855,6 +1797,15 @@ var SubscriptionEmitter = class {
     this.events.splice(0, this.events.length);
     removeVertex(this);
     this.isActive = false;
+  }
+  constructor(debugName) {
+    this.subscribers = [];
+    this.subscriberOffset = [];
+    this.events = [];
+    this.isActive = false;
+    this[SymRefcount] = 0;
+    this[SymProcessable] = true;
+    this[SymDebugName] = `emitter:${debugName}`;
   }
   addEvent(event) {
     if (!this.isActive)
@@ -1890,30 +1841,8 @@ var SubscriptionEmitter = class {
 };
 
 // src/subscriptionconsumer.ts
-var _a4, _b4, _c3;
 var SubscriptionConsumer = class {
-  constructor(target, sourceEmitter, transformEmitter, handler, debugName) {
-    __publicField(this, "target");
-    __publicField(this, "handler");
-    __publicField(this, "events");
-    __publicField(this, "isActive");
-    __publicField(this, "sourceEmitter");
-    __publicField(this, "transformEmitter");
-    __publicField(this, "unsubscribe");
-    __publicField(this, _a4);
-    __publicField(this, _b4);
-    __publicField(this, _c3);
-    this.target = target;
-    this.handler = handler;
-    this.events = [];
-    this.isActive = false;
-    this.sourceEmitter = sourceEmitter;
-    this.transformEmitter = transformEmitter;
-    this[SymRefcount] = 0;
-    this[SymProcessable] = true;
-    this[SymDebugName] = `consumer:${debugName}`;
-  }
-  [(_a4 = SymProcessable, _b4 = SymDebugName, SymRecalculate)]() {
+  [(SymProcessable, SymDebugName, SymRecalculate)]() {
     for (const event of this.events) {
       for (const emitEvent of this.handler(this.target, event)) {
         this.transformEmitter.addEvent(emitEvent);
@@ -1922,7 +1851,7 @@ var SubscriptionConsumer = class {
     this.events.splice(0, this.events.length);
     return false;
   }
-  [(_c3 = SymRefcount, SymAlive)]() {
+  [(SymRefcount, SymAlive)]() {
     this.isActive = true;
     addVertex(this);
     retain(this.sourceEmitter);
@@ -1942,6 +1871,17 @@ var SubscriptionConsumer = class {
     this.events.splice(0, this.events.length);
     removeVertex(this);
     this.isActive = false;
+  }
+  constructor(target, sourceEmitter, transformEmitter, handler, debugName) {
+    this.target = target;
+    this.handler = handler;
+    this.events = [];
+    this.isActive = false;
+    this.sourceEmitter = sourceEmitter;
+    this.transformEmitter = transformEmitter;
+    this[SymRefcount] = 0;
+    this[SymProcessable] = true;
+    this[SymDebugName] = `consumer:${debugName}`;
   }
   addEvent(event) {
     if (!this.isActive)
@@ -1969,15 +1909,6 @@ var SubscriptionConsumer = class {
 var SymTDHandle = Symbol("tdHandle");
 var TrackedDataHandle = class {
   constructor(target, proxyHandler, methods, derivedEmitter, handleEvent, debugName = "trackeddata") {
-    __publicField(this, "target");
-    __publicField(this, "methods");
-    __publicField(this, "fieldMap");
-    __publicField(this, "keys");
-    __publicField(this, "keysField");
-    __publicField(this, "dataAccessor");
-    __publicField(this, "emitter");
-    __publicField(this, "consumer");
-    __publicField(this, "revocable");
     this.target = target;
     this.methods = methods;
     this.emitter = new SubscriptionEmitter(debugName);
@@ -2462,25 +2393,23 @@ function isClassComponent(val) {
 }
 var ClassComponent = class {
   constructor(props) {
-    __publicField(this, "props");
     this.props = props;
   }
 };
 var RenderNodeType = Symbol("rendernode");
-var _a5, _b5, _c4, _d;
 var EmptyRenderNode = class {
   constructor() {
-    __publicField(this, "_type", RenderNodeType);
-    __publicField(this, "detach", noopGenerator);
-    __publicField(this, "attach", noop);
-    __publicField(this, "onMount", noop);
-    __publicField(this, "onUnmount", noop);
-    __publicField(this, _a5);
-    __publicField(this, _b5);
-    __publicField(this, _c4, noop);
-    __publicField(this, _d, noop);
+    this._type = RenderNodeType;
     this[SymDebugName] = "empty";
     this[SymRefcount] = 0;
+  }
+  detach() {
+  }
+  attach() {
+  }
+  onMount() {
+  }
+  onUnmount() {
   }
   retain() {
     retain(this);
@@ -2488,28 +2417,22 @@ var EmptyRenderNode = class {
   release() {
     release(this);
   }
+  [(SymDebugName, SymRefcount, SymAlive)]() {
+  }
+  [SymDead]() {
+  }
 };
-_a5 = SymDebugName, _b5 = SymRefcount, _c4 = SymAlive, _d = SymDead;
 var emptyRenderNode = new EmptyRenderNode();
-var _a6, _b6, _c5;
 var TextRenderNode = class {
   constructor(string, debugName) {
-    __publicField(this, "_type", RenderNodeType);
-    __publicField(this, "text");
-    __publicField(this, "emitter");
-    __publicField(this, "onMount", noop);
-    __publicField(this, "onUnmount", noop);
-    __publicField(this, _a6);
-    __publicField(this, _b6);
-    __publicField(this, _c5, noop);
+    this._type = RenderNodeType;
     this.text = document.createTextNode(string);
-    this.emitter = null;
     this[SymDebugName] = debugName ?? "text";
     this[SymRefcount] = 0;
   }
   detach() {
     this.emitter?.({ type: "splice" /* SPLICE */, index: 0, count: 1 });
-    this.emitter = null;
+    this.emitter = void 0;
   }
   attach(emitter) {
     assert(!this.emitter, "Invariant: Text node double attached");
@@ -2521,35 +2444,32 @@ var TextRenderNode = class {
       items: [this.text]
     });
   }
+  onMount() {
+  }
+  onUnmount() {
+  }
   retain() {
     retain(this);
   }
   release() {
     release(this);
   }
-  [(_a6 = SymDebugName, _b6 = SymRefcount, _c5 = SymAlive, SymDead)]() {
-    this.emitter = null;
+  [(SymDebugName, SymRefcount, SymAlive)]() {
+  }
+  [SymDead]() {
+    this.emitter = void 0;
   }
 };
-var _a7, _b7, _c6;
 var ForeignRenderNode = class {
   constructor(node, debugName) {
-    __publicField(this, "_type", RenderNodeType);
-    __publicField(this, "node");
-    __publicField(this, "emitter");
-    __publicField(this, "onMount", noop);
-    __publicField(this, "onUnmount", noop);
-    __publicField(this, _a7);
-    __publicField(this, _b7);
-    __publicField(this, _c6, noop);
+    this._type = RenderNodeType;
     this.node = node;
-    this.emitter = null;
     this[SymDebugName] = debugName ?? "foreign";
     this[SymRefcount] = 0;
   }
   detach() {
     this.emitter?.({ type: "splice" /* SPLICE */, index: 0, count: 1 });
-    this.emitter = null;
+    this.emitter = void 0;
   }
   attach(emitter) {
     assert(!this.emitter, "Invariant: Foreign node double attached");
@@ -2561,30 +2481,28 @@ var ForeignRenderNode = class {
       items: [this.node]
     });
   }
+  onMount() {
+  }
+  onUnmount() {
+  }
   retain() {
     retain(this);
   }
   release() {
     release(this);
   }
-  [(_a7 = SymDebugName, _b7 = SymRefcount, _c6 = SymAlive, SymDead)]() {
-    this.emitter = null;
+  [(SymDebugName, SymRefcount, SymAlive)]() {
+  }
+  [SymDead]() {
+    this.emitter = void 0;
   }
 };
-var _a8, _b8;
 var ArrayRenderNode = class {
   constructor(children, debugName) {
-    __publicField(this, "_type", RenderNodeType);
-    __publicField(this, "children");
-    __publicField(this, "slotSizes");
-    __publicField(this, "attached");
-    __publicField(this, "emitter");
-    __publicField(this, _a8);
-    __publicField(this, _b8);
+    this._type = RenderNodeType;
     this.children = children;
     this.slotSizes = children.map(() => 0);
     this.attached = children.map(() => false);
-    this.emitter = null;
     this[SymDebugName] = debugName ?? "array";
     this[SymRefcount] = 0;
   }
@@ -2595,7 +2513,7 @@ var ArrayRenderNode = class {
         this.attached[index] = false;
       }
     }
-    this.emitter = null;
+    this.emitter = void 0;
   }
   attach(emitter, parentXmlNamespace) {
     this.emitter = emitter;
@@ -2629,7 +2547,7 @@ var ArrayRenderNode = class {
   release() {
     release(this);
   }
-  [(_a8 = SymDebugName, _b8 = SymRefcount, SymAlive)]() {
+  [(SymDebugName, SymRefcount, SymAlive)]() {
     for (const child of this.children) {
       retain(child);
     }
@@ -2638,7 +2556,7 @@ var ArrayRenderNode = class {
     for (const child of this.children) {
       release(child);
     }
-    this.emitter = null;
+    this.emitter = void 0;
   }
 };
 var HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
@@ -2876,22 +2794,9 @@ var EventProps = [
   { prefix: "oncapture:", param: true },
   { prefix: "onpassive:", param: { passive: true } }
 ];
-var _a9, _b9;
 var IntrinsicRenderNode = class {
   constructor(tagName, props, children, debugName) {
-    __publicField(this, "_type", RenderNodeType);
-    __publicField(this, "tagName");
-    __publicField(this, "element");
-    __publicField(this, "emitter");
-    __publicField(this, "detachedError");
-    __publicField(this, "xmlNamespace");
-    __publicField(this, "childXmlNamespace");
-    __publicField(this, "props");
-    __publicField(this, "children");
-    __publicField(this, "portalRenderNode");
-    __publicField(this, "calculations");
-    __publicField(this, "calculationSubscriptions");
-    __publicField(this, "handleEvent", (event) => {
+    this.handleEvent = (event) => {
       if (event instanceof Error) {
         if (this.emitter) {
           this.emitter(event);
@@ -2902,18 +2807,11 @@ var IntrinsicRenderNode = class {
         return;
       }
       assert(false, "unexpected event from IntrinsicRenderNode");
-    });
-    __publicField(this, _a9);
-    __publicField(this, _b9);
-    this.emitter = null;
-    this.detachedError = null;
+    };
+    this._type = RenderNodeType;
     this.props = props;
     this.children = new ArrayRenderNode(children);
-    this.portalRenderNode = null;
-    this.element = null;
     this.tagName = tagName;
-    this.xmlNamespace = null;
-    this.childXmlNamespace = null;
     this[SymDebugName] = debugName ?? `intrinsic:${this.tagName}`;
     this[SymRefcount] = 0;
   }
@@ -2990,7 +2888,7 @@ var IntrinsicRenderNode = class {
       index: 0,
       count: 1
     });
-    this.emitter = null;
+    this.emitter = void 0;
   }
   ensureElement(xmlNamespace, childXmlNamespace) {
     if (!this.element || xmlNamespace !== this.xmlNamespace) {
@@ -3036,7 +2934,7 @@ var IntrinsicRenderNode = class {
   release() {
     release(this);
   }
-  [(_a9 = SymDebugName, _b9 = SymRefcount, SymAlive)]() {
+  [(SymDebugName, SymRefcount, SymAlive)]() {
     const xmlNamespaceGuess = ELEMENT_NAMESPACE_GUESS[this.tagName] || HTML_NAMESPACE;
     retain(this.children);
     this.ensureElement(xmlNamespaceGuess, this.tagName === "foreignObject" ? HTML_NAMESPACE : xmlNamespaceGuess);
@@ -3053,28 +2951,18 @@ var IntrinsicRenderNode = class {
       }
       this.calculationSubscriptions.clear();
     }
-    this.element = null;
+    this.element = void 0;
     if (this.portalRenderNode) {
       release(this.portalRenderNode);
-      this.portalRenderNode = null;
+      this.portalRenderNode = void 0;
     }
     release(this.children);
-    this.emitter = null;
+    this.emitter = void 0;
   }
 };
-var _a10, _b10;
 var PortalRenderNode = class {
   constructor(element, children, refProp, debugName) {
-    __publicField(this, "_type", RenderNodeType);
-    __publicField(this, "tagName");
-    __publicField(this, "element");
-    __publicField(this, "refProp");
-    __publicField(this, "emitter");
-    __publicField(this, "existingOffset");
-    __publicField(this, "arrayRenderNode");
-    __publicField(this, "calculations");
-    __publicField(this, "calculationSubscriptions");
-    __publicField(this, "handleEvent", (event) => {
+    this.handleEvent = (event) => {
       if (event instanceof Error) {
         if (this.emitter) {
           this.emitter(event);
@@ -3126,20 +3014,20 @@ var PortalRenderNode = class {
         default:
           assertExhausted(event);
       }
-    });
-    __publicField(this, _a10);
-    __publicField(this, _b10);
-    this.emitter = null;
+    };
+    this._type = RenderNodeType;
     this.arrayRenderNode = children;
     this.element = element;
-    this.refProp = refProp;
+    if (refProp) {
+      this.refProp = refProp;
+    }
     this.tagName = this.element.tagName;
     this.existingOffset = element.childNodes.length;
     this[SymDebugName] = debugName ?? `mount:${this.tagName}`;
     this[SymRefcount] = 0;
   }
   detach() {
-    this.emitter = null;
+    this.emitter = void 0;
     this.arrayRenderNode.detach();
   }
   attach(emitter, parentXmlNamespace) {
@@ -3179,7 +3067,7 @@ var PortalRenderNode = class {
   release() {
     release(this);
   }
-  [(_a10 = SymDebugName, _b10 = SymRefcount, SymAlive)]() {
+  [(SymDebugName, SymRefcount, SymAlive)]() {
     retain(this.arrayRenderNode);
   }
   [SymDead]() {
@@ -3195,36 +3083,21 @@ var PortalRenderNode = class {
       this.calculationSubscriptions.clear();
     }
     release(this.arrayRenderNode);
-    this.emitter = null;
+    this.emitter = void 0;
   }
 };
-var _a11, _b11;
 var CalculationRenderNode = class {
   constructor(calculation, debugName) {
-    __publicField(this, "_type", RenderNodeType);
-    __publicField(this, "error");
-    __publicField(this, "renderNode");
-    __publicField(this, "calculation");
-    __publicField(this, "calculationSubscription");
-    __publicField(this, "isMounted");
-    __publicField(this, "emitter");
-    __publicField(this, "parentXmlNamespace");
-    __publicField(this, _a11);
-    __publicField(this, _b11);
+    this._type = RenderNodeType;
     this.calculation = calculation;
-    this.calculationSubscription = null;
-    this.error = null;
-    this.renderNode = null;
     this.isMounted = false;
-    this.emitter = null;
-    this.parentXmlNamespace = null;
     this[SymDebugName] = debugName ?? `rendercalc:${calculation[SymDebugName]}`;
     this[SymRefcount] = 0;
     this.subscribe = this.subscribe.bind(this);
   }
   detach() {
     this.renderNode?.detach();
-    this.emitter = null;
+    this.emitter = void 0;
   }
   attach(emitter, parentXmlNamespace) {
     this.emitter = emitter;
@@ -3258,8 +3131,8 @@ var CalculationRenderNode = class {
         this.renderNode.detach();
       }
       release(this.renderNode);
-      this.error = null;
-      this.renderNode = null;
+      this.error = void 0;
+      this.renderNode = void 0;
     }
   }
   subscribe(errorType, val) {
@@ -3286,7 +3159,7 @@ var CalculationRenderNode = class {
       });
     }
   }
-  [(_a11 = SymDebugName, _b11 = SymRefcount, SymAlive)]() {
+  [(SymDebugName, SymRefcount, SymAlive)]() {
     try {
       this.calculationSubscription = this.calculation.subscribe(this.subscribe);
       this.subscribe(void 0, this.calculation());
@@ -3296,24 +3169,14 @@ var CalculationRenderNode = class {
   }
   [SymDead]() {
     this.calculationSubscription?.();
-    this.calculationSubscription = null;
+    this.calculationSubscription = void 0;
     this.cleanPrior();
-    this.emitter = null;
+    this.emitter = void 0;
   }
 };
-var _a12, _b12;
 var CollectionRenderNode = class {
   constructor(collection2, debugName) {
-    __publicField(this, "_type", RenderNodeType);
-    __publicField(this, "children");
-    __publicField(this, "childIndex");
-    __publicField(this, "slotSizes");
-    __publicField(this, "collection");
-    __publicField(this, "unsubscribe");
-    __publicField(this, "isMounted");
-    __publicField(this, "emitter");
-    __publicField(this, "parentXmlNamespace");
-    __publicField(this, "handleCollectionEvent", (events) => {
+    this.handleCollectionEvent = (events) => {
       for (const event of events) {
         switch (event.type) {
           case "splice" /* SPLICE */: {
@@ -3384,16 +3247,13 @@ var CollectionRenderNode = class {
           }
         }
       }
-    });
-    __publicField(this, _a12);
-    __publicField(this, _b12);
+    };
+    this._type = RenderNodeType;
     this.collection = collection2;
     this.children = [];
     this.childIndex = /* @__PURE__ */ new Map();
     this.slotSizes = [];
     this.isMounted = false;
-    this.emitter = null;
-    this.parentXmlNamespace = null;
     this[SymDebugName] = debugName ?? `rendercoll`;
     this[SymRefcount] = 0;
   }
@@ -3410,7 +3270,7 @@ var CollectionRenderNode = class {
     for (const child of this.children) {
       child.detach();
     }
-    this.emitter = null;
+    this.emitter = void 0;
   }
   handleChildEvent(event, child) {
     if (this.emitter) {
@@ -3457,7 +3317,7 @@ var CollectionRenderNode = class {
       }
     }
   }
-  [(_a12 = SymDebugName, _b12 = SymRefcount, SymAlive)]() {
+  [(SymDebugName, SymRefcount, SymAlive)]() {
     retain(this.collection);
     this.unsubscribe = this.collection.subscribe(this.handleCollectionEvent);
     untrackReads(() => {
@@ -3479,7 +3339,7 @@ var CollectionRenderNode = class {
       this.childIndex.delete(child);
     }
     this.slotSizes.splice(0, this.slotSizes.length);
-    this.emitter = null;
+    this.emitter = void 0;
   }
 };
 function isCalculationRenderNode(val) {
@@ -3574,23 +3434,13 @@ var IntrinsicObserverEventType = /* @__PURE__ */ ((IntrinsicObserverEventType2) 
   IntrinsicObserverEventType2["UNMOUNT"] = "unmount";
   return IntrinsicObserverEventType2;
 })(IntrinsicObserverEventType || {});
-var _a13, _b13;
 var IntrinsicObserverRenderNode = class {
   constructor(nodeCallback, elementCallback, children, debugName) {
-    __publicField(this, "_type", RenderNodeType);
-    __publicField(this, "nodeCallback");
-    __publicField(this, "elementCallback");
-    __publicField(this, "child");
-    __publicField(this, "childNodes");
-    __publicField(this, "emitter");
-    __publicField(this, "isMounted");
-    __publicField(this, _a13);
-    __publicField(this, _b13);
+    this._type = RenderNodeType;
     this.nodeCallback = nodeCallback;
     this.elementCallback = elementCallback;
     this.child = new ArrayRenderNode(children);
     this.childNodes = [];
-    this.emitter = null;
     this.isMounted = false;
     this[SymDebugName] = debugName ?? `lifecycleobserver`;
     this[SymRefcount] = 0;
@@ -3632,7 +3482,7 @@ var IntrinsicObserverRenderNode = class {
   }
   detach() {
     this.child.detach();
-    this.emitter = null;
+    this.emitter = void 0;
   }
   attach(emitter, parentXmlNamespace) {
     this.emitter = emitter;
@@ -3660,35 +3510,20 @@ var IntrinsicObserverRenderNode = class {
   release() {
     release(this);
   }
-  [(_a13 = SymDebugName, _b13 = SymRefcount, SymAlive)]() {
+  [(SymDebugName, SymRefcount, SymAlive)]() {
     retain(this.child);
   }
   [SymDead]() {
     release(this.child);
-    this.emitter = null;
+    this.emitter = void 0;
   }
 };
 var IntrinsicObserver = ({ nodeCallback, elementCallback, children }) => {
   return new IntrinsicObserverRenderNode(nodeCallback, elementCallback, renderJSXChildren(children));
 };
-var _a14, _b14;
 var ComponentRenderNode = class {
   constructor(Component2, props, children, debugName) {
-    __publicField(this, "_type", RenderNodeType);
-    __publicField(this, "Component");
-    __publicField(this, "props");
-    __publicField(this, "children");
-    __publicField(this, "result");
-    __publicField(this, "resultAttached");
-    __publicField(this, "onMountCallbacks");
-    __publicField(this, "onUnmountCallbacks");
-    __publicField(this, "onDestroyCallbacks");
-    __publicField(this, "owned");
-    __publicField(this, "errorHandler");
-    __publicField(this, "emitter");
-    __publicField(this, "parentXmlNamespace");
-    __publicField(this, "isMounted");
-    __publicField(this, "handleEvent", (event) => {
+    this.handleEvent = (event) => {
       assert(!(this.result instanceof Error), "Invariant: received event on calculation error");
       if (event instanceof Error && this.errorHandler) {
         if (this.result) {
@@ -3700,7 +3535,7 @@ var ComponentRenderNode = class {
             this.resultAttached = false;
           }
           release(this.result);
-          this.result = null;
+          this.result = void 0;
         }
         const handledResult = this.errorHandler(event);
         this.result = handledResult ? renderJSXNode(handledResult) : emptyRenderNode;
@@ -3715,18 +3550,13 @@ var ComponentRenderNode = class {
       } else {
         this.emitter?.(event);
       }
-    });
-    __publicField(this, _a14);
-    __publicField(this, _b14);
+    };
+    this._type = RenderNodeType;
     this.Component = Component2;
     this.props = props;
     this.children = children;
     this.owned = /* @__PURE__ */ new Set();
-    this.errorHandler = null;
     this.isMounted = false;
-    this.emitter = null;
-    this.parentXmlNamespace = null;
-    this.result = null;
     this.resultAttached = false;
     this[SymDebugName] = debugName ?? `component`;
     this[SymRefcount] = 0;
@@ -3739,7 +3569,7 @@ var ComponentRenderNode = class {
     assert(this.resultAttached, "Invariant: detached unattached component result");
     this.result.detach();
     this.resultAttached = false;
-    this.emitter = null;
+    this.emitter = void 0;
   }
   ensureResult() {
     if (!this.result) {
@@ -3862,7 +3692,7 @@ var ComponentRenderNode = class {
   release() {
     release(this);
   }
-  [(_a14 = SymDebugName, _b14 = SymRefcount, SymAlive)]() {
+  [(SymDebugName, SymRefcount, SymAlive)]() {
     this.ensureResult();
   }
   [SymDead]() {
@@ -3874,11 +3704,11 @@ var ComponentRenderNode = class {
     if (this.result && !(this.result instanceof Error)) {
       release(this.result);
     }
-    this.result = null;
+    this.result = void 0;
     for (const item of this.owned) {
       release(item);
     }
-    this.emitter = null;
+    this.emitter = void 0;
   }
 };
 function classComponentToFunctionComponentRenderNode(Component2, props, children) {
@@ -4018,7 +3848,7 @@ model.keys = function modelKeys(sourceModel, debugName) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.12.0" : "development";
+var VERSION = true ? "0.12.1" : "development";
 export {
   ArrayEventType,
   CalculationErrorType,

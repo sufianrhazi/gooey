@@ -4,7 +4,6 @@ import { RefObjectOrCallback } from './ref';
 import { ArrayEvent } from './arrayevent';
 import { Calculation, CalculationErrorType } from './calc';
 import { Collection, View } from './collection';
-import { noopGenerator } from './util';
 export interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
     onUnmount: (callback: () => void) => void;
@@ -54,16 +53,16 @@ export interface RenderNode extends Retainable {
 export declare class EmptyRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
     constructor();
-    detach: typeof noopGenerator;
-    attach: () => void;
-    onMount: () => void;
-    onUnmount: () => void;
+    detach(): void;
+    attach(): void;
+    onMount(): void;
+    onUnmount(): void;
     retain(): void;
     release(): void;
     [SymDebugName]: string;
     [SymRefcount]: number;
-    [SymAlive]: () => void;
-    [SymDead]: () => void;
+    [SymAlive](): void;
+    [SymDead](): void;
 }
 /**
  * Only need one of nothing
@@ -75,17 +74,17 @@ export declare const emptyRenderNode: EmptyRenderNode;
 export declare class TextRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
     private text;
-    private emitter;
+    private emitter?;
     constructor(string: string, debugName?: string);
     detach(): void;
     attach(emitter: NodeEmitter): void;
-    onMount: () => void;
-    onUnmount: () => void;
+    onMount(): void;
+    onUnmount(): void;
     retain(): void;
     release(): void;
     [SymDebugName]: string;
     [SymRefcount]: number;
-    [SymAlive]: () => void;
+    [SymAlive](): void;
     [SymDead](): void;
 }
 /**
@@ -94,17 +93,17 @@ export declare class TextRenderNode implements RenderNode {
 export declare class ForeignRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
     private node;
-    private emitter;
+    private emitter?;
     constructor(node: Node, debugName?: string);
     detach(): void;
     attach(emitter: NodeEmitter): void;
-    onMount: () => void;
-    onUnmount: () => void;
+    onMount(): void;
+    onUnmount(): void;
     retain(): void;
     release(): void;
     [SymDebugName]: string;
     [SymRefcount]: number;
-    [SymAlive]: () => void;
+    [SymAlive](): void;
     [SymDead](): void;
 }
 /**
@@ -115,7 +114,7 @@ export declare class ArrayRenderNode implements RenderNode {
     private children;
     private slotSizes;
     private attached;
-    private emitter;
+    private emitter?;
     constructor(children: RenderNode[], debugName?: string);
     detach(): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
@@ -134,14 +133,14 @@ export declare class ArrayRenderNode implements RenderNode {
 export declare class IntrinsicRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
     private tagName;
-    private element;
-    private emitter;
-    private detachedError;
-    private xmlNamespace;
-    private childXmlNamespace;
-    private props;
+    private element?;
+    private emitter?;
+    private detachedError?;
+    private xmlNamespace?;
+    private childXmlNamespace?;
+    private props?;
     private children;
-    private portalRenderNode;
+    private portalRenderNode?;
     private calculations?;
     private calculationSubscriptions?;
     constructor(tagName: string, props: Record<string, any> | undefined, children: RenderNode[], debugName?: string);
@@ -164,13 +163,13 @@ export declare class PortalRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
     private tagName;
     private element;
-    private refProp;
-    private emitter;
+    private refProp?;
+    private emitter?;
     private existingOffset;
     private arrayRenderNode;
     private calculations?;
     private calculationSubscriptions?;
-    constructor(element: Element, children: ArrayRenderNode, refProp: RefObjectOrCallback<Element> | null, debugName?: string);
+    constructor(element: Element, children: ArrayRenderNode, refProp: RefObjectOrCallback<Element> | null | undefined, debugName?: string);
     private handleEvent;
     detach(): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
@@ -188,13 +187,13 @@ export declare class PortalRenderNode implements RenderNode {
  */
 export declare class CalculationRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
-    private error;
-    private renderNode;
+    private error?;
+    private renderNode?;
     private calculation;
-    private calculationSubscription;
+    private calculationSubscription?;
     private isMounted;
-    private emitter;
-    private parentXmlNamespace;
+    private emitter?;
+    private parentXmlNamespace?;
     constructor(calculation: Calculation<any>, debugName?: string);
     detach(): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
@@ -218,8 +217,8 @@ export declare class CollectionRenderNode implements RenderNode {
     private collection;
     private unsubscribe?;
     private isMounted;
-    private emitter;
-    private parentXmlNamespace;
+    private emitter?;
+    private parentXmlNamespace?;
     constructor(collection: Collection<any> | View<any>, debugName?: string);
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     detach(): void;
@@ -247,11 +246,11 @@ export declare type IntrinsicObserverNodeCallback = (node: Node, event: Intrinsi
 export declare type IntrinsicObserverElementCallback = (element: Element, event: IntrinsicObserverEventType) => void;
 export declare class IntrinsicObserverRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
-    nodeCallback: IntrinsicObserverNodeCallback | undefined;
-    elementCallback: IntrinsicObserverElementCallback | undefined;
+    nodeCallback?: IntrinsicObserverNodeCallback | undefined;
+    elementCallback?: IntrinsicObserverElementCallback | undefined;
     child: RenderNode;
     childNodes: Node[];
-    emitter: NodeEmitter | null;
+    emitter?: NodeEmitter | undefined;
     isMounted: boolean;
     constructor(nodeCallback: IntrinsicObserverNodeCallback | undefined, elementCallback: IntrinsicObserverElementCallback | undefined, children: RenderNode[], debugName?: string);
     notify(node: Node, type: IntrinsicObserverEventType): void;
@@ -277,15 +276,15 @@ export declare class ComponentRenderNode<TProps> implements RenderNode {
     Component: FunctionComponent<TProps>;
     props: TProps | null | undefined;
     children: JSX.Node[];
-    result: RenderNode | Error | null;
+    result?: RenderNode | Error | undefined;
     resultAttached: boolean;
     onMountCallbacks?: (() => (() => void) | void)[];
     onUnmountCallbacks?: (() => void)[];
     onDestroyCallbacks?: (() => void)[];
     owned: Set<Retainable>;
-    errorHandler: ((e: Error) => RenderNode | null) | null;
-    emitter: NodeEmitter | null;
-    parentXmlNamespace: string | null;
+    errorHandler?: ((e: Error) => RenderNode | null) | undefined;
+    emitter?: NodeEmitter | undefined;
+    parentXmlNamespace?: string | undefined;
     isMounted: boolean;
     constructor(Component: FunctionComponent<TProps>, props: TProps | null | undefined, children: JSX.Node[], debugName?: string);
     detach(): void;
