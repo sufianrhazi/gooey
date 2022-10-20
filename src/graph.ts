@@ -218,7 +218,7 @@ export class Graph<TVertex> {
     protected vertexBitsById: ResizableIntArray<Uint8Array>;
 
     /** Mapping of id -> CycleInfo */
-    protected cycleInfoById: (CycleInfo | undefined)[];
+    protected cycleInfoById: Record<number, CycleInfo | undefined>;
 
     /** Mapping of id -> hard edges in the forward direction */
     protected forwardAdjacencyHard: number[][];
@@ -268,7 +268,7 @@ export class Graph<TVertex> {
 
         this.vertexBitsById = new ResizableIntArray(GRAPH_CAPACITY, Uint8Array);
         this.vertexBitsById.push(0); // id 0 is invalid
-        this.cycleInfoById = [];
+        this.cycleInfoById = {};
         this.topologicalIndexById = new ResizableIntArray(
             GRAPH_CAPACITY,
             Int32Array
@@ -308,7 +308,6 @@ export class Graph<TVertex> {
         this.vertexToId.set(vertex, id);
         this.vertexById[id] = vertex;
         this.vertexBitsById.set(id, 0);
-        this.cycleInfoById[id] = undefined;
 
         let index: number;
         if (this.availableIndices.length > 0) {
@@ -341,7 +340,7 @@ export class Graph<TVertex> {
 
         this.clearVertexDirtyInner(id);
         this.vertexBitsById.set(id, 0);
-        this.cycleInfoById[id] = undefined;
+        delete this.cycleInfoById[id];
         this.vertexToId.delete(vertex);
         this.vertexById[id] = undefined;
         this.toReorderIds.delete(id);
@@ -654,7 +653,7 @@ export class Graph<TVertex> {
                     this.vertexBitsById.arr[vertexId] =
                         this.vertexBitsById.arr[vertexId] &
                         ~(VERTEX_BIT_CYCLE | VERTEX_BIT_CYCLE_INFORMED);
-                    this.cycleInfoById[vertexId] = undefined;
+                    delete this.cycleInfoById[vertexId];
                     this.markVertexDirtyInner(vertexId);
                 }
                 allocatedIndexes.push(index);
