@@ -15,7 +15,7 @@
     "paths": {},
 
     "isolatedModules": true,
-    "useDefineForClassFields": true,
+    "useDefineForClassFields": false,
 
     "declaration": true,
     "declarationMap": true,
