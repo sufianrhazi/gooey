@@ -1090,7 +1090,7 @@ suite('Graph Cycles', () => {
                 const vertices: (T | undefined)[] = [];
                 for (let i = 0; i < this.topologicalOrdering.length; ++i) {
                     vertices.push(
-                        this.vertexById[this.topologicalOrdering.arr[i]]
+                        this.vertexById[this.topologicalOrdering[i]!]
                     );
                 }
                 return vertices;

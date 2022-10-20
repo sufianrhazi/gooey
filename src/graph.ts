@@ -135,7 +135,6 @@ export enum ProcessAction {
     CYCLE,
 }
 
-// NOTE! Max bit size is 8 bits
 const VERTEX_BIT_DIRTY /* ********** */ = 0b0001;
 const VERTEX_BIT_CYCLE /* ********** */ = 0b0010;
 const VERTEX_BIT_SELF_CYCLE /* ***** */ = 0b0100;
@@ -149,65 +148,13 @@ interface DebugAttributes {
 type DebugFormatter<TVertex> = (vertex: TVertex) => DebugAttributes;
 type DebugSubscription = (graphviz: string, label: string) => void;
 
-const GRAPH_CAPACITY = 1024 * 64; // 64k ought to be enough for anybody
-
-class ResizableIntArray<T extends Uint8Array | Int32Array> {
-    private chunkSize: number;
-    private capacity: number;
-    public length: number;
-    private ctor: { new (size: number): T };
-    public arr: T;
-
-    constructor(chunkSize: number, TypedArrayKind: { new (size: number): T }) {
-        this.ctor = TypedArrayKind;
-        this.chunkSize = chunkSize;
-        this.capacity = chunkSize;
-        this.length = 0;
-        this.arr = new TypedArrayKind(chunkSize);
-    }
-
-    set(index: number, value: number) {
-        while (index > this.capacity) {
-            this.allocChunk();
-        }
-        this.arr[index] = value;
-        if (this.length < index + 1) {
-            this.length = index + 1;
-        }
-    }
-
-    private allocChunk() {
-        this.capacity += this.chunkSize;
-        const prior = this.arr;
-        this.arr = new this.ctor(this.capacity);
-        for (let i = 0; i < prior.length; ++i) {
-            this.arr[i] = prior[i];
-        }
-    }
-
-    pop() {
-        if (this.length > 0) {
-            this.length--;
-            return this.arr[this.length];
-        }
-        throw new Error('Out of bounds');
-    }
-
-    push(value: number) {
-        if (this.length >= this.capacity) {
-            this.allocChunk();
-        }
-        this.arr[this.length++] = value;
-    }
-}
-
 export class Graph<TVertex> {
     static EDGE_SOFT = EdgeColor.EDGE_SOFT;
     static EDGE_HARD = EdgeColor.EDGE_HARD;
 
     /** identifiers available for reuse */
-    protected availableIds: ResizableIntArray<Int32Array>;
-    protected availableIndices: ResizableIntArray<Int32Array>;
+    protected availableIds: number[];
+    protected availableIndices: number[];
     protected nextId: number;
 
     /** Mapping of id -> vertex */
@@ -215,7 +162,7 @@ export class Graph<TVertex> {
     protected vertexById: (TVertex | undefined)[];
 
     /** Mapping of id -> bits */
-    protected vertexBitsById: ResizableIntArray<Uint8Array>;
+    protected vertexBitsById: number[];
 
     /** Mapping of id -> CycleInfo */
     protected cycleInfoById: Record<number, CycleInfo | undefined>;
@@ -227,10 +174,10 @@ export class Graph<TVertex> {
     protected forwardAdjacencyEither: number[][];
 
     /** Mapping of id -> index into topologicalOrdering */
-    protected topologicalIndexById: ResizableIntArray<Int32Array>;
+    protected topologicalIndexById: (number | undefined)[];
 
     /** Ordered list of vertex ids */
-    protected topologicalOrdering: ResizableIntArray<Int32Array>;
+    protected topologicalOrdering: (number | undefined)[];
 
     /** The start index of process(), moves forward in each step, may move back as a result of dirty vertices being added / reordered */
     protected startVertexIndex: number;
@@ -254,30 +201,16 @@ export class Graph<TVertex> {
         this._processHandler = processHandler;
 
         this.nextId = 1;
-        this.availableIds = new ResizableIntArray(
-            GRAPH_CAPACITY / 8,
-            Int32Array
-        );
-        this.availableIndices = new ResizableIntArray(
-            GRAPH_CAPACITY / 8,
-            Int32Array
-        );
+        this.availableIds = [];
+        this.availableIndices = [];
 
         this.vertexById = [];
         this.vertexToId = new Map();
 
-        this.vertexBitsById = new ResizableIntArray(GRAPH_CAPACITY, Uint8Array);
-        this.vertexBitsById.push(0); // id 0 is invalid
+        this.vertexBitsById = [];
         this.cycleInfoById = {};
-        this.topologicalIndexById = new ResizableIntArray(
-            GRAPH_CAPACITY,
-            Int32Array
-        );
-        this.topologicalIndexById.push(0); // id 0 is invalid
-        this.topologicalOrdering = new ResizableIntArray(
-            GRAPH_CAPACITY,
-            Int32Array
-        );
+        this.topologicalIndexById = [];
+        this.topologicalOrdering = [];
 
         this.forwardAdjacencyHard = [];
         this.forwardAdjacencyEither = [];
@@ -300,24 +233,25 @@ export class Graph<TVertex> {
 
         let id: number;
         if (this.availableIds.length > 0) {
-            id = this.availableIds.pop();
+            id = this.availableIds.pop() as number;
         } else {
             id = this.nextId++;
         }
 
         this.vertexToId.set(vertex, id);
         this.vertexById[id] = vertex;
-        this.vertexBitsById.set(id, 0);
+        this.vertexBitsById[id] = 0;
 
         let index: number;
         if (this.availableIndices.length > 0) {
-            index = this.availableIndices.pop();
+            index = this.availableIndices.pop() as number;
         } else {
             index = this.topologicalOrdering.length;
+            this.topologicalOrdering.length += 1;
         }
 
-        this.topologicalIndexById.set(id, index);
-        this.topologicalOrdering.set(index, id);
+        this.topologicalIndexById[id] = index;
+        this.topologicalOrdering[index] = id;
 
         this.forwardAdjacencyHard[id] = [];
         this.forwardAdjacencyEither[id] = [];
@@ -326,8 +260,8 @@ export class Graph<TVertex> {
     removeVertex(vertex: TVertex) {
         const id = this.vertexToId.get(vertex);
         log.assert(id, 'double vertex removal');
-        const index = this.topologicalIndexById.arr[id];
-        log.assert(index >= 0, 'malformed graph');
+        const index = this.topologicalIndexById[id];
+        log.assert(index !== undefined, 'malformed graph');
 
         // Note: no need to clear edges as you can only remove vertices with no edges
         log.assert(
@@ -335,11 +269,11 @@ export class Graph<TVertex> {
             'cannot remove vertex with forward edges'
         );
 
-        this.topologicalIndexById.set(id, -1);
-        this.topologicalOrdering.set(index, -1);
+        this.topologicalIndexById[id] = undefined;
+        this.topologicalOrdering[index] = undefined;
 
         this.clearVertexDirtyInner(id);
-        this.vertexBitsById.set(id, 0);
+        this.vertexBitsById[id] = 0;
         delete this.cycleInfoById[id];
         this.vertexToId.delete(vertex);
         this.vertexById[id] = undefined;
@@ -362,12 +296,12 @@ export class Graph<TVertex> {
 
     private markVertexDirtyInner(vertexId: number) {
         const vertex = this.vertexById[vertexId];
-        if (vertex && !(this.vertexBitsById.arr[vertexId] & VERTEX_BIT_DIRTY)) {
-            this.vertexBitsById.arr[vertexId] |= VERTEX_BIT_DIRTY;
+        if (vertex && !(this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY)) {
+            this.vertexBitsById[vertexId] |= VERTEX_BIT_DIRTY;
             this.processHandler(vertex, ProcessAction.INVALIDATE);
 
-            const index = this.topologicalIndexById.arr[vertexId];
-            if (index >= 0 && index < this.startVertexIndex) {
+            const index = this.topologicalIndexById[vertexId];
+            if (index !== undefined && index < this.startVertexIndex) {
                 this.startVertexIndex = index;
             }
         }
@@ -380,15 +314,15 @@ export class Graph<TVertex> {
     }
 
     private clearVertexDirtyInner(vertexId: number) {
-        if (this.vertexBitsById.arr[vertexId] & VERTEX_BIT_DIRTY) {
-            this.vertexBitsById.arr[vertexId] &= ~VERTEX_BIT_DIRTY;
+        if (this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY) {
+            this.vertexBitsById[vertexId] &= ~VERTEX_BIT_DIRTY;
         }
     }
 
     markVertexCycleInformed(vertex: TVertex) {
         const vertexId = this.vertexToId.get(vertex);
         log.assert(vertexId, 'markVertexCycleInformed on nonexistent vertex');
-        this.vertexBitsById.arr[vertexId] |= VERTEX_BIT_CYCLE_INFORMED;
+        this.vertexBitsById[vertexId] |= VERTEX_BIT_CYCLE_INFORMED;
     }
 
     private *cycleAwareAdjacency(
@@ -431,25 +365,25 @@ export class Graph<TVertex> {
 
         if (
             fromId === toId &&
-            (this.vertexBitsById.arr[fromId] & VERTEX_BIT_SELF_CYCLE) === 0
+            (this.vertexBitsById[fromId] & VERTEX_BIT_SELF_CYCLE) === 0
         ) {
             const isInformed =
-                this.vertexBitsById.arr[fromId] & VERTEX_BIT_CYCLE_INFORMED;
+                this.vertexBitsById[fromId] & VERTEX_BIT_CYCLE_INFORMED;
             if (!isInformed) {
                 const vertex = this.vertexById[fromId];
                 log.assert(vertex, 'missing vertex in self-cycle');
                 this.processHandler(vertex, ProcessAction.CYCLE);
-                this.vertexBitsById.arr[fromId] |=
+                this.vertexBitsById[fromId] |=
                     VERTEX_BIT_CYCLE_INFORMED | VERTEX_BIT_SELF_CYCLE;
             } else {
-                this.vertexBitsById.arr[fromId] |= VERTEX_BIT_SELF_CYCLE;
+                this.vertexBitsById[fromId] |= VERTEX_BIT_SELF_CYCLE;
             }
         }
 
-        const fromIndex = this.topologicalIndexById.arr[fromId];
-        const toIndex = this.topologicalIndexById.arr[toId];
-        log.assert(toIndex >= 0, 'malformed graph');
-        log.assert(fromIndex >= 0, 'malformed graph');
+        const fromIndex = this.topologicalIndexById[fromId];
+        const toIndex = this.topologicalIndexById[toId];
+        log.assert(toIndex !== undefined, 'malformed graph');
+        log.assert(fromIndex !== undefined, 'malformed graph');
 
         // Check for out-of-order edge insertion and add to resort batch
         const badOrder = fromIndex > toIndex; // Note: equal is ok: you can't reorder a self-edge
@@ -493,8 +427,8 @@ export class Graph<TVertex> {
 
         // If we are removing a self-cycle, clear the self cycle bit
         if (fromId === toId) {
-            this.vertexBitsById.arr[fromId] =
-                this.vertexBitsById.arr[fromId] & ~VERTEX_BIT_SELF_CYCLE;
+            this.vertexBitsById[fromId] =
+                this.vertexBitsById[fromId] & ~VERTEX_BIT_SELF_CYCLE;
         }
 
         // If the removed edge is between two nodes in a cycle, it _may_ break the cycle
@@ -513,8 +447,12 @@ export class Graph<TVertex> {
         reachableState: Record<number, undefined | 1 | 2 | 3>,
         reachable: Set<number>
     ) {
-        const vertexIndex = this.topologicalIndexById.arr[vertexId];
-        if (vertexIndex < lowerBound || vertexIndex > upperBound) {
+        const vertexIndex = this.topologicalIndexById[vertexId];
+        if (
+            vertexIndex === undefined ||
+            vertexIndex < lowerBound ||
+            vertexIndex > upperBound
+        ) {
             return false;
         }
 
@@ -558,8 +496,8 @@ export class Graph<TVertex> {
             reachableState[vertexId] = 3;
         }
         for (let index = lowerBound; index <= upperBound; ++index) {
-            const vertexId = this.topologicalOrdering.arr[index];
-            if (vertexId > 0) {
+            const vertexId = this.topologicalOrdering[index];
+            if (vertexId && vertexId > 0) {
                 this.markReachableInner(
                     lowerBound,
                     upperBound,
@@ -584,8 +522,8 @@ export class Graph<TVertex> {
                 if (cycleInfo.upperBound > upperBound)
                     upperBound = cycleInfo.upperBound;
             } else {
-                const index = this.topologicalIndexById.arr[vertexId];
-                log.assert(index >= 0, 'malformed graph');
+                const index = this.topologicalIndexById[vertexId];
+                log.assert(index !== undefined, 'malformed graph');
                 if (index < lowerBound) lowerBound = index;
                 if (index > upperBound) upperBound = index;
             }
@@ -600,7 +538,7 @@ export class Graph<TVertex> {
         // want to reorder) to get topological order & strongly connected components
         const components = tarjanStronglyConnected(
             this.forwardAdjacencyEither,
-            this.topologicalIndexById.arr,
+            this.topologicalIndexById,
             lowerBound,
             upperBound,
             reachable
@@ -619,20 +557,18 @@ export class Graph<TVertex> {
             }
 
             for (const vertexId of component) {
-                const index = this.topologicalIndexById.arr[vertexId];
-                log.assert(index >= 0, 'malformed graph');
+                const index = this.topologicalIndexById[vertexId];
+                log.assert(index !== undefined, 'malformed graph');
                 if (cycle) {
                     if (index < cycle.lowerBound) cycle.lowerBound = index;
                     if (index > cycle.upperBound) cycle.upperBound = index;
 
-                    if (
-                        !(this.vertexBitsById.arr[vertexId] & VERTEX_BIT_CYCLE)
-                    ) {
-                        this.vertexBitsById.arr[vertexId] |= VERTEX_BIT_CYCLE;
+                    if (!(this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE)) {
+                        this.vertexBitsById[vertexId] |= VERTEX_BIT_CYCLE;
                     }
                     if (
                         !(
-                            this.vertexBitsById.arr[vertexId] &
+                            this.vertexBitsById[vertexId] &
                             VERTEX_BIT_CYCLE_INFORMED
                         )
                     ) {
@@ -640,18 +576,15 @@ export class Graph<TVertex> {
                         const vertex = this.vertexById[vertexId];
                         log.assert(vertex, 'uninformed vertex missing');
                         this.processHandler(vertex, ProcessAction.CYCLE);
-                        this.vertexBitsById.arr[vertexId] |=
+                        this.vertexBitsById[vertexId] |=
                             VERTEX_BIT_CYCLE_INFORMED;
                     }
 
                     this.cycleInfoById[vertexId] = cycle;
-                } else if (
-                    this.vertexBitsById.arr[vertexId] & VERTEX_BIT_CYCLE
-                ) {
-                    // We ought to propagate dirtiness, no?
+                } else if (this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE) {
                     // Vertex no longer part of a cycle, clear the cycle bits and mark as dirty
-                    this.vertexBitsById.arr[vertexId] =
-                        this.vertexBitsById.arr[vertexId] &
+                    this.vertexBitsById[vertexId] =
+                        this.vertexBitsById[vertexId] &
                         ~(VERTEX_BIT_CYCLE | VERTEX_BIT_CYCLE_INFORMED);
                     delete this.cycleInfoById[vertexId];
                     this.markVertexDirtyInner(vertexId);
@@ -666,8 +599,8 @@ export class Graph<TVertex> {
         for (const component of components) {
             for (const vertexId of component) {
                 const index = allocatedIndexes[i];
-                this.topologicalOrdering.set(index, vertexId);
-                this.topologicalIndexById.arr[vertexId] = index;
+                this.topologicalOrdering[index] = vertexId;
+                this.topologicalIndexById[vertexId] = index;
                 i += 1;
             }
         }
@@ -724,18 +657,17 @@ export class Graph<TVertex> {
         for (;;) {
             const vertexIndex = this.startVertexIndex;
             this.startVertexIndex++;
-            if (vertexIndex >= this.topologicalOrdering.length) {
+            if (vertexIndex >= this.vertexById.length) {
                 this.startVertexIndex = 0;
                 break;
             }
 
-            const vertexId = this.topologicalOrdering.arr[vertexIndex];
-            if (vertexId < 1) {
+            const vertexId = this.topologicalOrdering[vertexIndex];
+            if (vertexId === undefined) {
                 continue;
             }
 
-            const isDirty =
-                this.vertexBitsById.arr[vertexId] & VERTEX_BIT_DIRTY;
+            const isDirty = this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY;
             if (!isDirty) {
                 continue;
             }
@@ -748,14 +680,14 @@ export class Graph<TVertex> {
             let shouldPropagate = false;
             const recheckIds: null | number[] =
                 cycleInfo ||
-                this.vertexBitsById.arr[vertexId] & VERTEX_BIT_SELF_CYCLE
+                this.vertexBitsById[vertexId] & VERTEX_BIT_SELF_CYCLE
                     ? []
                     : null;
             if (cycleInfo) {
                 for (const cycleId of cycleInfo.vertexIds) {
                     if (!this.vertexById[cycleId]) continue; // broken cycles may release vertices in cycle
                     const isInformed =
-                        this.vertexBitsById.arr[cycleId] &
+                        this.vertexBitsById[cycleId] &
                         VERTEX_BIT_CYCLE_INFORMED;
                     if (isInformed) {
                         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
@@ -766,8 +698,7 @@ export class Graph<TVertex> {
                 }
             } else {
                 const isInformed =
-                    this.vertexBitsById.arr[vertexId] &
-                    VERTEX_BIT_CYCLE_INFORMED;
+                    this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE_INFORMED;
                 if (isInformed && recheckIds) {
                     recheckIds.push(vertexId);
                 }
@@ -788,7 +719,7 @@ export class Graph<TVertex> {
             if (recheckIds) {
                 for (const cycleId of recheckIds) {
                     const isStillCycle =
-                        this.vertexBitsById.arr[cycleId] &
+                        this.vertexBitsById[cycleId] &
                         (VERTEX_BIT_CYCLE | VERTEX_BIT_SELF_CYCLE);
                     if (isStillCycle) {
                         const cycleVertex = this.vertexById[cycleId];
@@ -907,7 +838,7 @@ export class Graph<TVertex> {
             // Fill colors:
             // - dirty: black / #F9C784
             // - clean: black / white
-            if (this.vertexBitsById.arr[id] & VERTEX_BIT_DIRTY) {
+            if (this.vertexBitsById[id] & VERTEX_BIT_DIRTY) {
                 attrs.style = 'filled';
                 attrs.fontcolor = '#FFFFFF';
                 attrs.fillcolor = '#FC7A1E';
@@ -1021,9 +952,9 @@ if (TEST) {
     ) {
         const id = this.vertexToId.get(vertex);
         if (id === undefined) return undefined;
-        const index = this.topologicalIndexById.arr[id];
-        log.assert(index >= 0, 'malformed graph');
-        const bits = this.vertexBitsById.arr[id];
+        const index = this.topologicalIndexById[id];
+        log.assert(index !== undefined, 'malformed graph');
+        const bits = this.vertexBitsById[id];
         return {
             id,
             index,
