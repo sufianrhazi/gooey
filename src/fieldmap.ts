@@ -10,13 +10,13 @@ import { SymDebugName, SymAlive, SymDead, SymRefcount } from './symbols';
 import { Field } from './field';
 
 export class FieldMap implements Retainable {
-    private keysField: Field<number>;
-    private fieldMap: Map<string, Field<any>>;
-    private consumer: (Retainable & Processable) | null;
-    private emitter: (Retainable & Processable) | null;
+    private declare keysField: Field<number>;
+    private declare fieldMap: Map<string, Field<any>>;
+    private declare consumer: (Retainable & Processable) | null;
+    private declare emitter: (Retainable & Processable) | null;
 
-    [SymDebugName]: string;
-    [SymRefcount] = 0;
+    declare [SymDebugName]: string;
+    declare [SymRefcount]: number;
 
     constructor(
         keysField: Field<number>,
@@ -24,6 +24,7 @@ export class FieldMap implements Retainable {
         emitter: (Retainable & Processable) | null,
         debugName?: string
     ) {
+        this[SymRefcount] = 0;
         this[SymDebugName] = debugName ?? 'fieldmap';
         this.keysField = keysField;
         this.fieldMap = new Map();

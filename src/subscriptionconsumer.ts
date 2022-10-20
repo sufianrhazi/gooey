@@ -32,21 +32,21 @@ type SubscriptionConsumerHandler<TData, TConsumeEvent, TEmitEvent> = {
 export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
     implements Processable, Retainable
 {
-    private target: TData;
-    private handler: SubscriptionConsumerHandler<
+    private declare target: TData;
+    private declare handler: SubscriptionConsumerHandler<
         TData,
         TConsumeEvent,
         TEmitEvent
     >;
-    private events: TConsumeEvent[];
-    private isActive: boolean;
-    private sourceEmitter: SubscriptionEmitter<TConsumeEvent>;
-    private transformEmitter: SubscriptionEmitter<TEmitEvent>;
-    private unsubscribe?: () => void;
+    private declare events: TConsumeEvent[];
+    private declare isActive: boolean;
+    private declare sourceEmitter: SubscriptionEmitter<TConsumeEvent>;
+    private declare transformEmitter: SubscriptionEmitter<TEmitEvent>;
+    private declare unsubscribe?: () => void;
 
     // Processable
-    [SymProcessable]: true;
-    [SymDebugName]: string;
+    declare [SymProcessable]: true;
+    declare [SymDebugName]: string;
 
     [SymRecalculate]() {
         for (const event of this.events) {
@@ -59,7 +59,7 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
     }
 
     // Retainable
-    [SymRefcount]: number;
+    declare [SymRefcount]: number;
 
     [SymAlive]() {
         this.isActive = true;

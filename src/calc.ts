@@ -274,7 +274,7 @@ function calcRelease<T>(this: Calculation<T>) {
 }
 
 class CycleError extends Error {
-    sourceCalculation: Calculation<any>;
+    declare sourceCalculation: Calculation<any>;
 
     constructor(msg: string, sourceCalculation: Calculation<any>) {
         super(msg);

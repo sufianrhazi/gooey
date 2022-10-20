@@ -21,16 +21,20 @@ export class TrackedDataHandle<
     TEmitEvent,
     TConsumeEvent
 > {
-    target: TData;
-    methods: TMethods;
+    declare target: TData;
+    declare methods: TMethods;
 
-    fieldMap: FieldMap;
-    keys: Set<string>;
-    keysField: Field<number>;
-    dataAccessor: DataAccessor;
-    emitter: SubscriptionEmitter<TEmitEvent>;
-    consumer: null | SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>;
-    revocable: {
+    declare fieldMap: FieldMap;
+    declare keys: Set<string>;
+    declare keysField: Field<number>;
+    declare dataAccessor: DataAccessor;
+    declare emitter: SubscriptionEmitter<TEmitEvent>;
+    declare consumer: null | SubscriptionConsumer<
+        TData,
+        TConsumeEvent,
+        TEmitEvent
+    >;
+    declare revocable: {
         proxy: TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>;
         revoke: () => void;
     };

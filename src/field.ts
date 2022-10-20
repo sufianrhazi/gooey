@@ -19,15 +19,15 @@ import {
 type FieldSubscriber<T> = (val: T) => void;
 
 export class Field<T> implements Processable, Retainable {
-    private _isAlive: boolean;
-    private _val: T;
+    private declare _isAlive?: boolean | undefined;
+    private declare _val: T;
     // Map of subscriber to the clock time
-    private _subscribers?: Map<FieldSubscriber<T>, number>;
-    private _changeClock: number;
+    private declare _subscribers?: Map<FieldSubscriber<T>, number>;
+    private declare _changeClock: number;
 
-    [SymProcessable]: true;
-    [SymRefcount]: number;
-    [SymDebugName]: string;
+    declare [SymProcessable]: true;
+    declare [SymRefcount]: number;
+    declare [SymDebugName]: string;
 
     constructor(val: T, debugName?: string) {
         this._val = val;

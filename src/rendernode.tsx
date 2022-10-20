@@ -24,7 +24,7 @@ import {
     CalculationErrorType,
 } from './calc';
 import { isCollection, isView, Collection, View } from './collection';
-import { noop, noopGenerator, wrapError } from './util';
+import { wrapError } from './util';
 
 export interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
@@ -67,7 +67,7 @@ export function isClassComponent(
 export class ClassComponent<TProps = EmptyProps>
     implements ClassComponentInterface
 {
-    props: TProps;
+    declare props: TProps;
     constructor(props: TProps) {
         this.props = props;
     }
@@ -97,16 +97,17 @@ export interface RenderNode extends Retainable {
  * Renders nothing
  */
 export class EmptyRenderNode implements RenderNode {
-    _type: typeof RenderNodeType = RenderNodeType;
+    declare _type: typeof RenderNodeType;
     constructor() {
+        this._type = RenderNodeType;
         this[SymDebugName] = 'empty';
         this[SymRefcount] = 0;
     }
 
-    detach = noopGenerator;
-    attach = noop;
-    onMount = noop;
-    onUnmount = noop;
+    detach() {}
+    attach() {}
+    onMount() {}
+    onUnmount() {}
     retain() {
         retain(this);
     }
@@ -115,10 +116,10 @@ export class EmptyRenderNode implements RenderNode {
     }
 
     // Retainable
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive] = noop;
-    [SymDead] = noop;
+    declare [SymDebugName]: string;
+    declare [SymRefcount]: number;
+    [SymAlive]() {}
+    [SymDead]() {}
 }
 
 /**
@@ -130,13 +131,13 @@ export const emptyRenderNode = new EmptyRenderNode();
  * Renders a Text DOM node
  */
 export class TextRenderNode implements RenderNode {
-    _type: typeof RenderNodeType = RenderNodeType;
-    private text: Text;
-    private emitter: NodeEmitter | null;
+    declare _type: typeof RenderNodeType;
+    private declare text: Text;
+    private declare emitter?: NodeEmitter | undefined;
 
     constructor(string: string, debugName?: string) {
+        this._type = RenderNodeType;
         this.text = document.createTextNode(string);
-        this.emitter = null;
 
         this[SymDebugName] = debugName ?? 'text';
         this[SymRefcount] = 0;
@@ -144,7 +145,7 @@ export class TextRenderNode implements RenderNode {
 
     detach() {
         this.emitter?.({ type: ArrayEventType.SPLICE, index: 0, count: 1 });
-        this.emitter = null;
+        this.emitter = undefined;
     }
 
     attach(emitter: NodeEmitter) {
@@ -158,8 +159,8 @@ export class TextRenderNode implements RenderNode {
         });
     }
 
-    onMount = noop;
-    onUnmount = noop;
+    onMount() {}
+    onUnmount() {}
     retain() {
         retain(this);
     }
@@ -168,11 +169,11 @@ export class TextRenderNode implements RenderNode {
     }
 
     // Retainable
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive] = noop;
+    declare [SymDebugName]: string;
+    declare [SymRefcount]: number;
+    [SymAlive]() {}
     [SymDead]() {
-        this.emitter = null;
+        this.emitter = undefined;
     }
 }
 
@@ -180,13 +181,13 @@ export class TextRenderNode implements RenderNode {
  * Renders a foreign managed DOM node
  */
 export class ForeignRenderNode implements RenderNode {
-    _type: typeof RenderNodeType = RenderNodeType;
-    private node: Node;
-    private emitter: NodeEmitter | null;
+    declare _type: typeof RenderNodeType;
+    private declare node: Node;
+    private declare emitter?: NodeEmitter | undefined;
 
     constructor(node: Node, debugName?: string) {
+        this._type = RenderNodeType;
         this.node = node;
-        this.emitter = null;
 
         this[SymDebugName] = debugName ?? 'foreign';
         this[SymRefcount] = 0;
@@ -194,7 +195,7 @@ export class ForeignRenderNode implements RenderNode {
 
     detach() {
         this.emitter?.({ type: ArrayEventType.SPLICE, index: 0, count: 1 });
-        this.emitter = null;
+        this.emitter = undefined;
     }
 
     attach(emitter: NodeEmitter) {
@@ -208,8 +209,8 @@ export class ForeignRenderNode implements RenderNode {
         });
     }
 
-    onMount = noop;
-    onUnmount = noop;
+    onMount() {}
+    onUnmount() {}
     retain() {
         retain(this);
     }
@@ -218,11 +219,11 @@ export class ForeignRenderNode implements RenderNode {
     }
 
     // Retainable
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive] = noop;
+    declare [SymDebugName]: string;
+    declare [SymRefcount]: number;
+    [SymAlive]() {}
     [SymDead]() {
-        this.emitter = null;
+        this.emitter = undefined;
     }
 }
 
@@ -230,17 +231,17 @@ export class ForeignRenderNode implements RenderNode {
  * Renders an array of render nodes
  */
 export class ArrayRenderNode implements RenderNode {
-    _type: typeof RenderNodeType = RenderNodeType;
-    private children: RenderNode[];
-    private slotSizes: number[];
-    private attached: boolean[];
-    private emitter: NodeEmitter | null;
+    declare _type: typeof RenderNodeType;
+    private declare children: RenderNode[];
+    private declare slotSizes: number[];
+    private declare attached: boolean[];
+    private declare emitter?: NodeEmitter | undefined;
 
     constructor(children: RenderNode[], debugName?: string) {
+        this._type = RenderNodeType;
         this.children = children;
         this.slotSizes = children.map(() => 0);
         this.attached = children.map(() => false);
-        this.emitter = null;
 
         this[SymDebugName] = debugName ?? 'array';
         this[SymRefcount] = 0;
@@ -253,7 +254,7 @@ export class ArrayRenderNode implements RenderNode {
                 this.attached[index] = false;
             }
         }
-        this.emitter = null;
+        this.emitter = undefined;
     }
 
     attach(emitter: NodeEmitter, parentXmlNamespace: string) {
@@ -291,8 +292,8 @@ export class ArrayRenderNode implements RenderNode {
     }
 
     // Retainable
-    [SymDebugName]: string;
-    [SymRefcount]: number;
+    declare [SymDebugName]: string;
+    declare [SymRefcount]: number;
     [SymAlive]() {
         for (const child of this.children) {
             retain(child);
@@ -302,7 +303,7 @@ export class ArrayRenderNode implements RenderNode {
         for (const child of this.children) {
             release(child);
         }
-        this.emitter = null;
+        this.emitter = undefined;
     }
 }
 
@@ -569,18 +570,18 @@ const EventProps = [
  * Renders an intrinsic DOM node
  */
 export class IntrinsicRenderNode implements RenderNode {
-    _type: typeof RenderNodeType = RenderNodeType;
-    private tagName: string;
-    private element: Element | null;
-    private emitter: NodeEmitter | null;
-    private detachedError: Error | null;
-    private xmlNamespace: string | null;
-    private childXmlNamespace: string | null;
-    private props: Record<string, any> | undefined;
-    private children: ArrayRenderNode;
-    private portalRenderNode: PortalRenderNode | null;
-    private calculations?: Map<string, Calculation<any>>;
-    private calculationSubscriptions?: Set<() => void>;
+    declare _type: typeof RenderNodeType;
+    private declare tagName: string;
+    private declare element?: Element | undefined;
+    private declare emitter?: NodeEmitter | undefined;
+    private declare detachedError?: Error | undefined;
+    private declare xmlNamespace?: string | undefined;
+    private declare childXmlNamespace?: string | undefined;
+    private declare props?: Record<string, any> | undefined;
+    private declare children: ArrayRenderNode;
+    private declare portalRenderNode?: PortalRenderNode | undefined;
+    private declare calculations?: Map<string, Calculation<any>>;
+    private declare calculationSubscriptions?: Set<() => void>;
 
     constructor(
         tagName: string,
@@ -588,15 +589,10 @@ export class IntrinsicRenderNode implements RenderNode {
         children: RenderNode[],
         debugName?: string
     ) {
-        this.emitter = null;
-        this.detachedError = null;
+        this._type = RenderNodeType;
         this.props = props;
         this.children = new ArrayRenderNode(children);
-        this.portalRenderNode = null;
-        this.element = null;
         this.tagName = tagName;
-        this.xmlNamespace = null;
-        this.childXmlNamespace = null;
 
         this[SymDebugName] = debugName ?? `intrinsic:${this.tagName}`;
         this[SymRefcount] = 0;
@@ -706,7 +702,7 @@ export class IntrinsicRenderNode implements RenderNode {
             index: 0,
             count: 1,
         });
-        this.emitter = null;
+        this.emitter = undefined;
     }
 
     ensureElement(xmlNamespace: string, childXmlNamespace: string) {
@@ -771,8 +767,8 @@ export class IntrinsicRenderNode implements RenderNode {
     }
 
     // Retainable
-    [SymDebugName]: string;
-    [SymRefcount]: number;
+    declare [SymDebugName]: string;
+    declare [SymRefcount]: number;
     [SymAlive]() {
         // At this point in time, we don't know for sure what the correct XML namespace is, as this could be an SVG
         // looking element that eventually gets placed within an SVG tree, which ought to result in an
@@ -804,37 +800,39 @@ export class IntrinsicRenderNode implements RenderNode {
             this.calculationSubscriptions.clear();
         }
 
-        this.element = null;
+        this.element = undefined;
         if (this.portalRenderNode) {
             release(this.portalRenderNode);
-            this.portalRenderNode = null;
+            this.portalRenderNode = undefined;
         }
         release(this.children);
-        this.emitter = null;
+        this.emitter = undefined;
     }
 }
 
 export class PortalRenderNode implements RenderNode {
-    _type: typeof RenderNodeType = RenderNodeType;
-    private tagName: string;
-    private element: Element;
-    private refProp: RefObjectOrCallback<Element> | null;
-    private emitter: NodeEmitter | null;
-    private existingOffset: number;
-    private arrayRenderNode: ArrayRenderNode;
-    private calculations?: Map<string, Calculation<any>>;
-    private calculationSubscriptions?: Set<() => void>;
+    declare _type: typeof RenderNodeType;
+    private declare tagName: string;
+    private declare element: Element;
+    private declare refProp?: RefObjectOrCallback<Element> | undefined;
+    private declare emitter?: NodeEmitter | undefined;
+    private declare existingOffset: number;
+    private declare arrayRenderNode: ArrayRenderNode;
+    private declare calculations?: Map<string, Calculation<any>>;
+    private declare calculationSubscriptions?: Set<() => void>;
 
     constructor(
         element: Element,
         children: ArrayRenderNode,
-        refProp: RefObjectOrCallback<Element> | null,
+        refProp: RefObjectOrCallback<Element> | null | undefined,
         debugName?: string
     ) {
-        this.emitter = null;
+        this._type = RenderNodeType;
         this.arrayRenderNode = children;
         this.element = element;
-        this.refProp = refProp;
+        if (refProp) {
+            this.refProp = refProp;
+        }
         this.tagName = this.element.tagName;
         this.existingOffset = element.childNodes.length;
 
@@ -928,7 +926,7 @@ export class PortalRenderNode implements RenderNode {
     };
 
     detach() {
-        this.emitter = null;
+        this.emitter = undefined;
         this.arrayRenderNode.detach();
     }
 
@@ -982,8 +980,8 @@ export class PortalRenderNode implements RenderNode {
     }
 
     // Retainable
-    [SymDebugName]: string;
-    [SymRefcount]: number;
+    declare [SymDebugName]: string;
+    declare [SymRefcount]: number;
     [SymAlive]() {
         retain(this.arrayRenderNode);
     }
@@ -1001,7 +999,7 @@ export class PortalRenderNode implements RenderNode {
         }
 
         release(this.arrayRenderNode);
-        this.emitter = null;
+        this.emitter = undefined;
     }
 }
 
@@ -1009,23 +1007,19 @@ export class PortalRenderNode implements RenderNode {
  * Renders the result of a calculation
  */
 export class CalculationRenderNode implements RenderNode {
-    _type: typeof RenderNodeType = RenderNodeType;
-    private error: Error | null;
-    private renderNode: RenderNode | null;
-    private calculation: Calculation<any>;
-    private calculationSubscription: (() => void) | null;
-    private isMounted: boolean;
-    private emitter: NodeEmitter | null;
-    private parentXmlNamespace: string | null;
+    declare _type: typeof RenderNodeType;
+    private declare error?: Error | undefined;
+    private declare renderNode?: RenderNode | undefined;
+    private declare calculation: Calculation<any>;
+    private declare calculationSubscription?: (() => void) | undefined;
+    private declare isMounted: boolean;
+    private declare emitter?: NodeEmitter | undefined;
+    private declare parentXmlNamespace?: string | undefined;
 
     constructor(calculation: Calculation<any>, debugName?: string) {
+        this._type = RenderNodeType;
         this.calculation = calculation;
-        this.calculationSubscription = null;
-        this.error = null;
-        this.renderNode = null;
         this.isMounted = false;
-        this.emitter = null;
-        this.parentXmlNamespace = null;
 
         this[SymDebugName] =
             debugName ?? `rendercalc:${calculation[SymDebugName]}`;
@@ -1036,7 +1030,7 @@ export class CalculationRenderNode implements RenderNode {
 
     detach() {
         this.renderNode?.detach();
-        this.emitter = null;
+        this.emitter = undefined;
     }
 
     attach(emitter: NodeEmitter, parentXmlNamespace: string) {
@@ -1076,8 +1070,8 @@ export class CalculationRenderNode implements RenderNode {
                 this.renderNode.detach();
             }
             release(this.renderNode);
-            this.error = null;
-            this.renderNode = null;
+            this.error = undefined;
+            this.renderNode = undefined;
         }
     }
 
@@ -1112,8 +1106,8 @@ export class CalculationRenderNode implements RenderNode {
     }
 
     // Retainable
-    [SymDebugName]: string;
-    [SymRefcount]: number;
+    declare [SymDebugName]: string;
+    declare [SymRefcount]: number;
     [SymAlive]() {
         try {
             this.calculationSubscription = this.calculation.subscribe(
@@ -1126,31 +1120,30 @@ export class CalculationRenderNode implements RenderNode {
     }
     [SymDead]() {
         this.calculationSubscription?.();
-        this.calculationSubscription = null;
+        this.calculationSubscription = undefined;
         this.cleanPrior();
-        this.emitter = null;
+        this.emitter = undefined;
     }
 }
 
 export class CollectionRenderNode implements RenderNode {
-    _type: typeof RenderNodeType = RenderNodeType;
-    private children: RenderNode[];
-    private childIndex: Map<RenderNode, number>;
-    private slotSizes: number[];
-    private collection: Collection<any> | View<any>;
-    private unsubscribe?: () => void;
-    private isMounted: boolean;
-    private emitter: NodeEmitter | null;
-    private parentXmlNamespace: string | null;
+    declare _type: typeof RenderNodeType;
+    private declare children: RenderNode[];
+    private declare childIndex: Map<RenderNode, number>;
+    private declare slotSizes: number[];
+    private declare collection: Collection<any> | View<any>;
+    private declare unsubscribe?: () => void;
+    private declare isMounted: boolean;
+    private declare emitter?: NodeEmitter | undefined;
+    private declare parentXmlNamespace?: string | undefined;
 
     constructor(collection: Collection<any> | View<any>, debugName?: string) {
+        this._type = RenderNodeType;
         this.collection = collection;
         this.children = [];
         this.childIndex = new Map();
         this.slotSizes = [];
         this.isMounted = false;
-        this.emitter = null;
-        this.parentXmlNamespace = null;
 
         this[SymDebugName] = debugName ?? `rendercoll`;
         this[SymRefcount] = 0;
@@ -1172,7 +1165,7 @@ export class CollectionRenderNode implements RenderNode {
             child.detach();
         }
 
-        this.emitter = null;
+        this.emitter = undefined;
     }
 
     handleChildEvent(event: ArrayEvent<Node> | Error, child: RenderNode) {
@@ -1327,8 +1320,8 @@ export class CollectionRenderNode implements RenderNode {
     };
 
     // Retainable
-    [SymDebugName]: string;
-    [SymRefcount]: number;
+    declare [SymDebugName]: string;
+    declare [SymRefcount]: number;
     [SymAlive]() {
         retain(this.collection);
         this.unsubscribe = this.collection.subscribe(
@@ -1354,7 +1347,7 @@ export class CollectionRenderNode implements RenderNode {
             this.childIndex.delete(child);
         }
         this.slotSizes.splice(0, this.slotSizes.length);
-        this.emitter = null;
+        this.emitter = undefined;
     }
 }
 
@@ -1488,12 +1481,12 @@ export type IntrinsicObserverElementCallback = (
 ) => void;
 
 export class IntrinsicObserverRenderNode implements RenderNode {
-    _type: typeof RenderNodeType = RenderNodeType;
-    nodeCallback: IntrinsicObserverNodeCallback | undefined;
-    elementCallback: IntrinsicObserverElementCallback | undefined;
+    declare _type: typeof RenderNodeType;
+    nodeCallback?: IntrinsicObserverNodeCallback | undefined;
+    elementCallback?: IntrinsicObserverElementCallback | undefined;
     child: RenderNode;
     childNodes: Node[];
-    emitter: NodeEmitter | null;
+    emitter?: NodeEmitter | undefined;
     isMounted: boolean;
 
     constructor(
@@ -1502,11 +1495,11 @@ export class IntrinsicObserverRenderNode implements RenderNode {
         children: RenderNode[],
         debugName?: string
     ) {
+        this._type = RenderNodeType;
         this.nodeCallback = nodeCallback;
         this.elementCallback = elementCallback;
         this.child = new ArrayRenderNode(children);
         this.childNodes = [];
-        this.emitter = null;
         this.isMounted = false;
 
         this[SymDebugName] = debugName ?? `lifecycleobserver`;
@@ -1557,7 +1550,7 @@ export class IntrinsicObserverRenderNode implements RenderNode {
 
     detach() {
         this.child.detach();
-        this.emitter = null;
+        this.emitter = undefined;
     }
 
     attach(emitter: NodeEmitter, parentXmlNamespace: string) {
@@ -1590,14 +1583,14 @@ export class IntrinsicObserverRenderNode implements RenderNode {
     }
 
     // Retainable
-    [SymDebugName]: string;
-    [SymRefcount]: number;
+    declare [SymDebugName]: string;
+    declare [SymRefcount]: number;
     [SymAlive]() {
         retain(this.child);
     }
     [SymDead]() {
         release(this.child);
-        this.emitter = null;
+        this.emitter = undefined;
     }
 }
 
@@ -1614,20 +1607,20 @@ export const IntrinsicObserver: Component<{
 };
 
 export class ComponentRenderNode<TProps> implements RenderNode {
-    _type: typeof RenderNodeType = RenderNodeType;
-    Component: FunctionComponent<TProps>;
-    props: TProps | null | undefined;
-    children: JSX.Node[];
-    result: RenderNode | Error | null;
-    resultAttached: boolean;
-    onMountCallbacks?: (() => (() => void) | void)[];
-    onUnmountCallbacks?: (() => void)[];
-    onDestroyCallbacks?: (() => void)[];
-    owned: Set<Retainable>;
-    errorHandler: ((e: Error) => RenderNode | null) | null;
-    emitter: NodeEmitter | null;
-    parentXmlNamespace: string | null;
-    isMounted: boolean;
+    declare _type: typeof RenderNodeType;
+    declare Component: FunctionComponent<TProps>;
+    declare props: TProps | null | undefined;
+    declare children: JSX.Node[];
+    declare result?: RenderNode | Error | undefined;
+    declare resultAttached: boolean;
+    declare onMountCallbacks?: (() => (() => void) | void)[];
+    declare onUnmountCallbacks?: (() => void)[];
+    declare onDestroyCallbacks?: (() => void)[];
+    declare owned: Set<Retainable>;
+    declare errorHandler?: ((e: Error) => RenderNode | null) | undefined;
+    declare emitter?: NodeEmitter | undefined;
+    declare parentXmlNamespace?: string | undefined;
+    declare isMounted: boolean;
 
     constructor(
         Component: FunctionComponent<TProps>,
@@ -1635,16 +1628,13 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         children: JSX.Node[],
         debugName?: string
     ) {
+        this._type = RenderNodeType;
         this.Component = Component;
         this.props = props;
         this.children = children;
         this.owned = new Set();
-        this.errorHandler = null;
         this.isMounted = false;
 
-        this.emitter = null;
-        this.parentXmlNamespace = null;
-        this.result = null;
         this.resultAttached = false;
 
         this[SymDebugName] = debugName ?? `component`;
@@ -1662,7 +1652,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         );
         this.result.detach();
         this.resultAttached = false;
-        this.emitter = null;
+        this.emitter = undefined;
     }
 
     private ensureResult() {
@@ -1779,7 +1769,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
                     this.resultAttached = false;
                 }
                 release(this.result);
-                this.result = null;
+                this.result = undefined;
             }
             const handledResult = this.errorHandler(event);
             this.result = handledResult
@@ -1852,8 +1842,8 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     }
 
     // Retainable
-    [SymDebugName]: string;
-    [SymRefcount]: number;
+    declare [SymDebugName]: string;
+    declare [SymRefcount]: number;
     [SymAlive]() {
         this.ensureResult();
     }
@@ -1867,11 +1857,11 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         if (this.result && !(this.result instanceof Error)) {
             release(this.result);
         }
-        this.result = null;
+        this.result = undefined;
         for (const item of this.owned) {
             release(item);
         }
-        this.emitter = null;
+        this.emitter = undefined;
     }
 }
 

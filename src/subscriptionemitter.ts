@@ -27,14 +27,14 @@ type SubscriptionEmitterHandler<TEmitEvent> = {
 export class SubscriptionEmitter<TEmitEvent>
     implements Processable, Retainable
 {
-    private subscribers: SubscriptionEmitterHandler<TEmitEvent>[];
-    private subscriberOffset: number[];
-    private events: TEmitEvent[];
-    private isActive: boolean;
+    private declare subscribers: SubscriptionEmitterHandler<TEmitEvent>[];
+    private declare subscriberOffset: number[];
+    private declare events: TEmitEvent[];
+    private declare isActive: boolean;
 
     // Processable
-    [SymProcessable]: true;
-    [SymDebugName]: string;
+    declare [SymProcessable]: true;
+    declare [SymDebugName]: string;
 
     [SymRecalculate]() {
         for (let i = 0; i < this.subscribers.length; ++i) {
@@ -47,7 +47,7 @@ export class SubscriptionEmitter<TEmitEvent>
     }
 
     // Retainable
-    [SymRefcount]: number;
+    declare [SymRefcount]: number;
 
     [SymAlive]() {
         this.isActive = true;

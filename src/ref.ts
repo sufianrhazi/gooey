@@ -2,7 +2,7 @@
  * A ref object that can be passed to native elements.
  */
 export class Ref<T> {
-    current: T | undefined;
+    declare current: T | undefined;
     constructor(current?: T | undefined) {
         this.current = current;
     }

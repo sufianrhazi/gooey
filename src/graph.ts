@@ -153,44 +153,44 @@ export class Graph<TVertex> {
     static EDGE_HARD = EdgeColor.EDGE_HARD;
 
     /** identifiers available for reuse */
-    protected availableIds: number[];
-    protected availableIndices: number[];
-    protected nextId: number;
+    protected declare availableIds: number[];
+    protected declare availableIndices: number[];
+    protected declare nextId: number;
 
     /** Mapping of id -> vertex */
-    protected vertexToId: Map<TVertex, number>;
-    protected vertexById: (TVertex | undefined)[];
+    protected declare vertexToId: Map<TVertex, number>;
+    protected declare vertexById: (TVertex | undefined)[];
 
     /** Mapping of id -> bits */
-    protected vertexBitsById: number[];
+    protected declare vertexBitsById: number[];
 
     /** Mapping of id -> CycleInfo */
-    protected cycleInfoById: Record<number, CycleInfo | undefined>;
+    protected declare cycleInfoById: Record<number, CycleInfo | undefined>;
 
     /** Mapping of id -> hard edges in the forward direction */
-    protected forwardAdjacencyHard: number[][];
+    protected declare forwardAdjacencyHard: number[][];
 
     /** Mapping of id -> hard|soft edges in the forward direction */
-    protected forwardAdjacencyEither: number[][];
+    protected declare forwardAdjacencyEither: number[][];
 
     /** Mapping of id -> index into topologicalOrdering */
-    protected topologicalIndexById: (number | undefined)[];
+    protected declare topologicalIndexById: (number | undefined)[];
 
     /** Ordered list of vertex ids */
-    protected topologicalOrdering: (number | undefined)[];
+    protected declare topologicalOrdering: (number | undefined)[];
 
     /** The start index of process(), moves forward in each step, may move back as a result of dirty vertices being added / reordered */
-    protected startVertexIndex: number;
+    protected declare startVertexIndex: number;
 
     /** Set of vertex ids that need reordering */
-    protected toReorderIds: Set<number>;
+    protected declare toReorderIds: Set<number>;
 
-    private debugSubscriptions: Set<{
+    private declare debugSubscriptions: Set<{
         formatter: DebugFormatter<TVertex>;
         subscription: DebugSubscription;
     }>;
 
-    private _processHandler: (
+    private declare _processHandler: (
         vertex: TVertex,
         action: ProcessAction
     ) => boolean;
