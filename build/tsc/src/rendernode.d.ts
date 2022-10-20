@@ -272,7 +272,7 @@ export declare const IntrinsicObserver: Component<{
     elementCallback?: IntrinsicObserverElementCallback;
     children?: JSX.Node | JSX.Node[];
 }>;
-export declare class FunctionComponentRenderNode<TProps> implements RenderNode {
+export declare class ComponentRenderNode<TProps> implements RenderNode {
     _type: typeof RenderNodeType;
     Component: FunctionComponent<TProps>;
     props: TProps | null | undefined;
@@ -301,6 +301,6 @@ export declare class FunctionComponentRenderNode<TProps> implements RenderNode {
     [SymAlive](): void;
     [SymDead](): void;
 }
-export declare function classComponentToFunctionComponentRenderNode<TProps>(Component: ClassComponentConstructor<TProps>, props: TProps, children: JSX.Node[]): FunctionComponentRenderNode<TProps>;
+export declare function classComponentToFunctionComponentRenderNode<TProps>(Component: ClassComponentConstructor<TProps>, props: TProps, children: JSX.Node[]): ComponentRenderNode<TProps>;
 export {};
 //# sourceMappingURL=rendernode.d.ts.map

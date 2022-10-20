@@ -30,19 +30,11 @@ export declare class Graph<TVertex> {
     /** Mapping of id -> bits */
     protected vertexBitsById: number[];
     /** Mapping of id -> CycleInfo */
-    protected cycleInfoById: (CycleInfo | undefined)[];
-    /** Mapping of id -> soft edges in the forward direction */
-    protected forwardAdjacencySoft: number[][];
+    protected cycleInfoById: Record<number, CycleInfo | undefined>;
     /** Mapping of id -> hard edges in the forward direction */
     protected forwardAdjacencyHard: number[][];
     /** Mapping of id -> hard|soft edges in the forward direction */
     protected forwardAdjacencyEither: number[][];
-    /** Mapping of id -> soft edges in the reverse direction */
-    protected reverseAdjacencySoft: number[][];
-    /** Mapping of id -> hard edges in the reverse direction */
-    protected reverseAdjacencyHard: number[][];
-    /** Mapping of id -> hard|soft edges in the reverse direction */
-    protected reverseAdjacencyEither: number[][];
     /** Mapping of id -> index into topologicalOrdering */
     protected topologicalIndexById: (number | undefined)[];
     /** Ordered list of vertex ids */
@@ -73,8 +65,8 @@ export declare class Graph<TVertex> {
     addEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor): void;
     hasEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor): boolean;
     removeEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor): void;
-    private visitDfsForwardRecurse;
-    private visitDfsForward;
+    protected markReachableInner(lowerBound: number, upperBound: number, vertexId: number, reachableState: Record<number, undefined | 1 | 2 | 3>, reachable: Set<number>): false | 2 | 1 | 3 | undefined;
+    protected getReachable(lowerBound: number, upperBound: number, toReorder: Set<number>): Set<number>;
     private resort;
     private processHandler;
     private processVertex;

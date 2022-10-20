@@ -31,6 +31,8 @@ export interface Calculation<T> extends Retainable, Processable {
     onError: (handler: CalcErrorHandler<T>) => this;
     setCmp: (eq: (a: T, b: T) => boolean) => this;
     subscribe: (handler: CalcSubscriptionHandler<T>) => CalcUnsubscribe<T>;
+    retain: () => void;
+    release: () => void;
     _subscriptions?: Set<CalcSubscriptionHandler<T>>;
     _type: typeof CalculationSymbol;
     _fn: () => T;

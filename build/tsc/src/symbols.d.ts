@@ -6,4 +6,5 @@ export declare const SymRecalculate: unique symbol;
 export declare const SymCycle: unique symbol;
 export declare const SymInvalidate: unique symbol;
 export declare const SymProcessable: unique symbol;
+export declare const isGooeySymbol: (sym: any) => boolean;
 //# sourceMappingURL=symbols.d.ts.map

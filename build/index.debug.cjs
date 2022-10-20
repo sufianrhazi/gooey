@@ -51,9 +51,7 @@ __export(src_exports, {
   model: () => model,
   mount: () => mount,
   ref: () => ref,
-  release: () => release,
   reset: () => reset,
-  retain: () => retain,
   setLogLevel: () => setLogLevel,
   subscribe: () => subscribe
 });
@@ -227,12 +225,8 @@ var Graph = class {
     __publicField(this, "vertexById");
     __publicField(this, "vertexBitsById");
     __publicField(this, "cycleInfoById");
-    __publicField(this, "forwardAdjacencySoft");
     __publicField(this, "forwardAdjacencyHard");
     __publicField(this, "forwardAdjacencyEither");
-    __publicField(this, "reverseAdjacencySoft");
-    __publicField(this, "reverseAdjacencyHard");
-    __publicField(this, "reverseAdjacencyEither");
     __publicField(this, "topologicalIndexById");
     __publicField(this, "topologicalOrdering");
     __publicField(this, "startVertexIndex");
@@ -246,15 +240,11 @@ var Graph = class {
     this.vertexById = [];
     this.vertexToId = /* @__PURE__ */ new Map();
     this.vertexBitsById = [];
-    this.cycleInfoById = [];
+    this.cycleInfoById = {};
     this.topologicalIndexById = [];
     this.topologicalOrdering = [];
-    this.forwardAdjacencySoft = [];
     this.forwardAdjacencyHard = [];
     this.forwardAdjacencyEither = [];
-    this.reverseAdjacencySoft = [];
-    this.reverseAdjacencyHard = [];
-    this.reverseAdjacencyEither = [];
     this.startVertexIndex = 0;
     this.toReorderIds = /* @__PURE__ */ new Set();
     this.debugSubscriptions = /* @__PURE__ */ new Set();
@@ -270,7 +260,6 @@ var Graph = class {
     this.vertexToId.set(vertex, id);
     this.vertexById[id] = vertex;
     this.vertexBitsById[id] = 0;
-    this.cycleInfoById[id] = void 0;
     let index;
     if (this.availableIndices.length > 0) {
       index = this.availableIndices.pop();
@@ -280,12 +269,8 @@ var Graph = class {
     }
     this.topologicalIndexById[id] = index;
     this.topologicalOrdering[index] = id;
-    this.forwardAdjacencySoft[id] = [];
     this.forwardAdjacencyHard[id] = [];
     this.forwardAdjacencyEither[id] = [];
-    this.reverseAdjacencySoft[id] = [];
-    this.reverseAdjacencyHard[id] = [];
-    this.reverseAdjacencyEither[id] = [];
   }
   removeVertex(vertex) {
     const id = this.vertexToId.get(vertex);
@@ -293,12 +278,11 @@ var Graph = class {
     const index = this.topologicalIndexById[id];
     assert(index !== void 0, "malformed graph");
     assert(this.forwardAdjacencyEither[id].length === 0, "cannot remove vertex with forward edges");
-    assert(this.reverseAdjacencyEither[id].length === 0, "cannot remove vertex with reverse edges");
     this.topologicalIndexById[id] = void 0;
     this.topologicalOrdering[index] = void 0;
     this.clearVertexDirtyInner(id);
     this.vertexBitsById[id] = 0;
-    this.cycleInfoById[id] = void 0;
+    delete this.cycleInfoById[id];
     this.vertexToId.delete(vertex);
     this.vertexById[id] = void 0;
     this.toReorderIds.delete(id);
@@ -362,25 +346,11 @@ var Graph = class {
     const toId = this.vertexToId.get(toVertex);
     assert(fromId, "addEdge from vertex not found");
     assert(toId, "addEdge to vertex not found");
-    let forwardList;
-    let reverseList;
-    switch (kind) {
-      case 1 /* EDGE_SOFT */:
-        forwardList = this.forwardAdjacencySoft[fromId];
-        reverseList = this.reverseAdjacencySoft[toId];
-        break;
-      case 2 /* EDGE_HARD */:
-        forwardList = this.forwardAdjacencyHard[fromId];
-        reverseList = this.reverseAdjacencyHard[toId];
-        break;
-      default:
-        assertExhausted(kind, "invalid kind");
-    }
     assert(!this.forwardAdjacencyEither[fromId].includes(toId), "addEdge duplicate");
     this.forwardAdjacencyEither[fromId].push(toId);
-    forwardList.push(toId);
-    this.reverseAdjacencyEither[toId].push(fromId);
-    reverseList.push(fromId);
+    if (kind === 2 /* EDGE_HARD */) {
+      this.forwardAdjacencyHard[fromId].push(toId);
+    }
     if (fromId === toId && (this.vertexBitsById[fromId] & VERTEX_BIT_SELF_CYCLE) === 0) {
       const isInformed = this.vertexBitsById[fromId] & VERTEX_BIT_CYCLE_INFORMED;
       if (!isInformed) {
@@ -414,25 +384,11 @@ var Graph = class {
     const toId = this.vertexToId.get(toVertex);
     assert(fromId, "removeEdge from vertex not found");
     assert(toId, "removeEdge to vertex not found");
-    let forwardList;
-    let reverseList;
-    switch (kind) {
-      case 1 /* EDGE_SOFT */:
-        forwardList = this.forwardAdjacencySoft[fromId];
-        reverseList = this.reverseAdjacencySoft[toId];
-        break;
-      case 2 /* EDGE_HARD */:
-        forwardList = this.forwardAdjacencyHard[fromId];
-        reverseList = this.reverseAdjacencyHard[toId];
-        break;
-      default:
-        assertExhausted(kind, "invalid kind");
-    }
     assert(this.forwardAdjacencyEither[fromId].includes(toId), "removeEdge on edge that does not exist");
     this.forwardAdjacencyEither[fromId].splice(this.forwardAdjacencyEither[fromId].indexOf(toId), 1);
-    forwardList.splice(forwardList.indexOf(toId), 1);
-    this.reverseAdjacencyEither[toId].splice(this.reverseAdjacencyEither[toId].indexOf(fromId), 1);
-    reverseList.splice(reverseList.indexOf(fromId), 1);
+    if (kind === 2 /* EDGE_HARD */) {
+      this.forwardAdjacencyHard[fromId].splice(this.forwardAdjacencyHard[fromId].indexOf(toId), 1);
+    }
     if (fromId === toId) {
       this.vertexBitsById[fromId] = this.vertexBitsById[fromId] & ~VERTEX_BIT_SELF_CYCLE;
     }
@@ -443,24 +399,47 @@ var Graph = class {
       this.toReorderIds.add(toId);
     }
   }
-  visitDfsForwardRecurse(vertexId, lowerBound, upperBound, visited) {
-    if (visited.has(vertexId))
-      return;
-    visited.add(vertexId);
-    for (const toId of this.forwardAdjacencyEither[vertexId]) {
-      const toIndex = this.topologicalIndexById[toId];
-      assert(toIndex !== void 0, "malformed graph");
-      if (lowerBound <= toIndex && toIndex <= upperBound) {
-        this.visitDfsForwardRecurse(toId, lowerBound, upperBound, visited);
+  markReachableInner(lowerBound, upperBound, vertexId, reachableState, reachable) {
+    const vertexIndex = this.topologicalIndexById[vertexId];
+    if (vertexIndex === void 0 || vertexIndex < lowerBound || vertexIndex > upperBound) {
+      return false;
+    }
+    const state = reachableState[vertexId];
+    if (state === 3)
+      reachable.add(vertexId);
+    if (state !== void 0) {
+      return state;
+    }
+    reachableState[vertexId] = 1;
+    if (this.forwardAdjacencyEither[vertexId]) {
+      for (const toId of this.forwardAdjacencyEither[vertexId]) {
+        const toState = this.markReachableInner(lowerBound, upperBound, toId, reachableState, reachable);
+        if (toState === 2)
+          reachableState[vertexId] = 2;
+        if (toState === 3) {
+          reachableState[vertexId] = 3;
+          reachable.add(vertexId);
+        }
       }
     }
-  }
-  visitDfsForward(startVertices, lowerBound, upperBound) {
-    const visited = /* @__PURE__ */ new Set();
-    for (const vertexId of startVertices) {
-      this.visitDfsForwardRecurse(vertexId, lowerBound, upperBound, visited);
+    if (reachableState[vertexId] === 1) {
+      reachableState[vertexId] = void 0;
     }
-    return visited;
+    return reachableState[vertexId];
+  }
+  getReachable(lowerBound, upperBound, toReorder) {
+    const reachableState = {};
+    const reachable = new Set(toReorder);
+    for (const vertexId of toReorder) {
+      reachableState[vertexId] = 3;
+    }
+    for (let index = lowerBound; index <= upperBound; ++index) {
+      const vertexId = this.topologicalOrdering[index];
+      if (vertexId && vertexId > 0) {
+        this.markReachableInner(lowerBound, upperBound, vertexId, reachableState, reachable);
+      }
+    }
+    return reachable;
   }
   resort(toReorder) {
     let lowerBound = Infinity;
@@ -481,8 +460,8 @@ var Graph = class {
           upperBound = index;
       }
     }
-    const seedVertices = this.visitDfsForward(toReorder, lowerBound, upperBound);
-    const components = tarjanStronglyConnected(this.reverseAdjacencyEither, this.topologicalIndexById, lowerBound, upperBound, seedVertices);
+    const reachable = this.getReachable(lowerBound, upperBound, toReorder);
+    const components = tarjanStronglyConnected(this.forwardAdjacencyEither, this.topologicalIndexById, lowerBound, upperBound, reachable).reverse();
     const allocatedIndexes = [];
     for (const component of components) {
       let cycle;
@@ -513,7 +492,7 @@ var Graph = class {
           this.cycleInfoById[vertexId] = cycle;
         } else if (this.vertexBitsById[vertexId] & VERTEX_BIT_CYCLE) {
           this.vertexBitsById[vertexId] = this.vertexBitsById[vertexId] & ~(VERTEX_BIT_CYCLE | VERTEX_BIT_CYCLE_INFORMED);
-          this.cycleInfoById[vertexId] = void 0;
+          delete this.cycleInfoById[vertexId];
           this.markVertexDirtyInner(vertexId);
         }
         allocatedIndexes.push(index);
@@ -618,6 +597,9 @@ var Graph = class {
       }
       const newCycleInfo = this.cycleInfoById[vertexId];
       if (!cycleInfo && newCycleInfo) {
+        shouldPropagate = true;
+      }
+      if (cycleInfo && !newCycleInfo) {
         shouldPropagate = true;
       }
       if (cycleInfo && newCycleInfo && newCycleInfo.vertexIds !== cycleInfo.vertexIds) {
@@ -732,14 +714,14 @@ ${customAttrs.name}`
       emitVertex(id);
     }
     for (let id = 0; id < this.vertexById.length; ++id) {
-      if (this.forwardAdjacencySoft[id]) {
-        for (const toId of this.forwardAdjacencySoft[id]) {
-          lines.push(`  v_${id} -> v_${toId} [style="dotted"];`);
-        }
-      }
-      if (this.forwardAdjacencyHard[id]) {
-        for (const toId of this.forwardAdjacencyHard[id]) {
-          lines.push(`  v_${id} -> v_${toId};`);
+      const hard = new Set(this.forwardAdjacencyHard[id] || []);
+      if (this.forwardAdjacencyEither[id]) {
+        for (const toId of this.forwardAdjacencyEither[id]) {
+          if (hard.has(toId)) {
+            lines.push(`  v_${id} -> v_${toId};`);
+          } else {
+            lines.push(`  v_${id} -> v_${toId} [style="dotted"];`);
+          }
         }
       }
     }
@@ -792,6 +774,16 @@ var SymRecalculate = Symbol("recalculate");
 var SymCycle = Symbol("cycle");
 var SymInvalidate = Symbol("invalidate");
 var SymProcessable = Symbol("processable");
+var allSymbols = /* @__PURE__ */ new Set();
+allSymbols.add(SymDebugName);
+allSymbols.add(SymRefcount);
+allSymbols.add(SymAlive);
+allSymbols.add(SymDead);
+allSymbols.add(SymRecalculate);
+allSymbols.add(SymCycle);
+allSymbols.add(SymInvalidate);
+allSymbols.add(SymProcessable);
+var isGooeySymbol = (sym) => allSymbols.has(sym);
 
 // src/engine.ts
 function isProcessable(val) {
@@ -1447,7 +1439,10 @@ function calcSetCmp(eq) {
 }
 function calcSubscribe(handler) {
   retain(this);
-  this();
+  try {
+    this();
+  } catch (e) {
+  }
   if (!this._subscriptions) {
     this._subscriptions = /* @__PURE__ */ new Set();
   }
@@ -1461,6 +1456,12 @@ function calcSubscribe(handler) {
     calculation: this
   };
   return Object.assign(unsubscribe, unsubscribeData);
+}
+function calcRetain() {
+  retain(this);
+}
+function calcRelease() {
+  retain(this);
 }
 var CycleError = class extends Error {
   constructor(msg, sourceCalculation) {
@@ -1699,6 +1700,8 @@ function calc(fn, debugName) {
     onError: calcSetError,
     setCmp: calcSetCmp,
     subscribe: calcSubscribe,
+    retain: calcRetain,
+    release: calcRelease,
     [SymAlive]: calculationAlive,
     [SymDead]: calculationDead,
     [SymRefcount]: 0,
@@ -2048,6 +2051,9 @@ var TrackedDataHandle = class {
         if (prop === SymDebugName) {
           return debugName;
         }
+        if (prop === SymProcessable) {
+          return false;
+        }
         if (prop === SymRefcount || prop === SymAlive || prop === SymDead) {
           return methods[prop];
         }
@@ -2057,6 +2063,7 @@ var TrackedDataHandle = class {
         if (prop in methods) {
           return methods[prop];
         }
+        assert(!isGooeySymbol(prop), "TrackedData accessor got unexpected internal symbol");
         const value = Reflect.get(this.target, prop, receiver);
         const field2 = this.fieldMap.getOrMake(prop, value);
         notifyRead(this.revocable.proxy);
@@ -2064,17 +2071,22 @@ var TrackedDataHandle = class {
         return value;
       },
       peekHas: (prop) => {
+        assert(!isGooeySymbol(prop), "TrackedData accessor got unexpected internal symbol");
         return Reflect.has(target, prop);
       },
       has: (prop) => {
         if (prop === SymRefcount || prop === SymAlive || prop === SymDead) {
           return prop in methods;
         }
-        if (typeof prop === "symbol") {
-          return Reflect.has(target, prop);
+        if (prop === SymProcessable) {
+          return true;
         }
         if (prop in methods) {
           return true;
+        }
+        assert(!isGooeySymbol(prop), "TrackedData accessor got unexpected internal symbol");
+        if (typeof prop === "symbol") {
+          return Reflect.has(this.target, prop);
         }
         const value = Reflect.has(target, prop);
         const field2 = this.fieldMap.getOrMake(prop, value);
@@ -2087,11 +2099,12 @@ var TrackedDataHandle = class {
           methods[prop] = value;
           return true;
         }
-        if (typeof prop === "symbol") {
-          return Reflect.set(target, prop, value, receiver);
-        }
         if (prop in methods) {
           return false;
+        }
+        assert(!isGooeySymbol(prop), "TrackedData accessor got unexpected internal symbol");
+        if (typeof prop === "symbol") {
+          return Reflect.set(this.target, prop, value, receiver);
         }
         const hadProp = Reflect.has(target, prop);
         const field2 = this.fieldMap.getOrMake(prop, value);
@@ -2103,14 +2116,15 @@ var TrackedDataHandle = class {
         return Reflect.set(target, prop, value, this.revocable.proxy);
       },
       delete: (prop) => {
-        if (prop === SymRefcount || prop === SymAlive || prop === SymDead) {
+        if (prop === SymRefcount || prop === SymAlive || prop === SymDead || prop === SymProcessable) {
           return false;
-        }
-        if (typeof prop === "symbol") {
-          return Reflect.deleteProperty(target, prop);
         }
         if (prop in methods) {
           return false;
+        }
+        assert(!isGooeySymbol(prop), "TrackedData accessor got unexpected internal symbol");
+        if (typeof prop === "symbol") {
+          return Reflect.deleteProperty(this.target, prop);
         }
         const hadProp = Reflect.has(target, prop);
         const result = Reflect.deleteProperty(target, prop);
@@ -3709,7 +3723,7 @@ var IntrinsicObserver = ({ nodeCallback, elementCallback, children }) => {
   return new IntrinsicObserverRenderNode(nodeCallback, elementCallback, renderJSXChildren(children));
 };
 var _a14, _b14;
-var FunctionComponentRenderNode = class {
+var ComponentRenderNode = class {
   constructor(Component2, props, children, debugName) {
     __publicField(this, "_type", RenderNodeType);
     __publicField(this, "Component");
@@ -3842,7 +3856,7 @@ var FunctionComponentRenderNode = class {
     return this.result;
   }
   attach(emitter, parentXmlNamespace) {
-    assert(this[SymRefcount] > 0, "Invariant: dead FunctionComponentRenderNode called attach");
+    assert(this[SymRefcount] > 0, "Invariant: dead ComponentRenderNode called attach");
     this.emitter = emitter;
     this.parentXmlNamespace = parentXmlNamespace;
     const result = this.ensureResult();
@@ -3919,7 +3933,7 @@ var FunctionComponentRenderNode = class {
   }
 };
 function classComponentToFunctionComponentRenderNode(Component2, props, children) {
-  return new FunctionComponentRenderNode((props2, lifecycle) => {
+  return new ComponentRenderNode((props2, lifecycle) => {
     const instance = new Component2(props2);
     if (!instance.render)
       return null;
@@ -3950,7 +3964,7 @@ function createElement(type, props, ...children) {
   if (isClassComponent(type)) {
     return classComponentToFunctionComponentRenderNode(type, props, children);
   }
-  return new FunctionComponentRenderNode(type, props, children);
+  return new ComponentRenderNode(type, props, children);
 }
 createElement.Fragment = Fragment;
 
@@ -4055,6 +4069,6 @@ model.keys = function modelKeys(sourceModel, debugName) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.11.2" : "development";
+var VERSION = true ? "0.12.0" : "development";
 module.exports = __toCommonJS(src_exports);
 //# sourceMappingURL=index.debug.cjs.map
