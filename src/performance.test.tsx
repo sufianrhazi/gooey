@@ -691,6 +691,7 @@ suite('application benchmarks', () => {
             const add = testRoot.querySelector('[data-add]')!;
             measure(() => {
                 add.dispatchEvent(new Event('click'));
+                flush();
             });
             unmount();
         });
@@ -703,6 +704,7 @@ suite('application benchmarks', () => {
             add.dispatchEvent(new Event('click'));
             measure(() => {
                 add.dispatchEvent(new Event('click'));
+                flush();
             });
             unmount();
         });
@@ -714,8 +716,10 @@ suite('application benchmarks', () => {
             const add = testRoot.querySelector('[data-add]')!;
             const update = testRoot.querySelector('[data-update]')!;
             add.dispatchEvent(new Event('click'));
+            flush();
             measure(() => {
                 update.dispatchEvent(new Event('click'));
+                flush();
             });
             unmount();
         });
@@ -727,8 +731,30 @@ suite('application benchmarks', () => {
             const add = testRoot.querySelector('[data-add]')!;
             const clear = testRoot.querySelector('[data-clear]')!;
             add.dispatchEvent(new Event('click'));
+            flush();
             measure(() => {
                 clear.dispatchEvent(new Event('click'));
+                flush();
+            });
+            unmount();
+        });
+    });
+
+    test('add 1k after update and clear', async () => {
+        await assert.medianRuntimeLessThan(4, (measure) => {
+            const unmount = mount(testRoot, <Benchmark />);
+            const add = testRoot.querySelector('[data-add]')!;
+            const update = testRoot.querySelector('[data-update]')!;
+            const clear = testRoot.querySelector('[data-clear]')!;
+            add.dispatchEvent(new Event('click'));
+            flush();
+            update.dispatchEvent(new Event('click'));
+            flush();
+            clear.dispatchEvent(new Event('click'));
+            flush();
+            measure(() => {
+                add.dispatchEvent(new Event('click'));
+                flush();
             });
             unmount();
         });
