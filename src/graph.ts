@@ -173,6 +173,9 @@ export class Graph<TVertex> {
     /** Mapping of id -> hard|soft edges in the forward direction */
     protected declare forwardAdjacencyEither: number[][];
 
+    /** Mapping of id -> hard|soft edges in the reverse direction */
+    protected declare reverseAdjacencyEither: number[][];
+
     /** Mapping of id -> index into topologicalOrdering */
     protected declare topologicalIndexById: (number | undefined)[];
 
@@ -214,6 +217,7 @@ export class Graph<TVertex> {
 
         this.forwardAdjacencyHard = [];
         this.forwardAdjacencyEither = [];
+        this.reverseAdjacencyEither = [];
 
         this.startVertexIndex = 0;
         this.toReorderIds = new Set();
@@ -255,6 +259,7 @@ export class Graph<TVertex> {
 
         this.forwardAdjacencyHard[id] = [];
         this.forwardAdjacencyEither[id] = [];
+        this.reverseAdjacencyEither[id] = [];
     }
 
     removeVertex(vertex: TVertex) {
@@ -267,6 +272,10 @@ export class Graph<TVertex> {
         log.assert(
             this.forwardAdjacencyEither[id].length === 0,
             'cannot remove vertex with forward edges'
+        );
+        log.assert(
+            this.reverseAdjacencyEither[id].length === 0,
+            'cannot remove vertex with reverse edges'
         );
 
         this.topologicalIndexById[id] = undefined;
@@ -359,6 +368,7 @@ export class Graph<TVertex> {
                 'addEdge duplicate'
             );
         this.forwardAdjacencyEither[fromId].push(toId);
+        this.reverseAdjacencyEither[toId].push(fromId);
         if (kind === EdgeColor.EDGE_HARD) {
             this.forwardAdjacencyHard[fromId].push(toId);
         }
@@ -418,6 +428,10 @@ export class Graph<TVertex> {
             this.forwardAdjacencyEither[fromId].indexOf(toId),
             1
         );
+        this.reverseAdjacencyEither[toId].splice(
+            this.reverseAdjacencyEither[toId].indexOf(fromId),
+            1
+        );
         if (kind === EdgeColor.EDGE_HARD) {
             this.forwardAdjacencyHard[fromId].splice(
                 this.forwardAdjacencyHard[fromId].indexOf(toId),
@@ -440,74 +454,43 @@ export class Graph<TVertex> {
         }
     }
 
-    protected markReachableInner(
+    private visitDfsForwardRecurse(
+        vertexId: number,
         lowerBound: number,
         upperBound: number,
-        vertexId: number,
-        reachableState: Record<number, undefined | 1 | 2 | 3>,
-        reachable: Set<number>
+        visited: Set<number>
     ) {
-        const vertexIndex = this.topologicalIndexById[vertexId];
-        if (
-            vertexIndex === undefined ||
-            vertexIndex < lowerBound ||
-            vertexIndex > upperBound
-        ) {
-            return false;
-        }
-
-        const state = reachableState[vertexId];
-        if (state === 3) reachable.add(vertexId);
-        if (state !== undefined) {
-            return state;
-        }
-        reachableState[vertexId] = 1;
-
-        if (this.forwardAdjacencyEither[vertexId]) {
-            for (const toId of this.forwardAdjacencyEither[vertexId]) {
-                const toState = this.markReachableInner(
+        if (visited.has(vertexId)) return;
+        visited.add(vertexId);
+        for (const toId of this.forwardAdjacencyEither[vertexId]) {
+            const toIndex = this.topologicalIndexById[toId];
+            log.assert(toIndex !== undefined, 'malformed graph');
+            if (lowerBound <= toIndex && toIndex <= upperBound) {
+                this.visitDfsForwardRecurse(
+                    toId,
                     lowerBound,
                     upperBound,
-                    toId,
-                    reachableState,
-                    reachable
+                    visited
                 );
-                if (toState === 2) reachableState[vertexId] = 2;
-                if (toState === 3) {
-                    reachableState[vertexId] = 3;
-                    reachable.add(vertexId);
-                }
             }
         }
-        if (reachableState[vertexId] === 1) {
-            reachableState[vertexId] = undefined;
-        }
-        return reachableState[vertexId];
     }
 
-    protected getReachable(
+    private visitDfsForward(
+        startVertices: Iterable<number>,
         lowerBound: number,
-        upperBound: number,
-        toReorder: Set<number>
+        upperBound: number
     ) {
-        const reachableState: Record<number, undefined | 1 | 2 | 3> = {}; // 1 = visiting, 2 = visited (miss), 3 = visited (hit)
-        const reachable = new Set(toReorder);
-        for (const vertexId of toReorder) {
-            reachableState[vertexId] = 3;
+        const visited = new Set<number>();
+        for (const vertexId of startVertices) {
+            this.visitDfsForwardRecurse(
+                vertexId,
+                lowerBound,
+                upperBound,
+                visited
+            );
         }
-        for (let index = lowerBound; index <= upperBound; ++index) {
-            const vertexId = this.topologicalOrdering[index];
-            if (vertexId && vertexId > 0) {
-                this.markReachableInner(
-                    lowerBound,
-                    upperBound,
-                    vertexId,
-                    reachableState,
-                    reachable
-                );
-            }
-        }
-        return reachable;
+        return visited;
     }
 
     private resort(toReorder: Set<number>) {
@@ -529,20 +512,22 @@ export class Graph<TVertex> {
             }
         }
 
-        // A subset vertices between lowerBound and upperBound need reordering:
-        // the ones that reach the toReorder set.
-        // So DFS on all nodes between lowerBound and upperBound to mark all nodes that reach toReorder
-        const reachable = this.getReachable(lowerBound, upperBound, toReorder);
+        // Determine "seed" vertices for Tarjan's algorithm (those that are reachable in reverse from the ones that need reordering, within bounds)
+        const seedVertices = this.visitDfsForward(
+            toReorder,
+            lowerBound,
+            upperBound
+        );
 
         // Use Tarjan's strongly connected algorithm (limited by the bound subgraph, sourced solely from the nodes we
         // want to reorder) to get topological order & strongly connected components
         const components = tarjanStronglyConnected(
-            this.forwardAdjacencyEither,
+            this.reverseAdjacencyEither,
             this.topologicalIndexById,
             lowerBound,
             upperBound,
-            reachable
-        ).reverse();
+            seedVertices
+        );
 
         // Mark cycles and grab the list of current indexes that will be overwritten
         const allocatedIndexes: number[] = [];
