@@ -201,6 +201,7 @@ var Graph = class {
     this.topologicalOrdering = [];
     this.forwardAdjacencyHard = [];
     this.forwardAdjacencyEither = [];
+    this.reverseAdjacencyEither = [];
     this.startVertexIndex = 0;
     this.toReorderIds = /* @__PURE__ */ new Set();
     this.debugSubscriptions = /* @__PURE__ */ new Set();
@@ -227,6 +228,7 @@ var Graph = class {
     this.topologicalOrdering[index] = id;
     this.forwardAdjacencyHard[id] = [];
     this.forwardAdjacencyEither[id] = [];
+    this.reverseAdjacencyEither[id] = [];
   }
   removeVertex(vertex) {
     const id = this.vertexToId.get(vertex);
@@ -234,6 +236,7 @@ var Graph = class {
     const index = this.topologicalIndexById[id];
     assert(index !== void 0, "malformed graph");
     assert(this.forwardAdjacencyEither[id].length === 0, "cannot remove vertex with forward edges");
+    assert(this.reverseAdjacencyEither[id].length === 0, "cannot remove vertex with reverse edges");
     this.topologicalIndexById[id] = void 0;
     this.topologicalOrdering[index] = void 0;
     this.clearVertexDirtyInner(id);
@@ -304,6 +307,7 @@ var Graph = class {
     assert(toId, "addEdge to vertex not found");
     false;
     this.forwardAdjacencyEither[fromId].push(toId);
+    this.reverseAdjacencyEither[toId].push(fromId);
     if (kind === 2 /* EDGE_HARD */) {
       this.forwardAdjacencyHard[fromId].push(toId);
     }
@@ -342,6 +346,7 @@ var Graph = class {
     assert(toId, "removeEdge to vertex not found");
     false;
     this.forwardAdjacencyEither[fromId].splice(this.forwardAdjacencyEither[fromId].indexOf(toId), 1);
+    this.reverseAdjacencyEither[toId].splice(this.reverseAdjacencyEither[toId].indexOf(fromId), 1);
     if (kind === 2 /* EDGE_HARD */) {
       this.forwardAdjacencyHard[fromId].splice(this.forwardAdjacencyHard[fromId].indexOf(toId), 1);
     }
@@ -355,47 +360,24 @@ var Graph = class {
       this.toReorderIds.add(toId);
     }
   }
-  markReachableInner(lowerBound, upperBound, vertexId, reachableState, reachable) {
-    const vertexIndex = this.topologicalIndexById[vertexId];
-    if (vertexIndex === void 0 || vertexIndex < lowerBound || vertexIndex > upperBound) {
-      return false;
-    }
-    const state = reachableState[vertexId];
-    if (state === 3)
-      reachable.add(vertexId);
-    if (state !== void 0) {
-      return state;
-    }
-    reachableState[vertexId] = 1;
-    if (this.forwardAdjacencyEither[vertexId]) {
-      for (const toId of this.forwardAdjacencyEither[vertexId]) {
-        const toState = this.markReachableInner(lowerBound, upperBound, toId, reachableState, reachable);
-        if (toState === 2)
-          reachableState[vertexId] = 2;
-        if (toState === 3) {
-          reachableState[vertexId] = 3;
-          reachable.add(vertexId);
-        }
+  visitDfsForwardRecurse(vertexId, lowerBound, upperBound, visited) {
+    if (visited.has(vertexId))
+      return;
+    visited.add(vertexId);
+    for (const toId of this.forwardAdjacencyEither[vertexId]) {
+      const toIndex = this.topologicalIndexById[toId];
+      assert(toIndex !== void 0, "malformed graph");
+      if (lowerBound <= toIndex && toIndex <= upperBound) {
+        this.visitDfsForwardRecurse(toId, lowerBound, upperBound, visited);
       }
     }
-    if (reachableState[vertexId] === 1) {
-      reachableState[vertexId] = void 0;
-    }
-    return reachableState[vertexId];
   }
-  getReachable(lowerBound, upperBound, toReorder) {
-    const reachableState = {};
-    const reachable = new Set(toReorder);
-    for (const vertexId of toReorder) {
-      reachableState[vertexId] = 3;
+  visitDfsForward(startVertices, lowerBound, upperBound) {
+    const visited = /* @__PURE__ */ new Set();
+    for (const vertexId of startVertices) {
+      this.visitDfsForwardRecurse(vertexId, lowerBound, upperBound, visited);
     }
-    for (let index = lowerBound; index <= upperBound; ++index) {
-      const vertexId = this.topologicalOrdering[index];
-      if (vertexId && vertexId > 0) {
-        this.markReachableInner(lowerBound, upperBound, vertexId, reachableState, reachable);
-      }
-    }
-    return reachable;
+    return visited;
   }
   resort(toReorder) {
     let lowerBound = Infinity;
@@ -416,8 +398,8 @@ var Graph = class {
           upperBound = index;
       }
     }
-    const reachable = this.getReachable(lowerBound, upperBound, toReorder);
-    const components = tarjanStronglyConnected(this.forwardAdjacencyEither, this.topologicalIndexById, lowerBound, upperBound, reachable).reverse();
+    const seedVertices = this.visitDfsForward(toReorder, lowerBound, upperBound);
+    const components = tarjanStronglyConnected(this.reverseAdjacencyEither, this.topologicalIndexById, lowerBound, upperBound, seedVertices);
     const allocatedIndexes = [];
     for (const component of components) {
       let cycle;
@@ -3879,6 +3861,6 @@ model.keys = function modelKeys(sourceModel, debugName) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.12.1" : "development";
+var VERSION = true ? "0.12.2" : "development";
 module.exports = __toCommonJS(src_exports);
 //# sourceMappingURL=index.cjs.map

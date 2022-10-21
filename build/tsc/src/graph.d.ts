@@ -35,6 +35,8 @@ export declare class Graph<TVertex> {
     protected forwardAdjacencyHard: number[][];
     /** Mapping of id -> hard|soft edges in the forward direction */
     protected forwardAdjacencyEither: number[][];
+    /** Mapping of id -> hard|soft edges in the reverse direction */
+    protected reverseAdjacencyEither: number[][];
     /** Mapping of id -> index into topologicalOrdering */
     protected topologicalIndexById: (number | undefined)[];
     /** Ordered list of vertex ids */
@@ -65,8 +67,8 @@ export declare class Graph<TVertex> {
     addEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor): void;
     hasEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor): boolean;
     removeEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor): void;
-    protected markReachableInner(lowerBound: number, upperBound: number, vertexId: number, reachableState: Record<number, undefined | 1 | 2 | 3>, reachable: Set<number>): false | 2 | 1 | 3 | undefined;
-    protected getReachable(lowerBound: number, upperBound: number, toReorder: Set<number>): Set<number>;
+    private visitDfsForwardRecurse;
+    private visitDfsForward;
     private resort;
     private processHandler;
     private processVertex;
