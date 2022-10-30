@@ -1,12 +1,8 @@
 import {
     Processable,
     Retainable,
-    addSoftEdge,
-    removeSoftEdge,
     markDirty,
     addVertex,
-    retain,
-    release,
     removeVertex,
 } from './engine';
 import {
@@ -18,7 +14,6 @@ import {
     SymRefcount,
 } from './symbols';
 import * as log from './log';
-import { Field } from './field';
 
 type SubscriptionEmitterHandler<TEmitEvent> = {
     bivarianceHack(events: TEmitEvent[], index: number): void;
@@ -83,20 +78,6 @@ export class SubscriptionEmitter<TEmitEvent>
         const length = this.events.push(event);
         if (length === 1) {
             markDirty(this);
-        }
-    }
-
-    addField(field: Field<any>) {
-        if (this.isActive) {
-            retain(field);
-            addSoftEdge(field, this);
-        }
-    }
-
-    removeField(field: Field<any>) {
-        if (this.isActive) {
-            removeSoftEdge(field, this);
-            release(field);
         }
     }
 
