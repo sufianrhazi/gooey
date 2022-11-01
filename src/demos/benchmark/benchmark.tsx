@@ -38,7 +38,7 @@ const Button: Component<{
 
 const Controls = ({ store }: { store: Model<Store> }) => {
     let maxId = 1;
-    const makeRows = (count: number): Model<Item>[] => {
+    const makeRow = (): Model<Item> => {
         const adjectives = [
             'pretty',
             'large',
@@ -94,37 +94,38 @@ const Controls = ({ store }: { store: Model<Store> }) => {
             'mouse',
             'keyboard',
         ];
-        const data: Model<Item>[] = [];
-        for (let i = 0; i < count; i++)
-            data.push(
-                model({
-                    id: maxId++,
-                    label:
-                        adjectives[_random(adjectives.length)] +
-                        ' ' +
-                        colours[_random(colours.length)] +
-                        ' ' +
-                        nouns[_random(nouns.length)],
-                })
-            );
-        return data;
+        return model({
+            id: maxId++,
+            label:
+                adjectives[_random(adjectives.length)] +
+                ' ' +
+                colours[_random(colours.length)] +
+                ' ' +
+                nouns[_random(nouns.length)],
+        });
     };
 
     const create1KRows = (e: MouseEvent) => {
         e.preventDefault();
         store.selected = undefined;
-        store.items.splice(0, store.items.length, ...makeRows(1000));
+        for (let i = 0; i < 1000; ++i) {
+            store.items.push(makeRow());
+        }
     };
 
     const create10KRows = (e: MouseEvent) => {
         e.preventDefault();
         store.selected = undefined;
-        store.items.splice(0, store.items.length, ...makeRows(10000));
+        for (let i = 0; i < 10000; ++i) {
+            store.items.push(makeRow());
+        }
     };
 
     const append1KRows = (e: MouseEvent) => {
         e.preventDefault();
-        store.items.splice(store.items.length, 0, ...makeRows(1000));
+        for (let i = 0; i < 1000; ++i) {
+            store.items.push(makeRow());
+        }
     };
 
     const updateEvery10Rows = (e: MouseEvent) => {
