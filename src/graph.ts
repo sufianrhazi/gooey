@@ -424,19 +424,10 @@ export class Graph<TVertex> {
                 'removeEdge on edge that does not exist'
             );
 
-        this.forwardAdjacencyEither[fromId].splice(
-            this.forwardAdjacencyEither[fromId].indexOf(toId),
-            1
-        );
-        this.reverseAdjacencyEither[toId].splice(
-            this.reverseAdjacencyEither[toId].indexOf(fromId),
-            1
-        );
+        removeUnordered(this.forwardAdjacencyEither[fromId], toId);
+        removeUnordered(this.reverseAdjacencyEither[toId], fromId);
         if (kind === EdgeColor.EDGE_HARD) {
-            this.forwardAdjacencyHard[fromId].splice(
-                this.forwardAdjacencyHard[fromId].indexOf(toId),
-                1
-            );
+            removeUnordered(this.forwardAdjacencyHard[fromId], toId);
         }
 
         // If we are removing a self-cycle, clear the self cycle bit
@@ -946,4 +937,14 @@ if (TEST) {
             bits,
         };
     };
+}
+
+function removeUnordered(array: number[], value: number) {
+    if (value === array[array.length - 1]) {
+        array.pop();
+        return;
+    }
+    const index = array.indexOf(value);
+    array[index] = array[array.length - 1];
+    array.pop();
 }
