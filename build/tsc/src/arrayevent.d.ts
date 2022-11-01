@@ -21,4 +21,5 @@ export declare type ArrayEvent<T> = {
 export declare function shiftEvent<T>(slotSizes: number[], slotIndex: number, event: ArrayEvent<T>): void;
 export declare function applyArrayEvent<T>(target: T[], event: ArrayEvent<T>): void;
 export declare function arrayEventFlatMap<T, V>(slotSizes: number[], flatMap: (item: T) => readonly V[], target: V[], event: ArrayEvent<T>): IterableIterator<ArrayEvent<V>>;
+export declare function addArrayEvent<T>(events: ArrayEvent<T>[], event: ArrayEvent<T>): void;
 //# sourceMappingURL=arrayevent.d.ts.map

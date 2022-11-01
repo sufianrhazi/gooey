@@ -1,17 +1,16 @@
 import { Graph } from './graph';
-import { SymDebugName, SymRefcount, SymAlive, SymDead, SymRecalculate, SymCycle, SymInvalidate, SymProcessable } from './symbols';
 export interface Retainable {
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive]: () => void;
-    [SymDead]: () => void;
+    __debugName: string;
+    __refcount: number;
+    __alive: () => void;
+    __dead: () => void;
 }
 export interface Processable {
-    [SymProcessable]: true;
-    [SymDebugName]: string;
-    [SymRecalculate]?: () => boolean;
-    [SymCycle]?: () => boolean;
-    [SymInvalidate]?: () => boolean;
+    __processable: true;
+    __debugName: string;
+    __recalculate?: () => boolean;
+    __cycle?: () => boolean;
+    __invalidate?: () => boolean;
 }
 export declare function isProcessable(val: any): val is Processable;
 export declare function reset(): void;

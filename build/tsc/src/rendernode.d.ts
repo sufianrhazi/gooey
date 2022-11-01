@@ -1,5 +1,4 @@
 import { Retainable } from './engine';
-import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { RefObjectOrCallback } from './ref';
 import { ArrayEvent } from './arrayevent';
 import { Calculation, CalculationErrorType } from './calc';
@@ -59,10 +58,10 @@ export declare class EmptyRenderNode implements RenderNode {
     onUnmount(): void;
     retain(): void;
     release(): void;
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive](): void;
-    [SymDead](): void;
+    __debugName: string;
+    __refcount: number;
+    __alive(): void;
+    __dead(): void;
 }
 /**
  * Only need one of nothing
@@ -82,10 +81,10 @@ export declare class TextRenderNode implements RenderNode {
     onUnmount(): void;
     retain(): void;
     release(): void;
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive](): void;
-    [SymDead](): void;
+    __debugName: string;
+    __refcount: number;
+    __alive(): void;
+    __dead(): void;
 }
 /**
  * Renders a foreign managed DOM node
@@ -101,10 +100,10 @@ export declare class ForeignRenderNode implements RenderNode {
     onUnmount(): void;
     retain(): void;
     release(): void;
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive](): void;
-    [SymDead](): void;
+    __debugName: string;
+    __refcount: number;
+    __alive(): void;
+    __dead(): void;
 }
 /**
  * Renders an array of render nodes
@@ -122,10 +121,10 @@ export declare class ArrayRenderNode implements RenderNode {
     onUnmount(): void;
     retain(): void;
     release(): void;
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive](): void;
-    [SymDead](): void;
+    __debugName: string;
+    __refcount: number;
+    __alive(): void;
+    __dead(): void;
 }
 /**
  * Renders an intrinsic DOM node
@@ -154,10 +153,10 @@ export declare class IntrinsicRenderNode implements RenderNode {
     onUnmount(): void;
     retain(): void;
     release(): void;
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive](): void;
-    [SymDead](): void;
+    __debugName: string;
+    __refcount: number;
+    __alive(): void;
+    __dead(): void;
 }
 export declare class PortalRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
@@ -177,10 +176,10 @@ export declare class PortalRenderNode implements RenderNode {
     onUnmount(): void;
     retain(): void;
     release(): void;
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive](): void;
-    [SymDead](): void;
+    __debugName: string;
+    __refcount: number;
+    __alive(): void;
+    __dead(): void;
 }
 /**
  * Renders the result of a calculation
@@ -204,10 +203,10 @@ export declare class CalculationRenderNode implements RenderNode {
     cleanPrior(): void;
     subscribe(errorType: undefined, val: any): void;
     subscribe(errorType: CalculationErrorType, val: Error): void;
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive](): void;
-    [SymDead](): void;
+    __debugName: string;
+    __refcount: number;
+    __alive(): void;
+    __dead(): void;
 }
 export declare class CollectionRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
@@ -230,10 +229,10 @@ export declare class CollectionRenderNode implements RenderNode {
     private releaseChild;
     private retainChild;
     private handleCollectionEvent;
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive](): void;
-    [SymDead](): void;
+    __debugName: string;
+    __refcount: number;
+    __alive(): void;
+    __dead(): void;
 }
 export declare function renderJSXNode(jsxNode: JSX.Node): RenderNode;
 export declare function renderJSXChildren(children?: JSX.Node | JSX.Node[]): RenderNode[];
@@ -261,10 +260,10 @@ export declare class IntrinsicObserverRenderNode implements RenderNode {
     onUnmount(): void;
     retain(): void;
     release(): void;
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive](): void;
-    [SymDead](): void;
+    __debugName: string;
+    __refcount: number;
+    __alive(): void;
+    __dead(): void;
 }
 export declare const IntrinsicObserver: Component<{
     nodeCallback?: IntrinsicObserverNodeCallback;
@@ -295,10 +294,10 @@ export declare class ComponentRenderNode<TProps> implements RenderNode {
     onUnmount(): void;
     retain(): void;
     release(): void;
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive](): void;
-    [SymDead](): void;
+    __debugName: string;
+    __refcount: number;
+    __alive(): void;
+    __dead(): void;
 }
 export declare function classComponentToFunctionComponentRenderNode<TProps>(Component: ClassComponentConstructor<TProps>, props: TProps, children: JSX.Node[]): ComponentRenderNode<TProps>;
 export {};

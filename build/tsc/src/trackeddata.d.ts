@@ -3,7 +3,6 @@ import { FieldMap } from './fieldmap';
 import { Field } from './field';
 import { SubscriptionEmitter } from './subscriptionemitter';
 import { SubscriptionConsumer } from './subscriptionconsumer';
-declare const SymTDHandle: unique symbol;
 export declare class TrackedDataHandle<TData extends object, TMethods extends Retainable, TEmitEvent, TConsumeEvent> {
     target: TData;
     methods: TMethods;
@@ -17,10 +16,10 @@ export declare class TrackedDataHandle<TData extends object, TMethods extends Re
         proxy: TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>;
         revoke: () => void;
     };
-    constructor(target: TData, proxyHandler: ProxyHandler<TEmitEvent>, methods: TMethods, derivedEmitter: null | SubscriptionEmitter<TConsumeEvent>, handleEvent: null | ((target: TData, event: TConsumeEvent) => IterableIterator<TEmitEvent>), debugName?: string);
+    constructor(target: TData, proxyHandler: ProxyHandler<TEmitEvent>, methods: TMethods, derivedEmitter: null | SubscriptionEmitter<TConsumeEvent>, handleEvents: null | ((target: TData, events: TConsumeEvent[]) => IterableIterator<TEmitEvent>), appendEmitEvent: (events: TEmitEvent[], event: TEmitEvent) => void, appendConsumeEvent: (events: TConsumeEvent[], event: TConsumeEvent) => void, debugName?: string);
 }
 export declare type TrackedData<TData extends object, TMethods extends Retainable, TEmitEvent, TConsumeEvent> = TData & TMethods & {
-    [SymTDHandle]: TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent>;
+    __tdHandle: TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent>;
 };
 export declare function getTrackedDataHandle<TData extends object, TMethods extends Retainable, TEmitEvent, TConsumeEvent>(trackedData: TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>): undefined | TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent>;
 export interface DataAccessor {
@@ -36,5 +35,4 @@ export interface ProxyHandler<TEmitEvent> {
     set: (dataAccessor: DataAccessor, emitter: (event: TEmitEvent) => void, prop: string | symbol, value: any, receiver: any) => any;
     delete: (dataAccessor: DataAccessor, emitter: (event: TEmitEvent) => void, prop: string | symbol) => boolean;
 }
-export {};
 //# sourceMappingURL=trackeddata.d.ts.map

@@ -1,21 +1,20 @@
 import { Processable, Retainable } from './engine';
-import { SymProcessable, SymDebugName, SymDead, SymAlive, SymRecalculate, SymRefcount } from './symbols';
 declare type FieldSubscriber<T> = (val: T) => void;
 export declare class Field<T> implements Processable, Retainable {
     private _isAlive?;
     private _val;
     private _subscribers?;
     private _changeClock;
-    [SymProcessable]: true;
-    [SymRefcount]: number;
-    [SymDebugName]: string;
+    __processable: true;
+    __refcount: number;
+    __debugName: string;
     constructor(val: T, debugName?: string);
     get(): T;
     set(newVal: T): void;
     subscribe(subscriber: FieldSubscriber<T>): () => void;
-    [SymAlive](): void;
-    [SymDead](): void;
-    [SymRecalculate](): boolean;
+    __alive(): void;
+    __dead(): void;
+    __recalculate(): boolean;
 }
 export declare function field<T>(val: T, debugName?: string): Field<T>;
 export {};

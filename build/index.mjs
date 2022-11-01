@@ -650,28 +650,9 @@ if (false) {
   };
 }
 
-// src/symbols.ts
-var SymDebugName = Symbol("debugName");
-var SymRefcount = Symbol("refcount");
-var SymAlive = Symbol("alive");
-var SymDead = Symbol("dead");
-var SymRecalculate = Symbol("recalculate");
-var SymCycle = Symbol("cycle");
-var SymInvalidate = Symbol("invalidate");
-var SymProcessable = Symbol("processable");
-var allSymbols = /* @__PURE__ */ new Set();
-allSymbols.add(SymDebugName);
-allSymbols.add(SymRefcount);
-allSymbols.add(SymAlive);
-allSymbols.add(SymDead);
-allSymbols.add(SymRecalculate);
-allSymbols.add(SymCycle);
-allSymbols.add(SymInvalidate);
-allSymbols.add(SymProcessable);
-
 // src/engine.ts
 function isProcessable(val) {
-  return val && val[SymProcessable] === true;
+  return val && val.__processable === true;
 }
 var globalDependencyGraph = new Graph(processHandler);
 var trackReadSets = [];
@@ -736,28 +717,28 @@ function subscribe(scheduler) {
 }
 function retain(retainable) {
   false;
-  retainable[SymRefcount] += 1;
-  if (retainable[SymRefcount] === 1) {
-    retainable[SymAlive]();
+  retainable.__refcount += 1;
+  if (retainable.__refcount === 1) {
+    retainable.__alive();
   }
 }
 function release(retainable) {
   false;
-  assert(retainable[SymRefcount] > 0, "double release");
-  if (retainable[SymRefcount] === 1) {
-    retainable[SymDead]();
+  assert(retainable.__refcount > 0, "double release");
+  if (retainable.__refcount === 1) {
+    retainable.__dead();
   }
-  retainable[SymRefcount] -= 1;
+  retainable.__refcount -= 1;
 }
 function processHandler(vertex, action) {
   false;
   switch (action) {
     case 0 /* INVALIDATE */:
-      return vertex[SymInvalidate]?.() ?? false;
+      return vertex.__invalidate?.() ?? false;
     case 1 /* RECALCULATE */:
-      return vertex[SymRecalculate]?.() ?? false;
+      return vertex.__recalculate?.() ?? false;
     case 2 /* CYCLE */:
-      return vertex[SymCycle]?.() ?? false;
+      return vertex.__cycle?.() ?? false;
     default:
       assertExhausted(action, "unknown action");
   }
@@ -875,7 +856,7 @@ function debug2(activeVertex, label) {
   return globalDependencyGraph.debug((vertex) => {
     return {
       isActive: vertex === activeVertex,
-      name: `${vertex[SymDebugName]} (rc=${vertex[SymRefcount]})`
+      name: `${vertex.__debugName} (rc=${vertex.__refcount})`
     };
   }, label);
 }
@@ -883,7 +864,7 @@ function debugSubscribe(fn) {
   return globalDependencyGraph.debugSubscribe((vertex) => {
     return {
       isActive: false,
-      name: vertex[SymDebugName]
+      name: vertex.__debugName
     };
   }, fn);
 }
@@ -1291,6 +1272,22 @@ function* arrayEventFlatMap(slotSizes, flatMap, target, event) {
       assertExhausted(event);
   }
 }
+function addArrayEvent(events, event) {
+  const lastEvent = events.length > 0 ? events[events.length - 1] : null;
+  if (lastEvent && event.type === "splice" /* SPLICE */ && lastEvent.type === "splice" /* SPLICE */) {
+    const lastEventSpliceEnd = lastEvent.index + (lastEvent.items?.length ?? 0);
+    if (lastEventSpliceEnd === event.index) {
+      lastEvent.count += event.count;
+      if (lastEvent.items && event.items) {
+        lastEvent.items.push(...event.items);
+      } else if (event.items) {
+        lastEvent.items = event.items;
+      }
+      return;
+    }
+  }
+  events.push(event);
+}
 
 // src/sentinel.ts
 var Sentinel = Symbol("sentinel");
@@ -1377,7 +1374,7 @@ function calculationCall(calculation) {
       let exception;
       calculation._state = 1 /* CALLING */;
       try {
-        result = trackReads(calculationReads, () => calculation._fn(), calculation[SymDebugName]);
+        result = trackReads(calculationReads, () => calculation._fn(), calculation.__debugName);
       } catch (e) {
         exception = e;
       }
@@ -1401,7 +1398,7 @@ function calculationCall(calculation) {
         }
         const errorHandler = calculation._errorHandler;
         if (errorHandler) {
-          result = untrackReads(() => isActiveCycle ? errorHandler(0 /* CYCLE */, new Error("Cycle")) : errorHandler(1 /* EXCEPTION */, exception), calculation[SymDebugName]);
+          result = untrackReads(() => isActiveCycle ? errorHandler(0 /* CYCLE */, new Error("Cycle")) : errorHandler(1 /* EXCEPTION */, exception), calculation.__debugName);
         }
         if (isActiveCycle) {
           markCycleInformed(calculation);
@@ -1544,7 +1541,7 @@ function calculationCycle() {
       this._state = 0 /* READY */;
       const errorHandler = this._errorHandler;
       if (errorHandler) {
-        this._val = untrackReads(() => errorHandler(0 /* CYCLE */, new Error("Cycle")), this[SymDebugName]);
+        this._val = untrackReads(() => errorHandler(0 /* CYCLE */, new Error("Cycle")), this.__debugName);
         this._state = 2 /* CACHED */;
         unmarkDirty(this);
       } else {
@@ -1584,14 +1581,14 @@ function calc(fn, debugName) {
     subscribe: calcSubscribe,
     retain: calcRetain,
     release: calcRelease,
-    [SymAlive]: calculationAlive,
-    [SymDead]: calculationDead,
-    [SymRefcount]: 0,
-    [SymProcessable]: true,
-    [SymDebugName]: debugName ?? fn.name,
-    [SymRecalculate]: calculationRecalculate,
-    [SymCycle]: calculationCycle,
-    [SymInvalidate]: calculationInvalidate
+    __alive: calculationAlive,
+    __dead: calculationDead,
+    __refcount: 0,
+    __processable: true,
+    __debugName: debugName ?? fn.name,
+    __recalculate: calculationRecalculate,
+    __cycle: calculationCycle,
+    __invalidate: calculationInvalidate
   };
   const calculation = Object.assign(() => calculationCall(calculation), calculationData);
   notifyCreate(calculation);
@@ -1604,9 +1601,9 @@ var Field = class {
     this._val = val;
     this._isAlive = false;
     this._changeClock = 0;
-    this[SymProcessable] = true;
-    this[SymRefcount] = 0;
-    this[SymDebugName] = debugName ?? "field";
+    this.__processable = true;
+    this.__refcount = 0;
+    this.__debugName = debugName ?? "field";
   }
   get() {
     notifyRead(this);
@@ -1629,15 +1626,15 @@ var Field = class {
     this._subscribers.set(subscriber, this._changeClock);
     return () => this._subscribers?.delete(subscriber);
   }
-  [(SymProcessable, SymRefcount, SymDebugName, SymAlive)]() {
+  __alive() {
     this._isAlive = true;
     addVertex(this);
   }
-  [SymDead]() {
+  __dead() {
     removeVertex(this);
     this._isAlive = false;
   }
-  [SymRecalculate]() {
+  __recalculate() {
     assert(this._isAlive, "cannot flush dead field");
     if (this._subscribers) {
       for (const [subscriber, observeClock] of this._subscribers) {
@@ -1658,8 +1655,8 @@ function field(val, debugName) {
 // src/fieldmap.ts
 var FieldMap = class {
   constructor(keysField, consumer, emitter, debugName) {
-    this[SymRefcount] = 0;
-    this[SymDebugName] = debugName ?? "fieldmap";
+    this.__refcount = 0;
+    this.__debugName = debugName ?? "fieldmap";
     this.keysField = keysField;
     this.fieldMap = /* @__PURE__ */ new Map();
     this.consumer = consumer;
@@ -1668,9 +1665,9 @@ var FieldMap = class {
   getOrMake(prop, val) {
     let field2 = this.fieldMap.get(prop);
     if (!field2) {
-      field2 = new Field(val, `${this[SymDebugName]}:${prop}`);
+      field2 = new Field(val, `${this.__debugName}:${prop}`);
       this.fieldMap.set(prop, field2);
-      if (this[SymRefcount] > 0) {
+      if (this.__refcount > 0) {
         retain(field2);
         if (this.consumer)
           addSoftEdge(this.consumer, field2);
@@ -1689,7 +1686,7 @@ var FieldMap = class {
     if (field2) {
       field2.set(void 0);
       this.fieldMap.delete(prop);
-      if (this[SymRefcount] > 0) {
+      if (this.__refcount > 0) {
         if (this.emitter)
           removeSoftEdge(field2, this.emitter);
         if (this.consumer)
@@ -1698,7 +1695,7 @@ var FieldMap = class {
       }
     }
   }
-  [(SymDebugName, SymRefcount, SymDead)]() {
+  __dead() {
     for (const field2 of this.fieldMap.values()) {
       if (this.emitter)
         removeSoftEdge(field2, this.emitter);
@@ -1716,7 +1713,7 @@ var FieldMap = class {
     if (this.consumer)
       release(this.consumer);
   }
-  [SymAlive]() {
+  __alive() {
     if (this.emitter)
       retain(this.emitter);
     if (this.consumer)
@@ -1738,91 +1735,75 @@ var FieldMap = class {
 
 // src/subscriptionemitter.ts
 var SubscriptionEmitter = class {
-  [(SymProcessable, SymDebugName, SymRecalculate)]() {
-    for (let i = 0; i < this.subscribers.length; ++i) {
-      const subscriber = this.subscribers[i];
-      subscriber(this.events, this.subscriberOffset[i]);
-      this.subscriberOffset[i] = 0;
+  __recalculate() {
+    for (const subscriber of this.subscribers) {
+      subscriber.handler(subscriber.events);
+      subscriber.events = [];
     }
-    this.events.splice(0, this.events.length);
     return true;
   }
-  [(SymRefcount, SymAlive)]() {
+  __alive() {
     this.isActive = true;
     addVertex(this);
   }
-  [SymDead]() {
+  __dead() {
     assert(this.subscribers.length === 0, "released subscription emitter that had subscribers");
-    assert(this.subscriberOffset.length === 0, "released subscription emitter that had subscribers");
-    this.events.splice(0, this.events.length);
     removeVertex(this);
     this.isActive = false;
   }
-  constructor(debugName) {
+  constructor(appendEvent, debugName) {
+    this.appendEvent = appendEvent;
     this.subscribers = [];
-    this.subscriberOffset = [];
-    this.events = [];
     this.isActive = false;
-    this[SymRefcount] = 0;
-    this[SymProcessable] = true;
-    this[SymDebugName] = `emitter:${debugName}`;
+    this.__refcount = 0;
+    this.__processable = true;
+    this.__debugName = `emitter:${debugName}`;
   }
   addEvent(event) {
     if (!this.isActive)
       return;
-    const length = this.events.push(event);
-    if (length === 1) {
+    let firstAdded = false;
+    for (const subscriber of this.subscribers) {
+      if (subscriber.events.length === 0)
+        firstAdded = true;
+      this.appendEvent(subscriber.events, event);
+    }
+    if (firstAdded) {
       markDirty(this);
     }
   }
-  addField(field2) {
-    if (this.isActive) {
-      retain(field2);
-      addSoftEdge(field2, this);
-    }
-  }
-  removeField(field2) {
-    if (this.isActive) {
-      removeSoftEdge(field2, this);
-      release(field2);
-    }
-  }
   subscribe(handler) {
-    this.subscribers.push(handler);
-    this.subscriberOffset.push(this.events.length);
+    this.subscribers.push({ handler, events: [] });
     return () => {
-      const index = this.subscribers.indexOf(handler);
+      const index = this.subscribers.findIndex((subscriber) => subscriber.handler === handler);
       if (index === -1)
         return;
       this.subscribers.splice(index, 1);
-      this.subscriberOffset.splice(index, 1);
     };
   }
 };
 
 // src/subscriptionconsumer.ts
 var SubscriptionConsumer = class {
-  [(SymProcessable, SymDebugName, SymRecalculate)]() {
-    for (const event of this.events) {
-      for (const emitEvent of this.handler(this.target, event)) {
-        this.transformEmitter.addEvent(emitEvent);
-      }
+  __recalculate() {
+    for (const emitEvent of this.handler(this.target, this.events)) {
+      this.transformEmitter.addEvent(emitEvent);
     }
     this.events.splice(0, this.events.length);
     return false;
   }
-  [(SymRefcount, SymAlive)]() {
+  __alive() {
     this.isActive = true;
     addVertex(this);
     retain(this.sourceEmitter);
     addHardEdge(this.sourceEmitter, this);
-    this.unsubscribe = this.sourceEmitter.subscribe((events, offset) => {
-      for (let i = offset; i < events.length; ++i) {
-        this.addEvent(events[i]);
+    this.unsubscribe = this.sourceEmitter.subscribe((events) => {
+      for (const event of events) {
+        this.addEvent(event);
       }
     });
   }
-  [SymDead]() {
+  __dead() {
     if (this.unsubscribe) {
       this.unsubscribe();
       removeHardEdge(this.sourceEmitter, this);
@@ -1832,22 +1813,24 @@ var SubscriptionConsumer = class {
     removeVertex(this);
     this.isActive = false;
   }
-  constructor(target, sourceEmitter, transformEmitter, handler, debugName) {
+  constructor(target, sourceEmitter, transformEmitter, handler, appendEvent, debugName) {
     this.target = target;
     this.handler = handler;
     this.events = [];
     this.isActive = false;
     this.sourceEmitter = sourceEmitter;
     this.transformEmitter = transformEmitter;
-    this[SymRefcount] = 0;
-    this[SymProcessable] = true;
-    this[SymDebugName] = `consumer:${debugName}`;
+    this.appendEvent = appendEvent;
+    this.__refcount = 0;
+    this.__processable = true;
+    this.__debugName = `consumer:${debugName}`;
   }
   addEvent(event) {
     if (!this.isActive)
       return;
-    const length = this.events.push(event);
-    if (length === 1) {
+    const firstEvent = this.events.length === 0;
+    this.appendEvent(this.events, event);
+    if (firstEvent) {
       markDirty(this);
     }
   }
@@ -1866,14 +1849,13 @@ var SubscriptionConsumer = class {
 };
 
 // src/trackeddata.ts
-var SymTDHandle = Symbol("tdHandle");
 var TrackedDataHandle = class {
-  constructor(target, proxyHandler, methods, derivedEmitter, handleEvent, debugName = "trackeddata") {
+  constructor(target, proxyHandler, methods, derivedEmitter, handleEvents, appendEmitEvent, appendConsumeEvent, debugName = "trackeddata") {
     this.target = target;
     this.methods = methods;
-    this.emitter = new SubscriptionEmitter(debugName);
-    if (derivedEmitter && handleEvent) {
-      this.consumer = new SubscriptionConsumer(target, derivedEmitter, this.emitter, handleEvent, debugName);
+    this.emitter = new SubscriptionEmitter(appendEmitEvent, debugName);
+    if (derivedEmitter && handleEvents) {
+      this.consumer = new SubscriptionConsumer(target, derivedEmitter, this.emitter, handleEvents, appendConsumeEvent, debugName);
     } else {
       this.consumer = null;
     }
@@ -1885,16 +1867,16 @@ var TrackedDataHandle = class {
     };
     this.dataAccessor = {
       get: (prop, receiver) => {
-        if (prop === SymTDHandle) {
+        if (prop === "__tdHandle") {
           return this;
         }
-        if (prop === SymDebugName) {
+        if (prop === "__debugName") {
           return debugName;
         }
-        if (prop === SymProcessable) {
+        if (prop === "__processable") {
           return false;
         }
-        if (prop === SymRefcount || prop === SymAlive || prop === SymDead) {
+        if (prop === "__refcount" || prop === "__alive" || prop === "__dead") {
           return methods[prop];
         }
         if (typeof prop === "symbol") {
@@ -1903,7 +1885,6 @@ var TrackedDataHandle = class {
         if (prop in methods) {
           return methods[prop];
         }
-        false;
         const value = Reflect.get(this.target, prop, receiver);
         const field2 = this.fieldMap.getOrMake(prop, value);
         notifyRead(this.revocable.proxy);
@@ -1911,20 +1892,18 @@ var TrackedDataHandle = class {
         return value;
       },
       peekHas: (prop) => {
-        false;
         return Reflect.has(target, prop);
       },
       has: (prop) => {
-        if (prop === SymRefcount || prop === SymAlive || prop === SymDead) {
+        if (prop === "__refcount" || prop === "__alive" || prop === "__dead") {
           return prop in methods;
         }
-        if (prop === SymProcessable) {
+        if (prop === "__processable") {
           return true;
         }
         if (prop in methods) {
           return true;
         }
-        false;
         if (typeof prop === "symbol") {
           return Reflect.has(this.target, prop);
         }
@@ -1935,14 +1914,13 @@ var TrackedDataHandle = class {
         return value;
       },
       set: (prop, value, receiver) => {
-        if (prop === SymRefcount) {
+        if (prop === "__refcount") {
           methods[prop] = value;
           return true;
         }
         if (prop in methods) {
           return false;
         }
-        false;
         if (typeof prop === "symbol") {
           return Reflect.set(this.target, prop, value, receiver);
         }
@@ -1956,13 +1934,12 @@ var TrackedDataHandle = class {
         return Reflect.set(target, prop, value, this.revocable.proxy);
       },
       delete: (prop) => {
-        if (prop === SymRefcount || prop === SymAlive || prop === SymDead || prop === SymProcessable) {
+        if (prop === "__refcount" || prop === "__alive" || prop === "__dead" || prop === "__processable") {
           return false;
         }
         if (prop in methods) {
           return false;
         }
-        false;
         if (typeof prop === "symbol") {
           return Reflect.deleteProperty(this.target, prop);
         }
@@ -1991,7 +1968,7 @@ var TrackedDataHandle = class {
   }
 };
 function getTrackedDataHandle(trackedData) {
-  return trackedData[SymTDHandle];
+  return trackedData.__tdHandle;
 }
 
 // src/collection.ts
@@ -2011,10 +1988,10 @@ function makeCollectionPrototype() {
     filterView,
     flatMapView,
     subscribe: collectionSubscribe,
-    [SymRefcount]: 0,
-    [SymAlive]: collectionAlive,
-    [SymDead]: collectionDead,
-    [SymDebugName]: "collection"
+    __refcount: 0,
+    __alive: collectionAlive,
+    __dead: collectionDead,
+    __debugName: "collection"
   };
 }
 function makeViewPrototype(sourceCollection) {
@@ -2031,20 +2008,20 @@ function makeViewPrototype(sourceCollection) {
     filterView,
     flatMapView,
     subscribe: collectionSubscribe,
-    [SymRefcount]: 0,
-    [SymAlive]() {
+    __refcount: 0,
+    __alive() {
       retain(sourceCollection);
       const tdHandle = getTrackedDataHandle(this);
       assert(tdHandle, "missing tdHandle");
       retain(tdHandle.fieldMap);
     },
-    [SymDead]() {
+    __dead() {
       const tdHandle = getTrackedDataHandle(this);
       assert(tdHandle, "missing tdHandle");
       release(tdHandle.fieldMap);
       release(sourceCollection);
     },
-    [SymDebugName]: "collection"
+    __debugName: "collection"
   };
 }
 function isCollection(val) {
@@ -2086,7 +2063,7 @@ var ViewHandler = {
     return dataAccessor.has(prop);
   },
   set: (dataAccessor, emitter, prop, value, receiver) => {
-    if (prop === SymRefcount) {
+    if (prop === "__refcount") {
       return dataAccessor.set(prop, value, receiver);
     }
     fail("Cannot mutate readonly view");
@@ -2096,7 +2073,7 @@ var ViewHandler = {
   }
 };
 function collection(items, debugName) {
-  const handle = new TrackedDataHandle(items, CollectionHandler, makeCollectionPrototype(), null, null, debugName);
+  const handle = new TrackedDataHandle(items, CollectionHandler, makeCollectionPrototype(), null, null, addArrayEvent, addArrayEvent, debugName);
   return handle.revocable.proxy;
 }
 function viewSplice(index, count, ...items) {
@@ -2208,8 +2185,8 @@ function collectionSubscribe(handler) {
   const tdHandle = getTrackedDataHandle(this);
   assert(tdHandle, "subscribe missing tdHandle");
   retain(tdHandle.emitter);
-  const unsubscribe = tdHandle.emitter.subscribe((events, offset) => {
-    handler(offset > 0 ? events.slice(offset) : events);
+  const unsubscribe = tdHandle.emitter.subscribe((events) => {
+    handler(events);
   });
   return () => {
     unsubscribe();
@@ -2308,42 +2285,44 @@ function makeFlatMapView(sourceCollection, flatMap, debugName) {
       initialTransform.push(...slot);
     }
   });
-  const derivedCollection = new TrackedDataHandle(initialTransform, ViewHandler, makeViewPrototype(sourceCollection), sourceTDHandle.emitter, function* (target, event) {
-    const lengthStart = initialTransform.length;
-    yield* arrayEventFlatMap(slotSizes, flatMap, initialTransform, event);
-    switch (event.type) {
-      case "splice" /* SPLICE */: {
-        const lengthEnd = initialTransform.length;
-        if (lengthStart === lengthEnd) {
-          for (let i = event.index; i < event.index + event.count; ++i) {
+  const derivedCollection = new TrackedDataHandle(initialTransform, ViewHandler, makeViewPrototype(sourceCollection), sourceTDHandle.emitter, function* (target, events) {
+    for (const event of events) {
+      const lengthStart = initialTransform.length;
+      yield* arrayEventFlatMap(slotSizes, flatMap, initialTransform, event);
+      switch (event.type) {
+        case "splice" /* SPLICE */: {
+          const lengthEnd = initialTransform.length;
+          if (lengthStart === lengthEnd) {
+            for (let i = event.index; i < event.index + event.count; ++i) {
+              derivedCollection.fieldMap.set(i.toString(), initialTransform[i]);
+            }
+          } else {
+            for (let i = event.index; i < lengthEnd; ++i) {
+              derivedCollection.fieldMap.set(i.toString(), initialTransform[i]);
+            }
+            for (let i = lengthEnd; i < lengthStart; ++i) {
+              derivedCollection.fieldMap.delete(i.toString());
+            }
+            derivedCollection.fieldMap.set("length", lengthEnd);
+          }
+          break;
+        }
+        case "move" /* MOVE */: {
+          const lowerBound = Math.min(event.from, event.to);
+          const upperBound = Math.max(event.from + event.count, event.to + event.count);
+          for (let i = lowerBound; i < upperBound; ++i) {
             derivedCollection.fieldMap.set(i.toString(), initialTransform[i]);
           }
-        } else {
-          for (let i = event.index; i < lengthEnd; ++i) {
+          break;
+        }
+        case "sort" /* SORT */:
+          for (let i = event.from; i < event.from + event.indexes.length; ++i) {
             derivedCollection.fieldMap.set(i.toString(), initialTransform[i]);
           }
-          for (let i = lengthEnd; i < lengthStart; ++i) {
-            derivedCollection.fieldMap.delete(i.toString());
-          }
-          derivedCollection.fieldMap.set("length", lengthEnd);
-        }
-        break;
+          break;
       }
-      case "move" /* MOVE */: {
-        const lowerBound = Math.min(event.from, event.to);
-        const upperBound = Math.max(event.from + event.count, event.to + event.count);
-        for (let i = lowerBound; i < upperBound; ++i) {
-          derivedCollection.fieldMap.set(i.toString(), initialTransform[i]);
-        }
-        break;
-      }
-      case "sort" /* SORT */:
-        for (let i = event.from; i < event.from + event.indexes.length; ++i) {
-          derivedCollection.fieldMap.set(i.toString(), initialTransform[i]);
-        }
-        break;
     }
-  }, debugName ?? "derived");
+  }, addArrayEvent, addArrayEvent, debugName ?? "derived");
   return derivedCollection.revocable.proxy;
 }
 
@@ -2360,8 +2339,8 @@ var RenderNodeType = Symbol("rendernode");
 var EmptyRenderNode = class {
   constructor() {
     this._type = RenderNodeType;
-    this[SymDebugName] = "empty";
-    this[SymRefcount] = 0;
+    this.__debugName = "empty";
+    this.__refcount = 0;
   }
   detach() {
   }
@@ -2377,9 +2356,9 @@ var EmptyRenderNode = class {
   release() {
     release(this);
   }
-  [(SymDebugName, SymRefcount, SymAlive)]() {
+  __alive() {
   }
-  [SymDead]() {
+  __dead() {
   }
 };
 var emptyRenderNode = new EmptyRenderNode();
@@ -2387,8 +2366,8 @@ var TextRenderNode = class {
   constructor(string, debugName) {
     this._type = RenderNodeType;
     this.text = document.createTextNode(string);
-    this[SymDebugName] = debugName ?? "text";
-    this[SymRefcount] = 0;
+    this.__debugName = debugName ?? "text";
+    this.__refcount = 0;
   }
   detach() {
     this.emitter?.({ type: "splice" /* SPLICE */, index: 0, count: 1 });
@@ -2414,9 +2393,9 @@ var TextRenderNode = class {
   release() {
     release(this);
   }
-  [(SymDebugName, SymRefcount, SymAlive)]() {
+  __alive() {
   }
-  [SymDead]() {
+  __dead() {
     this.emitter = void 0;
   }
 };
@@ -2424,8 +2403,8 @@ var ForeignRenderNode = class {
   constructor(node, debugName) {
     this._type = RenderNodeType;
     this.node = node;
-    this[SymDebugName] = debugName ?? "foreign";
-    this[SymRefcount] = 0;
+    this.__debugName = debugName ?? "foreign";
+    this.__refcount = 0;
   }
   detach() {
     this.emitter?.({ type: "splice" /* SPLICE */, index: 0, count: 1 });
@@ -2451,9 +2430,9 @@ var ForeignRenderNode = class {
   release() {
     release(this);
   }
-  [(SymDebugName, SymRefcount, SymAlive)]() {
+  __alive() {
   }
-  [SymDead]() {
+  __dead() {
     this.emitter = void 0;
   }
 };
@@ -2463,8 +2442,8 @@ var ArrayRenderNode = class {
     this.children = children;
     this.slotSizes = children.map(() => 0);
     this.attached = children.map(() => false);
-    this[SymDebugName] = debugName ?? "array";
-    this[SymRefcount] = 0;
+    this.__debugName = debugName ?? "array";
+    this.__refcount = 0;
   }
   detach() {
     for (const [index, child] of this.children.entries()) {
@@ -2507,12 +2486,12 @@ var ArrayRenderNode = class {
   release() {
     release(this);
   }
-  [(SymDebugName, SymRefcount, SymAlive)]() {
+  __alive() {
     for (const child of this.children) {
       retain(child);
     }
   }
-  [SymDead]() {
+  __dead() {
     for (const child of this.children) {
       release(child);
     }
@@ -2761,7 +2740,7 @@ var IntrinsicRenderNode = class {
         if (this.emitter) {
           this.emitter(event);
         } else {
-          warn("Unhandled error on detached IntrinsicRenderNode", this[SymDebugName], event);
+          warn("Unhandled error on detached IntrinsicRenderNode", this.__debugName, event);
           this.detachedError = event;
         }
         return;
@@ -2772,8 +2751,8 @@ var IntrinsicRenderNode = class {
     this.props = props;
     this.children = new ArrayRenderNode(children);
     this.tagName = tagName;
-    this[SymDebugName] = debugName ?? `intrinsic:${this.tagName}`;
-    this[SymRefcount] = 0;
+    this.__debugName = debugName ?? `intrinsic:${this.tagName}`;
+    this.__refcount = 0;
   }
   createElement(xmlNamespace) {
     const element = document.createElementNS(xmlNamespace, this.tagName);
@@ -2894,12 +2873,12 @@ var IntrinsicRenderNode = class {
   release() {
     release(this);
   }
-  [(SymDebugName, SymRefcount, SymAlive)]() {
+  __alive() {
     const xmlNamespaceGuess = ELEMENT_NAMESPACE_GUESS[this.tagName] || HTML_NAMESPACE;
     retain(this.children);
     this.ensureElement(xmlNamespaceGuess, this.tagName === "foreignObject" ? HTML_NAMESPACE : xmlNamespaceGuess);
   }
-  [SymDead]() {
+  __dead() {
     if (this.calculations) {
       for (const calculation of this.calculations.values()) {
         release(calculation);
@@ -2983,8 +2962,8 @@ var PortalRenderNode = class {
     }
     this.tagName = this.element.tagName;
     this.existingOffset = element.childNodes.length;
-    this[SymDebugName] = debugName ?? `mount:${this.tagName}`;
-    this[SymRefcount] = 0;
+    this.__debugName = debugName ?? `mount:${this.tagName}`;
+    this.__refcount = 0;
   }
   detach() {
     this.emitter = void 0;
@@ -3027,10 +3006,10 @@ var PortalRenderNode = class {
   release() {
     release(this);
   }
-  [(SymDebugName, SymRefcount, SymAlive)]() {
+  __alive() {
     retain(this.arrayRenderNode);
   }
-  [SymDead]() {
+  __dead() {
     if (this.calculations) {
       for (const calculation of this.calculations.values()) {
         release(calculation);
@@ -3051,8 +3030,8 @@ var CalculationRenderNode = class {
     this._type = RenderNodeType;
     this.calculation = calculation;
     this.isMounted = false;
-    this[SymDebugName] = debugName ?? `rendercalc:${calculation[SymDebugName]}`;
-    this[SymRefcount] = 0;
+    this.__debugName = debugName ?? `rendercalc:${calculation.__debugName}`;
+    this.__refcount = 0;
     this.subscribe = this.subscribe.bind(this);
   }
   detach() {
@@ -3119,7 +3098,7 @@ var CalculationRenderNode = class {
       });
     }
   }
-  [(SymDebugName, SymRefcount, SymAlive)]() {
+  __alive() {
     try {
       this.calculationSubscription = this.calculation.subscribe(this.subscribe);
       this.subscribe(void 0, this.calculation());
@@ -3127,7 +3106,7 @@ var CalculationRenderNode = class {
       this.subscribe(1 /* EXCEPTION */, wrapError(e));
     }
   }
-  [SymDead]() {
+  __dead() {
     this.calculationSubscription?.();
     this.calculationSubscription = void 0;
     this.cleanPrior();
@@ -3214,8 +3193,8 @@ var CollectionRenderNode = class {
     this.childIndex = /* @__PURE__ */ new Map();
     this.slotSizes = [];
     this.isMounted = false;
-    this[SymDebugName] = debugName ?? `rendercoll`;
-    this[SymRefcount] = 0;
+    this.__debugName = debugName ?? `rendercoll`;
+    this.__refcount = 0;
   }
   attach(emitter, parentXmlNamespace) {
     this.emitter = emitter;
@@ -3277,7 +3256,7 @@ var CollectionRenderNode = class {
       }
     }
   }
-  [(SymDebugName, SymRefcount, SymAlive)]() {
+  __alive() {
     retain(this.collection);
     this.unsubscribe = this.collection.subscribe(this.handleCollectionEvent);
     untrackReads(() => {
@@ -3290,7 +3269,7 @@ var CollectionRenderNode = class {
       }
     });
   }
-  [SymDead]() {
+  __dead() {
     this.unsubscribe?.();
     release(this.collection);
     const removed = this.children.splice(0, this.children.length);
@@ -3402,8 +3381,8 @@ var IntrinsicObserverRenderNode = class {
     this.child = new ArrayRenderNode(children);
     this.childNodes = [];
     this.isMounted = false;
-    this[SymDebugName] = debugName ?? `lifecycleobserver`;
-    this[SymRefcount] = 0;
+    this.__debugName = debugName ?? `lifecycleobserver`;
+    this.__refcount = 0;
   }
   notify(node, type) {
     this.nodeCallback?.(node, type);
@@ -3470,10 +3449,10 @@ var IntrinsicObserverRenderNode = class {
   release() {
     release(this);
   }
-  [(SymDebugName, SymRefcount, SymAlive)]() {
+  __alive() {
     retain(this.child);
   }
-  [SymDead]() {
+  __dead() {
     release(this.child);
     this.emitter = void 0;
   }
@@ -3518,8 +3497,8 @@ var ComponentRenderNode = class {
     this.owned = /* @__PURE__ */ new Set();
     this.isMounted = false;
     this.resultAttached = false;
-    this[SymDebugName] = debugName ?? `component`;
-    this[SymRefcount] = 0;
+    this.__debugName = debugName ?? `component`;
+    this.__refcount = 0;
   }
   detach() {
     assert(this.result, "Invariant: missing component result");
@@ -3595,7 +3574,7 @@ var ComponentRenderNode = class {
     return this.result;
   }
   attach(emitter, parentXmlNamespace) {
-    assert(this[SymRefcount] > 0, "Invariant: dead ComponentRenderNode called attach");
+    assert(this.__refcount > 0, "Invariant: dead ComponentRenderNode called attach");
     this.emitter = emitter;
     this.parentXmlNamespace = parentXmlNamespace;
     const result = this.ensureResult();
@@ -3652,10 +3631,10 @@ var ComponentRenderNode = class {
   release() {
     release(this);
   }
-  [(SymDebugName, SymRefcount, SymAlive)]() {
+  __alive() {
     this.ensureResult();
   }
-  [SymDead]() {
+  __dead() {
     if (this.onDestroyCallbacks) {
       for (const callback of this.onDestroyCallbacks) {
         callback();
@@ -3709,10 +3688,10 @@ createElement.Fragment = Fragment;
 
 // src/model.ts
 var ModelPrototype = {
-  [SymDebugName]: "",
-  [SymRefcount]: 0,
-  [SymAlive]: noop,
-  [SymDead]: noop
+  __debugName: "",
+  __refcount: 0,
+  __alive: noop,
+  __dead: noop
 };
 var ModelEventType = /* @__PURE__ */ ((ModelEventType2) => {
   ModelEventType2["ADD"] = "add";
@@ -3741,15 +3720,15 @@ function model(target, debugName) {
       return dataAccessor.delete(prop);
     }
   };
-  const modelInterface = new TrackedDataHandle(target, proxyHandler, ModelPrototype, null, null, debugName);
+  const modelInterface = new TrackedDataHandle(target, proxyHandler, ModelPrototype, null, null, addModelEvent, addModelEvent, debugName);
   return modelInterface.revocable.proxy;
 }
 model.subscribe = function modelSubscribe(sourceModel, handler, debugName) {
   const sourceTDHandle = getTrackedDataHandle(sourceModel);
   assert(sourceTDHandle, "missing tdHandle");
   retain(sourceTDHandle.emitter);
-  const unsubscribe = sourceTDHandle.emitter.subscribe((events, offset) => {
-    handler(offset > 0 ? events.slice(offset) : events);
+  const unsubscribe = sourceTDHandle.emitter.subscribe((events) => {
+    handler(events);
   });
   return () => {
     unsubscribe();
@@ -3760,55 +3739,60 @@ model.keys = function modelKeys(sourceModel, debugName) {
   const sourceTDHandle = getTrackedDataHandle(sourceModel);
   assert(sourceTDHandle, "missing tdHandle");
   const initialKeys = Object.keys(sourceModel);
-  const derivedCollection = new TrackedDataHandle(initialKeys, ViewHandler, makeViewPrototype(sourceModel), sourceTDHandle.emitter, function* keysHandler(target, event) {
-    switch (event.type) {
-      case "del" /* DEL */: {
-        const index = target.indexOf(event.prop);
-        if (index !== -1) {
-          const prevLength = target.length;
-          target.splice(index, 1);
-          const newLength = target.length;
-          for (let i = index; i < target.length; ++i) {
-            derivedCollection.fieldMap.set(i.toString(), target[i]);
+  const derivedCollection = new TrackedDataHandle(initialKeys, ViewHandler, makeViewPrototype(sourceModel), sourceTDHandle.emitter, function* keysHandler(target, events) {
+    for (const event of events) {
+      switch (event.type) {
+        case "del" /* DEL */: {
+          const index = target.indexOf(event.prop);
+          if (index !== -1) {
+            const prevLength = target.length;
+            target.splice(index, 1);
+            const newLength = target.length;
+            for (let i = index; i < target.length; ++i) {
+              derivedCollection.fieldMap.set(i.toString(), target[i]);
+            }
+            for (let i = newLength; i < prevLength; ++i) {
+              derivedCollection.fieldMap.delete(i.toString());
+            }
+            derivedCollection.fieldMap.set("length", target.length);
+            yield {
+              type: "splice" /* SPLICE */,
+              index,
+              count: 1,
+              items: []
+            };
           }
-          for (let i = newLength; i < prevLength; ++i) {
-            derivedCollection.fieldMap.delete(i.toString());
-          }
+          break;
+        }
+        case "add" /* ADD */: {
+          const length = target.length;
+          target.push(event.prop);
+          derivedCollection.fieldMap.set(length.toString(), event.prop);
           derivedCollection.fieldMap.set("length", target.length);
           yield {
             type: "splice" /* SPLICE */,
-            index,
-            count: 1,
-            items: []
+            index: length,
+            count: 0,
+            items: [event.prop]
           };
+          break;
         }
-        break;
+        case "set" /* SET */:
+          break;
+        default:
+          assertExhausted(event);
       }
-      case "add" /* ADD */: {
-        const length = target.length;
-        target.push(event.prop);
-        derivedCollection.fieldMap.set(length.toString(), event.prop);
-        derivedCollection.fieldMap.set("length", target.length);
-        yield {
-          type: "splice" /* SPLICE */,
-          index: length,
-          count: 0,
-          items: [event.prop]
-        };
-        break;
-      }
-      case "set" /* SET */:
-        break;
-      default:
-        assertExhausted(event);
     }
-  }, debugName);
+  }, addArrayEvent, addModelEvent, debugName);
   return derivedCollection.revocable.proxy;
 };
+function addModelEvent(events, event) {
+  events.push(event);
+}
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.12.2" : "development";
+var VERSION = true ? "0.12.3" : "development";
 export {
   ArrayEventType,
   CalculationErrorType,
