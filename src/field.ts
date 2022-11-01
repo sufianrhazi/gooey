@@ -7,14 +7,6 @@ import {
     removeVertex,
     notifyRead,
 } from './engine';
-import {
-    SymProcessable,
-    SymDebugName,
-    SymDead,
-    SymAlive,
-    SymRecalculate,
-    SymRefcount,
-} from './symbols';
 
 type FieldSubscriber<T> = (val: T) => void;
 
@@ -25,19 +17,19 @@ export class Field<T> implements Processable, Retainable {
     private declare _subscribers?: Map<FieldSubscriber<T>, number>;
     private declare _changeClock: number;
 
-    declare [SymProcessable]: true;
-    declare [SymRefcount]: number;
-    declare [SymDebugName]: string;
+    declare __processable: true;
+    declare __refcount: number;
+    declare __debugName: string;
 
     constructor(val: T, debugName?: string) {
         this._val = val;
         this._isAlive = false;
         this._changeClock = 0;
 
-        this[SymProcessable] = true;
-        this[SymRefcount] = 0;
+        this.__processable = true;
+        this.__refcount = 0;
 
-        this[SymDebugName] = debugName ?? 'field';
+        this.__debugName = debugName ?? 'field';
     }
 
     get(): T {
@@ -63,17 +55,17 @@ export class Field<T> implements Processable, Retainable {
         return () => this._subscribers?.delete(subscriber);
     }
 
-    [SymAlive]() {
+    __alive() {
         this._isAlive = true;
         addVertex(this);
     }
 
-    [SymDead]() {
+    __dead() {
         removeVertex(this);
         this._isAlive = false;
     }
 
-    [SymRecalculate]() {
+    __recalculate() {
         log.assert(this._isAlive, 'cannot flush dead field');
         if (this._subscribers) {
             for (const [subscriber, observeClock] of this._subscribers) {

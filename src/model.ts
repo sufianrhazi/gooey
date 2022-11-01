@@ -6,16 +6,15 @@ import {
     ProxyHandler,
 } from './trackeddata';
 import { retain, release } from './engine';
-import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { ViewHandler, ViewImpl, makeViewPrototype, View } from './collection';
 import { noop } from './util';
 import { ArrayEvent, ArrayEventType, addArrayEvent } from './arrayevent';
 
 const ModelPrototype = {
-    [SymDebugName]: '',
-    [SymRefcount]: 0,
-    [SymAlive]: noop,
-    [SymDead]: noop,
+    __debugName: '',
+    __refcount: 0,
+    __alive: noop,
+    __dead: noop,
 };
 
 export enum ModelEventType {
@@ -29,7 +28,10 @@ export type ModelEvent =
     | { type: ModelEventType.SET; prop: string; value: any }
     | { type: ModelEventType.DEL; prop: string; value?: undefined };
 
-export type Model<T extends {}> = TrackedData<
+export type Model<T extends {}> = T;
+
+// Note: because model also has "private" fields (Retainable interface, __tdHandle), we lie
+type InternalModel<T extends {}> = TrackedData<
     T,
     typeof ModelPrototype,
     ModelEvent,
@@ -81,7 +83,9 @@ model.subscribe = function modelSubscribe<T extends {}>(
     handler: (event: ModelEvent[]) => void,
     debugName?: string
 ): () => void {
-    const sourceTDHandle = getTrackedDataHandle(sourceModel);
+    const sourceTDHandle = getTrackedDataHandle(
+        sourceModel as InternalModel<T>
+    );
     log.assert(sourceTDHandle, 'missing tdHandle');
     retain(sourceTDHandle.emitter);
     const unsubscribe = sourceTDHandle.emitter.subscribe((events) => {
@@ -97,7 +101,9 @@ model.keys = function modelKeys<T extends {}>(
     sourceModel: Model<T>,
     debugName?: string
 ): View<string, ModelEvent> {
-    const sourceTDHandle = getTrackedDataHandle(sourceModel);
+    const sourceTDHandle = getTrackedDataHandle(
+        sourceModel as InternalModel<T>
+    );
     log.assert(sourceTDHandle, 'missing tdHandle');
 
     const initialKeys = Object.keys(sourceModel);

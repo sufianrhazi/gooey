@@ -8,7 +8,6 @@ import {
     afterFlush,
     flush,
 } from './engine';
-import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { RefObjectOrCallback, Ref } from './ref';
 import { JSXNode, setAttribute, assignProp } from './jsx';
 import {
@@ -100,8 +99,8 @@ export class EmptyRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
     constructor() {
         this._type = RenderNodeType;
-        this[SymDebugName] = 'empty';
-        this[SymRefcount] = 0;
+        this.__debugName = 'empty';
+        this.__refcount = 0;
     }
 
     detach() {}
@@ -116,10 +115,10 @@ export class EmptyRenderNode implements RenderNode {
     }
 
     // Retainable
-    declare [SymDebugName]: string;
-    declare [SymRefcount]: number;
-    [SymAlive]() {}
-    [SymDead]() {}
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {}
+    __dead() {}
 }
 
 /**
@@ -139,8 +138,8 @@ export class TextRenderNode implements RenderNode {
         this._type = RenderNodeType;
         this.text = document.createTextNode(string);
 
-        this[SymDebugName] = debugName ?? 'text';
-        this[SymRefcount] = 0;
+        this.__debugName = debugName ?? 'text';
+        this.__refcount = 0;
     }
 
     detach() {
@@ -169,10 +168,10 @@ export class TextRenderNode implements RenderNode {
     }
 
     // Retainable
-    declare [SymDebugName]: string;
-    declare [SymRefcount]: number;
-    [SymAlive]() {}
-    [SymDead]() {
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {}
+    __dead() {
         this.emitter = undefined;
     }
 }
@@ -189,8 +188,8 @@ export class ForeignRenderNode implements RenderNode {
         this._type = RenderNodeType;
         this.node = node;
 
-        this[SymDebugName] = debugName ?? 'foreign';
-        this[SymRefcount] = 0;
+        this.__debugName = debugName ?? 'foreign';
+        this.__refcount = 0;
     }
 
     detach() {
@@ -219,10 +218,10 @@ export class ForeignRenderNode implements RenderNode {
     }
 
     // Retainable
-    declare [SymDebugName]: string;
-    declare [SymRefcount]: number;
-    [SymAlive]() {}
-    [SymDead]() {
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {}
+    __dead() {
         this.emitter = undefined;
     }
 }
@@ -243,8 +242,8 @@ export class ArrayRenderNode implements RenderNode {
         this.slotSizes = children.map(() => 0);
         this.attached = children.map(() => false);
 
-        this[SymDebugName] = debugName ?? 'array';
-        this[SymRefcount] = 0;
+        this.__debugName = debugName ?? 'array';
+        this.__refcount = 0;
     }
 
     detach() {
@@ -292,14 +291,14 @@ export class ArrayRenderNode implements RenderNode {
     }
 
     // Retainable
-    declare [SymDebugName]: string;
-    declare [SymRefcount]: number;
-    [SymAlive]() {
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {
         for (const child of this.children) {
             retain(child);
         }
     }
-    [SymDead]() {
+    __dead() {
         for (const child of this.children) {
             release(child);
         }
@@ -594,8 +593,8 @@ export class IntrinsicRenderNode implements RenderNode {
         this.children = new ArrayRenderNode(children);
         this.tagName = tagName;
 
-        this[SymDebugName] = debugName ?? `intrinsic:${this.tagName}`;
-        this[SymRefcount] = 0;
+        this.__debugName = debugName ?? `intrinsic:${this.tagName}`;
+        this.__refcount = 0;
     }
 
     private createElement(xmlNamespace: string) {
@@ -686,7 +685,7 @@ export class IntrinsicRenderNode implements RenderNode {
             } else {
                 log.warn(
                     'Unhandled error on detached IntrinsicRenderNode',
-                    this[SymDebugName],
+                    this.__debugName,
                     event
                 );
                 this.detachedError = event;
@@ -767,9 +766,9 @@ export class IntrinsicRenderNode implements RenderNode {
     }
 
     // Retainable
-    declare [SymDebugName]: string;
-    declare [SymRefcount]: number;
-    [SymAlive]() {
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {
         // At this point in time, we don't know for sure what the correct XML namespace is, as this could be an SVG
         // looking element that eventually gets placed within an SVG tree, which ought to result in an
         // SVGUnknownElement. So we take an educated guess;
@@ -787,7 +786,7 @@ export class IntrinsicRenderNode implements RenderNode {
                 : xmlNamespaceGuess
         );
     }
-    [SymDead]() {
+    __dead() {
         if (this.calculations) {
             for (const calculation of this.calculations.values()) {
                 release(calculation);
@@ -836,8 +835,8 @@ export class PortalRenderNode implements RenderNode {
         this.tagName = this.element.tagName;
         this.existingOffset = element.childNodes.length;
 
-        this[SymDebugName] = debugName ?? `mount:${this.tagName}`;
-        this[SymRefcount] = 0;
+        this.__debugName = debugName ?? `mount:${this.tagName}`;
+        this.__refcount = 0;
     }
 
     private handleEvent = (event: ArrayEvent<Node> | Error) => {
@@ -980,12 +979,12 @@ export class PortalRenderNode implements RenderNode {
     }
 
     // Retainable
-    declare [SymDebugName]: string;
-    declare [SymRefcount]: number;
-    [SymAlive]() {
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {
         retain(this.arrayRenderNode);
     }
-    [SymDead]() {
+    __dead() {
         if (this.calculations) {
             for (const calculation of this.calculations.values()) {
                 release(calculation);
@@ -1021,9 +1020,8 @@ export class CalculationRenderNode implements RenderNode {
         this.calculation = calculation;
         this.isMounted = false;
 
-        this[SymDebugName] =
-            debugName ?? `rendercalc:${calculation[SymDebugName]}`;
-        this[SymRefcount] = 0;
+        this.__debugName = debugName ?? `rendercalc:${calculation.__debugName}`;
+        this.__refcount = 0;
 
         this.subscribe = this.subscribe.bind(this);
     }
@@ -1106,9 +1104,9 @@ export class CalculationRenderNode implements RenderNode {
     }
 
     // Retainable
-    declare [SymDebugName]: string;
-    declare [SymRefcount]: number;
-    [SymAlive]() {
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {
         try {
             this.calculationSubscription = this.calculation.subscribe(
                 this.subscribe
@@ -1118,7 +1116,7 @@ export class CalculationRenderNode implements RenderNode {
             this.subscribe(CalculationErrorType.EXCEPTION, wrapError(e));
         }
     }
-    [SymDead]() {
+    __dead() {
         this.calculationSubscription?.();
         this.calculationSubscription = undefined;
         this.cleanPrior();
@@ -1145,8 +1143,8 @@ export class CollectionRenderNode implements RenderNode {
         this.slotSizes = [];
         this.isMounted = false;
 
-        this[SymDebugName] = debugName ?? `rendercoll`;
-        this[SymRefcount] = 0;
+        this.__debugName = debugName ?? `rendercoll`;
+        this.__refcount = 0;
     }
 
     attach(emitter: NodeEmitter, parentXmlNamespace: string) {
@@ -1320,9 +1318,9 @@ export class CollectionRenderNode implements RenderNode {
     };
 
     // Retainable
-    declare [SymDebugName]: string;
-    declare [SymRefcount]: number;
-    [SymAlive]() {
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {
         retain(this.collection);
         this.unsubscribe = this.collection.subscribe(
             this.handleCollectionEvent
@@ -1338,7 +1336,7 @@ export class CollectionRenderNode implements RenderNode {
             }
         });
     }
-    [SymDead]() {
+    __dead() {
         this.unsubscribe?.();
         release(this.collection);
         const removed = this.children.splice(0, this.children.length);
@@ -1502,8 +1500,8 @@ export class IntrinsicObserverRenderNode implements RenderNode {
         this.childNodes = [];
         this.isMounted = false;
 
-        this[SymDebugName] = debugName ?? `lifecycleobserver`;
-        this[SymRefcount] = 0;
+        this.__debugName = debugName ?? `lifecycleobserver`;
+        this.__refcount = 0;
     }
 
     notify(node: Node, type: IntrinsicObserverEventType) {
@@ -1583,12 +1581,12 @@ export class IntrinsicObserverRenderNode implements RenderNode {
     }
 
     // Retainable
-    declare [SymDebugName]: string;
-    declare [SymRefcount]: number;
-    [SymAlive]() {
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {
         retain(this.child);
     }
-    [SymDead]() {
+    __dead() {
         release(this.child);
         this.emitter = undefined;
     }
@@ -1637,8 +1635,8 @@ export class ComponentRenderNode<TProps> implements RenderNode {
 
         this.resultAttached = false;
 
-        this[SymDebugName] = debugName ?? `component`;
-        this[SymRefcount] = 0;
+        this.__debugName = debugName ?? `component`;
+        this.__refcount = 0;
     }
 
     detach() {
@@ -1740,7 +1738,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
 
     attach(emitter: NodeEmitter, parentXmlNamespace: string) {
         log.assert(
-            this[SymRefcount] > 0,
+            this.__refcount > 0,
             'Invariant: dead ComponentRenderNode called attach'
         );
         this.emitter = emitter;
@@ -1842,12 +1840,12 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     }
 
     // Retainable
-    declare [SymDebugName]: string;
-    declare [SymRefcount]: number;
-    [SymAlive]() {
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {
         this.ensureResult();
     }
-    [SymDead]() {
+    __dead() {
         if (this.onDestroyCallbacks) {
             for (const callback of this.onDestroyCallbacks) {
                 callback();

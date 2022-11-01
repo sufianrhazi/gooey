@@ -154,16 +154,6 @@ import {
     untrackReads,
     isProcessable,
 } from './engine';
-import {
-    SymProcessable,
-    SymCycle,
-    SymDebugName,
-    SymAlive,
-    SymDead,
-    SymInvalidate,
-    SymRecalculate,
-    SymRefcount,
-} from './symbols';
 import { wrapError } from './util';
 
 enum CalculationState {
@@ -317,7 +307,7 @@ function calculationCall<T>(calculation: Calculation<T>): T {
                 result = trackReads(
                     calculationReads,
                     () => calculation._fn(),
-                    calculation[SymDebugName]
+                    calculation.__debugName
                 );
             } catch (e) {
                 exception = e;
@@ -368,7 +358,7 @@ function calculationCall<T>(calculation: Calculation<T>): T {
                                       CalculationErrorType.EXCEPTION,
                                       exception
                                   ),
-                        calculation[SymDebugName]
+                        calculation.__debugName
                     );
                 }
 
@@ -537,7 +527,7 @@ function calculationCycle<T>(this: Calculation<T>) {
                             CalculationErrorType.CYCLE,
                             new Error('Cycle')
                         ),
-                    this[SymDebugName]
+                    this.__debugName
                 );
                 this._state = CalculationState.CACHED;
                 unmarkDirty(this);
@@ -587,16 +577,16 @@ export function calc<T>(fn: () => T, debugName?: string) {
         release: calcRelease,
 
         // Retainable
-        [SymAlive]: calculationAlive,
-        [SymDead]: calculationDead,
-        [SymRefcount]: 0,
+        __alive: calculationAlive,
+        __dead: calculationDead,
+        __refcount: 0,
 
         // Processable
-        [SymProcessable]: true,
-        [SymDebugName]: debugName ?? fn.name,
-        [SymRecalculate]: calculationRecalculate,
-        [SymCycle]: calculationCycle,
-        [SymInvalidate]: calculationInvalidate,
+        __processable: true,
+        __debugName: debugName ?? fn.name,
+        __recalculate: calculationRecalculate,
+        __cycle: calculationCycle,
+        __invalidate: calculationInvalidate,
     } as const;
     const calculation: Calculation<T> = Object.assign(
         () => calculationCall(calculation),

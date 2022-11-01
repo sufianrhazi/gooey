@@ -5,7 +5,6 @@ import {
     ProxyHandler,
 } from './trackeddata';
 import { untrackReads, retain, release, Retainable } from './engine';
-import { SymRefcount, SymAlive, SymDead, SymDebugName } from './symbols';
 import {
     ArrayEvent,
     ArrayEventType,
@@ -68,10 +67,10 @@ export function makeCollectionPrototype<T>(): CollectionImpl<T> {
         subscribe: collectionSubscribe,
 
         // Retainable
-        [SymRefcount]: 0,
-        [SymAlive]: collectionAlive,
-        [SymDead]: collectionDead,
-        [SymDebugName]: 'collection',
+        __refcount: 0,
+        __alive: collectionAlive,
+        __dead: collectionDead,
+        __debugName: 'collection',
     };
 }
 
@@ -124,20 +123,20 @@ export function makeViewPrototype<T>(
         subscribe: collectionSubscribe,
 
         // Retainable
-        [SymRefcount]: 0,
-        [SymAlive](this: View<T>) {
+        __refcount: 0,
+        __alive(this: View<T>) {
             retain(sourceCollection);
             const tdHandle = getTrackedDataHandle(this);
             log.assert(tdHandle, 'missing tdHandle');
             retain(tdHandle.fieldMap);
         },
-        [SymDead](this: View<T>) {
+        __dead(this: View<T>) {
             const tdHandle = getTrackedDataHandle(this);
             log.assert(tdHandle, 'missing tdHandle');
             release(tdHandle.fieldMap);
             release(sourceCollection);
         },
-        [SymDebugName]: 'collection',
+        __debugName: 'collection',
     };
 }
 
@@ -196,7 +195,7 @@ export const ViewHandler: ProxyHandler<ArrayEvent<any>> = {
         return dataAccessor.has(prop);
     },
     set: (dataAccessor, emitter, prop, value, receiver) => {
-        if (prop === SymRefcount) {
+        if (prop === '__refcount') {
             return dataAccessor.set(prop, value, receiver);
         }
         log.fail('Cannot mutate readonly view');

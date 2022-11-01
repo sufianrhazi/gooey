@@ -6,7 +6,6 @@ import {
     retain,
     release,
 } from './engine';
-import { SymDebugName, SymAlive, SymDead, SymRefcount } from './symbols';
 import { Field } from './field';
 
 export class FieldMap implements Retainable {
@@ -15,8 +14,8 @@ export class FieldMap implements Retainable {
     private declare consumer: (Retainable & Processable) | null;
     private declare emitter: (Retainable & Processable) | null;
 
-    declare [SymDebugName]: string;
-    declare [SymRefcount]: number;
+    declare __debugName: string;
+    declare __refcount: number;
 
     constructor(
         keysField: Field<number>,
@@ -24,8 +23,8 @@ export class FieldMap implements Retainable {
         emitter: (Retainable & Processable) | null,
         debugName?: string
     ) {
-        this[SymRefcount] = 0;
-        this[SymDebugName] = debugName ?? 'fieldmap';
+        this.__refcount = 0;
+        this.__debugName = debugName ?? 'fieldmap';
         this.keysField = keysField;
         this.fieldMap = new Map();
         this.consumer = consumer;
@@ -35,10 +34,10 @@ export class FieldMap implements Retainable {
     getOrMake(prop: string, val: any) {
         let field = this.fieldMap.get(prop);
         if (!field) {
-            field = new Field(val, `${this[SymDebugName]}:${prop}`);
+            field = new Field(val, `${this.__debugName}:${prop}`);
             this.fieldMap.set(prop, field);
 
-            if (this[SymRefcount] > 0) {
+            if (this.__refcount > 0) {
                 retain(field);
                 if (this.consumer) addSoftEdge(this.consumer, field);
                 if (this.emitter) addSoftEdge(field, this.emitter);
@@ -58,7 +57,7 @@ export class FieldMap implements Retainable {
             field.set(undefined);
             this.fieldMap.delete(prop);
 
-            if (this[SymRefcount] > 0) {
+            if (this.__refcount > 0) {
                 if (this.emitter) removeSoftEdge(field, this.emitter);
                 if (this.consumer) removeSoftEdge(this.consumer, field);
                 release(field);
@@ -66,7 +65,7 @@ export class FieldMap implements Retainable {
         }
     }
 
-    [SymDead]() {
+    __dead() {
         for (const field of this.fieldMap.values()) {
             if (this.emitter) removeSoftEdge(field, this.emitter);
             if (this.consumer) removeSoftEdge(this.consumer, field);
@@ -81,7 +80,7 @@ export class FieldMap implements Retainable {
         if (this.consumer) release(this.consumer);
     }
 
-    [SymAlive]() {
+    __alive() {
         if (this.emitter) retain(this.emitter);
         if (this.consumer) retain(this.consumer);
 

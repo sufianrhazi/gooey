@@ -1,19 +1,8 @@
 import { Retainable, notifyCreate, notifyRead } from './engine';
-import {
-    SymAlive,
-    SymDead,
-    SymRefcount,
-    SymDebugName,
-    SymProcessable,
-    isGooeySymbol,
-} from './symbols';
 import { FieldMap } from './fieldmap';
 import { Field } from './field';
-import * as log from './log';
 import { SubscriptionEmitter } from './subscriptionemitter';
 import { SubscriptionConsumer } from './subscriptionconsumer';
-
-const SymTDHandle = Symbol('tdHandle');
 
 export class TrackedDataHandle<
     TData extends object,
@@ -93,26 +82,21 @@ export class TrackedDataHandle<
 
         this.dataAccessor = {
             get: (prop, receiver) => {
-                if (prop === SymTDHandle) {
+                if (prop === '__tdHandle') {
                     return this;
                 }
-                if (prop === SymDebugName) {
+                if (prop === '__debugName') {
                     return debugName;
                 }
-                if (prop === SymProcessable) {
+                if (prop === '__processable') {
                     return false;
                 }
                 if (
-                    prop === SymRefcount ||
-                    prop === SymAlive ||
-                    prop === SymDead
+                    prop === '__refcount' ||
+                    prop === '__alive' ||
+                    prop === '__dead'
                 ) {
-                    return methods[
-                        prop as
-                            | typeof SymRefcount
-                            | typeof SymAlive
-                            | typeof SymDead
-                    ];
+                    return methods[prop];
                 }
                 if (typeof prop === 'symbol') {
                     return Reflect.get(this.target, prop, receiver);
@@ -120,11 +104,6 @@ export class TrackedDataHandle<
                 if (prop in methods) {
                     return (methods as any)[prop];
                 }
-                DEBUG &&
-                    log.assert(
-                        !isGooeySymbol(prop),
-                        'TrackedData accessor got unexpected internal symbol'
-                    );
                 const value = Reflect.get(this.target, prop, receiver);
                 const field = this.fieldMap.getOrMake(prop, value);
                 notifyRead(this.revocable.proxy);
@@ -132,32 +111,22 @@ export class TrackedDataHandle<
                 return value;
             },
             peekHas: (prop) => {
-                DEBUG &&
-                    log.assert(
-                        !isGooeySymbol(prop),
-                        'TrackedData accessor got unexpected internal symbol'
-                    );
                 return Reflect.has(target, prop);
             },
             has: (prop) => {
                 if (
-                    prop === SymRefcount ||
-                    prop === SymAlive ||
-                    prop === SymDead
+                    prop === '__refcount' ||
+                    prop === '__alive' ||
+                    prop === '__dead'
                 ) {
                     return prop in methods;
                 }
-                if (prop === SymProcessable) {
+                if (prop === '__processable') {
                     return true;
                 }
                 if (prop in methods) {
                     return true;
                 }
-                DEBUG &&
-                    log.assert(
-                        !isGooeySymbol(prop),
-                        'TrackedData accessor got unexpected internal symbol'
-                    );
                 if (typeof prop === 'symbol') {
                     return Reflect.has(this.target, prop);
                 }
@@ -168,18 +137,13 @@ export class TrackedDataHandle<
                 return value;
             },
             set: (prop, value, receiver) => {
-                if (prop === SymRefcount) {
-                    methods[prop as typeof SymRefcount] = value;
+                if (prop === '__refcount') {
+                    methods[prop] = value;
                     return true;
                 }
                 if (prop in methods) {
                     return false; // Prevent writes to owned methods
                 }
-                DEBUG &&
-                    log.assert(
-                        !isGooeySymbol(prop),
-                        'TrackedData accessor got unexpected internal symbol'
-                    );
                 if (typeof prop === 'symbol') {
                     return Reflect.set(this.target, prop, value, receiver);
                 }
@@ -194,21 +158,16 @@ export class TrackedDataHandle<
             },
             delete: (prop) => {
                 if (
-                    prop === SymRefcount ||
-                    prop === SymAlive ||
-                    prop === SymDead ||
-                    prop === SymProcessable
+                    prop === '__refcount' ||
+                    prop === '__alive' ||
+                    prop === '__dead' ||
+                    prop === '__processable'
                 ) {
                     return false; // Prevent deletes of internal symbols
                 }
                 if (prop in methods) {
                     return false; // Prevent deletes of owned methods
                 }
-                DEBUG &&
-                    log.assert(
-                        !isGooeySymbol(prop),
-                        'TrackedData accessor got unexpected internal symbol'
-                    );
                 if (typeof prop === 'symbol') {
                     return Reflect.deleteProperty(this.target, prop);
                 }
@@ -258,7 +217,7 @@ export type TrackedData<
     TConsumeEvent
 > = TData &
     TMethods & {
-        [SymTDHandle]: TrackedDataHandle<
+        __tdHandle: TrackedDataHandle<
             TData,
             TMethods,
             TEmitEvent,
@@ -274,7 +233,7 @@ export function getTrackedDataHandle<
 >(
     trackedData: TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>
 ): undefined | TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent> {
-    return trackedData[SymTDHandle];
+    return trackedData.__tdHandle;
 }
 
 export interface DataAccessor {

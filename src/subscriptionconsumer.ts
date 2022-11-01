@@ -11,14 +11,6 @@ import {
     release,
     removeVertex,
 } from './engine';
-import {
-    SymProcessable,
-    SymDebugName,
-    SymAlive,
-    SymDead,
-    SymRecalculate,
-    SymRefcount,
-} from './symbols';
 import { Field } from './field';
 import { SubscriptionEmitter } from './subscriptionemitter';
 
@@ -50,10 +42,10 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
     private declare appendEvent: (events: any[], event: any) => void;
 
     // Processable
-    declare [SymProcessable]: true;
-    declare [SymDebugName]: string;
+    declare __processable: true;
+    declare __debugName: string;
 
-    [SymRecalculate]() {
+    __recalculate() {
         for (const emitEvent of this.handler(this.target, this.events)) {
             this.transformEmitter.addEvent(emitEvent);
         }
@@ -62,9 +54,9 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
     }
 
     // Retainable
-    declare [SymRefcount]: number;
+    declare __refcount: number;
 
-    [SymAlive]() {
+    __alive() {
         this.isActive = true;
         addVertex(this);
         retain(this.sourceEmitter);
@@ -76,7 +68,7 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
         });
     }
 
-    [SymDead]() {
+    __dead() {
         if (this.unsubscribe) {
             this.unsubscribe();
             removeHardEdge(this.sourceEmitter, this);
@@ -102,9 +94,9 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
         this.sourceEmitter = sourceEmitter;
         this.transformEmitter = transformEmitter;
         this.appendEvent = appendEvent;
-        this[SymRefcount] = 0;
-        this[SymProcessable] = true;
-        this[SymDebugName] = `consumer:${debugName}`;
+        this.__refcount = 0;
+        this.__processable = true;
+        this.__debugName = `consumer:${debugName}`;
     }
 
     addEvent(event: TConsumeEvent) {

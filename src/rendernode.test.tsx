@@ -20,7 +20,6 @@ import {
     Component,
 } from './rendernode';
 import { ArrayEventType } from './arrayevent';
-import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
 
 const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
@@ -37,13 +36,13 @@ class TracingRenderNode implements RenderNode {
     public _type: typeof RenderNodeType = RenderNodeType;
     public events: any[];
     public emitter: NodeEmitter | null;
-    public [SymRefcount]: number;
-    public [SymDebugName]: string;
+    public __refcount: number;
+    public __debugName: string;
 
     constructor() {
         this.events = [];
-        this[SymRefcount] = 0;
-        this[SymDebugName] = 'TracingRenderNode';
+        this.__refcount = 0;
+        this.__debugName = 'TracingRenderNode';
         this.emitter = null;
     }
 
@@ -80,11 +79,11 @@ class TracingRenderNode implements RenderNode {
         this.events.push('release');
     }
 
-    [SymAlive]() {
+    __alive() {
         this.events.push('alive');
     }
 
-    [SymDead]() {
+    __dead() {
         this.events.push('dead');
     }
 }

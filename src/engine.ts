@@ -1,34 +1,24 @@
 import * as log from './log';
 import { noop } from './util';
 import { Graph, ProcessAction } from './graph';
-import {
-    SymDebugName,
-    SymRefcount,
-    SymAlive,
-    SymDead,
-    SymRecalculate,
-    SymCycle,
-    SymInvalidate,
-    SymProcessable,
-} from './symbols';
 
 export interface Retainable {
-    [SymDebugName]: string;
-    [SymRefcount]: number;
-    [SymAlive]: () => void;
-    [SymDead]: () => void;
+    __debugName: string;
+    __refcount: number;
+    __alive: () => void;
+    __dead: () => void;
 }
 
 export interface Processable {
-    [SymProcessable]: true;
-    [SymDebugName]: string;
-    [SymRecalculate]?: () => boolean;
-    [SymCycle]?: () => boolean;
-    [SymInvalidate]?: () => boolean;
+    __processable: true;
+    __debugName: string;
+    __recalculate?: () => boolean;
+    __cycle?: () => boolean;
+    __invalidate?: () => boolean;
 }
 
 export function isProcessable(val: any): val is Processable {
-    return val && val[SymProcessable] === true;
+    return val && val.__processable === true;
 }
 
 let globalDependencyGraph = new Graph<Processable>(processHandler);
@@ -99,13 +89,13 @@ export function retain(retainable: Retainable) {
     DEBUG &&
         log.debug(
             'retain',
-            retainable[SymDebugName],
+            retainable.__debugName,
             'was',
-            retainable[SymRefcount]
+            retainable.__refcount
         );
-    retainable[SymRefcount] += 1;
-    if (retainable[SymRefcount] === 1) {
-        retainable[SymAlive]();
+    retainable.__refcount += 1;
+    if (retainable.__refcount === 1) {
+        retainable.__alive();
     }
 }
 
@@ -113,32 +103,27 @@ export function release(retainable: Retainable) {
     DEBUG &&
         log.debug(
             'release',
-            retainable[SymDebugName],
+            retainable.__debugName,
             'was',
-            retainable[SymRefcount]
+            retainable.__refcount
         );
-    log.assert(retainable[SymRefcount] > 0, 'double release');
-    if (retainable[SymRefcount] === 1) {
-        retainable[SymDead]();
+    log.assert(retainable.__refcount > 0, 'double release');
+    if (retainable.__refcount === 1) {
+        retainable.__dead();
     }
-    retainable[SymRefcount] -= 1;
+    retainable.__refcount -= 1;
 }
 
 function processHandler(vertex: Processable, action: ProcessAction) {
     DEBUG &&
-        log.debug(
-            'process',
-            ProcessAction[action],
-            vertex[SymDebugName],
-            vertex
-        );
+        log.debug('process', ProcessAction[action], vertex.__debugName, vertex);
     switch (action) {
         case ProcessAction.INVALIDATE:
-            return vertex[SymInvalidate]?.() ?? false;
+            return vertex.__invalidate?.() ?? false;
         case ProcessAction.RECALCULATE:
-            return vertex[SymRecalculate]?.() ?? false;
+            return vertex.__recalculate?.() ?? false;
         case ProcessAction.CYCLE:
-            return vertex[SymCycle]?.() ?? false;
+            return vertex.__cycle?.() ?? false;
         default:
             log.assertExhausted(action, 'unknown action');
     }
@@ -166,12 +151,12 @@ export function afterFlush(fn: () => void) {
 }
 
 export function addVertex(vertex: Processable) {
-    DEBUG && log.debug('addVertex', vertex[SymDebugName]);
+    DEBUG && log.debug('addVertex', vertex.__debugName);
     globalDependencyGraph.addVertex(vertex);
 }
 
 export function removeVertex(vertex: Processable) {
-    DEBUG && log.debug('removeVertex', vertex[SymDebugName]);
+    DEBUG && log.debug('removeVertex', vertex.__debugName);
     globalDependencyGraph.removeVertex(vertex);
 }
 
@@ -179,9 +164,9 @@ export function addHardEdge(fromVertex: Processable, toVertex: Processable) {
     DEBUG &&
         log.debug(
             'add edge:hard',
-            fromVertex[SymDebugName],
+            fromVertex.__debugName,
             '->',
-            toVertex[SymDebugName]
+            toVertex.__debugName
         );
     globalDependencyGraph.addEdge(fromVertex, toVertex, Graph.EDGE_HARD);
 }
@@ -190,9 +175,9 @@ export function addSoftEdge(fromVertex: Processable, toVertex: Processable) {
     DEBUG &&
         log.debug(
             'add edge:soft',
-            fromVertex[SymDebugName],
+            fromVertex.__debugName,
             '->',
-            toVertex[SymDebugName]
+            toVertex.__debugName
         );
     globalDependencyGraph.addEdge(fromVertex, toVertex, Graph.EDGE_SOFT);
 }
@@ -201,9 +186,9 @@ export function removeHardEdge(fromVertex: Processable, toVertex: Processable) {
     DEBUG &&
         log.debug(
             'del edge:hard',
-            fromVertex[SymDebugName],
+            fromVertex.__debugName,
             '->',
-            toVertex[SymDebugName]
+            toVertex.__debugName
         );
     globalDependencyGraph.removeEdge(fromVertex, toVertex, Graph.EDGE_HARD);
 }
@@ -212,26 +197,26 @@ export function removeSoftEdge(fromVertex: Processable, toVertex: Processable) {
     DEBUG &&
         log.debug(
             'del edge:soft',
-            fromVertex[SymDebugName],
+            fromVertex.__debugName,
             '->',
-            toVertex[SymDebugName]
+            toVertex.__debugName
         );
     globalDependencyGraph.removeEdge(fromVertex, toVertex, Graph.EDGE_SOFT);
 }
 
 export function markDirty(vertex: Processable) {
-    DEBUG && log.debug('dirty', vertex[SymDebugName]);
+    DEBUG && log.debug('dirty', vertex.__debugName);
     globalDependencyGraph.markVertexDirty(vertex);
     scheduleFlush();
 }
 
 export function unmarkDirty(vertex: Processable) {
-    DEBUG && log.debug('clean', vertex[SymDebugName]);
+    DEBUG && log.debug('clean', vertex.__debugName);
     globalDependencyGraph.clearVertexDirty(vertex);
 }
 
 export function markCycleInformed(vertex: Processable) {
-    DEBUG && log.debug('cycle informed', vertex[SymDebugName]);
+    DEBUG && log.debug('cycle informed', vertex.__debugName);
     globalDependencyGraph.markVertexCycleInformed(vertex);
 }
 
@@ -306,7 +291,7 @@ export function notifyCreate(retainable: Retainable) {
         DEBUG &&
             log.debug(
                 'notifying dependency',
-                retainable[SymDebugName],
+                retainable.__debugName,
                 'to was created'
             );
         if (!createSet.has(retainable)) {
@@ -322,7 +307,7 @@ export function notifyRead(dependency: Retainable) {
         DEBUG &&
             log.debug(
                 'adding dependency',
-                dependency[SymDebugName],
+                dependency.__debugName,
                 'to active calculation'
             );
         if (!calculationReads.has(dependency)) {
@@ -336,9 +321,7 @@ export function debug(activeVertex?: Processable, label?: string) {
     return globalDependencyGraph.debug((vertex) => {
         return {
             isActive: vertex === activeVertex,
-            name: `${vertex[SymDebugName]} (rc=${
-                (vertex as any)[SymRefcount]
-            })`,
+            name: `${vertex.__debugName} (rc=${(vertex as any).__refcount})`,
         };
     }, label);
 }
@@ -347,7 +330,7 @@ export function debugSubscribe(fn: (label: string, graphviz: string) => void) {
     return globalDependencyGraph.debugSubscribe((vertex) => {
         return {
             isActive: false,
-            name: vertex[SymDebugName],
+            name: vertex.__debugName,
         };
     }, fn);
 }

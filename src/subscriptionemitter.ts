@@ -5,14 +5,6 @@ import {
     addVertex,
     removeVertex,
 } from './engine';
-import {
-    SymProcessable,
-    SymDebugName,
-    SymAlive,
-    SymDead,
-    SymRecalculate,
-    SymRefcount,
-} from './symbols';
 import * as log from './log';
 
 type SubscriptionEmitterHandler<TEmitEvent> = {
@@ -34,10 +26,10 @@ export class SubscriptionEmitter<TEmitEvent>
     private declare isActive: boolean;
 
     // Processable
-    declare [SymProcessable]: true;
-    declare [SymDebugName]: string;
+    declare __processable: true;
+    declare __debugName: string;
 
-    [SymRecalculate]() {
+    __recalculate() {
         for (const subscriber of this.subscribers) {
             subscriber.handler(subscriber.events);
             subscriber.events = [];
@@ -46,14 +38,14 @@ export class SubscriptionEmitter<TEmitEvent>
     }
 
     // Retainable
-    declare [SymRefcount]: number;
+    declare __refcount: number;
 
-    [SymAlive]() {
+    __alive() {
         this.isActive = true;
         addVertex(this);
     }
 
-    [SymDead]() {
+    __dead() {
         log.assert(
             this.subscribers.length === 0,
             'released subscription emitter that had subscribers'
@@ -69,9 +61,9 @@ export class SubscriptionEmitter<TEmitEvent>
         this.appendEvent = appendEvent;
         this.subscribers = [];
         this.isActive = false;
-        this[SymRefcount] = 0;
-        this[SymProcessable] = true;
-        this[SymDebugName] = `emitter:${debugName}`;
+        this.__refcount = 0;
+        this.__processable = true;
+        this.__debugName = `emitter:${debugName}`;
     }
 
     addEvent(event: TEmitEvent) {
