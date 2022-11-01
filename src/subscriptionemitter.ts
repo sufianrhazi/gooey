@@ -16,15 +16,21 @@ import {
 import * as log from './log';
 
 type SubscriptionEmitterHandler<TEmitEvent> = {
-    bivarianceHack(events: TEmitEvent[], index: number): void;
+    bivarianceHack(events: TEmitEvent[]): void;
 }['bivarianceHack'];
 
 export class SubscriptionEmitter<TEmitEvent>
     implements Processable, Retainable
 {
-    private declare subscribers: SubscriptionEmitterHandler<TEmitEvent>[];
-    private declare subscriberOffset: number[];
-    private declare events: TEmitEvent[];
+    /** Per-emitter function to add an event to the sequence of events for a subscriber */
+    // Note: for reasons I don't understand; this cannot be typed as:
+    //     private declare appendEvent: (events: TEmitEvent[], event: TEmitEvent) => void;
+    // without causing bizarre type errors across the application
+    private declare appendEvent: (events: any[], event: any) => void;
+    private declare subscribers: {
+        handler: SubscriptionEmitterHandler<TEmitEvent>;
+        events: TEmitEvent[];
+    }[];
     private declare isActive: boolean;
 
     // Processable
@@ -32,12 +38,10 @@ export class SubscriptionEmitter<TEmitEvent>
     declare [SymDebugName]: string;
 
     [SymRecalculate]() {
-        for (let i = 0; i < this.subscribers.length; ++i) {
-            const subscriber = this.subscribers[i];
-            subscriber(this.events, this.subscriberOffset[i]);
-            this.subscriberOffset[i] = 0;
+        for (const subscriber of this.subscribers) {
+            subscriber.handler(subscriber.events);
+            subscriber.events = [];
         }
-        this.events.splice(0, this.events.length);
         return true;
     }
 
@@ -54,19 +58,16 @@ export class SubscriptionEmitter<TEmitEvent>
             this.subscribers.length === 0,
             'released subscription emitter that had subscribers'
         );
-        log.assert(
-            this.subscriberOffset.length === 0,
-            'released subscription emitter that had subscribers'
-        );
-        this.events.splice(0, this.events.length);
         removeVertex(this);
         this.isActive = false;
     }
 
-    constructor(debugName: string) {
+    constructor(
+        appendEvent: (events: TEmitEvent[], event: TEmitEvent) => void,
+        debugName: string
+    ) {
+        this.appendEvent = appendEvent;
         this.subscribers = [];
-        this.subscriberOffset = [];
-        this.events = [];
         this.isActive = false;
         this[SymRefcount] = 0;
         this[SymProcessable] = true;
@@ -75,20 +76,24 @@ export class SubscriptionEmitter<TEmitEvent>
 
     addEvent(event: TEmitEvent) {
         if (!this.isActive) return;
-        const length = this.events.push(event);
-        if (length === 1) {
+        let firstAdded = false;
+        for (const subscriber of this.subscribers) {
+            if (subscriber.events.length === 0) firstAdded = true;
+            this.appendEvent(subscriber.events, event);
+        }
+        if (firstAdded) {
             markDirty(this);
         }
     }
 
     subscribe(handler: SubscriptionEmitterHandler<TEmitEvent>) {
-        this.subscribers.push(handler);
-        this.subscriberOffset.push(this.events.length);
+        this.subscribers.push({ handler, events: [] });
         return () => {
-            const index = this.subscribers.indexOf(handler);
+            const index = this.subscribers.findIndex(
+                (subscriber) => subscriber.handler === handler
+            );
             if (index === -1) return;
             this.subscribers.splice(index, 1);
-            this.subscriberOffset.splice(index, 1);
         };
     }
 }

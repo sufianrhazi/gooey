@@ -6,7 +6,12 @@ import {
 } from './trackeddata';
 import { untrackReads, retain, release, Retainable } from './engine';
 import { SymRefcount, SymAlive, SymDead, SymDebugName } from './symbols';
-import { ArrayEvent, ArrayEventType, arrayEventFlatMap } from './arrayevent';
+import {
+    ArrayEvent,
+    ArrayEventType,
+    arrayEventFlatMap,
+    addArrayEvent,
+} from './arrayevent';
 import * as log from './log';
 
 export interface CollectionImpl<T> extends Retainable {
@@ -213,6 +218,8 @@ export function collection<T>(items: T[], debugName?: string): Collection<T> {
         makeCollectionPrototype(),
         null,
         null,
+        addArrayEvent,
+        addArrayEvent,
         debugName
     );
     return handle.revocable.proxy;
@@ -385,8 +392,8 @@ function collectionSubscribe<T>(
     >(this);
     log.assert(tdHandle, 'subscribe missing tdHandle');
     retain(tdHandle.emitter);
-    const unsubscribe = tdHandle.emitter.subscribe((events, offset) => {
-        handler(offset > 0 ? events.slice(offset) : events);
+    const unsubscribe = tdHandle.emitter.subscribe((events) => {
+        handler(events);
     });
     return () => {
         unsubscribe();
@@ -549,22 +556,63 @@ function makeFlatMapView<T, V>(
         ViewHandler,
         makeViewPrototype(sourceCollection),
         sourceTDHandle.emitter,
-        function* (target, event) {
-            const lengthStart = initialTransform.length;
-            yield* arrayEventFlatMap(
-                slotSizes,
-                flatMap,
-                initialTransform,
-                event
-            );
-            // Invalidate affected ranges
-            switch (event.type) {
-                case ArrayEventType.SPLICE: {
-                    const lengthEnd = initialTransform.length;
-                    if (lengthStart === lengthEnd) {
+        function* (target, events: ArrayEvent<T>[]) {
+            for (const event of events) {
+                const lengthStart = initialTransform.length;
+                // Oops this is accidentally quadratic!
+                yield* arrayEventFlatMap(
+                    slotSizes,
+                    flatMap,
+                    initialTransform,
+                    event
+                );
+                // Invalidate affected ranges
+                switch (event.type) {
+                    case ArrayEventType.SPLICE: {
+                        const lengthEnd = initialTransform.length;
+                        if (lengthStart === lengthEnd) {
+                            for (
+                                let i = event.index;
+                                i < event.index + event.count;
+                                ++i
+                            ) {
+                                derivedCollection.fieldMap.set(
+                                    i.toString(),
+                                    initialTransform[i]
+                                );
+                            }
+                        } else {
+                            for (let i = event.index; i < lengthEnd; ++i) {
+                                derivedCollection.fieldMap.set(
+                                    i.toString(),
+                                    initialTransform[i]
+                                );
+                            }
+                            for (let i = lengthEnd; i < lengthStart; ++i) {
+                                derivedCollection.fieldMap.delete(i.toString());
+                            }
+                            derivedCollection.fieldMap.set('length', lengthEnd);
+                        }
+                        break;
+                    }
+                    case ArrayEventType.MOVE: {
+                        const lowerBound = Math.min(event.from, event.to);
+                        const upperBound = Math.max(
+                            event.from + event.count,
+                            event.to + event.count
+                        );
+                        for (let i = lowerBound; i < upperBound; ++i) {
+                            derivedCollection.fieldMap.set(
+                                i.toString(),
+                                initialTransform[i]
+                            );
+                        }
+                        break;
+                    }
+                    case ArrayEventType.SORT:
                         for (
-                            let i = event.index;
-                            i < event.index + event.count;
+                            let i = event.from;
+                            i < event.from + event.indexes.length;
                             ++i
                         ) {
                             derivedCollection.fieldMap.set(
@@ -572,48 +620,12 @@ function makeFlatMapView<T, V>(
                                 initialTransform[i]
                             );
                         }
-                    } else {
-                        for (let i = event.index; i < lengthEnd; ++i) {
-                            derivedCollection.fieldMap.set(
-                                i.toString(),
-                                initialTransform[i]
-                            );
-                        }
-                        for (let i = lengthEnd; i < lengthStart; ++i) {
-                            derivedCollection.fieldMap.delete(i.toString());
-                        }
-                        derivedCollection.fieldMap.set('length', lengthEnd);
-                    }
-                    break;
+                        break;
                 }
-                case ArrayEventType.MOVE: {
-                    const lowerBound = Math.min(event.from, event.to);
-                    const upperBound = Math.max(
-                        event.from + event.count,
-                        event.to + event.count
-                    );
-                    for (let i = lowerBound; i < upperBound; ++i) {
-                        derivedCollection.fieldMap.set(
-                            i.toString(),
-                            initialTransform[i]
-                        );
-                    }
-                    break;
-                }
-                case ArrayEventType.SORT:
-                    for (
-                        let i = event.from;
-                        i < event.from + event.indexes.length;
-                        ++i
-                    ) {
-                        derivedCollection.fieldMap.set(
-                            i.toString(),
-                            initialTransform[i]
-                        );
-                    }
-                    break;
             }
         },
+        addArrayEvent,
+        addArrayEvent,
         debugName ?? 'derived'
     );
 

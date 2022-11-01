@@ -25,7 +25,7 @@ import { SubscriptionEmitter } from './subscriptionemitter';
 type SubscriptionConsumerHandler<TData, TConsumeEvent, TEmitEvent> = {
     bivarianceHack(
         target: TData,
-        event: TConsumeEvent
+        events: TConsumeEvent[]
     ): IterableIterator<TEmitEvent>;
 }['bivarianceHack'];
 
@@ -44,15 +44,18 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
     private declare transformEmitter: SubscriptionEmitter<TEmitEvent>;
     private declare unsubscribe?: () => void;
 
+    // Note: for reasons I don't understand; this cannot be typed as:
+    //     private declare appendEvent: (events: TConsumeEvent[], event: TConsumeEvent) => void;
+    // without causing bizarre type errors across the application
+    private declare appendEvent: (events: any[], event: any) => void;
+
     // Processable
     declare [SymProcessable]: true;
     declare [SymDebugName]: string;
 
     [SymRecalculate]() {
-        for (const event of this.events) {
-            for (const emitEvent of this.handler(this.target, event)) {
-                this.transformEmitter.addEvent(emitEvent);
-            }
+        for (const emitEvent of this.handler(this.target, this.events)) {
+            this.transformEmitter.addEvent(emitEvent);
         }
         this.events.splice(0, this.events.length);
         return false;
@@ -66,9 +69,9 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
         addVertex(this);
         retain(this.sourceEmitter);
         addHardEdge(this.sourceEmitter, this);
-        this.unsubscribe = this.sourceEmitter.subscribe((events, offset) => {
-            for (let i = offset; i < events.length; ++i) {
-                this.addEvent(events[i]);
+        this.unsubscribe = this.sourceEmitter.subscribe((events) => {
+            for (const event of events) {
+                this.addEvent(event);
             }
         });
     }
@@ -89,6 +92,7 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
         sourceEmitter: SubscriptionEmitter<TConsumeEvent>,
         transformEmitter: SubscriptionEmitter<TEmitEvent>,
         handler: SubscriptionConsumerHandler<TData, TConsumeEvent, TEmitEvent>,
+        appendEvent: (events: TConsumeEvent[], event: TConsumeEvent) => void,
         debugName: string
     ) {
         this.target = target;
@@ -97,6 +101,7 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
         this.isActive = false;
         this.sourceEmitter = sourceEmitter;
         this.transformEmitter = transformEmitter;
+        this.appendEvent = appendEvent;
         this[SymRefcount] = 0;
         this[SymProcessable] = true;
         this[SymDebugName] = `consumer:${debugName}`;
@@ -104,8 +109,9 @@ export class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent>
 
     addEvent(event: TConsumeEvent) {
         if (!this.isActive) return;
-        const length = this.events.push(event);
-        if (length === 1) {
+        const firstEvent = this.events.length === 0;
+        this.appendEvent(this.events, event);
+        if (firstEvent) {
             markDirty(this);
         }
     }

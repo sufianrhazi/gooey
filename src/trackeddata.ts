@@ -44,25 +44,34 @@ export class TrackedDataHandle<
         proxyHandler: ProxyHandler<TEmitEvent>,
         methods: TMethods,
         derivedEmitter: null | SubscriptionEmitter<TConsumeEvent>,
-        handleEvent:
+        handleEvents:
             | null
             | ((
                   target: TData,
-                  event: TConsumeEvent
+                  events: TConsumeEvent[]
               ) => IterableIterator<TEmitEvent>),
+        appendEmitEvent: (events: TEmitEvent[], event: TEmitEvent) => void,
+        appendConsumeEvent: (
+            events: TConsumeEvent[],
+            event: TConsumeEvent
+        ) => void,
         debugName = 'trackeddata'
     ) {
         this.target = target;
         this.methods = methods;
 
-        this.emitter = new SubscriptionEmitter<TEmitEvent>(debugName);
+        this.emitter = new SubscriptionEmitter<TEmitEvent>(
+            appendEmitEvent,
+            debugName
+        );
 
-        if (derivedEmitter && handleEvent) {
+        if (derivedEmitter && handleEvents) {
             this.consumer = new SubscriptionConsumer(
                 target,
                 derivedEmitter,
                 this.emitter,
-                handleEvent,
+                handleEvents,
+                appendConsumeEvent,
                 debugName
             );
         } else {

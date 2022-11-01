@@ -181,3 +181,30 @@ export function* arrayEventFlatMap<T, V>(
             log.assertExhausted(event);
     }
 }
+
+export function addArrayEvent<T>(
+    events: ArrayEvent<T>[],
+    event: ArrayEvent<T>
+) {
+    const lastEvent = events.length > 0 ? events[events.length - 1] : null;
+    if (
+        lastEvent &&
+        event.type === ArrayEventType.SPLICE &&
+        lastEvent.type === ArrayEventType.SPLICE
+    ) {
+        // Case 1: The insertion point of the next event is at the splice end of the last event
+        // - In this case, we add to the event's count and append items
+        const lastEventSpliceEnd =
+            lastEvent.index + (lastEvent.items?.length ?? 0);
+        if (lastEventSpliceEnd === event.index) {
+            lastEvent.count += event.count;
+            if (lastEvent.items && event.items) {
+                lastEvent.items.push(...event.items);
+            } else if (event.items) {
+                lastEvent.items = event.items;
+            }
+            return;
+        }
+    }
+    events.push(event);
+}

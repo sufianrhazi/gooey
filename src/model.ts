@@ -9,7 +9,7 @@ import { retain, release } from './engine';
 import { SymDebugName, SymRefcount, SymAlive, SymDead } from './symbols';
 import { ViewHandler, ViewImpl, makeViewPrototype, View } from './collection';
 import { noop } from './util';
-import { ArrayEvent, ArrayEventType } from './arrayevent';
+import { ArrayEvent, ArrayEventType, addArrayEvent } from './arrayevent';
 
 const ModelPrototype = {
     [SymDebugName]: '',
@@ -63,7 +63,16 @@ export function model<T extends {}>(target: T, debugName?: string): Model<T> {
         typeof ModelPrototype,
         ModelEvent,
         ModelEvent
-    >(target, proxyHandler, ModelPrototype, null, null, debugName);
+    >(
+        target,
+        proxyHandler,
+        ModelPrototype,
+        null,
+        null,
+        addModelEvent,
+        addModelEvent,
+        debugName
+    );
     return modelInterface.revocable.proxy;
 }
 
@@ -75,8 +84,8 @@ model.subscribe = function modelSubscribe<T extends {}>(
     const sourceTDHandle = getTrackedDataHandle(sourceModel);
     log.assert(sourceTDHandle, 'missing tdHandle');
     retain(sourceTDHandle.emitter);
-    const unsubscribe = sourceTDHandle.emitter.subscribe((events, offset) => {
-        handler(offset > 0 ? events.slice(offset) : events);
+    const unsubscribe = sourceTDHandle.emitter.subscribe((events) => {
+        handler(events);
     });
     return () => {
         unsubscribe();
@@ -105,65 +114,77 @@ model.keys = function modelKeys<T extends {}>(
         sourceTDHandle.emitter,
         function* keysHandler(
             target: string[],
-            event: ModelEvent
+            events: ModelEvent[]
         ): IterableIterator<ArrayEvent<string>> {
-            switch (event.type) {
-                case ModelEventType.DEL: {
-                    const index = target.indexOf(event.prop);
-                    if (index !== -1) {
-                        const prevLength = target.length;
-                        target.splice(index, 1);
-                        const newLength = target.length;
+            for (const event of events) {
+                switch (event.type) {
+                    case ModelEventType.DEL: {
+                        const index = target.indexOf(event.prop);
+                        if (index !== -1) {
+                            const prevLength = target.length;
+                            target.splice(index, 1);
+                            const newLength = target.length;
+
+                            // Invalidate ranges
+                            for (let i = index; i < target.length; ++i) {
+                                derivedCollection.fieldMap.set(
+                                    i.toString(),
+                                    target[i]
+                                );
+                            }
+                            for (let i = newLength; i < prevLength; ++i) {
+                                derivedCollection.fieldMap.delete(i.toString());
+                            }
+                            derivedCollection.fieldMap.set(
+                                'length',
+                                target.length
+                            );
+
+                            yield {
+                                type: ArrayEventType.SPLICE,
+                                index,
+                                count: 1,
+                                items: [],
+                            };
+                        }
+                        break;
+                    }
+                    case ModelEventType.ADD: {
+                        const length = target.length;
+                        target.push(event.prop);
 
                         // Invalidate ranges
-                        for (let i = index; i < target.length; ++i) {
-                            derivedCollection.fieldMap.set(
-                                i.toString(),
-                                target[i]
-                            );
-                        }
-                        for (let i = newLength; i < prevLength; ++i) {
-                            derivedCollection.fieldMap.delete(i.toString());
-                        }
+                        derivedCollection.fieldMap.set(
+                            length.toString(),
+                            event.prop
+                        );
                         derivedCollection.fieldMap.set('length', target.length);
 
                         yield {
                             type: ArrayEventType.SPLICE,
-                            index,
-                            count: 1,
-                            items: [],
+                            index: length,
+                            count: 0,
+                            items: [event.prop],
                         };
+                        break;
                     }
-                    break;
+                    case ModelEventType.SET:
+                        // Preexisting key
+                        break;
+                    default:
+                        log.assertExhausted(event);
                 }
-                case ModelEventType.ADD: {
-                    const length = target.length;
-                    target.push(event.prop);
-
-                    // Invalidate ranges
-                    derivedCollection.fieldMap.set(
-                        length.toString(),
-                        event.prop
-                    );
-                    derivedCollection.fieldMap.set('length', target.length);
-
-                    yield {
-                        type: ArrayEventType.SPLICE,
-                        index: length,
-                        count: 0,
-                        items: [event.prop],
-                    };
-                    break;
-                }
-                case ModelEventType.SET:
-                    // Preexisting key
-                    break;
-                default:
-                    log.assertExhausted(event);
             }
         },
+        addArrayEvent,
+        addModelEvent,
         debugName
     );
 
     return derivedCollection.revocable.proxy;
 };
+
+function addModelEvent(events: ModelEvent[], event: ModelEvent) {
+    // TODO: make smarter
+    events.push(event);
+}
