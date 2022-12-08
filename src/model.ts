@@ -44,7 +44,10 @@ export function model<T extends {}>(target: T, debugName?: string): Model<T> {
             dataAccessor.get(prop, receiver),
         has: (dataAccessor, emitter, prop) => dataAccessor.has(prop),
         set: (dataAccessor, emitter, prop, value, receiver) => {
-            if (typeof prop === 'string') {
+            if (
+                typeof prop === 'string' &&
+                !Object.prototype.hasOwnProperty.call(ModelPrototype, prop)
+            ) {
                 if (dataAccessor.peekHas(prop)) {
                     emitter({ type: ModelEventType.SET, prop, value });
                 } else {
@@ -54,7 +57,11 @@ export function model<T extends {}>(target: T, debugName?: string): Model<T> {
             return dataAccessor.set(prop, value, receiver);
         },
         delete: (dataAccessor, emitter, prop) => {
-            if (typeof prop === 'string' && dataAccessor.peekHas(prop)) {
+            if (
+                typeof prop === 'string' &&
+                !Object.prototype.hasOwnProperty.call(ModelPrototype, prop) &&
+                dataAccessor.peekHas(prop)
+            ) {
                 emitter({ type: ModelEventType.DEL, prop });
             }
             return dataAccessor.delete(prop);

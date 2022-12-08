@@ -5,8 +5,12 @@ import {
     release,
     trackCreates,
     untrackReads,
-    afterFlush,
     flush,
+    addRenderNode,
+    removeRenderNode,
+    dirtyRenderNode,
+    addRenderNodeParent,
+    delRenderNodeParent,
 } from './engine';
 import { RefObjectOrCallback, Ref } from './ref';
 import { JSXNode, setAttribute, assignProp } from './jsx';
@@ -15,6 +19,7 @@ import {
     ArrayEventType,
     shiftEvent,
     applyArrayEvent,
+    addArrayEvent,
 } from './arrayevent';
 import {
     isCalculation,
@@ -82,14 +87,41 @@ export type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
 
 export const RenderNodeType = Symbol('rendernode');
 
+export enum RenderNodeCommitPhase {
+    COMMIT_UNMOUNT,
+    COMMIT_DEL,
+    COMMIT_INS,
+    COMMIT_MOUNT,
+}
+
 export interface RenderNode extends Retainable {
     _type: typeof RenderNodeType;
     detach(): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
-    onMount(): void;
-    onUnmount(): void;
+    setMounted(isMounted: boolean): void;
+    commit?(phase: RenderNodeCommitPhase): void;
     retain(): void;
     release(): void;
+    _parent?: RenderNode;
+}
+
+function own(parent: RenderNode, child: RenderNode) {
+    if (child === emptyRenderNode) return;
+    retain(child);
+    child._parent = parent;
+    if (addRenderNodeParent(parent, child)) {
+        log.warn('RenderNode child owned by parent multiple times', {
+            parent,
+            child,
+        });
+    }
+}
+
+function disown(parent: RenderNode, child: RenderNode) {
+    if (child === emptyRenderNode) return;
+    delRenderNodeParent(parent, child);
+    child._parent = undefined;
+    release(child);
 }
 
 /**
@@ -97,6 +129,7 @@ export interface RenderNode extends Retainable {
  */
 export class EmptyRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
+    declare _parent?: RenderNode;
     constructor() {
         this._type = RenderNodeType;
         this.__debugName = 'empty';
@@ -105,8 +138,7 @@ export class EmptyRenderNode implements RenderNode {
 
     detach() {}
     attach() {}
-    onMount() {}
-    onUnmount() {}
+    setMounted() {}
     retain() {
         retain(this);
     }
@@ -117,8 +149,12 @@ export class EmptyRenderNode implements RenderNode {
     // Retainable
     declare __debugName: string;
     declare __refcount: number;
-    __alive() {}
-    __dead() {}
+    __alive() {
+        addRenderNode(this);
+    }
+    __dead() {
+        removeRenderNode(this);
+    }
 }
 
 /**
@@ -131,6 +167,7 @@ export const emptyRenderNode = new EmptyRenderNode();
  */
 export class TextRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
+    declare _parent?: RenderNode;
     private declare text: Text;
     private declare emitter?: NodeEmitter | undefined;
 
@@ -158,8 +195,7 @@ export class TextRenderNode implements RenderNode {
         });
     }
 
-    onMount() {}
-    onUnmount() {}
+    setMounted() {}
     retain() {
         retain(this);
     }
@@ -170,9 +206,12 @@ export class TextRenderNode implements RenderNode {
     // Retainable
     declare __debugName: string;
     declare __refcount: number;
-    __alive() {}
+    __alive() {
+        addRenderNode(this);
+    }
     __dead() {
         this.emitter = undefined;
+        removeRenderNode(this);
     }
 }
 
@@ -181,6 +220,7 @@ export class TextRenderNode implements RenderNode {
  */
 export class ForeignRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
+    declare _parent?: RenderNode;
     private declare node: Node;
     private declare emitter?: NodeEmitter | undefined;
 
@@ -208,8 +248,7 @@ export class ForeignRenderNode implements RenderNode {
         });
     }
 
-    onMount() {}
-    onUnmount() {}
+    setMounted() {}
     retain() {
         retain(this);
     }
@@ -220,9 +259,12 @@ export class ForeignRenderNode implements RenderNode {
     // Retainable
     declare __debugName: string;
     declare __refcount: number;
-    __alive() {}
+    __alive() {
+        addRenderNode(this);
+    }
     __dead() {
         this.emitter = undefined;
+        removeRenderNode(this);
     }
 }
 
@@ -231,6 +273,7 @@ export class ForeignRenderNode implements RenderNode {
  */
 export class ArrayRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
+    declare _parent?: RenderNode;
     private declare children: RenderNode[];
     private declare slotSizes: number[];
     private declare attached: boolean[];
@@ -273,14 +316,9 @@ export class ArrayRenderNode implements RenderNode {
         }
     }
 
-    onMount() {
+    setMounted(isMounted: boolean) {
         for (const child of this.children) {
-            child.onMount();
-        }
-    }
-    onUnmount() {
-        for (const child of this.children) {
-            child.onUnmount();
+            child.setMounted(isMounted);
         }
     }
     retain() {
@@ -294,14 +332,16 @@ export class ArrayRenderNode implements RenderNode {
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
+        addRenderNode(this);
         for (const child of this.children) {
-            retain(child);
+            own(this, child);
         }
     }
     __dead() {
         for (const child of this.children) {
-            release(child);
+            disown(this, child);
         }
+        removeRenderNode(this);
         this.emitter = undefined;
     }
 }
@@ -552,13 +592,6 @@ const elementNamespaceTransitionMap: Record<
     },
 } as const;
 
-/**
- * If an intrinsic element is detached when it has focused, this holds a reference to the element.
- * While any nodes are mounted, we observe the document for focus change events. If focus is moved to anything inside the body, we clear this reference.
- * If an intrinsic element is attached and its element matches this reference, it steals focus.
- */
-let previousFocusedDetachedElement: Element | null = null;
-
 const EventProps = [
     { prefix: 'on:', param: false },
     { prefix: 'oncapture:', param: true },
@@ -570,6 +603,7 @@ const EventProps = [
  */
 export class IntrinsicRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
+    declare _parent?: RenderNode;
     private declare tagName: string;
     private declare element?: Element | undefined;
     private declare emitter?: NodeEmitter | undefined;
@@ -711,14 +745,14 @@ export class IntrinsicRenderNode implements RenderNode {
 
             if (this.portalRenderNode) {
                 this.portalRenderNode.detach();
-                release(this.portalRenderNode);
+                disown(this, this.portalRenderNode);
             }
             this.portalRenderNode = new PortalRenderNode(
                 this.element,
                 this.children,
                 this.props?.ref
             );
-            retain(this.portalRenderNode);
+            own(this, this.portalRenderNode);
 
             this.portalRenderNode.attach(this.handleEvent, childXmlNamespace);
         }
@@ -749,12 +783,8 @@ export class IntrinsicRenderNode implements RenderNode {
         });
     }
 
-    onMount() {
-        this.portalRenderNode?.onMount();
-    }
-
-    onUnmount() {
-        this.portalRenderNode?.onUnmount();
+    setMounted(isMounted: boolean) {
+        this.portalRenderNode?.setMounted(isMounted);
     }
 
     retain() {
@@ -769,13 +799,16 @@ export class IntrinsicRenderNode implements RenderNode {
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
+        addRenderNode(this);
         // At this point in time, we don't know for sure what the correct XML namespace is, as this could be an SVG
         // looking element that eventually gets placed within an SVG tree, which ought to result in an
         // SVGUnknownElement. So we take an educated guess;
         const xmlNamespaceGuess =
             ELEMENT_NAMESPACE_GUESS[this.tagName] || HTML_NAMESPACE;
 
-        retain(this.children);
+        if (this.portalRenderNode) {
+            own(this, this.portalRenderNode);
+        }
 
         // foreignObject is special; it should be created with an SVG namespace but children should have a HTML
         // namespace
@@ -801,19 +834,37 @@ export class IntrinsicRenderNode implements RenderNode {
 
         this.element = undefined;
         if (this.portalRenderNode) {
-            release(this.portalRenderNode);
+            disown(this, this.portalRenderNode);
             this.portalRenderNode = undefined;
         }
-        release(this.children);
+        removeRenderNode(this);
         this.emitter = undefined;
     }
 }
 
+// A shared document fragment; NOTE: always clear after use
+const fragment = document.createDocumentFragment();
+
+// TODO: fix this, this needs to be two flags: needs unmount notification; needs mount notification
+enum MountState {
+    MOUNTED,
+    NOTIFY_MOUNT,
+    NOTIFY_UNMOUNT,
+    UNMOUNTED,
+}
+
 export class PortalRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
+    declare _parent?: RenderNode;
     private declare tagName: string;
     private declare element: Element;
+    private declare childEvents: ArrayEvent<Node>[];
+    private declare committedNodes: Node[];
+    private declare liveNodes: Node[];
+    private declare liveNodeSet: Set<Node>;
+    private declare deadNodeSet: Set<Node>;
     private declare refProp?: RefObjectOrCallback<Element> | undefined;
+    private declare mountState?: MountState | undefined;
     private declare emitter?: NodeEmitter | undefined;
     private declare existingOffset: number;
     private declare arrayRenderNode: ArrayRenderNode;
@@ -828,9 +879,15 @@ export class PortalRenderNode implements RenderNode {
     ) {
         this._type = RenderNodeType;
         this.arrayRenderNode = children;
+        this.childEvents = [];
+        this.committedNodes = [];
+        this.liveNodes = [];
+        this.liveNodeSet = new Set();
+        this.deadNodeSet = new Set();
         this.element = element;
         if (refProp) {
             this.refProp = refProp;
+            this.mountState = MountState.UNMOUNTED;
         }
         this.tagName = this.element.tagName;
         this.existingOffset = element.childNodes.length;
@@ -848,80 +905,8 @@ export class PortalRenderNode implements RenderNode {
             }
             return;
         }
-        log.assert(this.element, 'missing element');
-        switch (event.type) {
-            case ArrayEventType.SPLICE: {
-                for (let i = 0; i < event.count; ++i) {
-                    this.element.removeChild(
-                        this.element.childNodes[
-                            this.existingOffset + event.index
-                        ]
-                    );
-                }
-                const referenceNode =
-                    event.index < this.element.childNodes.length
-                        ? this.element.childNodes[
-                              this.existingOffset + event.index
-                          ]
-                        : null;
-                if (event.items) {
-                    for (let i = event.items.length - 1; i >= 0; --i) {
-                        this.element.insertBefore(
-                            event.items[i],
-                            referenceNode
-                        );
-                    }
-                }
-                break;
-            }
-            case ArrayEventType.MOVE: {
-                const toMove: Node[] = [];
-                for (let i = 0; i < event.count; ++i) {
-                    const node =
-                        this.element.childNodes[
-                            this.existingOffset + event.from
-                        ];
-                    this.element.removeChild(node);
-                    toMove.push(node);
-                }
-                const referenceNode =
-                    event.to < this.element.childNodes.length
-                        ? this.element.childNodes[
-                              this.existingOffset + event.to
-                          ]
-                        : null;
-                for (const node of toMove) {
-                    this.element.insertBefore(node, referenceNode);
-                }
-                break;
-            }
-            case ArrayEventType.SORT: {
-                const unsorted: Node[] = [];
-                for (let i = 0; i < event.indexes.length; ++i) {
-                    const node =
-                        this.element.childNodes[
-                            this.existingOffset + event.from
-                        ];
-                    this.element.removeChild(node);
-                    unsorted.push(node);
-                }
-                const referenceNode =
-                    event.from < this.element.childNodes.length
-                        ? this.element.childNodes[
-                              this.existingOffset + event.from
-                          ]
-                        : null;
-                for (const index of event.indexes) {
-                    this.element.insertBefore(
-                        unsorted[index - event.from],
-                        referenceNode
-                    );
-                }
-                break;
-            }
-            default:
-                log.assertExhausted(event);
-        }
+        addArrayEvent(this.childEvents, event);
+        dirtyRenderNode(this);
     };
 
     detach() {
@@ -939,36 +924,129 @@ export class PortalRenderNode implements RenderNode {
         );
     }
 
-    onMount() {
-        this.arrayRenderNode.onMount();
-        if (this.refProp) {
-            if (this.refProp instanceof Ref) {
-                this.refProp.current = this.element;
-            } else if (typeof this.refProp === 'function') {
-                this.refProp(this.element);
+    setMounted(isMounted: boolean) {
+        if (isMounted) {
+            this.arrayRenderNode.setMounted(true);
+            if (this.refProp) {
+                dirtyRenderNode(this);
+                this.mountState = MountState.NOTIFY_MOUNT;
             }
-        }
-        if (
-            this.element &&
-            (this.element as any).focus &&
-            previousFocusedDetachedElement === this.element
-        ) {
-            (this.element as any).focus();
+        } else {
+            if (this.refProp) {
+                dirtyRenderNode(this);
+                this.mountState = MountState.NOTIFY_UNMOUNT;
+            }
+            this.arrayRenderNode.setMounted(false);
         }
     }
 
-    onUnmount() {
-        if (this.element && document.activeElement === this.element) {
-            previousFocusedDetachedElement = this.element;
+    commit(phase: RenderNodeCommitPhase) {
+        if (
+            phase === RenderNodeCommitPhase.COMMIT_UNMOUNT &&
+            this.childEvents.length > 0
+        ) {
+            // Prep received events
+            const childEvents = this.childEvents;
+            this.childEvents = [];
+            for (const childEvent of childEvents) {
+                const removed = applyArrayEvent(this.liveNodes, childEvent);
+                for (const toRemove of removed) {
+                    if (this.liveNodeSet.has(toRemove)) {
+                        this.deadNodeSet.add(toRemove);
+                    }
+                }
+            }
         }
-        if (this.refProp) {
+        if (
+            phase === RenderNodeCommitPhase.COMMIT_UNMOUNT &&
+            this.refProp &&
+            this.mountState === MountState.NOTIFY_UNMOUNT
+        ) {
             if (this.refProp instanceof Ref) {
                 this.refProp.current = undefined;
             } else if (typeof this.refProp === 'function') {
                 this.refProp(undefined);
             }
+            this.mountState = MountState.UNMOUNTED;
         }
-        this.arrayRenderNode.onUnmount();
+        if (
+            phase === RenderNodeCommitPhase.COMMIT_DEL &&
+            this.deadNodeSet.size > 0
+        ) {
+            if (
+                this.deadNodeSet.size === this.liveNodeSet.size &&
+                this.existingOffset === 0
+            ) {
+                this.element.replaceChildren();
+                this.liveNodeSet.clear();
+                this.committedNodes = [];
+            } else {
+                for (const toRemove of this.deadNodeSet) {
+                    this.liveNodeSet.delete(toRemove);
+                    this.element.removeChild(toRemove);
+                }
+                this.committedNodes = this.committedNodes.filter(
+                    (node) => !this.deadNodeSet.has(node)
+                );
+            }
+            this.deadNodeSet.clear();
+        }
+        if (
+            phase === RenderNodeCommitPhase.COMMIT_INS &&
+            this.liveNodes.length > 0
+        ) {
+            let toInsert: Node[] = [];
+            let liveIndex = 0;
+            let currIndex = 0;
+            while (liveIndex < this.liveNodes.length) {
+                if (
+                    this.committedNodes[currIndex] === this.liveNodes[liveIndex]
+                ) {
+                    this.insertBefore(toInsert, liveIndex);
+                    toInsert = [];
+                    liveIndex += 1;
+                    currIndex += 1;
+                } else {
+                    toInsert.push(this.liveNodes[liveIndex]);
+                    liveIndex += 1;
+                }
+            }
+            this.insertBefore(toInsert, this.liveNodes.length);
+        }
+        if (
+            phase === RenderNodeCommitPhase.COMMIT_MOUNT &&
+            this.refProp &&
+            this.mountState === MountState.NOTIFY_MOUNT
+        ) {
+            if (this.refProp instanceof Ref) {
+                this.refProp.current = this.element;
+            } else if (typeof this.refProp === 'function') {
+                this.refProp(this.element);
+            }
+            this.mountState = MountState.MOUNTED;
+        }
+    }
+
+    private insertBefore(nodes: Node[], targetIndex: number) {
+        let toInsert: Node | undefined;
+        if (nodes.length === 1) {
+            toInsert = nodes[0];
+            this.liveNodeSet.add(nodes[0]);
+            this.committedNodes.splice(targetIndex, 0, toInsert);
+        } else if (nodes.length > 1) {
+            for (const node of nodes) {
+                this.liveNodeSet.add(node);
+                fragment.appendChild(node);
+            }
+            this.committedNodes.splice(targetIndex, 0, ...nodes);
+            toInsert = fragment;
+        }
+        if (toInsert) {
+            this.element.insertBefore(
+                toInsert,
+                this.liveNodes[targetIndex] || null // TODO: should this be committedNodes[targetIndex] or liveNodes[targetIndex]?
+            );
+        }
     }
 
     retain() {
@@ -982,7 +1060,8 @@ export class PortalRenderNode implements RenderNode {
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
-        retain(this.arrayRenderNode);
+        addRenderNode(this);
+        own(this, this.arrayRenderNode);
     }
     __dead() {
         if (this.calculations) {
@@ -997,7 +1076,8 @@ export class PortalRenderNode implements RenderNode {
             this.calculationSubscriptions.clear();
         }
 
-        release(this.arrayRenderNode);
+        disown(this, this.arrayRenderNode);
+        removeRenderNode(this);
         this.emitter = undefined;
     }
 }
@@ -1007,6 +1087,7 @@ export class PortalRenderNode implements RenderNode {
  */
 export class CalculationRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
+    declare _parent?: RenderNode;
     private declare error?: Error | undefined;
     private declare renderNode?: RenderNode | undefined;
     private declare calculation: Calculation<any>;
@@ -1041,14 +1122,9 @@ export class CalculationRenderNode implements RenderNode {
         }
     }
 
-    onMount() {
-        this.isMounted = true;
-        this.renderNode?.onMount();
-    }
-
-    onUnmount() {
-        this.renderNode?.onUnmount();
-        this.isMounted = false;
+    setMounted(isMounted: boolean) {
+        this.isMounted = isMounted;
+        this.renderNode?.setMounted(isMounted);
     }
 
     retain() {
@@ -1063,19 +1139,31 @@ export class CalculationRenderNode implements RenderNode {
         if (this.renderNode) {
             if (this.emitter) {
                 if (this.isMounted) {
-                    this.renderNode.onUnmount();
+                    this.renderNode.setMounted(false);
                 }
                 this.renderNode.detach();
             }
-            release(this.renderNode);
+            disown(this, this.renderNode);
             this.error = undefined;
             this.renderNode = undefined;
         }
     }
 
-    subscribe(errorType: undefined, val: any): void;
-    subscribe(errorType: CalculationErrorType, val: Error): void;
-    subscribe(errorType: undefined | CalculationErrorType, val: Error): void {
+    subscribe(
+        errorType: undefined,
+        val: any,
+        addPostAction: (postAction: () => void) => void
+    ): void;
+    subscribe(
+        errorType: CalculationErrorType,
+        val: Error,
+        addPostAction: (postAction: () => void) => void
+    ): void;
+    subscribe(
+        errorType: undefined | CalculationErrorType,
+        val: Error,
+        addPostAction: (postAction: () => void) => void
+    ): void {
         this.cleanPrior();
         if (errorType) {
             this.error = val;
@@ -1088,16 +1176,15 @@ export class CalculationRenderNode implements RenderNode {
                 );
             }
         } else {
-            const renderNode = renderJSXNode(val as any);
-            retain(renderNode);
-            afterFlush(() => {
-                this.cleanPrior(); // it's possible the calculation is notified multiple times in a flush; only care about the last one
+            addPostAction(() => {
+                const renderNode = renderJSXNode(val as any);
+                own(this, renderNode);
                 this.renderNode = renderNode;
                 if (this.emitter && this.parentXmlNamespace) {
                     renderNode.attach(this.emitter, this.parentXmlNamespace);
                 }
                 if (this.isMounted) {
-                    renderNode.onMount();
+                    renderNode.setMounted(true);
                 }
             });
         }
@@ -1107,25 +1194,36 @@ export class CalculationRenderNode implements RenderNode {
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
+        addRenderNode(this);
         try {
             this.calculationSubscription = this.calculation.subscribe(
                 this.subscribe
             );
-            this.subscribe(undefined, this.calculation());
+            this.subscribe(undefined, this.calculation(), (action) => {
+                action();
+            });
         } catch (e) {
-            this.subscribe(CalculationErrorType.EXCEPTION, wrapError(e));
+            this.subscribe(
+                CalculationErrorType.EXCEPTION,
+                wrapError(e),
+                (action) => {
+                    action();
+                }
+            );
         }
     }
     __dead() {
         this.calculationSubscription?.();
         this.calculationSubscription = undefined;
         this.cleanPrior();
+        removeRenderNode(this);
         this.emitter = undefined;
     }
 }
 
 export class CollectionRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
+    declare _parent?: RenderNode;
     private declare children: RenderNode[];
     private declare childIndex: Map<RenderNode, number>;
     private declare slotSizes: number[];
@@ -1177,19 +1275,13 @@ export class CollectionRenderNode implements RenderNode {
         }
     }
 
-    onMount() {
-        this.isMounted = true;
+    setMounted(isMounted: boolean) {
+        this.isMounted = isMounted;
         for (const child of this.children) {
-            child.onMount();
+            child.setMounted(isMounted);
         }
     }
 
-    onUnmount() {
-        for (const child of this.children) {
-            child.onUnmount();
-        }
-        this.isMounted = false;
-    }
     retain() {
         retain(this);
     }
@@ -1200,21 +1292,21 @@ export class CollectionRenderNode implements RenderNode {
     private releaseChild(child: RenderNode) {
         if (this.emitter) {
             if (this.isMounted) {
-                child.onUnmount();
+                child.setMounted(false);
             }
             child.detach();
         }
-        release(child);
+        disown(this, child);
     }
     private retainChild(child: RenderNode) {
-        retain(child);
+        own(this, child);
         if (this.emitter && this.parentXmlNamespace) {
             child.attach(
                 (event) => this.handleChildEvent(event, child),
                 this.parentXmlNamespace
             );
             if (this.isMounted) {
-                child.onMount();
+                child.setMounted(true);
             }
         }
     }
@@ -1321,6 +1413,7 @@ export class CollectionRenderNode implements RenderNode {
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
+        addRenderNode(this);
         retain(this.collection);
         this.unsubscribe = this.collection.subscribe(
             this.handleCollectionEvent
@@ -1346,6 +1439,7 @@ export class CollectionRenderNode implements RenderNode {
         }
         this.slotSizes.splice(0, this.slotSizes.length);
         this.emitter = undefined;
+        removeRenderNode(this);
     }
 }
 
@@ -1425,17 +1519,6 @@ export function renderJSXChildren(
 }
 
 export function mount(target: Element, node: RenderNode): () => void {
-    const focusMonitor = (e: FocusEvent) => {
-        if (
-            previousFocusedDetachedElement &&
-            e.target &&
-            e.target !== document.documentElement &&
-            e.target !== document.body
-        ) {
-            previousFocusedDetachedElement = null;
-        }
-    };
-    document.documentElement.addEventListener('focusin', focusMonitor);
     const root = new PortalRenderNode(
         target,
         new ArrayRenderNode([node]),
@@ -1455,12 +1538,20 @@ export function mount(target: Element, node: RenderNode): () => void {
         release(root);
         throw syncError;
     }
-    root.onMount();
+    // WE HAVE A CONUNDRUM!
+    // - When setMounted(true) is called _before_ flushing, IntrinsicObserver callbacks work as expected; but component onMount notifications fail
+    // - When setMounted(true) is called _after_ flushing, IntrinsicObserver callbacks fail; but component onMount notifications work as expected
+    // This is probably because the interaction between mounting and commit is very awkward when dealing with DOM nodes
+    // - For onMount lifecycles to be able to observe nodes in the DOM, onMount needs to happen __after__ commit
+    // - ref={} callbacks should be equivalent to onMount
+    // - refRaw={} callbacks should be equivalent to retain() (NEEDS BETTER NAME)
+    root.setMounted(true);
+    flush();
     return () => {
-        root.onUnmount();
+        root.setMounted(false);
         root.detach();
+        flush();
         release(root);
-        document.documentElement.removeEventListener('focusin', focusMonitor);
     };
 }
 
@@ -1480,12 +1571,15 @@ export type IntrinsicObserverElementCallback = (
 
 export class IntrinsicObserverRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
-    nodeCallback?: IntrinsicObserverNodeCallback | undefined;
-    elementCallback?: IntrinsicObserverElementCallback | undefined;
-    child: RenderNode;
-    childNodes: Node[];
-    emitter?: NodeEmitter | undefined;
-    isMounted: boolean;
+    declare _parent?: RenderNode;
+    declare nodeCallback?: IntrinsicObserverNodeCallback | undefined;
+    declare elementCallback?: IntrinsicObserverElementCallback | undefined;
+    declare child: ArrayRenderNode;
+    declare childNodes: Node[];
+    declare pendingMount: Node[];
+    declare pendingUnmount: Node[];
+    declare emitter?: NodeEmitter | undefined;
+    declare isMounted: boolean;
 
     constructor(
         nodeCallback: IntrinsicObserverNodeCallback | undefined,
@@ -1498,6 +1592,8 @@ export class IntrinsicObserverRenderNode implements RenderNode {
         this.elementCallback = elementCallback;
         this.child = new ArrayRenderNode(children);
         this.childNodes = [];
+        this.pendingMount = [];
+        this.pendingUnmount = [];
         this.isMounted = false;
 
         this.__debugName = debugName ?? `lifecycleobserver`;
@@ -1505,9 +1601,55 @@ export class IntrinsicObserverRenderNode implements RenderNode {
     }
 
     notify(node: Node, type: IntrinsicObserverEventType) {
-        this.nodeCallback?.(node, type);
-        if (node instanceof Element) {
-            this.elementCallback?.(node, type);
+        switch (type) {
+            case IntrinsicObserverEventType.MOUNT:
+                this.pendingMount.push(node);
+                break;
+            case IntrinsicObserverEventType.UNMOUNT:
+                this.pendingUnmount.push(node);
+                break;
+            default:
+                log.assertExhausted(type);
+        }
+        dirtyRenderNode(this);
+    }
+
+    commit(phase: RenderNodeCommitPhase) {
+        switch (phase) {
+            case RenderNodeCommitPhase.COMMIT_UNMOUNT:
+                if (this.pendingUnmount.length > 0) {
+                    for (const node of this.pendingUnmount) {
+                        this.nodeCallback?.(
+                            node,
+                            IntrinsicObserverEventType.UNMOUNT
+                        );
+                        if (node instanceof Element) {
+                            this.elementCallback?.(
+                                node,
+                                IntrinsicObserverEventType.UNMOUNT
+                            );
+                        }
+                    }
+                    this.pendingUnmount = [];
+                }
+                break;
+            case RenderNodeCommitPhase.COMMIT_MOUNT:
+                if (this.pendingMount.length > 0) {
+                    for (const node of this.pendingMount) {
+                        this.nodeCallback?.(
+                            node,
+                            IntrinsicObserverEventType.MOUNT
+                        );
+                        if (node instanceof Element) {
+                            this.elementCallback?.(
+                                node,
+                                IntrinsicObserverEventType.MOUNT
+                            );
+                        }
+                    }
+                    this.pendingMount = [];
+                }
+                break;
         }
     }
 
@@ -1558,21 +1700,17 @@ export class IntrinsicObserverRenderNode implements RenderNode {
         }, parentXmlNamespace);
     }
 
-    onMount() {
-        this.child.onMount();
-        this.isMounted = true;
+    setMounted(isMounted: boolean) {
+        this.child.setMounted(isMounted);
+        this.isMounted = isMounted;
+        const event = isMounted
+            ? IntrinsicObserverEventType.MOUNT
+            : IntrinsicObserverEventType.UNMOUNT;
         for (const node of this.childNodes) {
-            this.notify(node, IntrinsicObserverEventType.MOUNT);
+            this.notify(node, event);
         }
     }
 
-    onUnmount() {
-        this.child.onUnmount();
-        this.isMounted = false;
-        for (const node of this.childNodes) {
-            this.notify(node, IntrinsicObserverEventType.UNMOUNT);
-        }
-    }
     retain() {
         retain(this);
     }
@@ -1584,10 +1722,12 @@ export class IntrinsicObserverRenderNode implements RenderNode {
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
-        retain(this.child);
+        addRenderNode(this);
+        own(this, this.child);
     }
     __dead() {
-        release(this.child);
+        disown(this, this.child);
+        removeRenderNode(this);
         this.emitter = undefined;
     }
 }
@@ -1606,6 +1746,7 @@ export const IntrinsicObserver: Component<{
 
 export class ComponentRenderNode<TProps> implements RenderNode {
     declare _type: typeof RenderNodeType;
+    declare _parent?: RenderNode;
     declare Component: FunctionComponent<TProps>;
     declare props: TProps | null | undefined;
     declare children: JSX.Node[];
@@ -1619,6 +1760,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     declare emitter?: NodeEmitter | undefined;
     declare parentXmlNamespace?: string | undefined;
     declare isMounted: boolean;
+    private declare needsMount?: boolean | undefined;
 
     constructor(
         Component: FunctionComponent<TProps>,
@@ -1635,7 +1777,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
 
         this.resultAttached = false;
 
-        this.__debugName = debugName ?? `component`;
+        this.__debugName = debugName ?? `component(${Component.name})`;
         this.__refcount = 0;
     }
 
@@ -1728,7 +1870,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
             }
             if (!(jsxResult instanceof Error)) {
                 this.result = renderJSXNode(jsxResult);
-                retain(this.result);
+                own(this, this.result);
             } else {
                 this.result = jsxResult;
             }
@@ -1761,19 +1903,19 @@ export class ComponentRenderNode<TProps> implements RenderNode {
             if (this.result) {
                 if (this.resultAttached) {
                     if (this.isMounted) {
-                        this.result.onUnmount();
+                        this.result.setMounted(false);
                     }
                     this.result.detach();
                     this.resultAttached = false;
                 }
-                release(this.result);
+                disown(this, this.result);
                 this.result = undefined;
             }
             const handledResult = this.errorHandler(event);
             this.result = handledResult
                 ? renderJSXNode(handledResult)
                 : emptyRenderNode;
-            retain(this.result);
+            own(this, this.result);
 
             if (this.emitter && this.parentXmlNamespace) {
                 this.result.attach(this.handleEvent, this.parentXmlNamespace);
@@ -1781,21 +1923,39 @@ export class ComponentRenderNode<TProps> implements RenderNode {
             }
 
             if (this.isMounted) {
-                this.result.onMount();
+                this.result.setMounted(true);
             }
         } else {
             this.emitter?.(event);
         }
     };
 
-    onMount() {
-        this.isMounted = true;
+    setMounted(isMounted: boolean) {
         log.assert(this.result, 'Invariant: missing result');
+        this.isMounted = isMounted;
         if (this.result instanceof Error) {
             return;
         }
-        this.result.onMount();
-        if (this.onMountCallbacks) {
+        if (isMounted) {
+            this.needsMount = true;
+            dirtyRenderNode(this);
+            this.result.setMounted(isMounted);
+        } else {
+            this.result.setMounted(isMounted);
+            if (this.onUnmountCallbacks) {
+                for (const callback of this.onUnmountCallbacks) {
+                    callback();
+                }
+            }
+        }
+    }
+
+    commit(phase: RenderNodeCommitPhase) {
+        if (
+            phase === RenderNodeCommitPhase.COMMIT_MOUNT &&
+            this.needsMount &&
+            this.onMountCallbacks
+        ) {
             for (const callback of this.onMountCallbacks) {
                 const maybeOnUnmount = callback();
                 if (typeof maybeOnUnmount === 'function') {
@@ -1815,20 +1975,8 @@ export class ComponentRenderNode<TProps> implements RenderNode {
                     this.onUnmountCallbacks.push(onUnmount);
                 }
             }
+            this.needsMount = false;
         }
-    }
-
-    onUnmount() {
-        log.assert(this.result, 'Invariant: missing result');
-        if (!(this.result instanceof Error) && this.resultAttached) {
-            this.result.onUnmount();
-            if (this.onUnmountCallbacks) {
-                for (const callback of this.onUnmountCallbacks) {
-                    callback();
-                }
-            }
-        }
-        this.isMounted = false;
     }
 
     retain() {
@@ -1843,6 +1991,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
+        addRenderNode(this);
         this.ensureResult();
     }
     __dead() {
@@ -1853,13 +2002,14 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         }
 
         if (this.result && !(this.result instanceof Error)) {
-            release(this.result);
+            disown(this, this.result);
         }
         this.result = undefined;
         for (const item of this.owned) {
             release(item);
         }
         this.emitter = undefined;
+        removeRenderNode(this);
     }
 }
 

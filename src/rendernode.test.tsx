@@ -1,7 +1,14 @@
-import { flush, reset, subscribe } from './engine';
+import {
+    flush,
+    reset,
+    subscribe,
+    addRenderNode,
+    removeRenderNode,
+} from './engine';
 import { calc } from './calc';
 import { collection } from './collection';
 import { model } from './model';
+import * as log from './log';
 import {
     RenderNode,
     RenderNodeType,
@@ -18,6 +25,7 @@ import {
     NodeEmitter,
     mount,
     Component,
+    RenderNodeCommitPhase,
 } from './rendernode';
 import { ArrayEventType } from './arrayevent';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
@@ -63,12 +71,8 @@ class TracingRenderNode implements RenderNode {
         this.events.push('attach');
     }
 
-    onMount() {
-        this.events.push('onMount');
-    }
-
-    onUnmount() {
-        this.events.push('onUnmount');
+    setMounted(isMounted: boolean) {
+        this.events.push(`setMounted:${isMounted}`);
     }
 
     retain() {
@@ -80,11 +84,17 @@ class TracingRenderNode implements RenderNode {
     }
 
     __alive() {
+        addRenderNode(this);
         this.events.push('alive');
     }
 
     __dead() {
+        removeRenderNode(this);
         this.events.push('dead');
+    }
+
+    commit(phase: RenderNodeCommitPhase) {
+        this.events.push(`commit:${RenderNodeCommitPhase[phase]}`);
     }
 }
 
@@ -217,7 +227,7 @@ suite('IntrinsicRenderNode', () => {
         const tracer = new TracingRenderNode();
         const intrinsic = new IntrinsicRenderNode('div', {}, [tracer]);
         mount(testRoot, intrinsic);
-        assert.deepEqual(['alive', 'attach', 'onMount'], tracer.events);
+        assert.deepEqual(['alive', 'attach', 'setMounted:true'], tracer.events);
     });
 
     test('child gets standard unmount lifecycle called on detach', () => {
@@ -226,7 +236,7 @@ suite('IntrinsicRenderNode', () => {
         const unmount = mount(testRoot, intrinsic);
         tracer.clear();
         unmount();
-        assert.deepEqual(['onUnmount', 'dead'], tracer.events);
+        assert.deepEqual(['setMounted:false', 'dead'], tracer.events);
     });
 
     test('child can be repeatedly mounted / unmounted if intrinsic node retained', () => {
@@ -250,14 +260,14 @@ suite('IntrinsicRenderNode', () => {
                 'alive',
                 'attach',
                 '1: mount',
-                'onMount',
+                'setMounted:true',
                 '2: unmount',
-                'onUnmount',
+                'setMounted:false',
                 '3: mount',
-                'onMount',
+                'setMounted:true',
                 '4: release',
                 '5: unmount',
-                'onUnmount',
+                'setMounted:false',
                 'dead',
             ],
             tracer.events
@@ -285,13 +295,13 @@ suite('IntrinsicRenderNode', () => {
                 'alive',
                 'attach',
                 '1: mount',
-                'onMount',
+                'setMounted:true',
                 '2: unmount',
-                'onUnmount',
+                'setMounted:false',
                 '3: mount',
-                'onMount',
+                'setMounted:true',
                 '4: unmount',
-                'onUnmount',
+                'setMounted:false',
                 '5: release',
                 'dead',
             ],
@@ -299,7 +309,7 @@ suite('IntrinsicRenderNode', () => {
         );
     });
 
-    test('child receives emitted elements while rendered', () => {
+    test('child receives emitted elements when committed while rendered', () => {
         const tracer = new TracingRenderNode();
         const intrinsic = new IntrinsicRenderNode('div', {}, [tracer]);
         mount(testRoot, intrinsic);
@@ -325,10 +335,12 @@ suite('IntrinsicRenderNode', () => {
             count: 1,
             items: [node4],
         });
+        assert.is(0, testRoot.childNodes[0].childNodes.length);
+        flush();
         assert.is(3, testRoot.childNodes[0].childNodes.length);
         assert.is(node4, testRoot.childNodes[0].childNodes[0]);
         assert.is(node3, testRoot.childNodes[0].childNodes[1]);
-        assert.is(node1, testRoot.childNodes[0].childNodes[2]);
+        assert.is(node2, testRoot.childNodes[0].childNodes[2]);
     });
 
     test('child processes emitted elements while retained detached', () => {
@@ -360,10 +372,12 @@ suite('IntrinsicRenderNode', () => {
             count: 1,
             items: [node4],
         });
+        assert.is(0, intrinsicEl.childNodes.length);
+        flush();
         assert.is(3, intrinsicEl.childNodes.length);
         assert.is(node4, intrinsicEl.childNodes[0]);
         assert.is(node3, intrinsicEl.childNodes[1]);
-        assert.is(node1, intrinsicEl.childNodes[2]);
+        assert.is(node2, intrinsicEl.childNodes[2]);
     });
 });
 
@@ -382,6 +396,8 @@ suite('CalculationRenderNode', () => {
         node.attach((event) => {
             events.push(event);
         }, HTML_NAMESPACE);
+
+        flush();
 
         assert.is(1, events.length);
         assert.is('splice', events[0].type);
@@ -406,6 +422,8 @@ suite('CalculationRenderNode', () => {
         node.attach((event) => {
             events.push(event);
         }, HTML_NAMESPACE);
+
+        flush();
 
         state.name = 'goodbye';
         flush();
@@ -450,6 +468,8 @@ suite('CalculationRenderNode', () => {
         }, HTML_NAMESPACE);
         node.detach();
 
+        flush();
+
         state.name = 'goodbye';
         flush();
 
@@ -483,6 +503,8 @@ suite('CalculationRenderNode', () => {
             events.push(event);
         }, HTML_NAMESPACE);
         node.detach();
+
+        flush();
 
         state.name = 'goodbye';
         flush();
@@ -524,13 +546,13 @@ suite('CalculationRenderNode', () => {
             events.push(event);
         }, HTML_NAMESPACE);
         tracer.log('2: mount');
-        node.onMount();
+        node.setMounted(true);
         tracer.log('3: unmount');
-        node.onUnmount();
+        node.setMounted(false);
         tracer.log('4: mount');
-        node.onMount();
+        node.setMounted(true);
         tracer.log('5: unmount');
-        node.onUnmount();
+        node.setMounted(false);
         tracer.log('6: detach');
         node.detach();
         tracer.log('7: attach');
@@ -549,13 +571,13 @@ suite('CalculationRenderNode', () => {
                 '1: attach',
                 'attach',
                 '2: mount',
-                'onMount',
+                'setMounted:true',
                 '3: unmount',
-                'onUnmount',
+                'setMounted:false',
                 '4: mount',
-                'onMount',
+                'setMounted:true',
                 '5: unmount',
-                'onUnmount',
+                'setMounted:false',
                 '6: detach',
                 'detach',
                 '7: attach',
@@ -704,7 +726,14 @@ suite('ArrayRenderNode', () => {
         const node = new ArrayRenderNode([tracer]);
         mount(testRoot, node)();
         assert.deepEqual(
-            ['alive', 'attach', 'onMount', 'onUnmount', 'detach', 'dead'],
+            [
+                'alive',
+                'attach',
+                'setMounted:true',
+                'setMounted:false',
+                'detach',
+                'dead',
+            ],
             tracer.events
         );
     });
@@ -720,12 +749,12 @@ suite('ArrayRenderNode', () => {
             [
                 'alive',
                 'attach',
-                'onMount',
-                'onUnmount',
+                'setMounted:true',
+                'setMounted:false',
                 'detach',
                 'attach',
-                'onMount',
-                'onUnmount',
+                'setMounted:true',
+                'setMounted:false',
                 'detach',
                 'dead',
             ],
@@ -951,20 +980,45 @@ suite('CollectionRenderNode', () => {
         const events: any[] = [];
         node.retain();
         node.attach((event) => events.push(event), HTML_NAMESPACE);
-        node.onMount();
-        assert.deepEqual(['alive', 'attach', 'onMount'], tracer1.events);
-        assert.deepEqual([], tracer2.events);
-        items.push(tracer2);
-        flush();
-        assert.deepEqual(['alive', 'attach', 'onMount'], tracer1.events);
-        assert.deepEqual(['alive', 'attach', 'onMount'], tracer2.events);
-        items.shift();
-        flush();
+        node.setMounted(true);
         assert.deepEqual(
-            ['alive', 'attach', 'onMount', 'onUnmount', 'detach', 'dead'],
+            ['alive', 'attach', 'setMounted:true'],
             tracer1.events
         );
-        assert.deepEqual(['alive', 'attach', 'onMount'], tracer2.events);
+        assert.deepEqual([], tracer2.events);
+        items.push(tracer2);
+        tracer1.events.push('flush 1');
+        tracer2.events.push('flush 1');
+        flush();
+        assert.deepEqual(
+            ['alive', 'attach', 'setMounted:true', 'flush 1'],
+            tracer1.events
+        );
+        assert.deepEqual(
+            ['flush 1', 'alive', 'attach', 'setMounted:true'],
+            tracer2.events
+        );
+        items.shift();
+        tracer1.events.push('flush 2');
+        tracer2.events.push('flush 2');
+        flush();
+        assert.deepEqual(
+            [
+                'alive',
+                'attach',
+                'setMounted:true',
+                'flush 1',
+                'flush 2',
+                'setMounted:false',
+                'detach',
+                'dead',
+            ],
+            tracer1.events
+        );
+        assert.deepEqual(
+            ['flush 1', 'alive', 'attach', 'setMounted:true', 'flush 2'],
+            tracer2.events
+        );
     });
 
     test('calls lifecycle methods when added while unmounted', () => {
@@ -978,13 +1032,23 @@ suite('CollectionRenderNode', () => {
         assert.deepEqual(['alive', 'attach'], tracer1.events);
         assert.deepEqual([], tracer2.events);
         items.push(tracer2);
+        tracer1.events.push('flush 1');
+        tracer2.events.push('flush 1');
         flush();
-        assert.deepEqual(['alive', 'attach'], tracer1.events);
-        assert.deepEqual(['alive', 'attach'], tracer2.events);
+        assert.deepEqual(['alive', 'attach', 'flush 1'], tracer1.events);
+        assert.deepEqual(['flush 1', 'alive', 'attach'], tracer2.events);
         items.shift();
+        tracer1.events.push('flush 2');
+        tracer2.events.push('flush 2');
         flush();
-        assert.deepEqual(['alive', 'attach', 'detach', 'dead'], tracer1.events);
-        assert.deepEqual(['alive', 'attach'], tracer2.events);
+        assert.deepEqual(
+            ['alive', 'attach', 'flush 1', 'flush 2', 'detach', 'dead'],
+            tracer1.events
+        );
+        assert.deepEqual(
+            ['flush 1', 'alive', 'attach', 'flush 2'],
+            tracer2.events
+        );
     });
 });
 
@@ -1026,9 +1090,11 @@ suite('ComponentRenderNode', () => {
             events.push(event);
         }, HTML_NAMESPACE);
         events.push('2:onMount');
-        node.onMount();
+        node.setMounted(true);
+        flush();
         events.push('3:onUnmount');
-        node.onUnmount();
+        node.setMounted(false);
+        flush();
         events.push('4:detach');
         node.detach();
         events.push('5:release');
@@ -1171,12 +1237,19 @@ suite('IntrinsicObserverRenderNode', () => {
         ]);
         node.retain();
         node.attach((event) => tracer.log(event), HTML_NAMESPACE);
-        node.onMount();
-        node.onUnmount();
+        node.setMounted(true);
+        node.setMounted(false);
         node.detach();
         node.release();
         assert.deepEqual(
-            ['alive', 'attach', 'onMount', 'onUnmount', 'detach', 'dead'],
+            [
+                'alive',
+                'attach',
+                'setMounted:true',
+                'setMounted:false',
+                'detach',
+                'dead',
+            ],
             tracer.events
         );
     });
@@ -1206,7 +1279,8 @@ suite('IntrinsicObserverRenderNode', () => {
         assert.deepEqual([], nodeCalls);
         assert.deepEqual([], elementCalls);
 
-        node.onMount();
+        node.setMounted(true);
+        flush();
 
         assert.deepEqual(
             [
@@ -1220,7 +1294,8 @@ suite('IntrinsicObserverRenderNode', () => {
             elementCalls
         );
 
-        node.onUnmount();
+        node.setMounted(false);
+        flush();
 
         assert.deepEqual(
             [
@@ -1255,7 +1330,7 @@ suite('IntrinsicObserverRenderNode', () => {
 
         node.retain();
         node.attach((event) => tracer.log(event), HTML_NAMESPACE);
-        node.onMount();
+        node.setMounted(true);
 
         tracer.emitter?.({
             type: ArrayEventType.SPLICE,
@@ -1263,6 +1338,7 @@ suite('IntrinsicObserverRenderNode', () => {
             count: 0,
             items: [text, div],
         });
+        flush();
 
         assert.deepEqual(
             [
@@ -1282,6 +1358,7 @@ suite('IntrinsicObserverRenderNode', () => {
             count: 1,
             items: [],
         });
+        flush();
 
         assert.deepEqual(
             [
@@ -1306,6 +1383,7 @@ suite('IntrinsicObserverRenderNode', () => {
             count: 1,
             items: [],
         });
+        flush();
 
         assert.deepEqual(
             [

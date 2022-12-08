@@ -6,24 +6,28 @@ export enum ArrayEventType {
     SORT = 'sort',
 }
 
+export interface ArrayEventSplice<T> {
+    type: ArrayEventType.SPLICE;
+    index: number;
+    count: number;
+    items?: T[] | undefined;
+}
+export interface ArrayEventMove {
+    type: ArrayEventType.MOVE;
+    from: number;
+    count: number;
+    to: number;
+}
+export interface ArrayEventSort {
+    type: ArrayEventType.SORT;
+    from: number;
+    indexes: number[];
+}
+
 export type ArrayEvent<T> =
-    | {
-          type: ArrayEventType.SPLICE;
-          index: number;
-          count: number;
-          items?: T[] | undefined;
-      }
-    | {
-          type: ArrayEventType.MOVE;
-          from: number;
-          count: number;
-          to: number;
-      }
-    | {
-          type: ArrayEventType.SORT;
-          from: number;
-          indexes: number[];
-      };
+    | ArrayEventSplice<T>
+    | ArrayEventMove
+    | ArrayEventSort;
 
 export function shiftEvent<T>(
     slotSizes: number[],
@@ -57,15 +61,19 @@ export function shiftEvent<T>(
     }
 }
 
-export function applyArrayEvent<T>(target: T[], event: ArrayEvent<T>) {
+const EMPTY_ARRAY: readonly [] = [];
+
+export function applyArrayEvent<T>(
+    target: T[],
+    event: ArrayEvent<T>
+): readonly T[] {
     switch (event.type) {
         case ArrayEventType.SPLICE: {
             if (event.items) {
-                target.splice(event.index, event.count, ...event.items);
+                return target.splice(event.index, event.count, ...event.items);
             } else {
-                target.splice(event.index, event.count);
+                return target.splice(event.index, event.count);
             }
-            break;
         }
         case ArrayEventType.SORT: {
             const duped = target.slice(event.from);
@@ -82,6 +90,7 @@ export function applyArrayEvent<T>(target: T[], event: ArrayEvent<T>) {
         default:
             log.assertExhausted(event);
     }
+    return EMPTY_ARRAY;
 }
 
 export function* arrayEventFlatMap<T, V>(
@@ -205,6 +214,7 @@ export function addArrayEvent<T>(
             }
             return;
         }
+        // TODO: add additional merge cases
     }
     events.push(event);
 }

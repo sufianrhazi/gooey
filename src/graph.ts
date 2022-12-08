@@ -193,13 +193,20 @@ export class Graph<TVertex> {
         subscription: DebugSubscription;
     }>;
 
+    private declare postActions: (() => void)[];
+
     private declare _processHandler: (
         vertex: TVertex,
-        action: ProcessAction
+        action: ProcessAction,
+        addPostAction: (postAction: () => void) => void
     ) => boolean;
 
     constructor(
-        processHandler: (vertex: TVertex, action: ProcessAction) => boolean
+        processHandler: (
+            vertex: TVertex,
+            action: ProcessAction,
+            addPostAction: (postAction: () => void) => void
+        ) => boolean
     ) {
         this._processHandler = processHandler;
 
@@ -218,6 +225,8 @@ export class Graph<TVertex> {
         this.forwardAdjacencyHard = [];
         this.forwardAdjacencyEither = [];
         this.reverseAdjacencyEither = [];
+
+        this.postActions = [];
 
         this.startVertexIndex = 0;
         this.toReorderIds = new Set();
@@ -584,6 +593,10 @@ export class Graph<TVertex> {
         return lowerBound;
     }
 
+    private addPostAction = (action: () => void) => {
+        this.postActions.push(action);
+    };
+
     private processHandler(vertex: TVertex, action: ProcessAction) {
         if (DEBUG) {
             this.debugSubscriptions.forEach(({ subscription, formatter }) => {
@@ -601,7 +614,7 @@ export class Graph<TVertex> {
                 );
             });
         }
-        return this._processHandler(vertex, action);
+        return this._processHandler(vertex, action, this.addPostAction);
     }
 
     private processVertex(vertexId: number) {
@@ -632,11 +645,22 @@ export class Graph<TVertex> {
 
         for (;;) {
             const vertexIndex = this.startVertexIndex;
-            this.startVertexIndex++;
             if (vertexIndex >= this.vertexById.length) {
+                const postActions = this.postActions;
+                this.postActions = [];
+                for (const postAction of postActions) {
+                    postAction();
+                }
+                if (vertexIndex !== this.startVertexIndex) {
+                    // The result of processing postActions has dirtied the graph,
+                    // so we jump back and re-process
+                    continue;
+                }
+
                 this.startVertexIndex = 0;
                 break;
             }
+            this.startVertexIndex++;
 
             const vertexId = this.topologicalOrdering[vertexIndex];
             if (vertexId === undefined) {
@@ -766,6 +790,35 @@ export class Graph<TVertex> {
                 );
             });
         }
+    }
+
+    getOrderedDirty() {
+        if (this.toReorderIds.size > 0) {
+            this.resort(this.toReorderIds);
+            this.toReorderIds.clear();
+        }
+
+        const vertices: TVertex[] = [];
+        for (
+            let vertexIndex = 0;
+            vertexIndex < this.topologicalOrdering.length;
+            ++vertexIndex
+        ) {
+            const vertexId = this.topologicalOrdering[vertexIndex];
+            if (vertexId === undefined) {
+                continue;
+            }
+
+            const isDirty = this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY;
+            if (!isDirty) {
+                continue;
+            }
+
+            const vertex = this.vertexById[vertexId];
+            log.assert(vertex, 'nonexistent vertex dirtied');
+            vertices.push(vertex);
+        }
+        return vertices;
     }
 
     private propagateDirty(

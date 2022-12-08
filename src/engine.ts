@@ -1,6 +1,8 @@
 import * as log from './log';
 import { noop } from './util';
 import { Graph, ProcessAction } from './graph';
+import type { RenderNode } from './rendernode';
+import { RenderNodeCommitPhase } from './rendernode';
 
 export interface Retainable {
     __debugName: string;
@@ -12,7 +14,9 @@ export interface Retainable {
 export interface Processable {
     __processable: true;
     __debugName: string;
-    __recalculate?: () => boolean;
+    __recalculate?: (
+        addPostAction: (postAction: () => void) => void
+    ) => boolean;
     __cycle?: () => boolean;
     __invalidate?: () => boolean;
 }
@@ -22,10 +26,10 @@ export function isProcessable(val: any): val is Processable {
 }
 
 let globalDependencyGraph = new Graph<Processable>(processHandler);
+let renderNodeGraph = new Graph<RenderNode>(renderNodeProcessHandler);
 let trackReadSets: (Set<Retainable> | null)[] = [];
 let trackCreateSets: (Set<Retainable> | null)[] = [];
 let isFlushing = false;
-let afterFlushCallbacks: (() => void)[] = [];
 let needsFlush = false;
 let flushHandle: (() => void) | null = null;
 let flushScheduler = defaultScheduler;
@@ -51,10 +55,10 @@ function defaultScheduler(callback: () => void) {
 
 export function reset() {
     globalDependencyGraph = new Graph<Processable>(processHandler);
+    renderNodeGraph = new Graph<RenderNode>(renderNodeProcessHandler);
     trackReadSets = [];
     trackCreateSets = [];
     isFlushing = false;
-    afterFlushCallbacks = [];
     needsFlush = false;
     if (flushHandle) flushHandle();
     flushHandle = null;
@@ -114,14 +118,18 @@ export function release(retainable: Retainable) {
     retainable.__refcount -= 1;
 }
 
-function processHandler(vertex: Processable, action: ProcessAction) {
+function processHandler(
+    vertex: Processable,
+    action: ProcessAction,
+    addPostAction: (postAction: () => void) => void
+) {
     DEBUG &&
         log.debug('process', ProcessAction[action], vertex.__debugName, vertex);
     switch (action) {
         case ProcessAction.INVALIDATE:
             return vertex.__invalidate?.() ?? false;
         case ProcessAction.RECALCULATE:
-            return vertex.__recalculate?.() ?? false;
+            return vertex.__recalculate?.(addPostAction) ?? false;
         case ProcessAction.CYCLE:
             return vertex.__cycle?.() ?? false;
         default:
@@ -129,24 +137,49 @@ function processHandler(vertex: Processable, action: ProcessAction) {
     }
 }
 
-function flushInner() {
-    isFlushing = true;
-    globalDependencyGraph.process();
-    isFlushing = false;
-    const toCall = afterFlushCallbacks.splice(0, afterFlushCallbacks.length);
-    for (const callback of toCall) {
-        callback();
-    }
-    if (needsFlush) {
-        flush();
-    }
+function renderNodeProcessHandler(vertex: RenderNode, action: ProcessAction) {
+    // Intentionally a noop: we use getOrderedDirty to process render node graphs multiple times in order
+    // This is possible because we don't propagate
+    // TODO: can these two mechanisms be unified somehow?
+    return false;
 }
 
-export function afterFlush(fn: () => void) {
-    if (isFlushing) {
-        afterFlushCallbacks.push(fn);
-    } else {
-        fn();
+function flushInner() {
+    // Flushing has a few phases:
+    // - 1: process the global dependency graph to get state to a stable resolution
+    // - 2: notify "onUnmount"
+    // - 2.5: record document.activeElement
+    // - 3: commit DOM deletions (notify "raw" DOM deletions)
+    // - 4: commit DOM insertions (notify "raw" DOM insertions)
+    // - 4.5: restore document.activeElement if it was moved
+    // - 5: notify "onMount"
+    isFlushing = true;
+    globalDependencyGraph.process();
+    const renderNodes = renderNodeGraph.getOrderedDirty();
+    for (const vertex of renderNodes) {
+        vertex.commit?.(RenderNodeCommitPhase.COMMIT_UNMOUNT);
+    }
+    const prevFocus = document.activeElement;
+    for (const vertex of renderNodes) {
+        vertex.commit?.(RenderNodeCommitPhase.COMMIT_DEL);
+    }
+    for (const vertex of renderNodes) {
+        vertex.commit?.(RenderNodeCommitPhase.COMMIT_INS);
+    }
+    if (
+        prevFocus &&
+        (prevFocus instanceof HTMLElement || prevFocus instanceof SVGElement) &&
+        document.documentElement.contains(prevFocus)
+    ) {
+        prevFocus.focus();
+    }
+    for (const vertex of renderNodes) {
+        vertex.commit?.(RenderNodeCommitPhase.COMMIT_MOUNT);
+        renderNodeGraph.clearVertexDirty(vertex);
+    }
+    isFlushing = false;
+    if (needsFlush) {
+        flush();
     }
 }
 
@@ -158,6 +191,38 @@ export function addVertex(vertex: Processable) {
 export function removeVertex(vertex: Processable) {
     DEBUG && log.debug('removeVertex', vertex.__debugName);
     globalDependencyGraph.removeVertex(vertex);
+}
+
+export function addRenderNode(vertex: RenderNode) {
+    DEBUG && log.debug('addRenderNode', vertex.__debugName);
+    renderNodeGraph.addVertex(vertex);
+}
+
+export function removeRenderNode(vertex: RenderNode) {
+    DEBUG && log.debug('removeRenderNode', vertex.__debugName);
+    renderNodeGraph.removeVertex(vertex);
+}
+
+export function addRenderNodeParent(parent: RenderNode, child: RenderNode) {
+    DEBUG &&
+        log.debug('add child', child.__debugName, '->', parent.__debugName);
+    if (renderNodeGraph.hasEdge(child, parent, Graph.EDGE_SOFT)) {
+        return true;
+    }
+    renderNodeGraph.addEdge(child, parent, Graph.EDGE_SOFT);
+    return false;
+}
+
+export function delRenderNodeParent(parent: RenderNode, child: RenderNode) {
+    DEBUG &&
+        log.debug('del child', child.__debugName, '->', parent.__debugName);
+    renderNodeGraph.removeEdge(child, parent, Graph.EDGE_SOFT);
+}
+
+export function dirtyRenderNode(vertex: RenderNode) {
+    DEBUG && log.debug('dirty renderNode', vertex.__debugName);
+    renderNodeGraph.markVertexDirty(vertex);
+    scheduleFlush();
 }
 
 export function addHardEdge(fromVertex: Processable, toVertex: Processable) {

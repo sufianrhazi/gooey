@@ -173,8 +173,16 @@ const CalculationSymbol = Symbol('calculation');
 const CalculationUnsubscribeSymbol = Symbol('calculationUnsubscribe');
 
 interface CalcSubscriptionHandlerHack<T> {
-    bivarianceHack(errorType: undefined, val: T): void;
-    bivarianceHack(errorType: CalculationErrorType, val: Error): void;
+    bivarianceHack(
+        errorType: undefined,
+        val: T,
+        addPostAction: (postAction: () => void) => void
+    ): void;
+    bivarianceHack(
+        errorType: CalculationErrorType,
+        val: Error,
+        addPostAction: (postAction: () => void) => void
+    ): void;
 }
 type CalcSubscriptionHandler<T> =
     CalcSubscriptionHandlerHack<T>['bivarianceHack'];
@@ -442,7 +450,10 @@ function calculationDead<T>(this: Calculation<T>) {
     delete this._val;
 }
 
-function calculationRecalculate<T>(this: Calculation<T>) {
+function calculationRecalculate<T>(
+    this: Calculation<T>,
+    addPostAction: (postAction: () => void) => void
+) {
     switch (this._state) {
         case CalculationState.DEAD:
             log.fail('cannot recalculate dead calculation');
@@ -464,7 +475,11 @@ function calculationRecalculate<T>(this: Calculation<T>) {
                 if (this._subscriptions) {
                     const error = wrapError(e, 'Unknown error in calculation');
                     for (const subscription of this._subscriptions) {
-                        subscription(CalculationErrorType.EXCEPTION, error);
+                        subscription(
+                            CalculationErrorType.EXCEPTION,
+                            error,
+                            addPostAction
+                        );
                     }
                 }
                 return true; // Errors always propagate
@@ -475,7 +490,7 @@ function calculationRecalculate<T>(this: Calculation<T>) {
             }
             if (this._subscriptions) {
                 for (const subscription of this._subscriptions) {
-                    subscription(undefined, newResult);
+                    subscription(undefined, newResult, addPostAction);
                 }
             }
             return true;
@@ -506,7 +521,10 @@ function calculationInvalidate<T>(this: Calculation<T>) {
     }
 }
 
-function calculationCycle<T>(this: Calculation<T>) {
+function calculationCycle<T>(
+    this: Calculation<T>,
+    addPostAction: (postAction: () => void) => void
+) {
     switch (this._state) {
         case CalculationState.DEAD:
             log.fail('cannot trigger cycle on dead calculation');
@@ -538,7 +556,8 @@ function calculationCycle<T>(this: Calculation<T>) {
                     for (const subscription of this._subscriptions) {
                         subscription(
                             CalculationErrorType.CYCLE,
-                            new Error('Cycle')
+                            new Error('Cycle'),
+                            addPostAction
                         );
                     }
                 }
@@ -550,7 +569,7 @@ function calculationCycle<T>(this: Calculation<T>) {
             }
             if (this._subscriptions) {
                 for (const subscription of this._subscriptions) {
-                    subscription(undefined, this._val);
+                    subscription(undefined, this._val, addPostAction);
                 }
             }
             return true;
