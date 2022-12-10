@@ -37,12 +37,19 @@ export declare class ClassComponent<TProps = EmptyProps> implements ClassCompone
 }
 export declare type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
 export declare const RenderNodeType: unique symbol;
+export declare enum RenderNodeCommitPhase {
+    COMMIT_UNMOUNT = 0,
+    COMMIT_DEL = 1,
+    COMMIT_INS = 2,
+    COMMIT_MOUNT = 3
+}
 export interface RenderNode extends Retainable {
     _type: typeof RenderNodeType;
+    _commitPhase: RenderNodeCommitPhase;
     detach(): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
-    onMount(): void;
-    onUnmount(): void;
+    setMounted(isMounted: boolean): void;
+    commit(phase: RenderNodeCommitPhase): void;
     retain(): void;
     release(): void;
 }
@@ -51,13 +58,14 @@ export interface RenderNode extends Retainable {
  */
 export declare class EmptyRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
+    _commitPhase: RenderNodeCommitPhase;
     constructor();
     detach(): void;
     attach(): void;
-    onMount(): void;
-    onUnmount(): void;
+    setMounted(): void;
     retain(): void;
     release(): void;
+    commit(): void;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -72,15 +80,16 @@ export declare const emptyRenderNode: EmptyRenderNode;
  */
 export declare class TextRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
+    _commitPhase: RenderNodeCommitPhase;
     private text;
     private emitter?;
     constructor(string: string, debugName?: string);
     detach(): void;
     attach(emitter: NodeEmitter): void;
-    onMount(): void;
-    onUnmount(): void;
+    setMounted(): void;
     retain(): void;
     release(): void;
+    commit(): void;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -91,15 +100,16 @@ export declare class TextRenderNode implements RenderNode {
  */
 export declare class ForeignRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
+    _commitPhase: RenderNodeCommitPhase;
     private node;
     private emitter?;
     constructor(node: Node, debugName?: string);
     detach(): void;
     attach(emitter: NodeEmitter): void;
-    onMount(): void;
-    onUnmount(): void;
+    setMounted(): void;
     retain(): void;
     release(): void;
+    commit(): void;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -110,6 +120,7 @@ export declare class ForeignRenderNode implements RenderNode {
  */
 export declare class ArrayRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
+    _commitPhase: RenderNodeCommitPhase;
     private children;
     private slotSizes;
     private attached;
@@ -117,10 +128,10 @@ export declare class ArrayRenderNode implements RenderNode {
     constructor(children: RenderNode[], debugName?: string);
     detach(): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
-    onMount(): void;
-    onUnmount(): void;
+    setMounted(isMounted: boolean): void;
     retain(): void;
     release(): void;
+    commit(phase: RenderNodeCommitPhase): void;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -131,6 +142,7 @@ export declare class ArrayRenderNode implements RenderNode {
  */
 export declare class IntrinsicRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
+    _commitPhase: RenderNodeCommitPhase;
     private tagName;
     private element?;
     private emitter?;
@@ -149,10 +161,10 @@ export declare class IntrinsicRenderNode implements RenderNode {
     detach(): void;
     ensureElement(xmlNamespace: string, childXmlNamespace: string): Element;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
-    onMount(): void;
-    onUnmount(): void;
+    setMounted(isMounted: boolean): void;
     retain(): void;
     release(): void;
+    commit(phase: RenderNodeCommitPhase): void;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -160,9 +172,16 @@ export declare class IntrinsicRenderNode implements RenderNode {
 }
 export declare class PortalRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
+    _commitPhase: RenderNodeCommitPhase;
     private tagName;
     private element;
+    private childEvents;
+    private committedNodes;
+    private liveNodes;
+    private liveNodeSet;
+    private deadNodeSet;
     private refProp?;
+    private mountState?;
     private emitter?;
     private existingOffset;
     private arrayRenderNode;
@@ -172,8 +191,9 @@ export declare class PortalRenderNode implements RenderNode {
     private handleEvent;
     detach(): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
-    onMount(): void;
-    onUnmount(): void;
+    setMounted(isMounted: boolean): void;
+    commit(phase: RenderNodeCommitPhase): void;
+    private insertBefore;
     retain(): void;
     release(): void;
     __debugName: string;
@@ -186,6 +206,7 @@ export declare class PortalRenderNode implements RenderNode {
  */
 export declare class CalculationRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
+    _commitPhase: RenderNodeCommitPhase;
     private error?;
     private renderNode?;
     private calculation;
@@ -196,13 +217,13 @@ export declare class CalculationRenderNode implements RenderNode {
     constructor(calculation: Calculation<any>, debugName?: string);
     detach(): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
-    onMount(): void;
-    onUnmount(): void;
+    setMounted(isMounted: boolean): void;
     retain(): void;
     release(): void;
     cleanPrior(): void;
-    subscribe(errorType: undefined, val: any): void;
-    subscribe(errorType: CalculationErrorType, val: Error): void;
+    subscribe(errorType: undefined, val: any, addPostAction: (postAction: () => void) => void): void;
+    subscribe(errorType: CalculationErrorType, val: Error, addPostAction: (postAction: () => void) => void): void;
+    commit(phase: RenderNodeCommitPhase): void;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -210,7 +231,9 @@ export declare class CalculationRenderNode implements RenderNode {
 }
 export declare class CollectionRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
+    _commitPhase: RenderNodeCommitPhase;
     private children;
+    private batchEvents?;
     private childIndex;
     private slotSizes;
     private collection;
@@ -219,16 +242,17 @@ export declare class CollectionRenderNode implements RenderNode {
     private emitter?;
     private parentXmlNamespace?;
     constructor(collection: Collection<any> | View<any>, debugName?: string);
+    batchChildEvents(fn: () => void): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     detach(): void;
     handleChildEvent(event: ArrayEvent<Node> | Error, child: RenderNode): void;
-    onMount(): void;
-    onUnmount(): void;
+    setMounted(isMounted: boolean): void;
     retain(): void;
     release(): void;
     private releaseChild;
     private retainChild;
     private handleCollectionEvent;
+    commit(phase: RenderNodeCommitPhase): void;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -245,19 +269,22 @@ export declare type IntrinsicObserverNodeCallback = (node: Node, event: Intrinsi
 export declare type IntrinsicObserverElementCallback = (element: Element, event: IntrinsicObserverEventType) => void;
 export declare class IntrinsicObserverRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
+    _commitPhase: RenderNodeCommitPhase;
     nodeCallback?: IntrinsicObserverNodeCallback | undefined;
     elementCallback?: IntrinsicObserverElementCallback | undefined;
-    child: RenderNode;
+    child: ArrayRenderNode;
     childNodes: Node[];
+    pendingMount: Node[];
+    pendingUnmount: Node[];
     emitter?: NodeEmitter | undefined;
     isMounted: boolean;
     constructor(nodeCallback: IntrinsicObserverNodeCallback | undefined, elementCallback: IntrinsicObserverElementCallback | undefined, children: RenderNode[], debugName?: string);
     notify(node: Node, type: IntrinsicObserverEventType): void;
+    commit(phase: RenderNodeCommitPhase): void;
     handleEvent(event: ArrayEvent<Node> | Error): void;
     detach(): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
-    onMount(): void;
-    onUnmount(): void;
+    setMounted(isMounted: boolean): void;
     retain(): void;
     release(): void;
     __debugName: string;
@@ -272,6 +299,7 @@ export declare const IntrinsicObserver: Component<{
 }>;
 export declare class ComponentRenderNode<TProps> implements RenderNode {
     _type: typeof RenderNodeType;
+    _commitPhase: RenderNodeCommitPhase;
     Component: FunctionComponent<TProps>;
     props: TProps | null | undefined;
     children: JSX.Node[];
@@ -285,13 +313,14 @@ export declare class ComponentRenderNode<TProps> implements RenderNode {
     emitter?: NodeEmitter | undefined;
     parentXmlNamespace?: string | undefined;
     isMounted: boolean;
+    private needsMount?;
     constructor(Component: FunctionComponent<TProps>, props: TProps | null | undefined, children: JSX.Node[], debugName?: string);
     detach(): void;
     private ensureResult;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     handleEvent: (event: ArrayEvent<Node> | Error) => void;
-    onMount(): void;
-    onUnmount(): void;
+    setMounted(isMounted: boolean): void;
+    commit(phase: RenderNodeCommitPhase): void;
     retain(): void;
     release(): void;
     __debugName: string;

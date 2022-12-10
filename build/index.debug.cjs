@@ -210,6 +210,9 @@ var VERTEX_BIT_SELF_CYCLE = 4;
 var VERTEX_BIT_CYCLE_INFORMED = 8;
 var Graph = class {
   constructor(processHandler2) {
+    this.addPostAction = (action) => {
+      this.postActions.push(action);
+    };
     this._processHandler = processHandler2;
     this.nextId = 1;
     this.availableIds = [];
@@ -223,6 +226,7 @@ var Graph = class {
     this.forwardAdjacencyHard = [];
     this.forwardAdjacencyEither = [];
     this.reverseAdjacencyEither = [];
+    this.postActions = [];
     this.startVertexIndex = 0;
     this.toReorderIds = /* @__PURE__ */ new Set();
     this.debugSubscriptions = /* @__PURE__ */ new Set();
@@ -366,10 +370,10 @@ var Graph = class {
     assert(fromId, "removeEdge from vertex not found");
     assert(toId, "removeEdge to vertex not found");
     assert(this.forwardAdjacencyEither[fromId].includes(toId), "removeEdge on edge that does not exist");
-    this.forwardAdjacencyEither[fromId].splice(this.forwardAdjacencyEither[fromId].indexOf(toId), 1);
-    this.reverseAdjacencyEither[toId].splice(this.reverseAdjacencyEither[toId].indexOf(fromId), 1);
+    removeUnordered(this.forwardAdjacencyEither[fromId], toId);
+    removeUnordered(this.reverseAdjacencyEither[toId], fromId);
     if (kind === 2 /* EDGE_HARD */) {
-      this.forwardAdjacencyHard[fromId].splice(this.forwardAdjacencyHard[fromId].indexOf(toId), 1);
+      removeUnordered(this.forwardAdjacencyHard[fromId], toId);
     }
     if (fromId === toId) {
       this.vertexBitsById[fromId] = this.vertexBitsById[fromId] & ~VERTEX_BIT_SELF_CYCLE;
@@ -480,7 +484,7 @@ var Graph = class {
         }), label), label);
       });
     }
-    return this._processHandler(vertex, action);
+    return this._processHandler(vertex, action, this.addPostAction);
   }
   processVertex(vertexId) {
     const vertex = this.vertexById[vertexId];
@@ -502,11 +506,19 @@ var Graph = class {
     }
     for (; ; ) {
       const vertexIndex = this.startVertexIndex;
-      this.startVertexIndex++;
       if (vertexIndex >= this.vertexById.length) {
+        const postActions = this.postActions;
+        this.postActions = [];
+        for (const postAction of postActions) {
+          postAction();
+        }
+        if (vertexIndex !== this.startVertexIndex) {
+          continue;
+        }
         this.startVertexIndex = 0;
         break;
       }
+      this.startVertexIndex++;
       const vertexId = this.topologicalOrdering[vertexIndex];
       if (vertexId === void 0) {
         continue;
@@ -594,6 +606,27 @@ var Graph = class {
         }), label), label);
       });
     }
+  }
+  getOrderedDirty() {
+    if (this.toReorderIds.size > 0) {
+      this.resort(this.toReorderIds);
+      this.toReorderIds.clear();
+    }
+    const vertices = [];
+    for (let vertexIndex = 0; vertexIndex < this.topologicalOrdering.length; ++vertexIndex) {
+      const vertexId = this.topologicalOrdering[vertexIndex];
+      if (vertexId === void 0) {
+        continue;
+      }
+      const isDirty = this.vertexBitsById[vertexId] & VERTEX_BIT_DIRTY;
+      if (!isDirty) {
+        continue;
+      }
+      const vertex = this.vertexById[vertexId];
+      assert(vertex, "nonexistent vertex dirtied");
+      vertices.push(vertex);
+    }
+    return vertices;
   }
   propagateDirty(vertexId, cycleVertexIds) {
     this.clearVertexDirtyInner(vertexId);
@@ -723,16 +756,25 @@ if (false) {
     };
   };
 }
+function removeUnordered(array, value) {
+  if (value === array[array.length - 1]) {
+    array.pop();
+    return;
+  }
+  const index = array.indexOf(value);
+  array[index] = array[array.length - 1];
+  array.pop();
+}
 
 // src/engine.ts
 function isProcessable(val) {
   return val && val.__processable === true;
 }
 var globalDependencyGraph = new Graph(processHandler);
+var renderNodesToCommit = /* @__PURE__ */ new Set();
 var trackReadSets = [];
 var trackCreateSets = [];
 var isFlushing = false;
-var afterFlushCallbacks = [];
 var needsFlush = false;
 var flushHandle = null;
 var flushScheduler = defaultScheduler;
@@ -756,10 +798,10 @@ function defaultScheduler(callback) {
 }
 function reset() {
   globalDependencyGraph = new Graph(processHandler);
+  renderNodesToCommit = /* @__PURE__ */ new Set();
   trackReadSets = [];
   trackCreateSets = [];
   isFlushing = false;
-  afterFlushCallbacks = [];
   needsFlush = false;
   if (flushHandle)
     flushHandle();
@@ -804,15 +846,15 @@ function release(retainable) {
   }
   retainable.__refcount -= 1;
 }
-function processHandler(vertex, action) {
+function processHandler(vertex, action, addPostAction) {
   debug("process", ProcessAction[action], vertex.__debugName, vertex);
   switch (action) {
     case 0 /* INVALIDATE */:
       return vertex.__invalidate?.() ?? false;
     case 1 /* RECALCULATE */:
-      return vertex.__recalculate?.() ?? false;
+      return vertex.__recalculate?.(addPostAction) ?? false;
     case 2 /* CYCLE */:
-      return vertex.__cycle?.() ?? false;
+      return vertex.__cycle?.(addPostAction) ?? false;
     default:
       assertExhausted(action, "unknown action");
   }
@@ -820,20 +862,26 @@ function processHandler(vertex, action) {
 function flushInner() {
   isFlushing = true;
   globalDependencyGraph.process();
-  isFlushing = false;
-  const toCall = afterFlushCallbacks.splice(0, afterFlushCallbacks.length);
-  for (const callback of toCall) {
-    callback();
+  for (const renderNode of renderNodesToCommit) {
+    renderNode.commit?.(0 /* COMMIT_UNMOUNT */);
   }
+  const prevFocus = document.activeElement;
+  for (const renderNode of renderNodesToCommit) {
+    renderNode.commit?.(1 /* COMMIT_DEL */);
+  }
+  for (const renderNode of renderNodesToCommit) {
+    renderNode.commit?.(2 /* COMMIT_INS */);
+  }
+  if (prevFocus && (prevFocus instanceof HTMLElement || prevFocus instanceof SVGElement) && document.documentElement.contains(prevFocus)) {
+    prevFocus.focus();
+  }
+  for (const renderNode of renderNodesToCommit) {
+    renderNode.commit?.(3 /* COMMIT_MOUNT */);
+  }
+  renderNodesToCommit.clear();
+  isFlushing = false;
   if (needsFlush) {
     flush();
-  }
-}
-function afterFlush(fn) {
-  if (isFlushing) {
-    afterFlushCallbacks.push(fn);
-  } else {
-    fn();
   }
 }
 function addVertex(vertex) {
@@ -843,6 +891,14 @@ function addVertex(vertex) {
 function removeVertex(vertex) {
   debug("removeVertex", vertex.__debugName);
   globalDependencyGraph.removeVertex(vertex);
+}
+function removeRenderNode(vertex) {
+  renderNodesToCommit.delete(vertex);
+}
+function dirtyRenderNode(renderNode) {
+  debug("dirty renderNode", renderNode.__debugName);
+  renderNodesToCommit.add(renderNode);
+  scheduleFlush();
 }
 function addHardEdge(fromVertex, toVertex) {
   debug("add edge:hard", fromVertex.__debugName, "->", toVertex.__debugName);
@@ -1203,14 +1259,9 @@ var ArrayEventType = /* @__PURE__ */ ((ArrayEventType2) => {
   ArrayEventType2["SORT"] = "sort";
   return ArrayEventType2;
 })(ArrayEventType || {});
-function shiftEvent(slotSizes, slotIndex, event) {
-  let shiftAmount = 0;
-  for (let i = 0; i < slotIndex; ++i) {
-    shiftAmount += slotSizes[i];
-  }
+function shiftEventBy(shiftAmount, event) {
   switch (event.type) {
     case "splice" /* SPLICE */: {
-      slotSizes[slotIndex] += (event.items?.length ?? 0) - event.count;
       event.index += shiftAmount;
       break;
     }
@@ -1230,15 +1281,25 @@ function shiftEvent(slotSizes, slotIndex, event) {
       assertExhausted(event);
   }
 }
+function shiftEvent(slotSizes, slotIndex, event) {
+  let shiftAmount = 0;
+  for (let i = 0; i < slotIndex; ++i) {
+    shiftAmount += slotSizes[i];
+  }
+  shiftEventBy(shiftAmount, event);
+  if (event.type === "splice" /* SPLICE */) {
+    slotSizes[slotIndex] += (event.items?.length ?? 0) - event.count;
+  }
+}
+var EMPTY_ARRAY = [];
 function applyArrayEvent(target, event) {
   switch (event.type) {
     case "splice" /* SPLICE */: {
       if (event.items) {
-        target.splice(event.index, event.count, ...event.items);
+        return target.splice(event.index, event.count, ...event.items);
       } else {
-        target.splice(event.index, event.count);
+        return target.splice(event.index, event.count);
       }
-      break;
     }
     case "sort" /* SORT */: {
       const duped = target.slice(event.from);
@@ -1255,6 +1316,7 @@ function applyArrayEvent(target, event) {
     default:
       assertExhausted(event);
   }
+  return EMPTY_ARRAY;
 }
 function* arrayEventFlatMap(slotSizes, flatMap, target, event) {
   switch (event.type) {
@@ -1538,7 +1600,7 @@ function calculationDead() {
   this._state = 4 /* DEAD */;
   delete this._val;
 }
-function calculationRecalculate() {
+function calculationRecalculate(addPostAction) {
   switch (this._state) {
     case 4 /* DEAD */:
       fail("cannot recalculate dead calculation");
@@ -1560,7 +1622,7 @@ function calculationRecalculate() {
         if (this._subscriptions) {
           const error2 = wrapError(e, "Unknown error in calculation");
           for (const subscription of this._subscriptions) {
-            subscription(1 /* EXCEPTION */, error2);
+            subscription(1 /* EXCEPTION */, error2, addPostAction);
           }
         }
         return true;
@@ -1571,7 +1633,7 @@ function calculationRecalculate() {
       }
       if (this._subscriptions) {
         for (const subscription of this._subscriptions) {
-          subscription(void 0, newResult);
+          subscription(void 0, newResult, addPostAction);
         }
       }
       return true;
@@ -1600,7 +1662,7 @@ function calculationInvalidate() {
       assertExhausted(this._state, "Calculation in unknown state");
   }
 }
-function calculationCycle() {
+function calculationCycle(addPostAction) {
   switch (this._state) {
     case 4 /* DEAD */:
       fail("cannot trigger cycle on dead calculation");
@@ -1623,7 +1685,7 @@ function calculationCycle() {
         this._error = Sentinel;
         if (this._subscriptions) {
           for (const subscription of this._subscriptions) {
-            subscription(0 /* CYCLE */, new Error("Cycle"));
+            subscription(0 /* CYCLE */, new Error("Cycle"), addPostAction);
           }
         }
         return true;
@@ -1634,7 +1696,7 @@ function calculationCycle() {
       }
       if (this._subscriptions) {
         for (const subscription of this._subscriptions) {
-          subscription(void 0, this._val);
+          subscription(void 0, this._val, addPostAction);
         }
       }
       return true;
@@ -2410,9 +2472,23 @@ var ClassComponent = class {
   }
 };
 var RenderNodeType = Symbol("rendernode");
+function isNextRenderNodeCommitPhase(commitPhase, nextPhase) {
+  return commitPhase === 3 /* COMMIT_MOUNT */ && nextPhase === 0 /* COMMIT_UNMOUNT */ || commitPhase === 0 /* COMMIT_UNMOUNT */ && nextPhase === 1 /* COMMIT_DEL */ || commitPhase === 1 /* COMMIT_DEL */ && nextPhase === 2 /* COMMIT_INS */ || commitPhase === 2 /* COMMIT_INS */ && nextPhase === 3 /* COMMIT_MOUNT */;
+}
+function own(parent, child) {
+  if (child === emptyRenderNode)
+    return;
+  retain(child);
+}
+function disown(parent, child) {
+  if (child === emptyRenderNode)
+    return;
+  release(child);
+}
 var EmptyRenderNode = class {
   constructor() {
     this._type = RenderNodeType;
+    this._commitPhase = 3 /* COMMIT_MOUNT */;
     this.__debugName = "empty";
     this.__refcount = 0;
   }
@@ -2420,9 +2496,7 @@ var EmptyRenderNode = class {
   }
   attach() {
   }
-  onMount() {
-  }
-  onUnmount() {
+  setMounted() {
   }
   retain() {
     retain(this);
@@ -2430,15 +2504,19 @@ var EmptyRenderNode = class {
   release() {
     release(this);
   }
+  commit() {
+  }
   __alive() {
   }
   __dead() {
+    removeRenderNode(this);
   }
 };
 var emptyRenderNode = new EmptyRenderNode();
 var TextRenderNode = class {
   constructor(string, debugName) {
     this._type = RenderNodeType;
+    this._commitPhase = 3 /* COMMIT_MOUNT */;
     this.text = document.createTextNode(string);
     this.__debugName = debugName ?? "text";
     this.__refcount = 0;
@@ -2457,9 +2535,7 @@ var TextRenderNode = class {
       items: [this.text]
     });
   }
-  onMount() {
-  }
-  onUnmount() {
+  setMounted() {
   }
   retain() {
     retain(this);
@@ -2467,15 +2543,19 @@ var TextRenderNode = class {
   release() {
     release(this);
   }
+  commit() {
+  }
   __alive() {
   }
   __dead() {
     this.emitter = void 0;
+    removeRenderNode(this);
   }
 };
 var ForeignRenderNode = class {
   constructor(node, debugName) {
     this._type = RenderNodeType;
+    this._commitPhase = 3 /* COMMIT_MOUNT */;
     this.node = node;
     this.__debugName = debugName ?? "foreign";
     this.__refcount = 0;
@@ -2494,9 +2574,7 @@ var ForeignRenderNode = class {
       items: [this.node]
     });
   }
-  onMount() {
-  }
-  onUnmount() {
+  setMounted() {
   }
   retain() {
     retain(this);
@@ -2504,15 +2582,19 @@ var ForeignRenderNode = class {
   release() {
     release(this);
   }
+  commit() {
+  }
   __alive() {
   }
   __dead() {
     this.emitter = void 0;
+    removeRenderNode(this);
   }
 };
 var ArrayRenderNode = class {
   constructor(children, debugName) {
     this._type = RenderNodeType;
+    this._commitPhase = 3 /* COMMIT_MOUNT */;
     this.children = children;
     this.slotSizes = children.map(() => 0);
     this.attached = children.map(() => false);
@@ -2544,14 +2626,9 @@ var ArrayRenderNode = class {
       this.attached[index] = true;
     }
   }
-  onMount() {
+  setMounted(isMounted) {
     for (const child of this.children) {
-      child.onMount();
-    }
-  }
-  onUnmount() {
-    for (const child of this.children) {
-      child.onUnmount();
+      child.setMounted(isMounted);
     }
   }
   retain() {
@@ -2560,15 +2637,24 @@ var ArrayRenderNode = class {
   release() {
     release(this);
   }
+  commit(phase) {
+    if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+      for (const child of this.children) {
+        child.commit(phase);
+      }
+      this._commitPhase = phase;
+    }
+  }
   __alive() {
     for (const child of this.children) {
-      retain(child);
+      own(this, child);
     }
   }
   __dead() {
     for (const child of this.children) {
-      release(child);
+      disown(this, child);
     }
+    removeRenderNode(this);
     this.emitter = void 0;
   }
 };
@@ -2801,7 +2887,6 @@ var elementNamespaceTransitionMap = {
     }
   }
 };
-var previousFocusedDetachedElement = null;
 var EventProps = [
   { prefix: "on:", param: false },
   { prefix: "oncapture:", param: true },
@@ -2822,6 +2907,7 @@ var IntrinsicRenderNode = class {
       assert(false, "unexpected event from IntrinsicRenderNode");
     };
     this._type = RenderNodeType;
+    this._commitPhase = 3 /* COMMIT_MOUNT */;
     this.props = props;
     this.children = new ArrayRenderNode(children);
     this.tagName = tagName;
@@ -2909,10 +2995,10 @@ var IntrinsicRenderNode = class {
       this.element = this.createElement(xmlNamespace);
       if (this.portalRenderNode) {
         this.portalRenderNode.detach();
-        release(this.portalRenderNode);
+        disown(this, this.portalRenderNode);
       }
       this.portalRenderNode = new PortalRenderNode(this.element, this.children, this.props?.ref);
-      retain(this.portalRenderNode);
+      own(this, this.portalRenderNode);
       this.portalRenderNode.attach(this.handleEvent, childXmlNamespace);
     }
     return this.element;
@@ -2935,11 +3021,8 @@ var IntrinsicRenderNode = class {
       items: [element]
     });
   }
-  onMount() {
-    this.portalRenderNode?.onMount();
-  }
-  onUnmount() {
-    this.portalRenderNode?.onUnmount();
+  setMounted(isMounted) {
+    this.portalRenderNode?.setMounted(isMounted);
   }
   retain() {
     retain(this);
@@ -2947,9 +3030,17 @@ var IntrinsicRenderNode = class {
   release() {
     release(this);
   }
+  commit(phase) {
+    if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+      this.portalRenderNode?.commit(phase);
+      this._commitPhase = phase;
+    }
+  }
   __alive() {
     const xmlNamespaceGuess = ELEMENT_NAMESPACE_GUESS[this.tagName] || HTML_NAMESPACE;
-    retain(this.children);
+    if (this.portalRenderNode) {
+      own(this, this.portalRenderNode);
+    }
     this.ensureElement(xmlNamespaceGuess, this.tagName === "foreignObject" ? HTML_NAMESPACE : xmlNamespaceGuess);
   }
   __dead() {
@@ -2966,13 +3057,14 @@ var IntrinsicRenderNode = class {
     }
     this.element = void 0;
     if (this.portalRenderNode) {
-      release(this.portalRenderNode);
+      disown(this, this.portalRenderNode);
       this.portalRenderNode = void 0;
     }
-    release(this.children);
+    removeRenderNode(this);
     this.emitter = void 0;
   }
 };
+var fragment = document.createDocumentFragment();
 var PortalRenderNode = class {
   constructor(element, children, refProp, debugName) {
     this.handleEvent = (event) => {
@@ -2984,55 +3076,21 @@ var PortalRenderNode = class {
         }
         return;
       }
-      assert(this.element, "missing element");
-      switch (event.type) {
-        case "splice" /* SPLICE */: {
-          for (let i = 0; i < event.count; ++i) {
-            this.element.removeChild(this.element.childNodes[this.existingOffset + event.index]);
-          }
-          const referenceNode = event.index < this.element.childNodes.length ? this.element.childNodes[this.existingOffset + event.index] : null;
-          if (event.items) {
-            for (let i = event.items.length - 1; i >= 0; --i) {
-              this.element.insertBefore(event.items[i], referenceNode);
-            }
-          }
-          break;
-        }
-        case "move" /* MOVE */: {
-          const toMove = [];
-          for (let i = 0; i < event.count; ++i) {
-            const node = this.element.childNodes[this.existingOffset + event.from];
-            this.element.removeChild(node);
-            toMove.push(node);
-          }
-          const referenceNode = event.to < this.element.childNodes.length ? this.element.childNodes[this.existingOffset + event.to] : null;
-          for (const node of toMove) {
-            this.element.insertBefore(node, referenceNode);
-          }
-          break;
-        }
-        case "sort" /* SORT */: {
-          const unsorted = [];
-          for (let i = 0; i < event.indexes.length; ++i) {
-            const node = this.element.childNodes[this.existingOffset + event.from];
-            this.element.removeChild(node);
-            unsorted.push(node);
-          }
-          const referenceNode = event.from < this.element.childNodes.length ? this.element.childNodes[this.existingOffset + event.from] : null;
-          for (const index of event.indexes) {
-            this.element.insertBefore(unsorted[index - event.from], referenceNode);
-          }
-          break;
-        }
-        default:
-          assertExhausted(event);
-      }
+      addArrayEvent(this.childEvents, event);
+      dirtyRenderNode(this);
     };
     this._type = RenderNodeType;
+    this._commitPhase = 3 /* COMMIT_MOUNT */;
     this.arrayRenderNode = children;
+    this.childEvents = [];
+    this.committedNodes = [];
+    this.liveNodes = [];
+    this.liveNodeSet = /* @__PURE__ */ new Set();
+    this.deadNodeSet = /* @__PURE__ */ new Set();
     this.element = element;
     if (refProp) {
       this.refProp = refProp;
+      this.mountState = 3 /* UNMOUNTED */;
     }
     this.tagName = this.element.tagName;
     this.existingOffset = element.childNodes.length;
@@ -3048,31 +3106,104 @@ var PortalRenderNode = class {
     this.emitter = emitter;
     this.arrayRenderNode.attach(this.handleEvent, parentXmlNamespace);
   }
-  onMount() {
-    this.arrayRenderNode.onMount();
-    if (this.refProp) {
-      if (this.refProp instanceof Ref) {
-        this.refProp.current = this.element;
-      } else if (typeof this.refProp === "function") {
-        this.refProp(this.element);
+  setMounted(isMounted) {
+    if (isMounted) {
+      this.arrayRenderNode.setMounted(true);
+      if (this.refProp) {
+        dirtyRenderNode(this);
+        this.mountState = 1 /* NOTIFY_MOUNT */;
       }
-    }
-    if (this.element && this.element.focus && previousFocusedDetachedElement === this.element) {
-      this.element.focus();
+    } else {
+      if (this.refProp) {
+        dirtyRenderNode(this);
+        this.mountState = 2 /* NOTIFY_UNMOUNT */;
+      }
+      this.arrayRenderNode.setMounted(false);
     }
   }
-  onUnmount() {
-    if (this.element && document.activeElement === this.element) {
-      previousFocusedDetachedElement = this.element;
+  commit(phase) {
+    if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+      return;
     }
-    if (this.refProp) {
+    this.arrayRenderNode.commit(phase);
+    this._commitPhase = phase;
+    if (phase === 0 /* COMMIT_UNMOUNT */ && this.childEvents.length > 0) {
+      const childEvents = this.childEvents;
+      this.childEvents = [];
+      for (const childEvent of childEvents) {
+        const removed = applyArrayEvent(this.liveNodes, childEvent);
+        for (const toRemove of removed) {
+          if (this.liveNodeSet.has(toRemove)) {
+            this.deadNodeSet.add(toRemove);
+          }
+        }
+      }
+    }
+    if (phase === 0 /* COMMIT_UNMOUNT */ && this.refProp && this.mountState === 2 /* NOTIFY_UNMOUNT */) {
       if (this.refProp instanceof Ref) {
         this.refProp.current = void 0;
       } else if (typeof this.refProp === "function") {
         this.refProp(void 0);
       }
+      this.mountState = 3 /* UNMOUNTED */;
     }
-    this.arrayRenderNode.onUnmount();
+    if (phase === 1 /* COMMIT_DEL */ && this.deadNodeSet.size > 0) {
+      if (this.deadNodeSet.size === this.liveNodeSet.size && this.existingOffset === 0) {
+        this.element.replaceChildren();
+        this.liveNodeSet.clear();
+        this.committedNodes = [];
+      } else {
+        for (const toRemove of this.deadNodeSet) {
+          this.liveNodeSet.delete(toRemove);
+          this.element.removeChild(toRemove);
+        }
+        this.committedNodes = this.committedNodes.filter((node) => !this.deadNodeSet.has(node));
+      }
+      this.deadNodeSet.clear();
+    }
+    if (phase === 2 /* COMMIT_INS */ && this.liveNodes.length > 0) {
+      let toInsert = [];
+      let liveIndex = 0;
+      let currIndex = 0;
+      while (liveIndex < this.liveNodes.length) {
+        if (this.committedNodes[currIndex] === this.liveNodes[liveIndex]) {
+          this.insertBefore(toInsert, liveIndex);
+          toInsert = [];
+          liveIndex += 1;
+          currIndex += 1;
+        } else {
+          toInsert.push(this.liveNodes[liveIndex]);
+          liveIndex += 1;
+        }
+      }
+      this.insertBefore(toInsert, this.liveNodes.length);
+    }
+    if (phase === 3 /* COMMIT_MOUNT */ && this.refProp && this.mountState === 1 /* NOTIFY_MOUNT */) {
+      if (this.refProp instanceof Ref) {
+        this.refProp.current = this.element;
+      } else if (typeof this.refProp === "function") {
+        this.refProp(this.element);
+      }
+      this.mountState = 0 /* MOUNTED */;
+    }
+  }
+  insertBefore(nodes, targetIndex) {
+    let toInsert;
+    if (nodes.length === 1) {
+      toInsert = nodes[0];
+      this.liveNodeSet.add(nodes[0]);
+      this.committedNodes.splice(targetIndex, 0, toInsert);
+    } else if (nodes.length > 1) {
+      for (const node of nodes) {
+        this.liveNodeSet.add(node);
+        fragment.appendChild(node);
+      }
+      this.committedNodes.splice(targetIndex, 0, ...nodes);
+      toInsert = fragment;
+    }
+    if (toInsert) {
+      this.element.insertBefore(toInsert, this.liveNodes[targetIndex] || null);
+    }
   }
   retain() {
     retain(this);
@@ -3081,7 +3212,7 @@ var PortalRenderNode = class {
     release(this);
   }
   __alive() {
-    retain(this.arrayRenderNode);
+    own(this, this.arrayRenderNode);
   }
   __dead() {
     if (this.calculations) {
@@ -3095,13 +3226,15 @@ var PortalRenderNode = class {
       }
       this.calculationSubscriptions.clear();
     }
-    release(this.arrayRenderNode);
+    disown(this, this.arrayRenderNode);
+    removeRenderNode(this);
     this.emitter = void 0;
   }
 };
 var CalculationRenderNode = class {
   constructor(calculation, debugName) {
     this._type = RenderNodeType;
+    this._commitPhase = 3 /* COMMIT_MOUNT */;
     this.calculation = calculation;
     this.isMounted = false;
     this.__debugName = debugName ?? `rendercalc:${calculation.__debugName}`;
@@ -3121,13 +3254,9 @@ var CalculationRenderNode = class {
       this.renderNode?.attach(emitter, parentXmlNamespace);
     }
   }
-  onMount() {
-    this.isMounted = true;
-    this.renderNode?.onMount();
-  }
-  onUnmount() {
-    this.renderNode?.onUnmount();
-    this.isMounted = false;
+  setMounted(isMounted) {
+    this.isMounted = isMounted;
+    this.renderNode?.setMounted(isMounted);
   }
   retain() {
     retain(this);
@@ -3139,16 +3268,16 @@ var CalculationRenderNode = class {
     if (this.renderNode) {
       if (this.emitter) {
         if (this.isMounted) {
-          this.renderNode.onUnmount();
+          this.renderNode.setMounted(false);
         }
         this.renderNode.detach();
       }
-      release(this.renderNode);
+      disown(this, this.renderNode);
       this.error = void 0;
       this.renderNode = void 0;
     }
   }
-  subscribe(errorType, val) {
+  subscribe(errorType, val, addPostAction) {
     this.cleanPrior();
     if (errorType) {
       this.error = val;
@@ -3158,32 +3287,42 @@ var CalculationRenderNode = class {
         warn("Unhandled error on detached CalculationRenderNode", val);
       }
     } else {
-      const renderNode = renderJSXNode(val);
-      retain(renderNode);
-      afterFlush(() => {
-        this.cleanPrior();
+      addPostAction(() => {
+        const renderNode = renderJSXNode(val);
+        own(this, renderNode);
         this.renderNode = renderNode;
         if (this.emitter && this.parentXmlNamespace) {
           renderNode.attach(this.emitter, this.parentXmlNamespace);
         }
         if (this.isMounted) {
-          renderNode.onMount();
+          renderNode.setMounted(true);
         }
       });
+    }
+  }
+  commit(phase) {
+    if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+      this.renderNode?.commit(phase);
+      this._commitPhase = phase;
     }
   }
   __alive() {
     try {
       this.calculationSubscription = this.calculation.subscribe(this.subscribe);
-      this.subscribe(void 0, this.calculation());
+      this.subscribe(void 0, this.calculation(), (action) => {
+        action();
+      });
     } catch (e) {
-      this.subscribe(1 /* EXCEPTION */, wrapError(e));
+      this.subscribe(1 /* EXCEPTION */, wrapError(e), (action) => {
+        action();
+      });
     }
   }
   __dead() {
     this.calculationSubscription?.();
     this.calculationSubscription = void 0;
     this.cleanPrior();
+    removeRenderNode(this);
     this.emitter = void 0;
   }
 };
@@ -3202,19 +3341,23 @@ var CollectionRenderNode = class {
               }
             }
             const removed = this.children.splice(event.index, event.count, ...newChildren);
-            for (const child of removed) {
-              this.releaseChild(child);
-              this.childIndex.delete(child);
-            }
+            this.batchChildEvents(() => {
+              for (const child of removed) {
+                this.releaseChild(child);
+                this.childIndex.delete(child);
+              }
+            });
             this.slotSizes.splice(event.index, event.count, ...newChildren.map(() => 0));
             if (newChildren.length !== event.count) {
               for (let i = event.index + newChildren.length; i < this.children.length; ++i) {
                 this.childIndex.set(this.children[i], i);
               }
             }
-            for (const child of newChildren) {
-              this.retainChild(child);
-            }
+            this.batchChildEvents(() => {
+              for (const child of newChildren) {
+                this.retainChild(child);
+              }
+            });
             break;
           }
           case "move" /* MOVE */: {
@@ -3262,6 +3405,7 @@ var CollectionRenderNode = class {
       }
     };
     this._type = RenderNodeType;
+    this._commitPhase = 3 /* COMMIT_MOUNT */;
     this.collection = collection2;
     this.children = [];
     this.childIndex = /* @__PURE__ */ new Map();
@@ -3270,14 +3414,38 @@ var CollectionRenderNode = class {
     this.__debugName = debugName ?? `rendercoll`;
     this.__refcount = 0;
   }
+  batchChildEvents(fn) {
+    this.batchEvents = [];
+    fn();
+    this.batchEvents.sort((a, b) => a[0] - b[0]);
+    let eventIndex = 0;
+    let shiftAmount = 0;
+    for (let slotIndex = 0; eventIndex < this.batchEvents.length && slotIndex < this.slotSizes.length; ++slotIndex) {
+      while (eventIndex < this.batchEvents.length && this.batchEvents[eventIndex][0] === slotIndex) {
+        const event = this.batchEvents[eventIndex][1];
+        if (event.type === "splice" /* SPLICE */) {
+          this.slotSizes[slotIndex] += (event.items?.length ?? 0) - event.count;
+        }
+        if (this.emitter) {
+          shiftEventBy(shiftAmount, event);
+          this.emitter(event);
+        }
+        eventIndex++;
+      }
+      shiftAmount += this.slotSizes[slotIndex];
+    }
+    this.batchEvents = void 0;
+  }
   attach(emitter, parentXmlNamespace) {
     this.emitter = emitter;
     this.parentXmlNamespace = parentXmlNamespace;
-    for (const child of this.children) {
-      child.attach((event) => {
-        this.handleChildEvent(event, child);
-      }, parentXmlNamespace);
-    }
+    this.batchChildEvents(() => {
+      for (const child of this.children) {
+        child.attach((event) => {
+          this.handleChildEvent(event, child);
+        }, parentXmlNamespace);
+      }
+    });
   }
   detach() {
     for (const child of this.children) {
@@ -3289,22 +3457,22 @@ var CollectionRenderNode = class {
     if (this.emitter) {
       if (!(event instanceof Error)) {
         const index = this.childIndex.get(child);
-        shiftEvent(this.slotSizes, index, event);
+        if (this.batchEvents) {
+          this.batchEvents.push([index, event]);
+        } else {
+          shiftEvent(this.slotSizes, index, event);
+          this.emitter(event);
+        }
+      } else {
+        this.emitter(event);
       }
-      this.emitter(event);
     }
   }
-  onMount() {
-    this.isMounted = true;
+  setMounted(isMounted) {
+    this.isMounted = isMounted;
     for (const child of this.children) {
-      child.onMount();
+      child.setMounted(isMounted);
     }
-  }
-  onUnmount() {
-    for (const child of this.children) {
-      child.onUnmount();
-    }
-    this.isMounted = false;
   }
   retain() {
     retain(this);
@@ -3315,32 +3483,42 @@ var CollectionRenderNode = class {
   releaseChild(child) {
     if (this.emitter) {
       if (this.isMounted) {
-        child.onUnmount();
+        child.setMounted(false);
       }
       child.detach();
     }
-    release(child);
+    disown(this, child);
   }
   retainChild(child) {
-    retain(child);
+    own(this, child);
     if (this.emitter && this.parentXmlNamespace) {
       child.attach((event) => this.handleChildEvent(event, child), this.parentXmlNamespace);
       if (this.isMounted) {
-        child.onMount();
+        child.setMounted(true);
       }
+    }
+  }
+  commit(phase) {
+    if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+      for (const child of this.children) {
+        child.commit(phase);
+      }
+      this._commitPhase = phase;
     }
   }
   __alive() {
     retain(this.collection);
     this.unsubscribe = this.collection.subscribe(this.handleCollectionEvent);
     untrackReads(() => {
-      for (const [index, item] of this.collection.entries()) {
-        const child = renderJSXNode(item);
-        this.children.push(child);
-        this.slotSizes.push(0);
-        this.childIndex.set(child, index);
-        this.retainChild(child);
-      }
+      this.batchChildEvents(() => {
+        for (const [index, item] of this.collection.entries()) {
+          const child = renderJSXNode(item);
+          this.children.push(child);
+          this.slotSizes.push(0);
+          this.childIndex.set(child, index);
+          this.retainChild(child);
+        }
+      });
     });
   }
   __dead() {
@@ -3353,6 +3531,7 @@ var CollectionRenderNode = class {
     }
     this.slotSizes.splice(0, this.slotSizes.length);
     this.emitter = void 0;
+    removeRenderNode(this);
   }
 };
 function isCalculationRenderNode(val) {
@@ -3414,12 +3593,6 @@ function renderJSXChildren(children) {
   return childRenderNodes;
 }
 function mount(target, node) {
-  const focusMonitor = (e) => {
-    if (previousFocusedDetachedElement && e.target && e.target !== document.documentElement && e.target !== document.body) {
-      previousFocusedDetachedElement = null;
-    }
-  };
-  document.documentElement.addEventListener("focusin", focusMonitor);
   const root = new PortalRenderNode(target, new ArrayRenderNode([node]), null, "root");
   retain(root);
   let syncError;
@@ -3434,12 +3607,13 @@ function mount(target, node) {
     release(root);
     throw syncError;
   }
-  root.onMount();
+  root.setMounted(true);
+  flush();
   return () => {
-    root.onUnmount();
+    root.setMounted(false);
     root.detach();
+    flush();
     release(root);
-    document.documentElement.removeEventListener("focusin", focusMonitor);
   };
 }
 var IntrinsicObserverEventType = /* @__PURE__ */ ((IntrinsicObserverEventType2) => {
@@ -3450,18 +3624,59 @@ var IntrinsicObserverEventType = /* @__PURE__ */ ((IntrinsicObserverEventType2) 
 var IntrinsicObserverRenderNode = class {
   constructor(nodeCallback, elementCallback, children, debugName) {
     this._type = RenderNodeType;
+    this._commitPhase = 3 /* COMMIT_MOUNT */;
     this.nodeCallback = nodeCallback;
     this.elementCallback = elementCallback;
     this.child = new ArrayRenderNode(children);
     this.childNodes = [];
+    this.pendingMount = [];
+    this.pendingUnmount = [];
     this.isMounted = false;
     this.__debugName = debugName ?? `lifecycleobserver`;
     this.__refcount = 0;
   }
   notify(node, type) {
-    this.nodeCallback?.(node, type);
-    if (node instanceof Element) {
-      this.elementCallback?.(node, type);
+    switch (type) {
+      case "mount" /* MOUNT */:
+        this.pendingMount.push(node);
+        break;
+      case "unmount" /* UNMOUNT */:
+        this.pendingUnmount.push(node);
+        break;
+      default:
+        assertExhausted(type);
+    }
+    dirtyRenderNode(this);
+  }
+  commit(phase) {
+    if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+      return;
+    }
+    this.child.commit(phase);
+    this._commitPhase = phase;
+    switch (phase) {
+      case 0 /* COMMIT_UNMOUNT */:
+        if (this.pendingUnmount.length > 0) {
+          for (const node of this.pendingUnmount) {
+            this.nodeCallback?.(node, "unmount" /* UNMOUNT */);
+            if (node instanceof Element) {
+              this.elementCallback?.(node, "unmount" /* UNMOUNT */);
+            }
+          }
+          this.pendingUnmount = [];
+        }
+        break;
+      case 3 /* COMMIT_MOUNT */:
+        if (this.pendingMount.length > 0) {
+          for (const node of this.pendingMount) {
+            this.nodeCallback?.(node, "mount" /* MOUNT */);
+            if (node instanceof Element) {
+              this.elementCallback?.(node, "mount" /* MOUNT */);
+            }
+          }
+          this.pendingMount = [];
+        }
+        break;
     }
   }
   handleEvent(event) {
@@ -3503,18 +3718,12 @@ var IntrinsicObserverRenderNode = class {
       this.handleEvent(event);
     }, parentXmlNamespace);
   }
-  onMount() {
-    this.child.onMount();
-    this.isMounted = true;
+  setMounted(isMounted) {
+    this.child.setMounted(isMounted);
+    this.isMounted = isMounted;
+    const event = isMounted ? "mount" /* MOUNT */ : "unmount" /* UNMOUNT */;
     for (const node of this.childNodes) {
-      this.notify(node, "mount" /* MOUNT */);
-    }
-  }
-  onUnmount() {
-    this.child.onUnmount();
-    this.isMounted = false;
-    for (const node of this.childNodes) {
-      this.notify(node, "unmount" /* UNMOUNT */);
+      this.notify(node, event);
     }
   }
   retain() {
@@ -3524,10 +3733,11 @@ var IntrinsicObserverRenderNode = class {
     release(this);
   }
   __alive() {
-    retain(this.child);
+    own(this, this.child);
   }
   __dead() {
-    release(this.child);
+    disown(this, this.child);
+    removeRenderNode(this);
     this.emitter = void 0;
   }
 };
@@ -3542,36 +3752,37 @@ var ComponentRenderNode = class {
         if (this.result) {
           if (this.resultAttached) {
             if (this.isMounted) {
-              this.result.onUnmount();
+              this.result.setMounted(false);
             }
             this.result.detach();
             this.resultAttached = false;
           }
-          release(this.result);
+          disown(this, this.result);
           this.result = void 0;
         }
         const handledResult = this.errorHandler(event);
         this.result = handledResult ? renderJSXNode(handledResult) : emptyRenderNode;
-        retain(this.result);
+        own(this, this.result);
         if (this.emitter && this.parentXmlNamespace) {
           this.result.attach(this.handleEvent, this.parentXmlNamespace);
           this.resultAttached = true;
         }
         if (this.isMounted) {
-          this.result.onMount();
+          this.result.setMounted(true);
         }
       } else {
         this.emitter?.(event);
       }
     };
     this._type = RenderNodeType;
+    this._commitPhase = 3 /* COMMIT_MOUNT */;
     this.Component = Component2;
     this.props = props;
     this.children = children;
     this.owned = /* @__PURE__ */ new Set();
     this.isMounted = false;
     this.resultAttached = false;
-    this.__debugName = debugName ?? `component`;
+    this.__debugName = debugName ?? `component(${Component2.name})`;
     this.__refcount = 0;
   }
   detach() {
@@ -3640,7 +3851,7 @@ var ComponentRenderNode = class {
       }
       if (!(jsxResult instanceof Error)) {
         this.result = renderJSXNode(jsxResult);
-        retain(this.result);
+        own(this, this.result);
       } else {
         this.result = jsxResult;
       }
@@ -3659,14 +3870,34 @@ var ComponentRenderNode = class {
       this.resultAttached = true;
     }
   }
-  onMount() {
-    this.isMounted = true;
+  setMounted(isMounted) {
     assert(this.result, "Invariant: missing result");
+    this.isMounted = isMounted;
     if (this.result instanceof Error) {
       return;
     }
-    this.result.onMount();
-    if (this.onMountCallbacks) {
+    if (isMounted) {
+      this.needsMount = true;
+      dirtyRenderNode(this);
+      this.result.setMounted(isMounted);
+    } else {
+      this.result.setMounted(isMounted);
+      if (this.onUnmountCallbacks) {
+        for (const callback of this.onUnmountCallbacks) {
+          callback();
+        }
+      }
+    }
+  }
+  commit(phase) {
+    if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+      return;
+    }
+    if (this.result && !(this.result instanceof Error)) {
+      this.result.commit(phase);
+    }
+    this._commitPhase = phase;
+    if (phase === 3 /* COMMIT_MOUNT */ && this.needsMount && this.onMountCallbacks) {
       for (const callback of this.onMountCallbacks) {
         const maybeOnUnmount = callback();
         if (typeof maybeOnUnmount === "function") {
@@ -3685,19 +3916,8 @@ var ComponentRenderNode = class {
           this.onUnmountCallbacks.push(onUnmount);
         }
       }
+      this.needsMount = false;
     }
-  }
-  onUnmount() {
-    assert(this.result, "Invariant: missing result");
-    if (!(this.result instanceof Error) && this.resultAttached) {
-      this.result.onUnmount();
-      if (this.onUnmountCallbacks) {
-        for (const callback of this.onUnmountCallbacks) {
-          callback();
-        }
-      }
-    }
-    this.isMounted = false;
   }
   retain() {
     retain(this);
@@ -3715,13 +3935,14 @@ var ComponentRenderNode = class {
       }
     }
     if (this.result && !(this.result instanceof Error)) {
-      release(this.result);
+      disown(this, this.result);
     }
     this.result = void 0;
     for (const item of this.owned) {
       release(item);
     }
     this.emitter = void 0;
+    removeRenderNode(this);
   }
 };
 function classComponentToFunctionComponentRenderNode(Component2, props, children) {
@@ -3778,7 +3999,7 @@ function model(target, debugName) {
     get: (dataAccessor, emitter, prop, receiver) => dataAccessor.get(prop, receiver),
     has: (dataAccessor, emitter, prop) => dataAccessor.has(prop),
     set: (dataAccessor, emitter, prop, value, receiver) => {
-      if (typeof prop === "string") {
+      if (typeof prop === "string" && !Object.prototype.hasOwnProperty.call(ModelPrototype, prop)) {
         if (dataAccessor.peekHas(prop)) {
           emitter({ type: "set" /* SET */, prop, value });
         } else {
@@ -3788,7 +4009,7 @@ function model(target, debugName) {
       return dataAccessor.set(prop, value, receiver);
     },
     delete: (dataAccessor, emitter, prop) => {
-      if (typeof prop === "string" && dataAccessor.peekHas(prop)) {
+      if (typeof prop === "string" && !Object.prototype.hasOwnProperty.call(ModelPrototype, prop) && dataAccessor.peekHas(prop)) {
         emitter({ type: "del" /* DEL */, prop });
       }
       return dataAccessor.delete(prop);
@@ -3866,6 +4087,6 @@ function addModelEvent(events, event) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.12.3" : "development";
+var VERSION = true ? "0.13.0" : "development";
 module.exports = __toCommonJS(src_exports);
 //# sourceMappingURL=index.debug.cjs.map

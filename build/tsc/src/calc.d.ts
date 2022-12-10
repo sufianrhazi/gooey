@@ -13,8 +13,8 @@ export declare enum CalculationErrorType {
 declare const CalculationSymbol: unique symbol;
 declare const CalculationUnsubscribeSymbol: unique symbol;
 interface CalcSubscriptionHandlerHack<T> {
-    bivarianceHack(errorType: undefined, val: T): void;
-    bivarianceHack(errorType: CalculationErrorType, val: Error): void;
+    bivarianceHack(errorType: undefined, val: T, addPostAction: (postAction: () => void) => void): void;
+    bivarianceHack(errorType: CalculationErrorType, val: Error, addPostAction: (postAction: () => void) => void): void;
 }
 declare type CalcSubscriptionHandler<T> = CalcSubscriptionHandlerHack<T>['bivarianceHack'];
 interface CalcErrorHandlerHack<T> {

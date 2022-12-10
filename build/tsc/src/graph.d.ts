@@ -46,8 +46,9 @@ export declare class Graph<TVertex> {
     /** Set of vertex ids that need reordering */
     protected toReorderIds: Set<number>;
     private debugSubscriptions;
+    private postActions;
     private _processHandler;
-    constructor(processHandler: (vertex: TVertex, action: ProcessAction) => boolean);
+    constructor(processHandler: (vertex: TVertex, action: ProcessAction, addPostAction: (postAction: () => void) => void) => boolean);
     /**
      * Vertex ids can be reused.
      *
@@ -70,9 +71,11 @@ export declare class Graph<TVertex> {
     private visitDfsForwardRecurse;
     private visitDfsForward;
     private resort;
+    private addPostAction;
     private processHandler;
     private processVertex;
     process(): void;
+    getOrderedDirty(): TVertex[];
     private propagateDirty;
     debug(getAttrs: DebugFormatter<TVertex>, label?: string): string;
     debugSubscribe(formatter: DebugFormatter<TVertex>, subscription: (graphviz: string, label: string) => void): () => void;

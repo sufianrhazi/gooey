@@ -1,4 +1,5 @@
 import { Graph } from './graph';
+import type { RenderNode } from './rendernode';
 export interface Retainable {
     __debugName: string;
     __refcount: number;
@@ -8,8 +9,8 @@ export interface Retainable {
 export interface Processable {
     __processable: true;
     __debugName: string;
-    __recalculate?: () => boolean;
-    __cycle?: () => boolean;
+    __recalculate?: (addPostAction: (postAction: () => void) => void) => boolean;
+    __cycle?: (addPostAction: (postAction: () => void) => void) => boolean;
     __invalidate?: () => boolean;
 }
 export declare function isProcessable(val: any): val is Processable;
@@ -18,9 +19,10 @@ export declare function flush(): void;
 export declare function subscribe(scheduler?: (callback: () => void) => () => void): void;
 export declare function retain(retainable: Retainable): void;
 export declare function release(retainable: Retainable): void;
-export declare function afterFlush(fn: () => void): void;
 export declare function addVertex(vertex: Processable): void;
 export declare function removeVertex(vertex: Processable): void;
+export declare function removeRenderNode(vertex: RenderNode): void;
+export declare function dirtyRenderNode(renderNode: RenderNode): void;
 export declare function addHardEdge(fromVertex: Processable, toVertex: Processable): void;
 export declare function addSoftEdge(fromVertex: Processable, toVertex: Processable): void;
 export declare function removeHardEdge(fromVertex: Processable, toVertex: Processable): void;
