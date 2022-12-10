@@ -6,11 +6,8 @@ import {
     trackCreates,
     untrackReads,
     flush,
-    addRenderNode,
     removeRenderNode,
     dirtyRenderNode,
-    addRenderNodeParent,
-    delRenderNodeParent,
 } from './engine';
 import { RefObjectOrCallback, Ref } from './ref';
 import { JSXNode, setAttribute, assignProp } from './jsx';
@@ -94,34 +91,40 @@ export enum RenderNodeCommitPhase {
     COMMIT_INS,
     COMMIT_MOUNT,
 }
+function isNextRenderNodeCommitPhase(
+    commitPhase: RenderNodeCommitPhase,
+    nextPhase: RenderNodeCommitPhase
+) {
+    return (
+        (commitPhase === RenderNodeCommitPhase.COMMIT_MOUNT &&
+            nextPhase === RenderNodeCommitPhase.COMMIT_UNMOUNT) ||
+        (commitPhase === RenderNodeCommitPhase.COMMIT_UNMOUNT &&
+            nextPhase === RenderNodeCommitPhase.COMMIT_DEL) ||
+        (commitPhase === RenderNodeCommitPhase.COMMIT_DEL &&
+            nextPhase === RenderNodeCommitPhase.COMMIT_INS) ||
+        (commitPhase === RenderNodeCommitPhase.COMMIT_INS &&
+            nextPhase === RenderNodeCommitPhase.COMMIT_MOUNT)
+    );
+}
 
 export interface RenderNode extends Retainable {
     _type: typeof RenderNodeType;
+    _commitPhase: RenderNodeCommitPhase;
     detach(): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     setMounted(isMounted: boolean): void;
-    commit?(phase: RenderNodeCommitPhase): void;
+    commit(phase: RenderNodeCommitPhase): void;
     retain(): void;
     release(): void;
-    _parent?: RenderNode;
 }
 
 function own(parent: RenderNode, child: RenderNode) {
     if (child === emptyRenderNode) return;
     retain(child);
-    child._parent = parent;
-    if (addRenderNodeParent(parent, child)) {
-        log.warn('RenderNode child owned by parent multiple times', {
-            parent,
-            child,
-        });
-    }
 }
 
 function disown(parent: RenderNode, child: RenderNode) {
     if (child === emptyRenderNode) return;
-    delRenderNodeParent(parent, child);
-    child._parent = undefined;
     release(child);
 }
 
@@ -130,9 +133,10 @@ function disown(parent: RenderNode, child: RenderNode) {
  */
 export class EmptyRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
-    declare _parent?: RenderNode;
+    declare _commitPhase: RenderNodeCommitPhase;
     constructor() {
         this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.__debugName = 'empty';
         this.__refcount = 0;
     }
@@ -146,13 +150,14 @@ export class EmptyRenderNode implements RenderNode {
     release() {
         release(this);
     }
+    commit() {
+        // No children, no commit action
+    }
 
     // Retainable
     declare __debugName: string;
     declare __refcount: number;
-    __alive() {
-        addRenderNode(this);
-    }
+    __alive() {}
     __dead() {
         removeRenderNode(this);
     }
@@ -168,12 +173,13 @@ export const emptyRenderNode = new EmptyRenderNode();
  */
 export class TextRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
-    declare _parent?: RenderNode;
+    declare _commitPhase: RenderNodeCommitPhase;
     private declare text: Text;
     private declare emitter?: NodeEmitter | undefined;
 
     constructor(string: string, debugName?: string) {
         this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.text = document.createTextNode(string);
 
         this.__debugName = debugName ?? 'text';
@@ -203,13 +209,14 @@ export class TextRenderNode implements RenderNode {
     release() {
         release(this);
     }
+    commit() {
+        // No children, no commit action
+    }
 
     // Retainable
     declare __debugName: string;
     declare __refcount: number;
-    __alive() {
-        addRenderNode(this);
-    }
+    __alive() {}
     __dead() {
         this.emitter = undefined;
         removeRenderNode(this);
@@ -221,12 +228,13 @@ export class TextRenderNode implements RenderNode {
  */
 export class ForeignRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
-    declare _parent?: RenderNode;
+    declare _commitPhase: RenderNodeCommitPhase;
     private declare node: Node;
     private declare emitter?: NodeEmitter | undefined;
 
     constructor(node: Node, debugName?: string) {
         this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.node = node;
 
         this.__debugName = debugName ?? 'foreign';
@@ -256,13 +264,14 @@ export class ForeignRenderNode implements RenderNode {
     release() {
         release(this);
     }
+    commit() {
+        // No children, no commit action
+    }
 
     // Retainable
     declare __debugName: string;
     declare __refcount: number;
-    __alive() {
-        addRenderNode(this);
-    }
+    __alive() {}
     __dead() {
         this.emitter = undefined;
         removeRenderNode(this);
@@ -274,7 +283,7 @@ export class ForeignRenderNode implements RenderNode {
  */
 export class ArrayRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
-    declare _parent?: RenderNode;
+    declare _commitPhase: RenderNodeCommitPhase;
     private declare children: RenderNode[];
     private declare slotSizes: number[];
     private declare attached: boolean[];
@@ -282,6 +291,7 @@ export class ArrayRenderNode implements RenderNode {
 
     constructor(children: RenderNode[], debugName?: string) {
         this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.children = children;
         this.slotSizes = children.map(() => 0);
         this.attached = children.map(() => false);
@@ -328,12 +338,19 @@ export class ArrayRenderNode implements RenderNode {
     release() {
         release(this);
     }
+    commit(phase: RenderNodeCommitPhase) {
+        if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+            for (const child of this.children) {
+                child.commit(phase);
+            }
+            this._commitPhase = phase;
+        }
+    }
 
     // Retainable
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
-        addRenderNode(this);
         for (const child of this.children) {
             own(this, child);
         }
@@ -604,7 +621,7 @@ const EventProps = [
  */
 export class IntrinsicRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
-    declare _parent?: RenderNode;
+    declare _commitPhase: RenderNodeCommitPhase;
     private declare tagName: string;
     private declare element?: Element | undefined;
     private declare emitter?: NodeEmitter | undefined;
@@ -624,6 +641,7 @@ export class IntrinsicRenderNode implements RenderNode {
         debugName?: string
     ) {
         this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.props = props;
         this.children = new ArrayRenderNode(children);
         this.tagName = tagName;
@@ -796,11 +814,17 @@ export class IntrinsicRenderNode implements RenderNode {
         release(this);
     }
 
+    commit(phase: RenderNodeCommitPhase) {
+        if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+            this.portalRenderNode?.commit(phase);
+            this._commitPhase = phase;
+        }
+    }
+
     // Retainable
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
-        addRenderNode(this);
         // At this point in time, we don't know for sure what the correct XML namespace is, as this could be an SVG
         // looking element that eventually gets placed within an SVG tree, which ought to result in an
         // SVGUnknownElement. So we take an educated guess;
@@ -856,7 +880,7 @@ enum MountState {
 
 export class PortalRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
-    declare _parent?: RenderNode;
+    declare _commitPhase: RenderNodeCommitPhase;
     private declare tagName: string;
     private declare element: Element;
     private declare childEvents: ArrayEvent<Node>[];
@@ -879,6 +903,7 @@ export class PortalRenderNode implements RenderNode {
         debugName?: string
     ) {
         this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.arrayRenderNode = children;
         this.childEvents = [];
         this.committedNodes = [];
@@ -942,6 +967,11 @@ export class PortalRenderNode implements RenderNode {
     }
 
     commit(phase: RenderNodeCommitPhase) {
+        if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+            return;
+        }
+        this.arrayRenderNode.commit(phase);
+        this._commitPhase = phase;
         if (
             phase === RenderNodeCommitPhase.COMMIT_UNMOUNT &&
             this.childEvents.length > 0
@@ -1061,7 +1091,6 @@ export class PortalRenderNode implements RenderNode {
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
-        addRenderNode(this);
         own(this, this.arrayRenderNode);
     }
     __dead() {
@@ -1088,7 +1117,7 @@ export class PortalRenderNode implements RenderNode {
  */
 export class CalculationRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
-    declare _parent?: RenderNode;
+    declare _commitPhase: RenderNodeCommitPhase;
     private declare error?: Error | undefined;
     private declare renderNode?: RenderNode | undefined;
     private declare calculation: Calculation<any>;
@@ -1099,6 +1128,7 @@ export class CalculationRenderNode implements RenderNode {
 
     constructor(calculation: Calculation<any>, debugName?: string) {
         this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.calculation = calculation;
         this.isMounted = false;
 
@@ -1190,12 +1220,17 @@ export class CalculationRenderNode implements RenderNode {
             });
         }
     }
+    commit(phase: RenderNodeCommitPhase) {
+        if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+            this.renderNode?.commit(phase);
+            this._commitPhase = phase;
+        }
+    }
 
     // Retainable
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
-        addRenderNode(this);
         try {
             this.calculationSubscription = this.calculation.subscribe(
                 this.subscribe
@@ -1224,7 +1259,7 @@ export class CalculationRenderNode implements RenderNode {
 
 export class CollectionRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
-    declare _parent?: RenderNode;
+    declare _commitPhase: RenderNodeCommitPhase;
     private declare children: RenderNode[];
     private declare batchEvents?:
         | [childIndex: number, childEvent: ArrayEvent<Node>][]
@@ -1239,6 +1274,7 @@ export class CollectionRenderNode implements RenderNode {
 
     constructor(collection: Collection<any> | View<any>, debugName?: string) {
         this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.collection = collection;
         this.children = [];
         this.childIndex = new Map();
@@ -1457,11 +1493,19 @@ export class CollectionRenderNode implements RenderNode {
         }
     };
 
+    commit(phase: RenderNodeCommitPhase) {
+        if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+            for (const child of this.children) {
+                child.commit(phase);
+            }
+            this._commitPhase = phase;
+        }
+    }
+
     // Retainable
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
-        addRenderNode(this);
         retain(this.collection);
         this.unsubscribe = this.collection.subscribe(
             this.handleCollectionEvent
@@ -1621,7 +1665,7 @@ export type IntrinsicObserverElementCallback = (
 
 export class IntrinsicObserverRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
-    declare _parent?: RenderNode;
+    declare _commitPhase: RenderNodeCommitPhase;
     declare nodeCallback?: IntrinsicObserverNodeCallback | undefined;
     declare elementCallback?: IntrinsicObserverElementCallback | undefined;
     declare child: ArrayRenderNode;
@@ -1638,6 +1682,7 @@ export class IntrinsicObserverRenderNode implements RenderNode {
         debugName?: string
     ) {
         this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.nodeCallback = nodeCallback;
         this.elementCallback = elementCallback;
         this.child = new ArrayRenderNode(children);
@@ -1665,6 +1710,12 @@ export class IntrinsicObserverRenderNode implements RenderNode {
     }
 
     commit(phase: RenderNodeCommitPhase) {
+        if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+            return;
+        }
+        this.child.commit(phase);
+        this._commitPhase = phase;
+
         switch (phase) {
             case RenderNodeCommitPhase.COMMIT_UNMOUNT:
                 if (this.pendingUnmount.length > 0) {
@@ -1772,7 +1823,6 @@ export class IntrinsicObserverRenderNode implements RenderNode {
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
-        addRenderNode(this);
         own(this, this.child);
     }
     __dead() {
@@ -1796,7 +1846,7 @@ export const IntrinsicObserver: Component<{
 
 export class ComponentRenderNode<TProps> implements RenderNode {
     declare _type: typeof RenderNodeType;
-    declare _parent?: RenderNode;
+    declare _commitPhase: RenderNodeCommitPhase;
     declare Component: FunctionComponent<TProps>;
     declare props: TProps | null | undefined;
     declare children: JSX.Node[];
@@ -1819,6 +1869,7 @@ export class ComponentRenderNode<TProps> implements RenderNode {
         debugName?: string
     ) {
         this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.Component = Component;
         this.props = props;
         this.children = children;
@@ -2001,6 +2052,13 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     }
 
     commit(phase: RenderNodeCommitPhase) {
+        if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+            return;
+        }
+        if (this.result && !(this.result instanceof Error)) {
+            this.result.commit(phase);
+        }
+        this._commitPhase = phase;
         if (
             phase === RenderNodeCommitPhase.COMMIT_MOUNT &&
             this.needsMount &&
@@ -2041,7 +2099,6 @@ export class ComponentRenderNode<TProps> implements RenderNode {
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
-        addRenderNode(this);
         this.ensureResult();
     }
     __dead() {

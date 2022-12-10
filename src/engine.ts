@@ -26,7 +26,7 @@ export function isProcessable(val: any): val is Processable {
 }
 
 let globalDependencyGraph = new Graph<Processable>(processHandler);
-let renderNodeGraph = new Graph<RenderNode>(renderNodeProcessHandler);
+let renderNodesToCommit = new Set<RenderNode>();
 let trackReadSets: (Set<Retainable> | null)[] = [];
 let trackCreateSets: (Set<Retainable> | null)[] = [];
 let isFlushing = false;
@@ -55,7 +55,7 @@ function defaultScheduler(callback: () => void) {
 
 export function reset() {
     globalDependencyGraph = new Graph<Processable>(processHandler);
-    renderNodeGraph = new Graph<RenderNode>(renderNodeProcessHandler);
+    renderNodesToCommit = new Set<RenderNode>();
     trackReadSets = [];
     trackCreateSets = [];
     isFlushing = false;
@@ -137,13 +137,6 @@ function processHandler(
     }
 }
 
-function renderNodeProcessHandler(vertex: RenderNode, action: ProcessAction) {
-    // Intentionally a noop: we use getOrderedDirty to process render node graphs multiple times in order
-    // This is possible because we don't propagate
-    // TODO: can these two mechanisms be unified somehow?
-    return false;
-}
-
 function flushInner() {
     // Flushing has a few phases:
     // - 1: process the global dependency graph to get state to a stable resolution
@@ -155,17 +148,15 @@ function flushInner() {
     // - 5: notify "onMount"
     isFlushing = true;
     globalDependencyGraph.process();
-    const renderNodes = renderNodeGraph.getOrderedDirty();
-    renderNodes.reverse();
-    for (const vertex of renderNodes) {
-        vertex.commit?.(RenderNodeCommitPhase.COMMIT_UNMOUNT);
+    for (const renderNode of renderNodesToCommit) {
+        renderNode.commit?.(RenderNodeCommitPhase.COMMIT_UNMOUNT);
     }
     const prevFocus = document.activeElement;
-    for (const vertex of renderNodes) {
-        vertex.commit?.(RenderNodeCommitPhase.COMMIT_DEL);
+    for (const renderNode of renderNodesToCommit) {
+        renderNode.commit?.(RenderNodeCommitPhase.COMMIT_DEL);
     }
-    for (const vertex of renderNodes) {
-        vertex.commit?.(RenderNodeCommitPhase.COMMIT_INS);
+    for (const renderNode of renderNodesToCommit) {
+        renderNode.commit?.(RenderNodeCommitPhase.COMMIT_INS);
     }
     if (
         prevFocus &&
@@ -174,10 +165,10 @@ function flushInner() {
     ) {
         prevFocus.focus();
     }
-    for (const vertex of renderNodes) {
-        vertex.commit?.(RenderNodeCommitPhase.COMMIT_MOUNT);
-        renderNodeGraph.clearVertexDirty(vertex);
+    for (const renderNode of renderNodesToCommit) {
+        renderNode.commit?.(RenderNodeCommitPhase.COMMIT_MOUNT);
     }
+    renderNodesToCommit.clear();
     isFlushing = false;
     if (needsFlush) {
         flush();
@@ -194,35 +185,13 @@ export function removeVertex(vertex: Processable) {
     globalDependencyGraph.removeVertex(vertex);
 }
 
-export function addRenderNode(vertex: RenderNode) {
-    DEBUG && log.debug('addRenderNode', vertex.__debugName);
-    renderNodeGraph.addVertex(vertex);
-}
-
 export function removeRenderNode(vertex: RenderNode) {
-    DEBUG && log.debug('removeRenderNode', vertex.__debugName);
-    renderNodeGraph.removeVertex(vertex);
+    renderNodesToCommit.delete(vertex);
 }
 
-export function addRenderNodeParent(parent: RenderNode, child: RenderNode) {
-    DEBUG &&
-        log.debug('add child', child.__debugName, '->', parent.__debugName);
-    if (renderNodeGraph.hasEdge(parent, child, Graph.EDGE_SOFT)) {
-        return true;
-    }
-    renderNodeGraph.addEdge(parent, child, Graph.EDGE_SOFT);
-    return false;
-}
-
-export function delRenderNodeParent(parent: RenderNode, child: RenderNode) {
-    DEBUG &&
-        log.debug('del child', child.__debugName, '->', parent.__debugName);
-    renderNodeGraph.removeEdge(parent, child, Graph.EDGE_SOFT);
-}
-
-export function dirtyRenderNode(vertex: RenderNode) {
-    DEBUG && log.debug('dirty renderNode', vertex.__debugName);
-    renderNodeGraph.markVertexDirty(vertex);
+export function dirtyRenderNode(renderNode: RenderNode) {
+    DEBUG && log.debug('dirty renderNode', renderNode.__debugName);
+    renderNodesToCommit.add(renderNode);
     scheduleFlush();
 }
 
