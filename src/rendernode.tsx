@@ -18,6 +18,7 @@ import {
     ArrayEvent,
     ArrayEventType,
     shiftEvent,
+    shiftEventBy,
     applyArrayEvent,
     addArrayEvent,
 } from './arrayevent';
@@ -1225,6 +1226,9 @@ export class CollectionRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
     declare _parent?: RenderNode;
     private declare children: RenderNode[];
+    private declare batchEvents?:
+        | [childIndex: number, childEvent: ArrayEvent<Node>][]
+        | undefined;
     private declare childIndex: Map<RenderNode, number>;
     private declare slotSizes: number[];
     private declare collection: Collection<any> | View<any>;
@@ -1245,15 +1249,49 @@ export class CollectionRenderNode implements RenderNode {
         this.__refcount = 0;
     }
 
+    batchChildEvents(fn: () => void) {
+        this.batchEvents = [];
+        fn();
+        this.batchEvents.sort((a, b) => a[0] - b[0]);
+        let eventIndex = 0;
+        let shiftAmount = 0;
+        for (
+            let slotIndex = 0;
+            eventIndex < this.batchEvents.length &&
+            slotIndex < this.slotSizes.length;
+            ++slotIndex
+        ) {
+            while (
+                eventIndex < this.batchEvents.length &&
+                this.batchEvents[eventIndex][0] === slotIndex
+            ) {
+                const event = this.batchEvents[eventIndex][1];
+                if (event.type === ArrayEventType.SPLICE) {
+                    this.slotSizes[slotIndex] +=
+                        (event.items?.length ?? 0) - event.count;
+                }
+                if (this.emitter) {
+                    shiftEventBy(shiftAmount, event);
+                    this.emitter(event);
+                }
+                eventIndex++;
+            }
+            shiftAmount += this.slotSizes[slotIndex];
+        }
+        this.batchEvents = undefined;
+    }
+
     attach(emitter: NodeEmitter, parentXmlNamespace: string) {
         this.emitter = emitter;
         this.parentXmlNamespace = parentXmlNamespace;
 
-        for (const child of this.children) {
-            child.attach((event) => {
-                this.handleChildEvent(event, child);
-            }, parentXmlNamespace);
-        }
+        this.batchChildEvents(() => {
+            for (const child of this.children) {
+                child.attach((event) => {
+                    this.handleChildEvent(event, child);
+                }, parentXmlNamespace);
+            }
+        });
     }
 
     detach() {
@@ -1269,9 +1307,15 @@ export class CollectionRenderNode implements RenderNode {
             if (!(event instanceof Error)) {
                 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
                 const index = this.childIndex.get(child)!;
-                shiftEvent(this.slotSizes, index, event);
+                if (this.batchEvents) {
+                    this.batchEvents.push([index, event]);
+                } else {
+                    shiftEvent(this.slotSizes, index, event);
+                    this.emitter(event);
+                }
+            } else {
+                this.emitter(event);
             }
-            this.emitter(event);
         }
     }
 
@@ -1328,10 +1372,12 @@ export class CollectionRenderNode implements RenderNode {
                         event.count,
                         ...newChildren
                     );
-                    for (const child of removed) {
-                        this.releaseChild(child);
-                        this.childIndex.delete(child);
-                    }
+                    this.batchChildEvents(() => {
+                        for (const child of removed) {
+                            this.releaseChild(child);
+                            this.childIndex.delete(child);
+                        }
+                    });
                     this.slotSizes.splice(
                         event.index,
                         event.count,
@@ -1346,9 +1392,11 @@ export class CollectionRenderNode implements RenderNode {
                             this.childIndex.set(this.children[i], i);
                         }
                     }
-                    for (const child of newChildren) {
-                        this.retainChild(child);
-                    }
+                    this.batchChildEvents(() => {
+                        for (const child of newChildren) {
+                            this.retainChild(child);
+                        }
+                    });
                     break;
                 }
                 case ArrayEventType.MOVE: {
@@ -1420,13 +1468,15 @@ export class CollectionRenderNode implements RenderNode {
         );
 
         untrackReads(() => {
-            for (const [index, item] of this.collection.entries()) {
-                const child = renderJSXNode(item);
-                this.children.push(child);
-                this.slotSizes.push(0);
-                this.childIndex.set(child, index);
-                this.retainChild(child);
-            }
+            this.batchChildEvents(() => {
+                for (const [index, item] of this.collection.entries()) {
+                    const child = renderJSXNode(item);
+                    this.children.push(child);
+                    this.slotSizes.push(0);
+                    this.childIndex.set(child, index);
+                    this.retainChild(child);
+                }
+            });
         });
     }
     __dead() {

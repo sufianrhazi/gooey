@@ -1335,8 +1335,9 @@ suite('mount class components', () => {
 
         const unmount = mount(testRoot, <Parent />);
 
-        assert.deepEqual(
+        assert.arrayEqualsUnsorted(
             [
+                // Ordering is not guaranteed, only relative ordering (parents before children when rendering; children before parents when mounting)
                 'render a',
                 'render a 1',
                 'render a 2',
@@ -1352,13 +1353,53 @@ suite('mount class components', () => {
             ],
             sequence
         );
+        assert.lessThan(
+            sequence.indexOf('render a'),
+            sequence.indexOf('render a 1')
+        );
+        assert.lessThan(
+            sequence.indexOf('render a'),
+            sequence.indexOf('render a 2')
+        );
+        assert.lessThan(
+            sequence.indexOf('render b'),
+            sequence.indexOf('render b 1')
+        );
+        assert.lessThan(
+            sequence.indexOf('render b'),
+            sequence.indexOf('render b 2')
+        );
+        assert.lessThan(
+            sequence.indexOf('render a'),
+            sequence.indexOf('onMount a')
+        );
+        assert.lessThan(
+            sequence.indexOf('render b'),
+            sequence.indexOf('onMount b')
+        );
+        assert.lessThan(
+            sequence.indexOf('onMount a 1'),
+            sequence.indexOf('onMount a')
+        );
+        assert.lessThan(
+            sequence.indexOf('onMount a 2'),
+            sequence.indexOf('onMount a')
+        );
+        assert.lessThan(
+            sequence.indexOf('onMount b 1'),
+            sequence.indexOf('onMount b')
+        );
+        assert.lessThan(
+            sequence.indexOf('onMount b 2'),
+            sequence.indexOf('onMount b')
+        );
 
         // clear sequence
         sequence.splice(0, sequence.length);
 
         unmount();
 
-        assert.deepEqual(
+        assert.arrayEqualsUnsorted(
             [
                 'onUnmount a 1',
                 'onUnmount a 2',
@@ -1368,6 +1409,22 @@ suite('mount class components', () => {
                 'onUnmount b',
             ],
             sequence
+        );
+        assert.lessThan(
+            sequence.indexOf('onUnmount a 1'),
+            sequence.indexOf('onUnmount a')
+        );
+        assert.lessThan(
+            sequence.indexOf('onUnmount a 2'),
+            sequence.indexOf('onUnmount a')
+        );
+        assert.lessThan(
+            sequence.indexOf('onUnmount b 1'),
+            sequence.indexOf('onUnmount b')
+        );
+        assert.lessThan(
+            sequence.indexOf('onUnmount b 2'),
+            sequence.indexOf('onUnmount b')
         );
     });
 
@@ -1835,7 +1892,7 @@ suite('mount collection mapped view', () => {
                 ))}
             </div>
         );
-        assert.deepEqual(
+        assert.arrayEqualsUnsorted(
             [
                 'mount:zero',
                 'mount:one',
@@ -1868,7 +1925,7 @@ suite('mount collection mapped view', () => {
         assert.is('yes 1', newSet[3].getAttribute('tagged'));
         assert.is('yes 2', newSet[4].getAttribute('tagged'));
         assert.is('yes 5', newSet[5].getAttribute('tagged'));
-        assert.deepEqual(
+        assert.arrayEqualsUnsorted(
             [
                 'mount:zero',
                 'mount:one',
@@ -1908,7 +1965,7 @@ suite('mount collection mapped view', () => {
                 ))}
             </div>
         );
-        assert.deepEqual(
+        assert.arrayEqualsUnsorted(
             [
                 'mount:zero',
                 'mount:one',
@@ -1941,7 +1998,7 @@ suite('mount collection mapped view', () => {
         assert.is('yes 3', newSet[3].getAttribute('tagged'));
         assert.is('yes 2', newSet[4].getAttribute('tagged'));
         assert.is('yes 0', newSet[5].getAttribute('tagged'));
-        assert.deepEqual(
+        assert.arrayEqualsUnsorted(
             [
                 'mount:zero',
                 'mount:one',
@@ -1981,7 +2038,7 @@ suite('mount collection mapped view', () => {
                 ))}
             </div>
         );
-        assert.deepEqual(
+        assert.arrayEqualsUnsorted(
             [
                 'mount:zero',
                 'mount:one',
@@ -2014,7 +2071,7 @@ suite('mount collection mapped view', () => {
         assert.is('yes 2', newSet[3].getAttribute('tagged'));
         assert.is('yes 1', newSet[4].getAttribute('tagged'));
         assert.is('yes 0', newSet[5].getAttribute('tagged'));
-        assert.deepEqual(
+        assert.arrayEqualsUnsorted(
             [
                 'mount:zero',
                 'mount:one',

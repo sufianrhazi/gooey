@@ -156,6 +156,7 @@ function flushInner() {
     isFlushing = true;
     globalDependencyGraph.process();
     const renderNodes = renderNodeGraph.getOrderedDirty();
+    renderNodes.reverse();
     for (const vertex of renderNodes) {
         vertex.commit?.(RenderNodeCommitPhase.COMMIT_UNMOUNT);
     }
@@ -206,17 +207,17 @@ export function removeRenderNode(vertex: RenderNode) {
 export function addRenderNodeParent(parent: RenderNode, child: RenderNode) {
     DEBUG &&
         log.debug('add child', child.__debugName, '->', parent.__debugName);
-    if (renderNodeGraph.hasEdge(child, parent, Graph.EDGE_SOFT)) {
+    if (renderNodeGraph.hasEdge(parent, child, Graph.EDGE_SOFT)) {
         return true;
     }
-    renderNodeGraph.addEdge(child, parent, Graph.EDGE_SOFT);
+    renderNodeGraph.addEdge(parent, child, Graph.EDGE_SOFT);
     return false;
 }
 
 export function delRenderNodeParent(parent: RenderNode, child: RenderNode) {
     DEBUG &&
         log.debug('del child', child.__debugName, '->', parent.__debugName);
-    renderNodeGraph.removeEdge(child, parent, Graph.EDGE_SOFT);
+    renderNodeGraph.removeEdge(parent, child, Graph.EDGE_SOFT);
 }
 
 export function dirtyRenderNode(vertex: RenderNode) {

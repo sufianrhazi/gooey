@@ -29,18 +29,9 @@ export type ArrayEvent<T> =
     | ArrayEventMove
     | ArrayEventSort;
 
-export function shiftEvent<T>(
-    slotSizes: number[],
-    slotIndex: number,
-    event: ArrayEvent<T>
-) {
-    let shiftAmount = 0;
-    for (let i = 0; i < slotIndex; ++i) {
-        shiftAmount += slotSizes[i];
-    }
+export function shiftEventBy<T>(shiftAmount: number, event: ArrayEvent<T>) {
     switch (event.type) {
         case ArrayEventType.SPLICE: {
-            slotSizes[slotIndex] += (event.items?.length ?? 0) - event.count;
             event.index += shiftAmount;
             break;
         }
@@ -58,6 +49,20 @@ export function shiftEvent<T>(
         }
         default:
             log.assertExhausted(event);
+    }
+}
+export function shiftEvent<T>(
+    slotSizes: number[],
+    slotIndex: number,
+    event: ArrayEvent<T>
+) {
+    let shiftAmount = 0;
+    for (let i = 0; i < slotIndex; ++i) {
+        shiftAmount += slotSizes[i];
+    }
+    shiftEventBy(shiftAmount, event);
+    if (event.type === ArrayEventType.SPLICE) {
+        slotSizes[slotIndex] += (event.items?.length ?? 0) - event.count;
     }
 }
 
