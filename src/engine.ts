@@ -17,7 +17,7 @@ export interface Processable {
     __recalculate?: (
         addPostAction: (postAction: () => void) => void
     ) => boolean;
-    __cycle?: () => boolean;
+    __cycle?: (addPostAction: (postAction: () => void) => void) => boolean;
     __invalidate?: () => boolean;
 }
 
@@ -131,7 +131,7 @@ function processHandler(
         case ProcessAction.RECALCULATE:
             return vertex.__recalculate?.(addPostAction) ?? false;
         case ProcessAction.CYCLE:
-            return vertex.__cycle?.() ?? false;
+            return vertex.__cycle?.(addPostAction) ?? false;
         default:
             log.assertExhausted(action, 'unknown action');
     }
