@@ -2,7 +2,6 @@ import { flush, reset, subscribe, removeRenderNode } from './engine';
 import { calc } from './calc';
 import { collection } from './collection';
 import { model } from './model';
-import * as log from './log';
 import {
     RenderNode,
     RenderNodeType,
