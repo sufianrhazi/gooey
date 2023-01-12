@@ -287,7 +287,6 @@ export class ArrayRenderNode implements RenderNode {
     private declare children: RenderNode[];
     private declare slotSizes: number[];
     private declare attached: boolean[];
-    private declare emitter?: NodeEmitter | undefined;
 
     constructor(children: RenderNode[], debugName?: string) {
         this._type = RenderNodeType;
@@ -307,20 +306,16 @@ export class ArrayRenderNode implements RenderNode {
                 this.attached[index] = false;
             }
         }
-        this.emitter = undefined;
     }
 
     attach(emitter: NodeEmitter, parentXmlNamespace: string) {
-        this.emitter = emitter;
         for (const [index, child] of this.children.entries()) {
             child.attach((event) => {
-                if (this.emitter) {
-                    if (event instanceof Error) {
-                        this.emitter(event);
-                    } else {
-                        shiftEvent(this.slotSizes, index, event);
-                        this.emitter(event);
-                    }
+                if (event instanceof Error) {
+                    emitter(event);
+                } else {
+                    shiftEvent(this.slotSizes, index, event);
+                    emitter(event);
                 }
             }, parentXmlNamespace);
             this.attached[index] = true;
@@ -360,7 +355,6 @@ export class ArrayRenderNode implements RenderNode {
             disown(this, child);
         }
         removeRenderNode(this);
-        this.emitter = undefined;
     }
 }
 
