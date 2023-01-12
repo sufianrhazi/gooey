@@ -60,7 +60,9 @@ export function shiftEvent<T>(
     for (let i = 0; i < slotIndex; ++i) {
         shiftAmount += slotSizes[i];
     }
-    shiftEventBy(shiftAmount, event);
+    if (shiftAmount > 0) {
+        shiftEventBy(shiftAmount, event);
+    }
     if (event.type === ArrayEventType.SPLICE) {
         slotSizes[slotIndex] += (event.items?.length ?? 0) - event.count;
     }
