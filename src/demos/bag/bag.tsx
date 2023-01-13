@@ -1,4 +1,4 @@
-import Gooey, { mount, model, calc, setLogLevel } from '../../index';
+import Gooey, { mount, map, model, calc, setLogLevel } from '../../index';
 import { makeGraphvizDebuggerRef } from '../debug';
 
 const graphvizRef = makeGraphvizDebuggerRef();
@@ -6,11 +6,11 @@ const graphvizRef = makeGraphvizDebuggerRef();
 setLogLevel('debug');
 
 const App = () => {
-    const bag = model<Record<string, string>>(
-        {
-            some: 'starter',
-            text: 'here',
-        },
+    const bag = map<string, string>(
+        [
+            ['some', 'starter'],
+            ['text', 'here'],
+        ],
         'bag'
     );
     const state = model(
@@ -20,19 +20,19 @@ const App = () => {
         },
         'state'
     );
-    const keys = model.keys(bag, 'bagKeys');
+    const keys = bag.keys('bagKeys');
 
     const onClickSet = () => {
-        bag[state.key] = state.value;
+        bag.set(state.key, state.value);
     };
 
     const onClickDelete = () => {
-        delete bag[state.key];
+        bag.delete(state.key);
     };
 
     return (
         <>
-            <h1>model.keys demo</h1>
+            <h1>map keys demo</h1>
             <p>Key items:</p>
             <ul>
                 {calc(
@@ -42,7 +42,7 @@ const App = () => {
                                 <li>
                                     {key}
                                     {' = '}
-                                    {calc(() => bag[key])}
+                                    {calc(() => bag.get(key))}
                                 </li>
                             ),
                             'key item mapView'
@@ -58,7 +58,7 @@ const App = () => {
                         .filterView((key) => key.length % 2 === 0)
                         .mapView((key) => (
                             <li>
-                                {key} = {calc(() => bag[key])}
+                                {key} = {calc(() => bag.get(key))}
                             </li>
                         ))
                 )}
@@ -71,7 +71,7 @@ const App = () => {
                         .flatMapView((key) => [key, key])
                         .mapView((key) => (
                             <li>
-                                {key} = {calc(() => bag[key])}
+                                {key} = {calc(() => bag.get(key))}
                             </li>
                         ))
                 )}

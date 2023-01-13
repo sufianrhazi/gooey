@@ -5,12 +5,13 @@ import {
     removeSoftEdge,
     retain,
     release,
+    notifyRead,
 } from './engine';
 import { Field } from './field';
 
 export class FieldMap implements Retainable {
     private declare keysField: Field<number>;
-    private declare fieldMap: Map<string, Field<any>>;
+    private declare fieldMap: Map<any, Field<any>>;
     private declare consumer: (Retainable & Processable) | null;
     private declare emitter: (Retainable & Processable) | null;
 
@@ -31,11 +32,11 @@ export class FieldMap implements Retainable {
         this.emitter = emitter;
     }
 
-    getOrMake(prop: string, val: any) {
-        let field = this.fieldMap.get(prop);
+    getOrMake(key: any, val: any) {
+        let field = this.fieldMap.get(key);
         if (!field) {
-            field = new Field(val, `${this.__debugName}:${prop}`);
-            this.fieldMap.set(prop, field);
+            field = new Field(val, `${this.__debugName}:${key}`);
+            this.fieldMap.set(key, field);
 
             if (this.__refcount > 0) {
                 retain(field);
@@ -46,16 +47,16 @@ export class FieldMap implements Retainable {
         return field;
     }
 
-    set(prop: string, val: any) {
-        const field = this.getOrMake(prop, val);
-        return field.set(val);
+    set(key: any, val: any) {
+        const field = this.getOrMake(key, undefined);
+        field.set(val);
     }
 
-    delete(prop: string) {
-        const field = this.fieldMap.get(prop);
+    delete(key: any) {
+        const field = this.fieldMap.get(key);
         if (field) {
             field.set(undefined);
-            this.fieldMap.delete(prop);
+            this.fieldMap.delete(key);
 
             if (this.__refcount > 0) {
                 if (this.emitter) removeSoftEdge(field, this.emitter);
@@ -63,6 +64,28 @@ export class FieldMap implements Retainable {
                 release(field);
             }
         }
+    }
+
+    keys() {
+        notifyRead(this.keysField);
+        return this.fieldMap.keys();
+    }
+
+    values() {
+        notifyRead(this.keysField);
+        return this.fieldMap.values();
+    }
+
+    entries() {
+        notifyRead(this.keysField);
+        return this.fieldMap.entries();
+    }
+
+    clear() {
+        const keys = [...this.fieldMap.keys()];
+        keys.forEach((key) => {
+            this.delete(key);
+        });
     }
 
     __dead() {

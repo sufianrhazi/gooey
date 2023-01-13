@@ -1,26 +1,20 @@
 import * as log from './log';
-import {
-    getTrackedDataHandle,
-    TrackedData,
-    TrackedDataHandle,
-    ProxyHandler,
-} from './trackeddata';
 import { retain, release } from './engine';
-import { ViewHandler, ViewImpl, makeViewPrototype, View } from './collection';
-import { noop } from './util';
-import { ArrayEvent, ArrayEventType, addArrayEvent } from './arrayevent';
-
-const ModelPrototype = {
-    __debugName: '',
-    __refcount: 0,
-    __alive: noop,
-    __dead: noop,
-};
+import { FieldMap } from './fieldmap';
+import { SubscriptionEmitter } from './subscriptionemitter';
+import { Field } from './field';
 
 export enum ModelEventType {
     ADD = 'add',
     SET = 'set',
     DEL = 'del',
+}
+
+interface ModelHandle<T> {
+    target: T;
+    keysField: Field<number>;
+    emitter: SubscriptionEmitter<ModelEvent>;
+    fieldMap: FieldMap;
 }
 
 export type ModelEvent =
@@ -30,59 +24,49 @@ export type ModelEvent =
 
 export type Model<T extends {}> = T;
 
-// Note: because model also has "private" fields (Retainable interface, __tdHandle), we lie
-type InternalModel<T extends {}> = TrackedData<
-    T,
-    typeof ModelPrototype,
-    ModelEvent,
-    ModelEvent
->;
+export function addModelEvent(events: ModelEvent[], event: ModelEvent) {
+    // TODO: make smarter
+    events.push(event);
+}
+
+function getModelHandle<T>(model: Model<T>) {
+    return (model as any).__handle as ModelHandle<T> | undefined;
+}
 
 export function model<T extends {}>(target: T, debugName?: string): Model<T> {
-    const proxyHandler: ProxyHandler<ModelEvent> = {
-        get: (dataAccessor, emitter, prop, receiver) =>
-            dataAccessor.get(prop, receiver),
-        has: (dataAccessor, emitter, prop) => dataAccessor.has(prop),
-        set: (dataAccessor, emitter, prop, value, receiver) => {
-            if (
-                typeof prop === 'string' &&
-                !Object.prototype.hasOwnProperty.call(ModelPrototype, prop)
-            ) {
-                if (dataAccessor.peekHas(prop)) {
-                    emitter({ type: ModelEventType.SET, prop, value });
-                } else {
-                    emitter({ type: ModelEventType.ADD, prop, value });
-                }
-            }
-            return dataAccessor.set(prop, value, receiver);
-        },
-        delete: (dataAccessor, emitter, prop) => {
-            if (
-                typeof prop === 'string' &&
-                !Object.prototype.hasOwnProperty.call(ModelPrototype, prop) &&
-                dataAccessor.peekHas(prop)
-            ) {
-                emitter({ type: ModelEventType.DEL, prop });
-            }
-            return dataAccessor.delete(prop);
-        },
-    };
-    const modelInterface = new TrackedDataHandle<
-        T,
-        typeof ModelPrototype,
-        ModelEvent,
-        ModelEvent
-    >(
-        target,
-        proxyHandler,
-        ModelPrototype,
-        null,
-        null,
+    const keysField = new Field<number>(Object.keys(target).length);
+    const emitter = new SubscriptionEmitter<ModelEvent>(
         addModelEvent,
-        addModelEvent,
-        debugName
+        debugName ?? 'model'
     );
-    return modelInterface.revocable.proxy;
+    const fieldMap = new FieldMap(keysField, null, emitter, debugName);
+    const modelHandle: ModelHandle<T> = {
+        target,
+        keysField,
+        emitter,
+        fieldMap,
+    };
+    const modelObj: Model<T> = { ...target };
+    Object.defineProperty(modelObj, '__handle', { value: modelHandle });
+    Object.defineProperties(
+        modelObj,
+        Object.fromEntries(
+            Object.keys(target).map((key) => [
+                key,
+                {
+                    get: () => {
+                        return fieldMap
+                            .getOrMake(key, target[key as keyof T])
+                            .get();
+                    },
+                    set: (newValue) => {
+                        fieldMap.getOrMake(key, newValue).set(newValue);
+                    },
+                },
+            ])
+        )
+    );
+    return modelObj;
 }
 
 model.subscribe = function modelSubscribe<T extends {}>(
@@ -90,114 +74,26 @@ model.subscribe = function modelSubscribe<T extends {}>(
     handler: (event: ModelEvent[]) => void,
     debugName?: string
 ): () => void {
-    const sourceTDHandle = getTrackedDataHandle(
-        sourceModel as InternalModel<T>
-    );
-    log.assert(sourceTDHandle, 'missing tdHandle');
-    retain(sourceTDHandle.emitter);
-    const unsubscribe = sourceTDHandle.emitter.subscribe((events) => {
+    const modelHandle = getModelHandle(sourceModel);
+    log.assert(modelHandle, 'missing model __handle');
+    retain(modelHandle.emitter);
+    const unsubscribe = modelHandle.emitter.subscribe((events) => {
         handler(events);
     });
     return () => {
         unsubscribe();
-        release(sourceTDHandle.emitter);
+        release(modelHandle.emitter);
     };
 };
 
-model.keys = function modelKeys<T extends {}>(
+model.field = function modelField<T extends {}, K extends keyof T>(
     sourceModel: Model<T>,
-    debugName?: string
-): View<string, ModelEvent> {
-    const sourceTDHandle = getTrackedDataHandle(
-        sourceModel as InternalModel<T>
+    field: K
+): Field<T[K]> | undefined {
+    const modelHandle = getModelHandle(sourceModel);
+    log.assert(modelHandle, 'missing model __handle');
+    return modelHandle.fieldMap.getOrMake(
+        field as string,
+        modelHandle.target[field]
     );
-    log.assert(sourceTDHandle, 'missing tdHandle');
-
-    const initialKeys = Object.keys(sourceModel);
-
-    const derivedCollection = new TrackedDataHandle<
-        string[],
-        ViewImpl<string>,
-        ArrayEvent<string>,
-        ModelEvent
-    >(
-        initialKeys,
-        ViewHandler,
-        makeViewPrototype(sourceModel),
-        sourceTDHandle.emitter,
-        function* keysHandler(
-            target: string[],
-            events: ModelEvent[]
-        ): IterableIterator<ArrayEvent<string>> {
-            for (const event of events) {
-                switch (event.type) {
-                    case ModelEventType.DEL: {
-                        const index = target.indexOf(event.prop);
-                        if (index !== -1) {
-                            const prevLength = target.length;
-                            target.splice(index, 1);
-                            const newLength = target.length;
-
-                            // Invalidate ranges
-                            for (let i = index; i < target.length; ++i) {
-                                derivedCollection.fieldMap.set(
-                                    i.toString(),
-                                    target[i]
-                                );
-                            }
-                            for (let i = newLength; i < prevLength; ++i) {
-                                derivedCollection.fieldMap.delete(i.toString());
-                            }
-                            derivedCollection.fieldMap.set(
-                                'length',
-                                target.length
-                            );
-
-                            yield {
-                                type: ArrayEventType.SPLICE,
-                                index,
-                                count: 1,
-                                items: [],
-                            };
-                        }
-                        break;
-                    }
-                    case ModelEventType.ADD: {
-                        const length = target.length;
-                        target.push(event.prop);
-
-                        // Invalidate ranges
-                        derivedCollection.fieldMap.set(
-                            length.toString(),
-                            event.prop
-                        );
-                        derivedCollection.fieldMap.set('length', target.length);
-
-                        yield {
-                            type: ArrayEventType.SPLICE,
-                            index: length,
-                            count: 0,
-                            items: [event.prop],
-                        };
-                        break;
-                    }
-                    case ModelEventType.SET:
-                        // Preexisting key
-                        break;
-                    default:
-                        log.assertExhausted(event);
-                }
-            }
-        },
-        addArrayEvent,
-        addModelEvent,
-        debugName
-    );
-
-    return derivedCollection.revocable.proxy;
 };
-
-function addModelEvent(events: ModelEvent[], event: ModelEvent) {
-    // TODO: make smarter
-    events.push(event);
-}

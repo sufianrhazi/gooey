@@ -12,6 +12,8 @@ export type {
 export { ClassComponent, IntrinsicObserverEventType } from './rendernode';
 export type { Model, ModelEvent } from './model';
 export { model, ModelEventType } from './model';
+export type { MapEvent } from './map';
+export { map, TrackedMap, MapEventType } from './map';
 export { field } from './field';
 export type { Field } from './field';
 export type { Collection, View } from './collection';

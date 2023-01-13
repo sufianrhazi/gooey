@@ -1,5 +1,6 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
+import { map } from './map';
 import { collection } from './collection';
 import { Calculation, CalculationErrorType, calc } from './calc';
 import { flush, retain, release, reset, subscribe } from './engine';
@@ -312,25 +313,25 @@ suite('calc', () => {
         assert.deepEqual([(1 + 2 + 3 + 4) * 2, (5 + 2 + 3 + 4) * 2], values);
     });
 
-    test('retains model keys appropriately', () => {
-        const bag = model<Record<string, any>>({});
-        const keys = model.keys(bag);
-        const size = calc(() => keys.length);
+    test('retains map keys appropriately', () => {
+        const bag = map();
+        const keys = bag.keys();
+        const size = calc(() => keys.length, 'calc length');
         const values: any[] = [];
         size.subscribe((err, val) => values.push(val));
         assert.deepEqual([], values);
-        bag.foo = 'bar';
+        bag.set('foo', 'bar');
         flush();
         assert.deepEqual([1], values);
-        bag.baz = 'bum';
+        bag.set('baz', 'bum');
         flush();
         assert.deepEqual([1, 2], values);
-        bag.foo = 'overwrite';
-        bag.baz = 'overwrite';
+        bag.set('foo', 'overwrite');
+        bag.set('baz', 'overwrite');
         flush();
         assert.deepEqual([1, 2], values);
-        delete bag.foo;
-        delete bag.unused;
+        bag.delete('foo');
+        bag.delete('unused');
         flush();
         assert.deepEqual([1, 2, 1], values);
     });
