@@ -90,6 +90,10 @@ class TracingRenderNode implements RenderNode {
     commit(phase: RenderNodeCommitPhase) {
         this.events.push(`commit:${RenderNodeCommitPhase[phase]}`);
     }
+
+    clone() {
+        return new TracingRenderNode();
+    }
 }
 
 suite('EmptyRenderNode', () => {
@@ -1279,9 +1283,11 @@ suite('ComponentRenderNode', () => {
 suite('IntrinsicObserverRenderNode', () => {
     test('renders children normally', () => {
         const tracer = new TracingRenderNode();
-        const node = new IntrinsicObserverRenderNode(undefined, undefined, [
-            tracer,
-        ]);
+        const node = new IntrinsicObserverRenderNode(
+            undefined,
+            undefined,
+            new ArrayRenderNode([tracer])
+        );
         node.retain();
         node.attach((event) => tracer.log(event), HTML_NAMESPACE);
         node.setMounted(true);
@@ -1308,7 +1314,7 @@ suite('IntrinsicObserverRenderNode', () => {
         const node = new IntrinsicObserverRenderNode(
             (node, type) => nodeCalls.push([node, type]),
             (node, type) => elementCalls.push([node, type]),
-            [tracer]
+            new ArrayRenderNode([tracer])
         );
 
         const text = document.createTextNode('text');
@@ -1369,7 +1375,7 @@ suite('IntrinsicObserverRenderNode', () => {
         const node = new IntrinsicObserverRenderNode(
             (node, type) => nodeCalls.push([node, type]),
             (node, type) => elementCalls.push([node, type]),
-            [tracer]
+            new ArrayRenderNode([tracer])
         );
 
         const text = document.createTextNode('text');

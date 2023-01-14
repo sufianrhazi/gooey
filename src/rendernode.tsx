@@ -116,6 +116,7 @@ export interface RenderNode extends Retainable {
     commit(phase: RenderNodeCommitPhase): void;
     retain(): void;
     release(): void;
+    clone(props?: {}, children?: RenderNode[]): RenderNode;
 }
 
 function own(parent: RenderNode, child: RenderNode) {
@@ -152,6 +153,9 @@ export class EmptyRenderNode implements RenderNode {
     }
     commit() {
         // No children, no commit action
+    }
+    clone(): RenderNode {
+        return emptyRenderNode;
     }
 
     // Retainable
@@ -212,6 +216,9 @@ export class TextRenderNode implements RenderNode {
     commit() {
         // No children, no commit action
     }
+    clone(): RenderNode {
+        return new TextRenderNode(this.text.data);
+    }
 
     // Retainable
     declare __debugName: string;
@@ -266,6 +273,9 @@ export class ForeignRenderNode implements RenderNode {
     }
     commit() {
         // No children, no commit action
+    }
+    clone(): RenderNode {
+        return new ForeignRenderNode(this.node);
     }
 
     // Retainable
@@ -340,6 +350,9 @@ export class ArrayRenderNode implements RenderNode {
             }
             this._commitPhase = phase;
         }
+    }
+    clone(): RenderNode {
+        return new ArrayRenderNode(this.children.map((child) => child.clone()));
     }
 
     // Retainable
@@ -815,6 +828,14 @@ export class IntrinsicRenderNode implements RenderNode {
         }
     }
 
+    clone(props: {}, children?: RenderNode[]) {
+        return new IntrinsicRenderNode(
+            this.tagName,
+            { ...this.props, ...props },
+            children ? children : [this.children.clone()]
+        );
+    }
+
     // Retainable
     declare __debugName: string;
     declare __refcount: number;
@@ -1052,6 +1073,14 @@ export class PortalRenderNode implements RenderNode {
         }
     }
 
+    clone(): RenderNode {
+        return new PortalRenderNode(
+            this.element,
+            this.arrayRenderNode.clone() as ArrayRenderNode,
+            this.refProp
+        );
+    }
+
     private insertBefore(nodes: Node[], targetIndex: number) {
         let toInsert: Node | undefined;
         if (nodes.length === 1) {
@@ -1219,6 +1248,10 @@ export class CalculationRenderNode implements RenderNode {
             this.renderNode?.commit(phase);
             this._commitPhase = phase;
         }
+    }
+
+    clone(): RenderNode {
+        return new CalculationRenderNode(this.calculation);
     }
 
     // Retainable
@@ -1496,6 +1529,10 @@ export class CollectionRenderNode implements RenderNode {
         }
     }
 
+    clone(): RenderNode {
+        return new CollectionRenderNode(this.collection);
+    }
+
     // Retainable
     declare __debugName: string;
     declare __refcount: number;
@@ -1672,14 +1709,14 @@ export class IntrinsicObserverRenderNode implements RenderNode {
     constructor(
         nodeCallback: IntrinsicObserverNodeCallback | undefined,
         elementCallback: IntrinsicObserverElementCallback | undefined,
-        children: RenderNode[],
+        child: ArrayRenderNode,
         debugName?: string
     ) {
         this._type = RenderNodeType;
         this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.nodeCallback = nodeCallback;
         this.elementCallback = elementCallback;
-        this.child = new ArrayRenderNode(children);
+        this.child = child;
         this.childNodes = [];
         this.pendingMount = [];
         this.pendingUnmount = [];
@@ -1746,6 +1783,14 @@ export class IntrinsicObserverRenderNode implements RenderNode {
                 }
                 break;
         }
+    }
+
+    clone(): RenderNode {
+        return new IntrinsicObserverRenderNode(
+            this.nodeCallback,
+            this.elementCallback,
+            this.child.clone() as ArrayRenderNode
+        );
     }
 
     handleEvent(event: ArrayEvent<Node> | Error) {
@@ -1834,7 +1879,7 @@ export const IntrinsicObserver: Component<{
     return new IntrinsicObserverRenderNode(
         nodeCallback,
         elementCallback,
-        renderJSXChildren(children)
+        new ArrayRenderNode(renderJSXChildren(children))
     );
 };
 
@@ -2079,6 +2124,16 @@ export class ComponentRenderNode<TProps> implements RenderNode {
             }
             this.needsMount = false;
         }
+    }
+
+    clone(props: {} = {}, children: RenderNode[] = []) {
+        return new ComponentRenderNode(
+            this.Component,
+            this.props && props
+                ? { ...this.props, ...props }
+                : ((props || this.props) as TProps),
+            children
+        );
     }
 
     retain() {

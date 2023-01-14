@@ -449,6 +449,94 @@ suite('mount static', () => {
             testRoot.querySelector('#outer'),
         ]);
     });
+
+    test('clone static', () => {
+        const source = (
+            <div class="source" data-name="yes">
+                hello
+            </div>
+        );
+        const dest = source.clone({ class: 'dest', 'data-cloned': 'true' }, [
+            <>howdy</>,
+        ]);
+        mount(
+            testRoot,
+            <>
+                <div id="a">{source}</div>
+                <div id="b">{dest}</div>
+            </>
+        );
+        assert.is(
+            'source',
+            testRoot.querySelector('#a')?.children[0].className
+        );
+        assert.is(
+            'yes',
+            testRoot.querySelector('#a')?.children[0].getAttribute('data-name')
+        );
+        assert.is(
+            null,
+            testRoot
+                .querySelector('#a')
+                ?.children[0].getAttribute('data-cloned')
+        );
+        assert.is(
+            'hello',
+            testRoot.querySelector('#a')?.children[0].textContent
+        );
+        assert.is('dest', testRoot.querySelector('#b')?.children[0].className);
+        assert.is(
+            'yes',
+            testRoot.querySelector('#b')?.children[0].getAttribute('data-name')
+        );
+        assert.is(
+            'true',
+            testRoot
+                .querySelector('#b')
+                ?.children[0].getAttribute('data-cloned')
+        );
+        assert.is(
+            'howdy',
+            testRoot.querySelector('#b')?.children[0].textContent
+        );
+    });
+
+    test('clone with children clones children, including refs and event handlers', () => {
+        const els: any[] = [];
+        const targets: any[] = [];
+        const ref = (el: any) => els.push(el);
+        const source = (
+            <div data-name="yes">
+                <span
+                    ref={ref}
+                    on:click={(e) => targets.push(e.target)}
+                    data-child="yes"
+                >
+                    cloned
+                </span>
+            </div>
+        );
+        const dest = source.clone();
+        mount(
+            testRoot,
+            <>
+                <div id="a">{source}</div>
+                <div id="b">{dest}</div>
+            </>
+        );
+        assert.is(
+            '<div id="a"><div data-name="yes"><span data-child="yes">cloned</span></div></div><div id="b"><div data-name="yes"><span data-child="yes">cloned</span></div></div>',
+            testRoot.innerHTML
+        );
+        assert.is(2, els.length);
+        assert.isNot(els[0], els[1]);
+        assert.is(els[0].textContent, els[1].textContent);
+        els[0].dispatchEvent(new MouseEvent('click'));
+        els[1].dispatchEvent(new MouseEvent('click'));
+        assert.is(2, targets.length);
+        assert.is(els[0], targets[0]);
+        assert.is(els[1], targets[1]);
+    });
 });
 
 suite('mount calculations', () => {
