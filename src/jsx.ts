@@ -58,9 +58,7 @@ declare global {
         /**
          * The mapping of element name to intrinsic element path
          */
-        interface IntrinsicElements extends KnownElements {
-            [unknownElement: string]: any;
-        }
+        type IntrinsicElements = KnownElements & Record<string, any>;
 
         /**
          * The object property of children

@@ -3929,6 +3929,19 @@ if (2 < 1) {
         const badJSX = <button on:click={divHandler} />;
         assert.isTruthy(badJSX);
     });
+
+    test('keyof JSX.IntrinsicElement can be used as element', () => {
+        const makeThing = (): keyof JSX.IntrinsicElements => 'div';
+        const El = makeThing();
+        const jsx = <El />;
+        assert.isTruthy(jsx);
+    });
+
+    test('invalid props on elements are detected', () => {
+        // @ts-expect-error
+        const jsx = <div badprop />;
+        assert.isTruthy(jsx);
+    });
 }
 
 suite('automatic memory management', () => {
