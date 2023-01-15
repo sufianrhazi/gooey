@@ -1,27 +1,27 @@
 import { Position } from './utils';
-export declare type LiteralNumberExpression = {
+export type LiteralNumberExpression = {
     type: 'number';
     value: number;
 };
-export declare type LiteralStringExpression = {
+export type LiteralStringExpression = {
     type: 'string';
     value: string;
 };
-export declare type CellExpression = {
+export type CellExpression = {
     type: 'cell';
     position: Position;
 };
-export declare type CellRangeExpression = {
+export type CellRangeExpression = {
     type: 'range';
     start: Position;
     end: Position;
 };
-export declare type FunctionExpression = {
+export type FunctionExpression = {
     type: 'func';
     name: string;
     args: Expression[];
 };
-export declare type ArithmeticExpression = {
+export type ArithmeticExpression = {
     type: 'pos';
     value: Expression;
 } | {
@@ -44,6 +44,6 @@ export declare type ArithmeticExpression = {
     left: Expression;
     right: Expression;
 };
-export declare type Expression = LiteralNumberExpression | LiteralStringExpression | ArithmeticExpression | FunctionExpression | CellExpression | CellRangeExpression;
+export type Expression = LiteralNumberExpression | LiteralStringExpression | ArithmeticExpression | FunctionExpression | CellExpression | CellRangeExpression;
 export declare function parseFormula(str: string): Expression;
 //# sourceMappingURL=parser.d.ts.map

@@ -1,4 +1,4 @@
-export declare type Position = {
+export type Position = {
     col: number;
     row: number;
 };

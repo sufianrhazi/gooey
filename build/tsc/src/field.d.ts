@@ -1,5 +1,5 @@
 import { Processable, Retainable } from './engine';
-declare type FieldSubscriber<T> = (val: T) => void;
+type FieldSubscriber<T> = (val: T) => void;
 export declare class Field<T> implements Processable, Retainable {
     private _isAlive?;
     private _val;

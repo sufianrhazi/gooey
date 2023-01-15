@@ -10,11 +10,11 @@ export interface ComponentLifecycle {
     onError: (handler: (e: Error) => JSX.Element | null) => void;
 }
 declare const UnusedSymbolForChildrenOmission: unique symbol;
-export declare type EmptyProps = {
+export type EmptyProps = {
     [UnusedSymbolForChildrenOmission]?: boolean;
 };
-export declare type Component<TProps = {}> = FunctionComponent<TProps> | ClassComponentConstructor<TProps>;
-export declare type FunctionComponent<TProps = {}> = (props: TProps & EmptyProps, lifecycle: ComponentLifecycle) => JSX.Element | null;
+export type Component<TProps = {}> = FunctionComponent<TProps> | ClassComponentConstructor<TProps>;
+export type FunctionComponent<TProps = {}> = (props: TProps & EmptyProps, lifecycle: ComponentLifecycle) => JSX.Element | null;
 export interface ClassComponentInterface {
     render?(): JSX.Element | null;
     onMount?(): (() => void) | void;
@@ -35,7 +35,7 @@ export declare class ClassComponent<TProps = EmptyProps> implements ClassCompone
     onDestroy?(): void;
     onError?(e: Error): JSX.Element | null;
 }
-export declare type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
+export type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
 export declare const RenderNodeType: unique symbol;
 export declare enum RenderNodeCommitPhase {
     COMMIT_UNMOUNT = 0,
@@ -52,6 +52,7 @@ export interface RenderNode extends Retainable {
     commit(phase: RenderNodeCommitPhase): void;
     retain(): void;
     release(): void;
+    clone(props?: {}, children?: RenderNode[]): RenderNode;
 }
 /**
  * Renders nothing
@@ -66,6 +67,7 @@ export declare class EmptyRenderNode implements RenderNode {
     retain(): void;
     release(): void;
     commit(): void;
+    clone(): RenderNode;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -90,6 +92,7 @@ export declare class TextRenderNode implements RenderNode {
     retain(): void;
     release(): void;
     commit(): void;
+    clone(): RenderNode;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -110,6 +113,7 @@ export declare class ForeignRenderNode implements RenderNode {
     retain(): void;
     release(): void;
     commit(): void;
+    clone(): RenderNode;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -124,7 +128,6 @@ export declare class ArrayRenderNode implements RenderNode {
     private children;
     private slotSizes;
     private attached;
-    private emitter?;
     constructor(children: RenderNode[], debugName?: string);
     detach(): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
@@ -132,6 +135,7 @@ export declare class ArrayRenderNode implements RenderNode {
     retain(): void;
     release(): void;
     commit(phase: RenderNodeCommitPhase): void;
+    clone(): RenderNode;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -165,6 +169,7 @@ export declare class IntrinsicRenderNode implements RenderNode {
     retain(): void;
     release(): void;
     commit(phase: RenderNodeCommitPhase): void;
+    clone(props: {}, children?: RenderNode[]): IntrinsicRenderNode;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -193,6 +198,7 @@ export declare class PortalRenderNode implements RenderNode {
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     setMounted(isMounted: boolean): void;
     commit(phase: RenderNodeCommitPhase): void;
+    clone(): RenderNode;
     private insertBefore;
     retain(): void;
     release(): void;
@@ -224,6 +230,7 @@ export declare class CalculationRenderNode implements RenderNode {
     subscribe(errorType: undefined, val: any, addPostAction: (postAction: () => void) => void): void;
     subscribe(errorType: CalculationErrorType, val: Error, addPostAction: (postAction: () => void) => void): void;
     commit(phase: RenderNodeCommitPhase): void;
+    clone(): RenderNode;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -253,6 +260,7 @@ export declare class CollectionRenderNode implements RenderNode {
     private retainChild;
     private handleCollectionEvent;
     commit(phase: RenderNodeCommitPhase): void;
+    clone(): RenderNode;
     __debugName: string;
     __refcount: number;
     __alive(): void;
@@ -265,8 +273,8 @@ export declare enum IntrinsicObserverEventType {
     MOUNT = "mount",
     UNMOUNT = "unmount"
 }
-export declare type IntrinsicObserverNodeCallback = (node: Node, event: IntrinsicObserverEventType) => void;
-export declare type IntrinsicObserverElementCallback = (element: Element, event: IntrinsicObserverEventType) => void;
+export type IntrinsicObserverNodeCallback = (node: Node, event: IntrinsicObserverEventType) => void;
+export type IntrinsicObserverElementCallback = (element: Element, event: IntrinsicObserverEventType) => void;
 export declare class IntrinsicObserverRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
     _commitPhase: RenderNodeCommitPhase;
@@ -278,9 +286,10 @@ export declare class IntrinsicObserverRenderNode implements RenderNode {
     pendingUnmount: Node[];
     emitter?: NodeEmitter | undefined;
     isMounted: boolean;
-    constructor(nodeCallback: IntrinsicObserverNodeCallback | undefined, elementCallback: IntrinsicObserverElementCallback | undefined, children: RenderNode[], debugName?: string);
+    constructor(nodeCallback: IntrinsicObserverNodeCallback | undefined, elementCallback: IntrinsicObserverElementCallback | undefined, child: ArrayRenderNode, debugName?: string);
     notify(node: Node, type: IntrinsicObserverEventType): void;
     commit(phase: RenderNodeCommitPhase): void;
+    clone(): RenderNode;
     handleEvent(event: ArrayEvent<Node> | Error): void;
     detach(): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
@@ -321,6 +330,7 @@ export declare class ComponentRenderNode<TProps> implements RenderNode {
     handleEvent: (event: ArrayEvent<Node> | Error) => void;
     setMounted(isMounted: boolean): void;
     commit(phase: RenderNodeCommitPhase): void;
+    clone(props?: {}, children?: RenderNode[]): ComponentRenderNode<TProps>;
     retain(): void;
     release(): void;
     __debugName: string;

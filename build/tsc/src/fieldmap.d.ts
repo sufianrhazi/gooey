@@ -8,9 +8,13 @@ export declare class FieldMap implements Retainable {
     __debugName: string;
     __refcount: number;
     constructor(keysField: Field<number>, consumer: (Retainable & Processable) | null, emitter: (Retainable & Processable) | null, debugName?: string);
-    getOrMake(prop: string, val: any): Field<any>;
-    set(prop: string, val: any): void;
-    delete(prop: string): void;
+    getOrMake(key: any, val: any): Field<any>;
+    set(key: any, val: any): void;
+    delete(key: any): void;
+    keys(): IterableIterator<any>;
+    values(): IterableIterator<Field<any>>;
+    entries(): IterableIterator<[any, Field<any>]>;
+    clear(): void;
     __dead(): void;
     __alive(): void;
 }

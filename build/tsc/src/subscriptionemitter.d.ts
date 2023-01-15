@@ -1,5 +1,5 @@
 import { Processable, Retainable } from './engine';
-declare type SubscriptionEmitterHandler<TEmitEvent> = {
+type SubscriptionEmitterHandler<TEmitEvent> = {
     bivarianceHack(events: TEmitEvent[]): void;
 }['bivarianceHack'];
 export declare class SubscriptionEmitter<TEmitEvent> implements Processable, Retainable {

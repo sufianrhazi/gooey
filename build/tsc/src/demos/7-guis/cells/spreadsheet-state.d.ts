@@ -1,7 +1,7 @@
-import { Model, Calculation } from '../../..';
+import { TrackedMap, Calculation } from '../../..';
 import { Expression, FunctionExpression } from './parser';
 import { Position } from './utils';
-export declare type EvalResult = {
+export type EvalResult = {
     ok: true;
     value: string | number;
 } | {
@@ -13,8 +13,8 @@ export declare type EvalResult = {
     error: Error;
 };
 export declare class SpreadsheetState {
-    rawData: Model<Record<string, string>>;
-    evaluatedData: Model<Record<string, Calculation<EvalResult>>>;
+    rawData: TrackedMap<string, string>;
+    evaluatedData: TrackedMap<string, Calculation<EvalResult>>;
     constructor();
     set(position: Position, value: string): void;
     read(position: Position): EvalResult;

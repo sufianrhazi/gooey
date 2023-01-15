@@ -16,12 +16,12 @@ declare class UndoStack<TAction, TResult> {
     undo(): void;
     redo(): void;
 }
-declare type Circle = Model<{
+type Circle = Model<{
     x: number;
     y: number;
     r: number;
 }>;
-declare type Action = {
+type Action = {
     type: 'new';
     circle: Circle;
 } | {

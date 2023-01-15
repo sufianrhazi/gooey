@@ -1,7 +1,7 @@
 import { Processable, Retainable } from './engine';
 import { Field } from './field';
 import { SubscriptionEmitter } from './subscriptionemitter';
-declare type SubscriptionConsumerHandler<TData, TConsumeEvent, TEmitEvent> = {
+type SubscriptionConsumerHandler<TData, TConsumeEvent, TEmitEvent> = {
     bivarianceHack(target: TData, events: TConsumeEvent[]): IterableIterator<TEmitEvent>;
 }['bivarianceHack'];
 export declare class SubscriptionConsumer<TData, TConsumeEvent, TEmitEvent> implements Processable, Retainable {

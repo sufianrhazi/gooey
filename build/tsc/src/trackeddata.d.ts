@@ -18,7 +18,7 @@ export declare class TrackedDataHandle<TData extends object, TMethods extends Re
     };
     constructor(target: TData, proxyHandler: ProxyHandler<TEmitEvent>, methods: TMethods, derivedEmitter: null | SubscriptionEmitter<TConsumeEvent>, handleEvents: null | ((target: TData, events: TConsumeEvent[]) => IterableIterator<TEmitEvent>), appendEmitEvent: (events: TEmitEvent[], event: TEmitEvent) => void, appendConsumeEvent: (events: TConsumeEvent[], event: TConsumeEvent) => void, debugName?: string);
 }
-export declare type TrackedData<TData extends object, TMethods extends Retainable, TEmitEvent, TConsumeEvent> = TData & TMethods & {
+export type TrackedData<TData extends object, TMethods extends Retainable, TEmitEvent, TConsumeEvent> = TData & TMethods & {
     __tdHandle: TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent>;
 };
 export declare function getTrackedDataHandle<TData extends object, TMethods extends Retainable, TEmitEvent, TConsumeEvent>(trackedData: TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>): undefined | TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent>;

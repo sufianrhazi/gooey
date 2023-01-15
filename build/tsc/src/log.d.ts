@@ -1,4 +1,4 @@
-export declare type LogLevel = 'error' | 'warn' | 'info' | 'debug';
+export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 export declare function getLogLevel(): LogLevel;
 export declare function setLogLevel(logLevel: LogLevel): void;
 export declare function debug(...items: any[]): void;

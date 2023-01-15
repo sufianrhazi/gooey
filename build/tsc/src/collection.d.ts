@@ -35,8 +35,8 @@ export interface ViewImpl<T> extends Retainable {
     subscribe: (handler: (event: ArrayEvent<T>[]) => void) => () => void;
 }
 export declare function makeViewPrototype<T>(sourceCollection: TrackedData<any, any, unknown, unknown>): ViewImpl<T>;
-export declare type Collection<T> = TrackedData<T[], CollectionImpl<T>, ArrayEvent<T>, ArrayEvent<T>>;
-export declare type View<T, TConsumeEvent = any> = TrackedData<readonly T[], ViewImpl<T>, ArrayEvent<T>, TConsumeEvent>;
+export type Collection<T> = TrackedData<T[], CollectionImpl<T>, ArrayEvent<T>, ArrayEvent<T>>;
+export type View<T, TConsumeEvent = any> = TrackedData<readonly T[], ViewImpl<T>, ArrayEvent<T>, TConsumeEvent>;
 export declare function isCollection(val: any): val is Collection<any>;
 export declare function isView(val: any): val is View<any>;
 export declare const CollectionHandler: ProxyHandler<ArrayEvent<any>>;

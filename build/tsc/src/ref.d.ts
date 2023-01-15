@@ -12,10 +12,10 @@ export declare function ref<T>(val?: T): Ref<T>;
 /**
  * A standard ref callback
  */
-export declare type RefCallback<T> = (val: T | undefined) => void;
+export type RefCallback<T> = (val: T | undefined) => void;
 /**
  * Ref types may be passed as the ref prop to intrinsic elements to obtain a
  * reference to the underlying Element
  */
-export declare type RefObjectOrCallback<T> = Ref<T> | RefCallback<T>;
+export type RefObjectOrCallback<T> = Ref<T> | RefCallback<T>;
 //# sourceMappingURL=ref.d.ts.map

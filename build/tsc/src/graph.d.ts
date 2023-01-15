@@ -16,7 +16,7 @@ interface DebugAttributes {
     isActive: boolean;
     name: string;
 }
-declare type DebugFormatter<TVertex> = (vertex: TVertex) => DebugAttributes;
+type DebugFormatter<TVertex> = (vertex: TVertex) => DebugAttributes;
 export declare class Graph<TVertex> {
     static EDGE_SOFT: EdgeColor;
     static EDGE_HARD: EdgeColor;

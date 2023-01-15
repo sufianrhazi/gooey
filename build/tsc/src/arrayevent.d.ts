@@ -20,7 +20,7 @@ export interface ArrayEventSort {
     from: number;
     indexes: number[];
 }
-export declare type ArrayEvent<T> = ArrayEventSplice<T> | ArrayEventMove | ArrayEventSort;
+export type ArrayEvent<T> = ArrayEventSplice<T> | ArrayEventMove | ArrayEventSort;
 export declare function shiftEventBy<T>(shiftAmount: number, event: ArrayEvent<T>): void;
 export declare function shiftEvent<T>(slotSizes: number[], slotIndex: number, event: ArrayEvent<T>): void;
 export declare function applyArrayEvent<T>(target: T[], event: ArrayEvent<T>): readonly T[];

@@ -6,7 +6,7 @@ import type { RefObjectOrCallback } from './ref';
 /**
  * The core type that can be used as a child or root of a JSX expression
  */
-export declare type JSXNode = string | number | boolean | null | undefined | bigint | symbol | Function | Element | RenderNode | JSXNodeCalculation | JSXNodeCollection | JSXNodeView | JSXNodeArray;
+export type JSXNode = string | number | boolean | null | undefined | bigint | symbol | Function | Element | RenderNode | JSXNodeCalculation | JSXNodeCollection | JSXNodeView | JSXNodeArray;
 export interface JSXNodeCalculation extends Calculation<JSXNode> {
 }
 export interface JSXNodeCollection extends Collection<JSXNode> {
@@ -33,9 +33,7 @@ declare global {
         /**
          * The mapping of element name to intrinsic element path
          */
-        interface IntrinsicElements extends KnownElements {
-            [unknownElement: string]: any;
-        }
+        type IntrinsicElements = KnownElements & Record<string, any>;
         /**
          * The object property of children
          */
@@ -56,17 +54,17 @@ declare global {
 }
 export declare function setAttribute(element: Element, attributeName: string, val: unknown): void;
 export declare function assignProp(element: Element, attribute: string, value: any): void;
-declare type AriaRole = 'alert' | 'alertdialog' | 'application' | 'article' | 'associationlist' | 'associationlistitemkey' | 'associationlistitemvalue' | 'banner' | 'blockquote' | 'button' | 'caption' | 'cell' | 'checkbox' | 'code' | 'columnheader' | 'combobox' | 'comment' | 'complementary' | 'contentinfo' | 'definition' | 'deletion' | 'dialog' | 'directory' | 'document' | 'emphasis' | 'feed' | 'figure' | 'form' | 'generic' | 'grid' | 'gridcell' | 'group' | 'heading' | 'img' | 'insertion' | 'link' | 'list' | 'listbox' | 'listitem' | 'log' | 'main' | 'mark' | 'marquee' | 'math' | 'menu' | 'menubar' | 'menuitem' | 'menuitemcheckbox' | 'menuitemradio' | 'meter' | 'navigation' | 'none' | 'note' | 'option' | 'paragraph' | 'presentation' | 'progressbar' | 'radio' | 'radiogroup' | 'region' | 'row' | 'rowgroup' | 'rowheader' | 'scrollbar' | 'search' | 'searchbox' | 'separator' | 'slider' | 'spinbutton' | 'status' | 'strong' | 'subscript' | 'suggestion' | 'superscript' | 'switch' | 'tab' | 'table' | 'tablist' | 'tabpanel' | 'term' | 'textbox' | 'time' | 'timer' | 'toolbar' | 'tooltip' | 'tree' | 'treegrid' | 'treeitem' | string;
-declare type DirValue = 'ltr' | 'rtl' | 'auto' | string;
-declare type BrowsingContextValue = '_blank' | '_self' | '_parent' | '_top' | string;
-declare type ReferrerPolicyValue = '' | 'no-referrer' | 'no-referrer-when-downgrade' | 'same-origin' | 'origin' | 'strict-origin' | 'origin-when-cross-origin' | 'strict-origin-when-cross-origin' | 'unsafe-url' | string;
-declare type CrossOriginValue = 'anonymous' | '' | 'use-credentials';
-declare type LazyLoadingValue = 'lazy' | 'eager' | string;
-declare type ImageDecodingHintValue = 'sync' | 'async' | 'auto' | string;
-declare type SandboxValue = 'allow-forms' | 'allow-modals' | 'allow-orientation-lock' | 'allow-pointer-lock' | 'allow-popups' | 'allow-popups-to-escape-sandbox' | 'allow-presentation' | 'allow-same-origin' | 'allow-scripts' | 'allow-top-navigation' | 'allow-top-navigation-by-user-activation' | 'allow-downloads' | string;
-declare type EncTypeValue = 'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain' | string;
-declare type FormMethodValue = 'get' | 'post' | 'dialog' | string;
-declare type AutocompleteValue = 'on' | 'off' | string;
+type AriaRole = 'alert' | 'alertdialog' | 'application' | 'article' | 'associationlist' | 'associationlistitemkey' | 'associationlistitemvalue' | 'banner' | 'blockquote' | 'button' | 'caption' | 'cell' | 'checkbox' | 'code' | 'columnheader' | 'combobox' | 'comment' | 'complementary' | 'contentinfo' | 'definition' | 'deletion' | 'dialog' | 'directory' | 'document' | 'emphasis' | 'feed' | 'figure' | 'form' | 'generic' | 'grid' | 'gridcell' | 'group' | 'heading' | 'img' | 'insertion' | 'link' | 'list' | 'listbox' | 'listitem' | 'log' | 'main' | 'mark' | 'marquee' | 'math' | 'menu' | 'menubar' | 'menuitem' | 'menuitemcheckbox' | 'menuitemradio' | 'meter' | 'navigation' | 'none' | 'note' | 'option' | 'paragraph' | 'presentation' | 'progressbar' | 'radio' | 'radiogroup' | 'region' | 'row' | 'rowgroup' | 'rowheader' | 'scrollbar' | 'search' | 'searchbox' | 'separator' | 'slider' | 'spinbutton' | 'status' | 'strong' | 'subscript' | 'suggestion' | 'superscript' | 'switch' | 'tab' | 'table' | 'tablist' | 'tabpanel' | 'term' | 'textbox' | 'time' | 'timer' | 'toolbar' | 'tooltip' | 'tree' | 'treegrid' | 'treeitem' | string;
+type DirValue = 'ltr' | 'rtl' | 'auto' | string;
+type BrowsingContextValue = '_blank' | '_self' | '_parent' | '_top' | string;
+type ReferrerPolicyValue = '' | 'no-referrer' | 'no-referrer-when-downgrade' | 'same-origin' | 'origin' | 'strict-origin' | 'origin-when-cross-origin' | 'strict-origin-when-cross-origin' | 'unsafe-url' | string;
+type CrossOriginValue = 'anonymous' | '' | 'use-credentials';
+type LazyLoadingValue = 'lazy' | 'eager' | string;
+type ImageDecodingHintValue = 'sync' | 'async' | 'auto' | string;
+type SandboxValue = 'allow-forms' | 'allow-modals' | 'allow-orientation-lock' | 'allow-pointer-lock' | 'allow-popups' | 'allow-popups-to-escape-sandbox' | 'allow-presentation' | 'allow-same-origin' | 'allow-scripts' | 'allow-top-navigation' | 'allow-top-navigation-by-user-activation' | 'allow-downloads' | string;
+type EncTypeValue = 'application/x-www-form-urlencoded' | 'multipart/form-data' | 'text/plain' | string;
+type FormMethodValue = 'get' | 'post' | 'dialog' | string;
+type AutocompleteValue = 'on' | 'off' | string;
 interface JSXElementInterface {
     /** a guide for creating a keyboard shortcut that activates or focuses the element */
     accesskey?: string | undefined;
@@ -308,7 +306,7 @@ interface JSXImageElementInterface extends JSXElementInterface {
     /** Used when determining loading deferral */
     loading?: LazyLoadingValue | undefined;
 }
-declare type FormInputTypeValues = 'button' | 'checkbox' | 'color' | 'date' | 'datetime-local' | 'email' | 'file' | 'hidden' | 'image' | 'month' | 'number' | 'password' | 'radio' | 'range' | 'reset' | 'search' | 'submit' | 'tel' | 'text' | 'time' | 'url' | 'week' | string;
+type FormInputTypeValues = 'button' | 'checkbox' | 'color' | 'date' | 'datetime-local' | 'email' | 'file' | 'hidden' | 'image' | 'month' | 'number' | 'password' | 'radio' | 'range' | 'reset' | 'search' | 'submit' | 'tel' | 'text' | 'time' | 'url' | 'week' | string;
 interface JSXInputElementInterface extends JSXElementInterface {
     /** Hint for expected file type in file upload controls */
     accept?: string | undefined;
@@ -670,7 +668,7 @@ interface JSXVideoElementInterface extends JSXMediaElementInterface {
 /**
  * Good old bivarianceHack to allow assignability of specific event handlers to more generic event handlers :facepalm:
  */
-declare type EventHandler<TEvent extends Event, TElement extends Element> = undefined | {
+type EventHandler<TEvent extends Event, TElement extends Element> = undefined | {
     bivarianceHack(event: TEvent, target: TElement): void;
 }['bivarianceHack'];
 interface JSXRefProps<TElement extends Element> {
@@ -898,18 +896,22 @@ interface JSXEventProps<TElement extends Element> {
     [key: `onpassive:${string}`]: EventHandler<Event, TElement>;
     [key: `oncapture:${string}`]: EventHandler<Event, TElement>;
 }
+interface CSSProps {
+    [key: `style:${string}`]: Calculation<string | undefined> | string | undefined;
+    [key: `cssprop:${string}`]: Calculation<string | undefined> | string | undefined;
+}
 interface JSXDataProps {
     [key: `data-${string}`]: Calculation<string | undefined> | string | undefined;
 }
-declare type JSXElementInterfaceProps<TJSXType extends JSXElementInterface> = {
-    [Key in keyof TJSXType]: (Calculation<any> & (() => TJSXType[Key])) | TJSXType[Key];
+type JSXElementInterfaceProps<TJSXType extends JSXElementInterface> = {
+    [Key in keyof TJSXType]: Calculation<TJSXType[Key]> | TJSXType[Key];
 };
-declare type JSXChildrenProps<HasChildren extends boolean> = HasChildren extends true ? {
+type JSXChildrenProps<HasChildren extends boolean> = HasChildren extends true ? {
     children?: JSX.Node | JSX.Node[];
 } : {
     children?: never;
 };
-declare type WithCalculationsAndRef<TJSXType extends JSXElementInterface, TElement extends Element, HasChildren extends boolean> = JSXRefProps<TElement> & JSXAttrProps & JSXEventProps<TElement> & JSXDataProps & JSXElementInterfaceProps<TJSXType> & JSXChildrenProps<HasChildren>;
+type WithCalculationsAndRef<TJSXType extends JSXElementInterface, TElement extends Element, HasChildren extends boolean> = JSXRefProps<TElement> & JSXAttrProps & JSXEventProps<TElement> & JSXDataProps & CSSProps & JSXElementInterfaceProps<TJSXType> & JSXChildrenProps<HasChildren>;
 export interface KnownElements {
     a: WithCalculationsAndRef<JSXAnchorElementInterface, HTMLAnchorElement, true>;
     abbr: WithCalculationsAndRef<JSXElementInterface, HTMLElement, true>;
