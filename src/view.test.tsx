@@ -8,6 +8,7 @@ import Gooey, {
     Model,
     mount,
     reset,
+    ref,
     subscribe,
     IntrinsicObserver,
 } from './index';
@@ -536,6 +537,60 @@ suite('mount static', () => {
         assert.is(2, targets.length);
         assert.is(els[0], targets[0]);
         assert.is(els[1], targets[1]);
+    });
+
+    test('style can bound calculations to specific styles', () => {
+        const vals = model({
+            color: 'red',
+            align: 'center',
+        });
+        const divRef = ref<HTMLDivElement>();
+        mount(
+            testRoot,
+            <div
+                ref={divRef}
+                style:color={calc(() => vals.color)}
+                style:text-align={calc(() => vals.align)}
+            >
+                hello
+            </div>
+        );
+        assert.is('red', divRef.current?.style.color);
+        assert.is('center', divRef.current?.style.textAlign);
+        vals.color = 'blue';
+        flush();
+        assert.is('blue', divRef.current?.style.color);
+        assert.is('center', divRef.current?.style.textAlign);
+    });
+
+    test('cssprop can bound calculations to specific css properties', () => {
+        const vals = model({
+            'woah-nellie': 'red',
+            coolio: 'center',
+        });
+        const divRef = ref<HTMLDivElement>();
+        mount(
+            testRoot,
+            <div
+                ref={divRef}
+                cssprop:woah-nellie={calc(() => vals['woah-nellie'])}
+                cssprop:coolio={calc(() => vals['coolio'])}
+            >
+                hello
+            </div>
+        );
+        assert.is(
+            'red',
+            divRef.current?.style.getPropertyValue('--woah-nellie')
+        );
+        assert.is('center', divRef.current?.style.getPropertyValue('--coolio'));
+        vals['woah-nellie'] = 'blue';
+        flush();
+        assert.is(
+            'blue',
+            divRef.current?.style.getPropertyValue('--woah-nellie')
+        );
+        assert.is('center', divRef.current?.style.getPropertyValue('--coolio'));
     });
 });
 

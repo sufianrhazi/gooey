@@ -735,6 +735,29 @@ export class IntrinsicRenderNode implements RenderNode {
             return;
         }
 
+        if (
+            (element instanceof HTMLElement || element instanceof SVGElement) &&
+            (prop.startsWith('cssprop:') || prop.startsWith('style:'))
+        ) {
+            const attrName = prop.startsWith('cssprop:')
+                ? '--' + prop.slice(8)
+                : prop.slice(6);
+            if (val === undefined || val === null || val === false) {
+                element.style.removeProperty(attrName);
+            } else if (typeof val === 'string') {
+                element.style.setProperty(attrName, val);
+            } else if (typeof val === 'number' || typeof val === 'bigint') {
+                element.style.setProperty(attrName, val.toString());
+            }
+            return;
+        }
+
+        if (prop.startsWith('style:')) {
+            const attrName = prop.slice(6);
+            setAttribute(element, attrName, val);
+            return;
+        }
+
         assignProp(element, prop, val);
     }
 
