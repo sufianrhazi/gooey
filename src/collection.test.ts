@@ -136,9 +136,9 @@ suite('collection', () => {
             return numbers[5];
         });
 
-        retain(beforeSplice);
-        retain(inSplice);
-        retain(afterSplice);
+        beforeSplice.retain();
+        inSplice.retain();
+        afterSplice.retain();
 
         assert.is(1, beforeSplice());
         assert.is(3, inSplice());
@@ -177,9 +177,9 @@ suite('collection', () => {
             return numbers[5];
         });
 
-        retain(beforeSplice);
-        retain(inSplice);
-        retain(afterSplice);
+        beforeSplice.retain();
+        inSplice.retain();
+        afterSplice.retain();
 
         assert.is(1, beforeSplice());
         assert.is(3, inSplice());
@@ -218,9 +218,9 @@ suite('collection', () => {
             return numbers[5];
         });
 
-        retain(beforeSplice);
-        retain(inSplice);
-        retain(afterSplice);
+        beforeSplice.retain();
+        inSplice.retain();
+        afterSplice.retain();
 
         assert.is(1, beforeSplice());
         assert.is(3, inSplice());
@@ -259,9 +259,9 @@ suite('collection', () => {
             return numbers[5];
         });
 
-        retain(beforeSplice);
-        retain(inSplice);
-        retain(afterSplice);
+        beforeSplice.retain();
+        inSplice.retain();
+        afterSplice.retain();
 
         assert.is(1, beforeSplice());
         assert.is(3, inSplice());
@@ -329,7 +329,7 @@ suite('collection', () => {
         });
         retain(view);
 
-        retain(calculation);
+        calculation.retain();
         calculation();
 
         m.isActive = true;
@@ -355,7 +355,7 @@ suite('collection', () => {
             return all;
         });
 
-        retain(calculation);
+        calculation.retain();
         assert.is('foobarbaz', calculation());
 
         strings.push('bum');
@@ -381,7 +381,7 @@ suite('collection', () => {
             return all;
         });
 
-        retain(calculation);
+        calculation.retain();
         assert.is('foobarbaz', calculation());
 
         strings.push('bum');
@@ -407,7 +407,7 @@ suite('collection', () => {
             return all;
         });
 
-        retain(calculation);
+        calculation.retain();
         assert.is('foobarbaz', calculation());
 
         strings.push('bum');
@@ -433,7 +433,7 @@ suite('collection', () => {
             return all;
         });
 
-        retain(calculation);
+        calculation.retain();
         assert.is('foobarbaz', calculation());
 
         strings.push('bum');

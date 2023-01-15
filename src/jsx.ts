@@ -1510,6 +1510,17 @@ interface JSXEventProps<TElement extends Element> {
     [key: `oncapture:${string}`]: EventHandler<Event, TElement>;
 }
 
+interface CSSProps {
+    [key: `style:${string}`]:
+        | Calculation<string | undefined>
+        | string
+        | undefined;
+    [key: `cssprop:${string}`]:
+        | Calculation<string | undefined>
+        | string
+        | undefined;
+}
+
 interface JSXDataProps {
     [key: `data-${string}`]:
         | Calculation<string | undefined>
@@ -1518,9 +1529,7 @@ interface JSXDataProps {
 }
 
 type JSXElementInterfaceProps<TJSXType extends JSXElementInterface> = {
-    [Key in keyof TJSXType]:
-        | (Calculation<any> & (() => TJSXType[Key]))
-        | TJSXType[Key];
+    [Key in keyof TJSXType]: Calculation<TJSXType[Key]> | TJSXType[Key];
 };
 
 type JSXChildrenProps<HasChildren extends boolean> = HasChildren extends true
@@ -1535,6 +1544,7 @@ type WithCalculationsAndRef<
     JSXAttrProps &
     JSXEventProps<TElement> &
     JSXDataProps &
+    CSSProps &
     JSXElementInterfaceProps<TJSXType> &
     JSXChildrenProps<HasChildren>;
 

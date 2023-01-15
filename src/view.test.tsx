@@ -3751,6 +3751,16 @@ if (2 < 1) {
             assert.isTruthy(<script src="cool" />);
         });
 
+        test('css properties work on all element types', () => {
+            assert.isTruthy(
+                <div
+                    style:color={calc(() => 'red')}
+                    style:display="inline-block"
+                />
+            );
+            assert.isTruthy(<div cssprop:okay="none" />);
+        });
+
         test('on: attributes infer correctly', () => {
             assert.isTruthy(
                 <div

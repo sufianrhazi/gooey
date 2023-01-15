@@ -20,7 +20,7 @@ export const Fragment: Component<{ children?: JSX.Node | JSX.Node[] }> = ({
     children,
 }) => new ArrayRenderNode(renderJSXChildren(children));
 
-export function createElement<TProps>(
+export function createElement<TProps extends {} | undefined>(
     type: string | Component<TProps>,
     props: TProps,
     ...children: JSX.Node[]

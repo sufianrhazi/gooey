@@ -29,7 +29,7 @@ export function addModelEvent(events: ModelEvent[], event: ModelEvent) {
     events.push(event);
 }
 
-function getModelHandle<T>(model: Model<T>) {
+function getModelHandle<T extends {}>(model: Model<T>) {
     return (model as any).__handle as ModelHandle<T> | undefined;
 }
 

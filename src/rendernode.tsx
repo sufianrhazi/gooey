@@ -700,7 +700,7 @@ export class IntrinsicRenderNode implements RenderNode {
                     this.calculationSubscriptions = new Set();
                 }
                 for (const [prop, calculation] of this.calculations.entries()) {
-                    retain(calculation);
+                    calculation.retain();
                     const currentVal = calculation();
                     this.setProp(element, prop, currentVal);
                     this.calculationSubscriptions.add(
