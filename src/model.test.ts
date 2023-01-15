@@ -1,6 +1,6 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
-import { reset, subscribe } from './engine';
+import { flush, reset, subscribe } from './engine';
 
 beforeEach(() => {
     reset();
@@ -65,5 +65,40 @@ suite('model', () => {
         foo?.set('bum');
         assert.is('bum', foo?.get());
         assert.is('bum', x.foo);
+    });
+
+    test('model.subscribe subscribes to model changes', () => {
+        const m = model<{ state: number }>({
+            state: 0,
+        });
+        const log: any[] = [];
+        const sub = model.subscribe(m, (events) => log.push(...events));
+        assert.deepEqual([], log);
+        flush();
+        m.state += 1;
+        flush();
+        assert.deepEqual(
+            [
+                {
+                    type: 'set',
+                    prop: 'state',
+                    value: 1,
+                },
+            ],
+            log
+        );
+        sub();
+        m.state += 1;
+        flush();
+        assert.deepEqual(
+            [
+                {
+                    type: 'set',
+                    prop: 'state',
+                    value: 1,
+                },
+            ],
+            log
+        );
     });
 });

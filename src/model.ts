@@ -5,22 +5,16 @@ import { SubscriptionEmitter } from './subscriptionemitter';
 import { Field } from './field';
 
 export enum ModelEventType {
-    ADD = 'add',
     SET = 'set',
-    DEL = 'del',
 }
 
 interface ModelHandle<T> {
     target: T;
-    keysField: Field<number>;
     emitter: SubscriptionEmitter<ModelEvent>;
     fieldMap: FieldMap;
 }
 
-export type ModelEvent =
-    | { type: ModelEventType.ADD; prop: string; value: any }
-    | { type: ModelEventType.SET; prop: string; value: any }
-    | { type: ModelEventType.DEL; prop: string; value?: undefined };
+export type ModelEvent = { type: ModelEventType.SET; prop: string; value: any };
 
 export type Model<T extends {}> = T;
 
@@ -42,7 +36,6 @@ export function model<T extends {}>(target: T, debugName?: string): Model<T> {
     const fieldMap = new FieldMap(keysField, null, emitter, debugName);
     const modelHandle: ModelHandle<T> = {
         target,
-        keysField,
         emitter,
         fieldMap,
     };
@@ -61,6 +54,11 @@ export function model<T extends {}>(target: T, debugName?: string): Model<T> {
                     },
                     set: (newValue) => {
                         fieldMap.getOrMake(key, newValue).set(newValue);
+                        emitter.addEvent({
+                            type: ModelEventType.SET,
+                            prop: key,
+                            value: newValue,
+                        });
                     },
                 },
             ])
@@ -77,12 +75,14 @@ model.subscribe = function modelSubscribe<T extends {}>(
     const modelHandle = getModelHandle(sourceModel);
     log.assert(modelHandle, 'missing model __handle');
     retain(modelHandle.emitter);
+    retain(modelHandle.fieldMap);
     const unsubscribe = modelHandle.emitter.subscribe((events) => {
         handler(events);
     });
     return () => {
         unsubscribe();
         release(modelHandle.emitter);
+        release(modelHandle.fieldMap);
     };
 };
 
