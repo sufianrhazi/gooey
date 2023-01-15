@@ -1,7 +1,7 @@
 import {
-    Model,
+    TrackedMap,
     Calculation,
-    model,
+    map,
     calc,
     CalculationErrorType,
 } from '../../..';
@@ -17,55 +17,58 @@ export type EvalResult =
     | { ok: false; isCycle: false; error: Error };
 
 export class SpreadsheetState {
-    rawData: Model<Record<string, string>>;
-    evaluatedData: Model<Record<string, Calculation<EvalResult>>>;
+    rawData: TrackedMap<string, string>;
+    evaluatedData: TrackedMap<string, Calculation<EvalResult>>;
 
     constructor() {
-        this.rawData = model({}, 'rawData');
-        this.evaluatedData = model({}, 'evaluatedData');
+        this.rawData = map([], 'rawData');
+        this.evaluatedData = map([], 'evaluatedData');
     }
 
     set(position: Position, value: string) {
         const name = positionToString(position);
         if (!value) {
-            delete this.rawData[name];
-            delete this.evaluatedData[name];
+            this.rawData.delete(name);
+            this.evaluatedData.delete(name);
             return;
         }
-        this.rawData[name] = value;
-        if (!this.evaluatedData[name]) {
-            this.evaluatedData[name] = calc<EvalResult>(() => {
-                const contents = this.rawData[name];
-                if (!contents) return { ok: true, value: '' };
-                return {
-                    ok: true,
-                    value: this.evalExpression(parseFormula(contents)),
-                };
-            }, `eval-${position.col}-${position.row}`).onError(
-                (errorType, error) => {
-                    if (errorType === CalculationErrorType.CYCLE) {
-                        return { ok: false, isCycle: true };
-                    }
+        this.rawData.set(name, value);
+        if (!this.evaluatedData.has(name)) {
+            this.evaluatedData.set(
+                name,
+                calc<EvalResult>(() => {
+                    const contents = this.rawData.get(name);
+                    if (!contents) return { ok: true, value: '' };
                     return {
-                        ok: false,
-                        isCycle: false,
-                        error: error ?? new Error('Unknown error'),
+                        ok: true,
+                        value: this.evalExpression(parseFormula(contents)),
                     };
-                }
+                }, `eval-${position.col}-${position.row}`).onError(
+                    (errorType, error) => {
+                        if (errorType === CalculationErrorType.CYCLE) {
+                            return { ok: false, isCycle: true };
+                        }
+                        return {
+                            ok: false,
+                            isCycle: false,
+                            error: error ?? new Error('Unknown error'),
+                        };
+                    }
+                )
             );
         }
     }
 
     read(position: Position): EvalResult {
         const name = positionToString(position);
-        const cellCalc = this.evaluatedData[name];
+        const cellCalc = this.evaluatedData.get(name);
         if (!cellCalc) return { ok: true, value: '' };
         return cellCalc();
     }
 
     readRaw(position: Position): string {
         const name = positionToString(position);
-        return this.rawData[name] ?? '';
+        return this.rawData.get(name) ?? '';
     }
 
     evalExpression(expression: Expression): string | number {
