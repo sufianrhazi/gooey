@@ -7,6 +7,7 @@ import Gooey, {
     model,
     Model,
     mount,
+    field,
     reset,
     ref,
     subscribe,
@@ -303,6 +304,26 @@ suite('mount static', () => {
             '',
             (testRoot.childNodes[0] as any).getAttribute('indeterminate')
         );
+    });
+
+    test('attributes can be bound to fields', () => {
+        const f = field('hi');
+        // the indeterminate attribute does not exist, but it does exist as a property on HTMLInputElement instances
+        mount(testRoot, <input type="checkbox" value={f} />);
+        assert.is('hi', (testRoot.childNodes[0] as any).value);
+        f.set('hello');
+        flush();
+        assert.is('hello', (testRoot.childNodes[0] as any).value);
+    });
+
+    test('fields can be bound to the dom', () => {
+        const f = field('hi');
+        // the indeterminate attribute does not exist, but it does exist as a property on HTMLInputElement instances
+        mount(testRoot, <div id="main">{f}</div>);
+        assert.is('hi', testRoot.querySelector('#main')?.textContent);
+        f.set('hello');
+        flush();
+        assert.is('hello', testRoot.querySelector('#main')?.textContent);
     });
 
     test('on:event handlers work for normal events', () => {
@@ -4094,6 +4115,62 @@ if (2 < 1) {
         // @ts-expect-error
         const jsx = <div badprop />;
         assert.isTruthy(jsx);
+    });
+
+    test('attributes can accept fields with a subset of types', () => {
+        // tabindex is string | number | undefined
+        const numberCalc = calc<number>(() => 3);
+        const maybeNumberCalc = calc<number | undefined>(() => 3);
+        const stringCalc = calc<string>(() => 'a');
+        const maybeStringCalc = calc<string | undefined>(() => 'a');
+        const maybeStringNumberCalc = calc<string | number | undefined>(
+            () => 'a'
+        );
+
+        const objectStringNumberUndefinedCalc = calc<
+            string | { foo: string } | number | undefined
+        >(() => 'a');
+        const objectCalc = calc<{ foo: string }>(() => ({ foo: 'hi' }));
+
+        const a = <div tabindex={numberCalc} />;
+        const b = <div tabindex={maybeNumberCalc} />;
+        const c = <div tabindex={stringCalc} />;
+        const d = <div tabindex={maybeStringCalc} />;
+        const e = <div tabindex={maybeStringNumberCalc} />;
+
+        // @ts-expect-error
+        const f = <div tabindex={objectStringNumberUndefinedCalc} />;
+        // @ts-expect-error
+        const g = <div tabindex={objectCalc} />;
+
+        assert.isTruthy([a, b, c, d, e, f, g]);
+    });
+
+    test('attributes can accept fields with a subset of types', () => {
+        // tabindex is string | number | undefined
+        const numberField = field<number>(3);
+        const maybeNumberField = field<number | undefined>(3);
+        const stringField = field<string>('a');
+        const maybeStringField = field<string | undefined>('a');
+        const maybeStringNumberField = field<string | number | undefined>('a');
+
+        const objectStringNumberUndefinedField = field<
+            string | { foo: string } | number | undefined
+        >('a');
+        const objectField = field<{ foo: string }>({ foo: 'a' });
+
+        const a = <div tabindex={numberField} />;
+        const b = <div tabindex={maybeNumberField} />;
+        const c = <div tabindex={stringField} />;
+        const d = <div tabindex={maybeStringField} />;
+        const e = <div tabindex={maybeStringNumberField} />;
+
+        // @ts-expect-error
+        const f = <div tabindex={objectStringNumberUndefinedField} />;
+        // @ts-expect-error
+        const g = <div tabindex={objectField} />;
+
+        assert.isTruthy([a, b, c, d, e, f, g]);
     });
 }
 

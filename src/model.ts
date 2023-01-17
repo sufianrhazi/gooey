@@ -89,7 +89,7 @@ model.subscribe = function modelSubscribe<T extends {}>(
 model.field = function modelField<T extends {}, K extends keyof T>(
     sourceModel: Model<T>,
     field: K
-): Field<T[K]> | undefined {
+): Field<T[K]> {
     const modelHandle = getModelHandle(sourceModel);
     log.assert(modelHandle, 'missing model __handle');
     return modelHandle.fieldMap.getOrMake(

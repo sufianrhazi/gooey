@@ -1,6 +1,7 @@
 import { flush, reset, subscribe, removeRenderNode } from './engine';
 import { calc } from './calc';
 import { collection } from './collection';
+import { field } from './field';
 import { model } from './model';
 import {
     RenderNode,
@@ -11,6 +12,7 @@ import {
     ComponentRenderNode,
     EmptyRenderNode,
     ForeignRenderNode,
+    FieldRenderNode,
     IntrinsicObserverRenderNode,
     IntrinsicObserverEventType,
     IntrinsicRenderNode,
@@ -698,6 +700,187 @@ suite('CalculationRenderNode', () => {
         assert.is(0, events[3].items?.length ?? 0);
         assert.isTruthy(events[4] instanceof Error);
         assert.isTruthy(events[4].message.includes('boom')); // Note: should this be the original error? It's a wrapped error now...
+    });
+});
+
+suite('FieldRenderNode', () => {
+    test('emits jsx when attached', () => {
+        const greeting = field('hello');
+        const node = new FieldRenderNode(greeting);
+        node.retain();
+        const events: any[] = [];
+        node.attach((event) => {
+            events.push(event);
+        }, HTML_NAMESPACE);
+
+        flush();
+
+        assert.is(1, events.length);
+        assert.is('splice', events[0].type);
+        assert.is(0, events[0].index);
+        assert.is(0, events[0].count);
+        assert.is(1, events[0].items.length);
+        assert.is('hello', events[0].items[0].data);
+    });
+
+    test('re-emits jsx when recalculated while attached', () => {
+        const greeting = field('hello');
+        const node = new FieldRenderNode(greeting);
+        node.retain();
+        const events: any[] = [];
+        node.attach((event) => {
+            events.push(event);
+        }, HTML_NAMESPACE);
+
+        flush();
+
+        greeting.set('goodbye');
+        flush();
+
+        assert.is(3, events.length);
+
+        assert.is('splice', events[0].type);
+        assert.is(0, events[0].index);
+        assert.is(0, events[0].count);
+        assert.is(1, events[0].items.length);
+        assert.is('hello', events[0].items[0].data);
+
+        assert.is('splice', events[1].type);
+        assert.is(0, events[1].index);
+        assert.is(1, events[1].count);
+        assert.is(0, events[1].items?.length ?? 0);
+
+        assert.is('splice', events[2].type);
+        assert.is(0, events[2].index);
+        assert.is(0, events[2].count);
+        assert.is(1, events[2].items.length);
+        assert.is('goodbye', events[2].items[0].data);
+
+        assert.isNot(events[0].items[0], events[2].items[0]);
+    });
+
+    test('does not emit jsx when recalculated while detached', () => {
+        const greeting = field('hello');
+        const node = new FieldRenderNode(greeting);
+        node.retain();
+        const events: any[] = [];
+        node.attach((event) => {
+            events.push(event);
+        }, HTML_NAMESPACE);
+        node.detach();
+
+        flush();
+
+        greeting.set('goodbye');
+        flush();
+
+        assert.is(2, events.length);
+
+        assert.is('splice', events[0].type);
+        assert.is(0, events[0].index);
+        assert.is(0, events[0].count);
+        assert.is(1, events[0].items.length);
+        assert.is('hello', events[0].items[0].data);
+
+        assert.is('splice', events[1].type);
+        assert.is(0, events[1].index);
+        assert.is(1, events[1].count);
+        assert.is(0, events[1].items?.length ?? 0);
+    });
+
+    test('result after recalculation while detached is emitted when attached again', () => {
+        const greeting = field('hello');
+        const node = new FieldRenderNode(greeting);
+        node.retain();
+        const events: any[] = [];
+        node.attach((event) => {
+            events.push(event);
+        }, HTML_NAMESPACE);
+        node.detach();
+
+        flush();
+
+        greeting.set('goodbye');
+        flush();
+
+        node.attach((event) => {
+            events.push(event);
+        }, HTML_NAMESPACE);
+
+        assert.is('splice', events[0].type);
+        assert.is(0, events[0].index);
+        assert.is(0, events[0].count);
+        assert.is(1, events[0].items.length);
+        assert.is('hello', events[0].items[0].data);
+
+        assert.is('splice', events[1].type);
+        assert.is(0, events[1].index);
+        assert.is(1, events[1].count);
+        assert.is(0, events[1].items?.length ?? 0);
+
+        assert.is('splice', events[2].type);
+        assert.is(0, events[2].index);
+        assert.is(0, events[2].count);
+        assert.is(1, events[2].items.length);
+        assert.is('goodbye', events[2].items[0].data);
+    });
+
+    test('mount and unmount are passed through', () => {
+        const tracer = new TracingRenderNode();
+        const constantField = field(tracer);
+        const node = new FieldRenderNode(constantField);
+        const events: any[] = [];
+
+        tracer.log('0: retain');
+        node.retain();
+        tracer.log('1: attach');
+        node.attach((event) => {
+            events.push(event);
+        }, HTML_NAMESPACE);
+        tracer.log('2: mount');
+        node.setMounted(true);
+        tracer.log('3: unmount');
+        node.setMounted(false);
+        tracer.log('4: mount');
+        node.setMounted(true);
+        tracer.log('5: unmount');
+        node.setMounted(false);
+        tracer.log('6: detach');
+        node.detach();
+        tracer.log('7: attach');
+        node.attach((event) => {
+            events.push(event);
+        }, HTML_NAMESPACE);
+        tracer.log('8: attach');
+        node.detach();
+        tracer.log('9: release');
+        node.release();
+
+        assert.deepEqual(
+            [
+                '0: retain',
+                'alive',
+                '1: attach',
+                'attach',
+                '2: mount',
+                'setMounted:true',
+                '3: unmount',
+                'setMounted:false',
+                '4: mount',
+                'setMounted:true',
+                '5: unmount',
+                'setMounted:false',
+                '6: detach',
+                'detach',
+                '7: attach',
+                'attach',
+                '8: attach',
+                'detach',
+                '9: release',
+                'dead',
+            ],
+            tracer.events
+        );
     });
 });
 

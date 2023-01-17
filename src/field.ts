@@ -8,7 +8,10 @@ import {
     notifyRead,
 } from './engine';
 
-type FieldSubscriber<T> = (val: T) => void;
+type FieldSubscriberBivariantHack<T> = {
+    bivariantHack(val: T): void;
+};
+type FieldSubscriber<T> = FieldSubscriberBivariantHack<T>['bivariantHack'];
 
 export class Field<T> implements Processable, Retainable {
     private declare _isAlive?: boolean | undefined;

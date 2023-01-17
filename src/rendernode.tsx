@@ -26,6 +26,7 @@ import {
     CalculationErrorType,
 } from './calc';
 import { isCollection, isView, Collection, View } from './collection';
+import { Field } from './field';
 import { wrapError } from './util';
 
 export interface ComponentLifecycle {
@@ -639,7 +640,8 @@ export class IntrinsicRenderNode implements RenderNode {
     private declare children: ArrayRenderNode;
     private declare portalRenderNode?: PortalRenderNode | undefined;
     private declare calculations?: Map<string, Calculation<any>>;
-    private declare calculationSubscriptions?: Set<() => void>;
+    private declare fields?: Map<string, Field<any>>;
+    private declare subscriptions?: Set<() => void>;
 
     constructor(
         tagName: string,
@@ -691,19 +693,24 @@ export class IntrinsicRenderNode implements RenderNode {
                         prop,
                         isCalculation(val) ? val : val.calculation
                     );
+                } else if (val instanceof Field) {
+                    if (!this.fields) {
+                        this.fields = new Map();
+                    }
+                    this.fields.set(prop, val);
                 } else {
                     this.setProp(element, prop, val);
                 }
             }
             if (this.calculations) {
-                if (!this.calculationSubscriptions) {
-                    this.calculationSubscriptions = new Set();
+                if (!this.subscriptions) {
+                    this.subscriptions = new Set();
                 }
                 for (const [prop, calculation] of this.calculations.entries()) {
                     calculation.retain();
                     const currentVal = calculation();
                     this.setProp(element, prop, currentVal);
-                    this.calculationSubscriptions.add(
+                    this.subscriptions.add(
                         calculation.subscribe((error, updatedVal) => {
                             if (error) {
                                 log.error('Unhandled error in bound prop', {
@@ -714,6 +721,21 @@ export class IntrinsicRenderNode implements RenderNode {
                             } else {
                                 this.setProp(element, prop, updatedVal);
                             }
+                        })
+                    );
+                }
+            }
+            if (this.fields) {
+                if (!this.subscriptions) {
+                    this.subscriptions = new Set();
+                }
+                for (const [prop, field] of this.fields.entries()) {
+                    retain(field);
+                    const currentVal = field.get();
+                    this.setProp(element, prop, currentVal);
+                    this.subscriptions.add(
+                        field.subscribe((updatedVal) => {
+                            this.setProp(element, prop, updatedVal);
                         })
                     );
                 }
@@ -888,11 +910,11 @@ export class IntrinsicRenderNode implements RenderNode {
                 release(calculation);
             }
         }
-        if (this.calculationSubscriptions) {
-            for (const unsubscribe of this.calculationSubscriptions) {
+        if (this.subscriptions) {
+            for (const unsubscribe of this.subscriptions) {
                 unsubscribe();
             }
-            this.calculationSubscriptions.clear();
+            this.subscriptions.clear();
         }
 
         this.element = undefined;
@@ -1595,6 +1617,116 @@ function isCalculationRenderNode(val: any): val is Calculation<JSXNode> {
     return isCalculation(val);
 }
 
+export class FieldRenderNode implements RenderNode {
+    declare _type: typeof RenderNodeType;
+    declare _commitPhase: RenderNodeCommitPhase;
+    private declare field: Field<any>;
+    private declare child: RenderNode;
+    private declare isMounted: boolean;
+    private declare emitter?: NodeEmitter | undefined;
+    private declare parentXmlNamespace?: string | undefined;
+    private declare unsubscribe?: () => void;
+
+    constructor(field: Field<any>, debugName?: string) {
+        this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
+        this.field = field;
+        this.child = emptyRenderNode;
+        this.isMounted = false;
+
+        this.__debugName = debugName ?? `renderfield`;
+        this.__refcount = 0;
+    }
+
+    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
+        this.emitter = emitter;
+        this.parentXmlNamespace = parentXmlNamespace;
+
+        this.child.attach(emitter, parentXmlNamespace);
+    }
+
+    detach() {
+        this.child.detach();
+        this.emitter = undefined;
+    }
+
+    setMounted(isMounted: boolean) {
+        this.isMounted = isMounted;
+        this.child.setMounted(isMounted);
+    }
+
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
+    }
+
+    private retainChild(child: RenderNode) {
+        own(this, child);
+        if (this.emitter && this.parentXmlNamespace) {
+            child.attach(this.emitter, this.parentXmlNamespace);
+            if (this.isMounted) {
+                child.setMounted(true);
+            }
+        }
+    }
+
+    commit(phase: RenderNodeCommitPhase) {
+        if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+            this.child.commit(phase);
+            this._commitPhase = phase;
+        }
+    }
+
+    clone(): RenderNode {
+        return new FieldRenderNode(this.field);
+    }
+
+    // Retainable
+    declare __debugName: string;
+    declare __refcount: number;
+
+    releaseChild() {
+        if (this.emitter) {
+            if (this.isMounted) {
+                this.child.setMounted(false);
+            }
+            this.child.detach();
+        }
+        disown(this, this.child);
+    }
+
+    renderChild(val: any) {
+        this.releaseChild();
+        this.child = renderJSXNode(val);
+
+        // Retain
+        own(this, this.child);
+        if (this.emitter && this.parentXmlNamespace) {
+            this.child.attach(this.emitter, this.parentXmlNamespace);
+            if (this.isMounted) {
+                this.child.setMounted(true);
+            }
+        }
+    }
+
+    __alive() {
+        retain(this.field);
+        this.unsubscribe = this.field.subscribe((val) => this.renderChild(val));
+
+        untrackReads(() => {
+            this.renderChild(this.field.get());
+        });
+    }
+    __dead() {
+        this.unsubscribe?.();
+        this.releaseChild();
+        this.emitter = undefined;
+        removeRenderNode(this);
+    }
+}
+
 function isCollectionOrViewRenderNode(
     val: any
 ): val is Collection<JSXNode> | View<JSXNode> {
@@ -1620,6 +1752,9 @@ export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
     }
     if (Array.isArray(jsxNode)) {
         return new ArrayRenderNode(jsxNode.map((item) => renderJSXNode(item)));
+    }
+    if (jsxNode instanceof Field) {
+        return new FieldRenderNode(jsxNode);
     }
     if (
         jsxNode === null ||

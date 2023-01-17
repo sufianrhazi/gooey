@@ -208,6 +208,11 @@ export class Calculation<out T> extends Function implements Retainable, Processa
     declare __debugName: string;
     declare __refcount: number;
 
+    // XXX: this function is unfortunately only present in order to appease a type checker, but sure, use it if you want
+    _call(): T {
+        return this();
+    }
+
     // @ts-expect-error https://github.com/microsoft/TypeScript/issues/33927
     constructor(fn: () => T, debugName?: string) {
         const impl: Calculation<T> = (function calculationCall(): T {

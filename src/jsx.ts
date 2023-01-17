@@ -3,6 +3,11 @@ import { Collection, View } from './collection';
 import { RenderNode } from './rendernode';
 import type { ClassComponentInterface } from './rendernode';
 import type { RefObjectOrCallback } from './ref';
+import type { Field } from './field';
+import type {
+    DistributeCalculation,
+    DistributeField,
+} from './jsx-distributions';
 
 /**
  * The core type that can be used as a child or root of a JSX expression
@@ -21,7 +26,8 @@ export type JSXNode =
     | JSXNodeCalculation
     | JSXNodeCollection
     | JSXNodeView
-    | JSXNodeArray;
+    | JSXNodeArray
+    | JSXNodeField;
 
 // The following interfaces are to allow for a recursive type alias: JSXNode
 
@@ -36,6 +42,9 @@ export interface JSXNodeView extends View<JSXNode, any> {}
 
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface JSXNodeArray extends Array<JSXNode> {}
+
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface JSXNodeField extends Field<JSXNode> {}
 
 declare global {
     // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -1274,9 +1283,15 @@ interface JSXRefProps<TElement extends Element> {
     ref?: undefined | RefObjectOrCallback<TElement>;
 }
 
+type DynamicPropValue<T> = DistributeCalculation<T> | DistributeField<T> | T;
+
 interface JSXAttrProps {
-    [key: `attr:${string}`]: Calculation<any> | any;
-    [key: `prop:${string}`]: Calculation<any> | any;
+    [key: `attr:${string}`]: DynamicPropValue<
+        string | number | boolean | undefined
+    >;
+    [key: `prop:${string}`]: DynamicPropValue<
+        string | number | boolean | undefined
+    >;
 }
 
 interface JSXEventProps<TElement extends Element> {
@@ -1511,25 +1526,18 @@ interface JSXEventProps<TElement extends Element> {
 }
 
 interface CSSProps {
-    [key: `style:${string}`]:
-        | Calculation<string | undefined>
-        | string
-        | undefined;
-    [key: `cssprop:${string}`]:
-        | Calculation<string | undefined>
-        | string
-        | undefined;
+    [key: `style:${string}`]: DynamicPropValue<string | number | undefined>;
+    [key: `cssprop:${string}`]: DynamicPropValue<string | number | undefined>;
 }
 
 interface JSXDataProps {
-    [key: `data-${string}`]:
-        | Calculation<string | undefined>
-        | string
-        | undefined;
+    [key: `data-${string}`]: DynamicPropValue<
+        string | number | boolean | undefined
+    >;
 }
 
 type JSXElementInterfaceProps<TJSXType extends JSXElementInterface> = {
-    [Key in keyof TJSXType]: Calculation<TJSXType[Key]> | TJSXType[Key];
+    [Key in keyof TJSXType]: DynamicPropValue<TJSXType[Key]>;
 };
 
 type JSXChildrenProps<HasChildren extends boolean> = HasChildren extends true
