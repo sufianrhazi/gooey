@@ -3,6 +3,7 @@ import { RefObjectOrCallback } from './ref';
 import { ArrayEvent } from './arrayevent';
 import { Calculation, CalculationErrorType } from './calc';
 import { Collection, View } from './collection';
+import { Field } from './field';
 export interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
     onUnmount: (callback: () => void) => void;
@@ -152,12 +153,11 @@ export declare class IntrinsicRenderNode implements RenderNode {
     private emitter?;
     private detachedError?;
     private xmlNamespace?;
-    private childXmlNamespace?;
     private props?;
     private children;
     private portalRenderNode?;
-    private calculations?;
-    private calculationSubscriptions?;
+    private boundAttributes?;
+    private subscriptions?;
     constructor(tagName: string, props: Record<string, any> | undefined, children: RenderNode[], debugName?: string);
     private createElement;
     private setProp;
@@ -178,7 +178,6 @@ export declare class IntrinsicRenderNode implements RenderNode {
 export declare class PortalRenderNode implements RenderNode {
     _type: typeof RenderNodeType;
     _commitPhase: RenderNodeCommitPhase;
-    private tagName;
     private element;
     private childEvents;
     private committedNodes;
@@ -188,7 +187,6 @@ export declare class PortalRenderNode implements RenderNode {
     private refProp?;
     private mountState?;
     private emitter?;
-    private existingOffset;
     private arrayRenderNode;
     private calculations?;
     private calculationSubscriptions?;
@@ -263,6 +261,31 @@ export declare class CollectionRenderNode implements RenderNode {
     clone(): RenderNode;
     __debugName: string;
     __refcount: number;
+    __alive(): void;
+    __dead(): void;
+}
+export declare class FieldRenderNode implements RenderNode {
+    _type: typeof RenderNodeType;
+    _commitPhase: RenderNodeCommitPhase;
+    private field;
+    private child;
+    private isMounted;
+    private emitter?;
+    private parentXmlNamespace?;
+    private unsubscribe?;
+    constructor(field: Field<any>, debugName?: string);
+    attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
+    detach(): void;
+    setMounted(isMounted: boolean): void;
+    retain(): void;
+    release(): void;
+    private retainChild;
+    commit(phase: RenderNodeCommitPhase): void;
+    clone(): RenderNode;
+    __debugName: string;
+    __refcount: number;
+    releaseChild(): void;
+    renderChild(val: any): void;
     __alive(): void;
     __dead(): void;
 }

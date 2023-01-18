@@ -1,7 +1,9 @@
 import { Processable, Retainable } from './engine';
-type FieldSubscriber<T> = (val: T) => void;
+type FieldSubscriberBivariantHack<T> = {
+    bivariantHack(val: T): void;
+};
+type FieldSubscriber<T> = FieldSubscriberBivariantHack<T>['bivariantHack'];
 export declare class Field<T> implements Processable, Retainable {
-    private _isAlive?;
     private _val;
     private _subscribers?;
     private _changeClock;
@@ -12,6 +14,8 @@ export declare class Field<T> implements Processable, Retainable {
     get(): T;
     set(newVal: T): void;
     subscribe(subscriber: FieldSubscriber<T>): () => void;
+    retain(): void;
+    release(): void;
     __alive(): void;
     __dead(): void;
     __recalculate(): boolean;

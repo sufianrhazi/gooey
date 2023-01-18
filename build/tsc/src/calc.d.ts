@@ -26,6 +26,7 @@ export declare class Calculation<out T> extends Function implements Retainable, 
     __processable: true;
     __debugName: string;
     __refcount: number;
+    _call(): T;
     constructor(fn: () => T, debugName?: string);
     onError(handler: CalcErrorHandler<T>): this;
     _eq(a: T, b: T): boolean;

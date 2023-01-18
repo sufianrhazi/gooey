@@ -1691,6 +1691,10 @@ var Calculation = class extends Function {
     Object.setPrototypeOf(impl, Calculation.prototype);
     return impl;
   }
+  // XXX: this function is unfortunately only present in order to appease a type checker, but sure, use it if you want
+  _call() {
+    return this();
+  }
   onError(handler) {
     this._errorHandler = handler;
     return this;
@@ -1888,7 +1892,6 @@ function calc(fn, debugName) {
 var Field = class {
   constructor(val, debugName) {
     this._val = val;
-    this._isAlive = false;
     this._changeClock = 0;
     this.__processable = true;
     this.__refcount = 0;
@@ -1904,7 +1907,7 @@ var Field = class {
         this._changeClock += 1;
       }
       this._val = newVal;
-      if (this._isAlive) {
+      if (this.__refcount > 0) {
         markDirty(this);
       }
     }
@@ -1915,16 +1918,20 @@ var Field = class {
     this._subscribers.set(subscriber, this._changeClock);
     return () => this._subscribers?.delete(subscriber);
   }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
   __alive() {
-    this._isAlive = true;
     addVertex(this);
   }
   __dead() {
     removeVertex(this);
-    this._isAlive = false;
   }
   __recalculate() {
-    assert(this._isAlive, "cannot flush dead field");
+    assert(this.__refcount > 0, "cannot flush dead field");
     if (this._subscribers) {
       for (const [subscriber, observeClock] of this._subscribers) {
         if (observeClock < this._changeClock) {
@@ -2857,16 +2864,16 @@ var ArrayRenderNode = class {
     this._commitPhase = 3 /* COMMIT_MOUNT */;
     this.children = children;
     this.slotSizes = children.map(() => 0);
-    this.attached = children.map(() => false);
+    this.attached = false;
     this.__debugName = debugName ?? "array";
     this.__refcount = 0;
   }
   detach() {
-    for (const [index, child] of this.children.entries()) {
-      if (this.attached[index]) {
+    if (this.attached) {
+      for (const child of this.children) {
         child.detach();
-        this.attached[index] = false;
       }
+      this.attached = false;
     }
   }
   attach(emitter, parentXmlNamespace) {
@@ -2879,8 +2886,8 @@ var ArrayRenderNode = class {
           emitter(event);
         }
       }, parentXmlNamespace);
-      this.attached[index] = true;
     }
+    this.attached = true;
   }
   setMounted(isMounted) {
     for (const child of this.children) {
@@ -3211,38 +3218,54 @@ var IntrinsicRenderNode = class {
           continue;
         }
         if (isCalcUnsubscribe(val) || isCalculation(val)) {
-          if (!this.calculations) {
-            this.calculations = /* @__PURE__ */ new Map();
+          if (!this.boundAttributes) {
+            this.boundAttributes = /* @__PURE__ */ new Map();
           }
-          this.calculations.set(
+          this.boundAttributes.set(
             prop,
             isCalculation(val) ? val : val.calculation
           );
+        } else if (val instanceof Field) {
+          if (!this.boundAttributes) {
+            this.boundAttributes = /* @__PURE__ */ new Map();
+          }
+          this.boundAttributes.set(prop, val);
         } else {
           this.setProp(element, prop, val);
         }
       }
-      if (this.calculations) {
-        if (!this.calculationSubscriptions) {
-          this.calculationSubscriptions = /* @__PURE__ */ new Set();
+      if (this.boundAttributes) {
+        if (!this.subscriptions) {
+          this.subscriptions = /* @__PURE__ */ new Set();
         }
-        for (const [prop, calculation] of this.calculations.entries()) {
-          calculation.retain();
-          const currentVal = calculation();
+        for (const [
+          prop,
+          boundAttr
+        ] of this.boundAttributes.entries()) {
+          boundAttr.retain();
+          const currentVal = boundAttr instanceof Field ? boundAttr.get() : boundAttr();
           this.setProp(element, prop, currentVal);
-          this.calculationSubscriptions.add(
-            calculation.subscribe((error2, updatedVal) => {
-              if (error2) {
-                error("Unhandled error in bound prop", {
-                  prop,
-                  element,
-                  error: updatedVal
-                });
-              } else {
+          if (boundAttr instanceof Field) {
+            this.subscriptions.add(
+              boundAttr.subscribe((updatedVal) => {
                 this.setProp(element, prop, updatedVal);
-              }
-            })
-          );
+              })
+            );
+          } else {
+            this.subscriptions.add(
+              boundAttr.subscribe((error2, updatedVal) => {
+                if (error2) {
+                  error("Unhandled error in bound prop", {
+                    prop,
+                    element,
+                    error: updatedVal
+                  });
+                } else {
+                  this.setProp(element, prop, updatedVal);
+                }
+              })
+            );
+          }
         }
       }
     }
@@ -3354,16 +3377,16 @@ var IntrinsicRenderNode = class {
     );
   }
   __dead() {
-    if (this.calculations) {
-      for (const calculation of this.calculations.values()) {
+    if (this.boundAttributes) {
+      for (const calculation of this.boundAttributes.values()) {
         release(calculation);
       }
     }
-    if (this.calculationSubscriptions) {
-      for (const unsubscribe of this.calculationSubscriptions) {
+    if (this.subscriptions) {
+      for (const unsubscribe of this.subscriptions) {
         unsubscribe();
       }
-      this.calculationSubscriptions.clear();
+      this.subscriptions.clear();
     }
     this.element = void 0;
     if (this.portalRenderNode) {
@@ -3402,9 +3425,7 @@ var PortalRenderNode = class {
       this.refProp = refProp;
       this.mountState = 3 /* UNMOUNTED */;
     }
-    this.tagName = this.element.tagName;
-    this.existingOffset = element.childNodes.length;
-    this.__debugName = debugName ?? `mount:${this.tagName}`;
+    this.__debugName = debugName ?? `mount:${element.tagName}`;
     this.__refcount = 0;
   }
   detach() {
@@ -3462,7 +3483,7 @@ var PortalRenderNode = class {
       this.mountState = 3 /* UNMOUNTED */;
     }
     if (phase === 1 /* COMMIT_DEL */ && this.deadNodeSet.size > 0) {
-      if (this.deadNodeSet.size === this.liveNodeSet.size && this.existingOffset === 0) {
+      if (this.deadNodeSet.size === this.liveNodeSet.size) {
         this.element.replaceChildren();
         this.liveNodeSet.clear();
         this.committedNodes = [];
@@ -3892,6 +3913,87 @@ var CollectionRenderNode = class {
 function isCalculationRenderNode(val) {
   return isCalculation(val);
 }
+var FieldRenderNode = class {
+  constructor(field2, debugName) {
+    this._type = RenderNodeType;
+    this._commitPhase = 3 /* COMMIT_MOUNT */;
+    this.field = field2;
+    this.child = emptyRenderNode;
+    this.isMounted = false;
+    this.__debugName = debugName ?? `renderfield`;
+    this.__refcount = 0;
+  }
+  attach(emitter, parentXmlNamespace) {
+    this.emitter = emitter;
+    this.parentXmlNamespace = parentXmlNamespace;
+    this.child.attach(emitter, parentXmlNamespace);
+  }
+  detach() {
+    this.child.detach();
+    this.emitter = void 0;
+  }
+  setMounted(isMounted) {
+    this.isMounted = isMounted;
+    this.child.setMounted(isMounted);
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  retainChild(child) {
+    own(this, child);
+    if (this.emitter && this.parentXmlNamespace) {
+      child.attach(this.emitter, this.parentXmlNamespace);
+      if (this.isMounted) {
+        child.setMounted(true);
+      }
+    }
+  }
+  commit(phase) {
+    if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+      this.child.commit(phase);
+      this._commitPhase = phase;
+    }
+  }
+  clone() {
+    return new FieldRenderNode(this.field);
+  }
+  releaseChild() {
+    if (this.emitter) {
+      if (this.isMounted) {
+        this.child.setMounted(false);
+      }
+      this.child.detach();
+    }
+    disown(this, this.child);
+  }
+  renderChild(val) {
+    this.releaseChild();
+    this.child = renderJSXNode(val);
+    own(this, this.child);
+    if (this.emitter && this.parentXmlNamespace) {
+      this.child.attach(this.emitter, this.parentXmlNamespace);
+      if (this.isMounted) {
+        this.child.setMounted(true);
+      }
+    }
+  }
+  __alive() {
+    retain(this.field);
+    this.unsubscribe = this.field.subscribe((val) => this.renderChild(val));
+    untrackReads(() => {
+      this.renderChild(this.field.get());
+    });
+  }
+  __dead() {
+    this.unsubscribe?.();
+    this.releaseChild();
+    this.emitter = void 0;
+    removeRenderNode(this);
+  }
+};
 function isCollectionOrViewRenderNode(val) {
   return isCollection(val) || isView(val);
 }
@@ -3913,6 +4015,9 @@ function renderJSXNode(jsxNode) {
   }
   if (Array.isArray(jsxNode)) {
     return new ArrayRenderNode(jsxNode.map((item) => renderJSXNode(item)));
+  }
+  if (jsxNode instanceof Field) {
+    return new FieldRenderNode(jsxNode);
   }
   if (jsxNode === null || jsxNode === void 0 || typeof jsxNode === "boolean") {
     return emptyRenderNode;
@@ -3948,9 +4053,14 @@ function renderJSXChildren(children) {
   return childRenderNodes;
 }
 function mount(target, node) {
+  const children = [];
+  for (let i = 0; i < target.childNodes.length; ++i) {
+    children.push(new ForeignRenderNode(target.childNodes[i]));
+  }
+  children.push(node);
   const root = new PortalRenderNode(
     target,
-    new ArrayRenderNode([node]),
+    new ArrayRenderNode(children),
     null,
     "root"
   );
@@ -4438,28 +4548,22 @@ function model(target, debugName) {
     fieldMap
   };
   const modelObj = { ...target };
-  Object.defineProperty(modelObj, "__handle", { value: modelHandle });
-  Object.defineProperties(
-    modelObj,
-    Object.fromEntries(
-      Object.keys(target).map((key) => [
-        key,
-        {
-          get: () => {
-            return fieldMap.getOrMake(key, target[key]).get();
-          },
-          set: (newValue) => {
-            fieldMap.getOrMake(key, newValue).set(newValue);
-            emitter.addEvent({
-              type: "set" /* SET */,
-              prop: key,
-              value: newValue
-            });
-          }
-        }
-      ])
-    )
-  );
+  Object.keys(target).forEach((key) => {
+    Object.defineProperty(modelObj, key, {
+      get: () => {
+        return fieldMap.getOrMake(key, target[key]).get();
+      },
+      set: (newValue) => {
+        fieldMap.getOrMake(key, newValue).set(newValue);
+        emitter.addEvent({
+          type: "set" /* SET */,
+          prop: key,
+          value: newValue
+        });
+      }
+    });
+  });
+  Object.defineProperty(modelObj, "__handle", { get: () => modelHandle });
   return modelObj;
 }
 model.subscribe = function modelSubscribe(sourceModel, handler, debugName) {
@@ -4696,5 +4800,5 @@ function map(entries = [], debugName) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.14.0" : "development";
+var VERSION = true ? "0.15.0" : "development";
 //# sourceMappingURL=index.debug.cjs.map

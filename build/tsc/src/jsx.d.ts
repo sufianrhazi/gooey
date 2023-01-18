@@ -3,10 +3,12 @@ import { Collection, View } from './collection';
 import { RenderNode } from './rendernode';
 import type { ClassComponentInterface } from './rendernode';
 import type { RefObjectOrCallback } from './ref';
+import type { Field } from './field';
+import type { DistributeCalculation, DistributeField } from './jsx-distributions';
 /**
  * The core type that can be used as a child or root of a JSX expression
  */
-export type JSXNode = string | number | boolean | null | undefined | bigint | symbol | Function | Element | RenderNode | JSXNodeCalculation | JSXNodeCollection | JSXNodeView | JSXNodeArray;
+export type JSXNode = string | number | boolean | null | undefined | bigint | symbol | Function | Element | RenderNode | JSXNodeCalculation | JSXNodeCollection | JSXNodeView | JSXNodeArray | JSXNodeField;
 export interface JSXNodeCalculation extends Calculation<JSXNode> {
 }
 export interface JSXNodeCollection extends Collection<JSXNode> {
@@ -14,6 +16,8 @@ export interface JSXNodeCollection extends Collection<JSXNode> {
 export interface JSXNodeView extends View<JSXNode, any> {
 }
 export interface JSXNodeArray extends Array<JSXNode> {
+}
+export interface JSXNodeField extends Field<JSXNode> {
 }
 declare global {
     namespace JSX {
@@ -674,9 +678,10 @@ type EventHandler<TEvent extends Event, TElement extends Element> = undefined | 
 interface JSXRefProps<TElement extends Element> {
     ref?: undefined | RefObjectOrCallback<TElement>;
 }
+type DynamicPropValue<T> = DistributeCalculation<T> | DistributeField<T> | T;
 interface JSXAttrProps {
-    [key: `attr:${string}`]: Calculation<any> | any;
-    [key: `prop:${string}`]: Calculation<any> | any;
+    [key: `attr:${string}`]: DynamicPropValue<string | number | boolean | undefined>;
+    [key: `prop:${string}`]: DynamicPropValue<string | number | boolean | undefined>;
 }
 interface JSXEventProps<TElement extends Element> {
     'on:abort'?: EventHandler<Event, TElement>;
@@ -897,14 +902,14 @@ interface JSXEventProps<TElement extends Element> {
     [key: `oncapture:${string}`]: EventHandler<Event, TElement>;
 }
 interface CSSProps {
-    [key: `style:${string}`]: Calculation<string | undefined> | string | undefined;
-    [key: `cssprop:${string}`]: Calculation<string | undefined> | string | undefined;
+    [key: `style:${string}`]: DynamicPropValue<string | number | undefined>;
+    [key: `cssprop:${string}`]: DynamicPropValue<string | number | undefined>;
 }
 interface JSXDataProps {
-    [key: `data-${string}`]: Calculation<string | undefined> | string | undefined;
+    [key: `data-${string}`]: DynamicPropValue<string | number | boolean | undefined>;
 }
 type JSXElementInterfaceProps<TJSXType extends JSXElementInterface> = {
-    [Key in keyof TJSXType]: Calculation<TJSXType[Key]> | TJSXType[Key];
+    [Key in keyof TJSXType]: DynamicPropValue<TJSXType[Key]>;
 };
 type JSXChildrenProps<HasChildren extends boolean> = HasChildren extends true ? {
     children?: JSX.Node | JSX.Node[];
