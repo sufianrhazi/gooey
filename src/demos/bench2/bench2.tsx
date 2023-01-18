@@ -9,8 +9,14 @@ import Gooey, {
 } from '../..';
 
 const measurements = collection<string>([]);
+const byType = {
+    '1:add': collection<number>([]),
+    '2:update-all': collection<number>([]),
+    '3:update-some': collection<number>([]),
+    '4:clear': collection<number>([]),
+};
 
-const measure = (name: string, fn: () => void) => {
+const measure = (name: keyof typeof byType, fn: () => void) => {
     return () => {
         const start = performance.now();
         fn();
@@ -18,6 +24,7 @@ const measure = (name: string, fn: () => void) => {
         const time = performance.now() - start;
         console.log(`gooey ${name} duration`, time);
         measurements.push(`gooey ${name} duration: ${time}ms`);
+        byType[name].push(time);
     };
 };
 
@@ -70,6 +77,87 @@ const Benchmark: Component = () => {
                     <li>{calc(() => item.val)}</li>
                 ))}
             </ul>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Action</th>
+                        <th>Min</th>
+                        <th>Max</th>
+                        <th>Median</th>
+                        <th>p95</th>
+                        <th>p99</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {Object.entries(byType).map(([type, collection]) => (
+                        <tr>
+                            <td>{type}</td>
+                            <td>
+                                {calc(() =>
+                                    collection.reduce(
+                                        (acc, val) => (acc < val ? acc : val),
+                                        Infinity
+                                    )
+                                )}
+                            </td>
+                            <td>
+                                {calc(() =>
+                                    collection.reduce(
+                                        (acc, val) => (acc > val ? acc : val),
+                                        -Infinity
+                                    )
+                                )}
+                            </td>
+                            {calc(() => {
+                                const sorted = collection
+                                    .slice()
+                                    .sort((a, b) => a - b);
+                                return (
+                                    <>
+                                        <td>
+                                            {(sorted[
+                                                Math.floor(sorted.length / 2)
+                                            ] +
+                                                sorted[
+                                                    Math.ceil(sorted.length / 2)
+                                                ]) /
+                                                2}
+                                        </td>
+                                        <td>
+                                            {(sorted[
+                                                Math.floor(
+                                                    (sorted.length * 0.95) / 2
+                                                )
+                                            ] +
+                                                sorted[
+                                                    Math.ceil(
+                                                        (sorted.length * 0.95) /
+                                                            2
+                                                    )
+                                                ]) /
+                                                2}
+                                        </td>
+                                        <td>
+                                            {(sorted[
+                                                Math.floor(
+                                                    (sorted.length * 0.99) / 2
+                                                )
+                                            ] +
+                                                sorted[
+                                                    Math.ceil(
+                                                        (sorted.length * 0.99) /
+                                                            2
+                                                    )
+                                                ]) /
+                                                2}
+                                        </td>
+                                    </>
+                                );
+                            })}
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
             <ul>
                 {measurements.mapView((measurement) => (
                     <li>{measurement}</li>
