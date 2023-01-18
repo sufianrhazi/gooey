@@ -1,5 +1,7 @@
 import * as log from './log';
 import {
+    retain,
+    release,
     Processable,
     Retainable,
     addVertex,
@@ -14,7 +16,6 @@ type FieldSubscriberBivariantHack<T> = {
 type FieldSubscriber<T> = FieldSubscriberBivariantHack<T>['bivariantHack'];
 
 export class Field<T> implements Processable, Retainable {
-    private declare _isAlive?: boolean | undefined;
     private declare _val: T;
     // Map of subscriber to the clock time
     private declare _subscribers?: Map<FieldSubscriber<T>, number>;
@@ -26,7 +27,6 @@ export class Field<T> implements Processable, Retainable {
 
     constructor(val: T, debugName?: string) {
         this._val = val;
-        this._isAlive = false;
         this._changeClock = 0;
 
         this.__processable = true;
@@ -46,7 +46,7 @@ export class Field<T> implements Processable, Retainable {
                 this._changeClock += 1;
             }
             this._val = newVal;
-            if (this._isAlive) {
+            if (this.__refcount > 0) {
                 markDirty(this);
             }
         }
@@ -58,18 +58,24 @@ export class Field<T> implements Processable, Retainable {
         return () => this._subscribers?.delete(subscriber);
     }
 
+    retain() {
+        retain(this);
+    }
+
+    release() {
+        release(this);
+    }
+
     __alive() {
-        this._isAlive = true;
         addVertex(this);
     }
 
     __dead() {
         removeVertex(this);
-        this._isAlive = false;
     }
 
     __recalculate() {
-        log.assert(this._isAlive, 'cannot flush dead field');
+        log.assert(this.__refcount > 0, 'cannot flush dead field');
         if (this._subscribers) {
             for (const [subscriber, observeClock] of this._subscribers) {
                 if (observeClock < this._changeClock) {

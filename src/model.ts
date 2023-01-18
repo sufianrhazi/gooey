@@ -40,30 +40,22 @@ export function model<T extends {}>(target: T, debugName?: string): Model<T> {
         fieldMap,
     };
     const modelObj: Model<T> = { ...target };
-    Object.defineProperty(modelObj, '__handle', { value: modelHandle });
-    Object.defineProperties(
-        modelObj,
-        Object.fromEntries(
-            Object.keys(target).map((key) => [
-                key,
-                {
-                    get: () => {
-                        return fieldMap
-                            .getOrMake(key, target[key as keyof T])
-                            .get();
-                    },
-                    set: (newValue) => {
-                        fieldMap.getOrMake(key, newValue).set(newValue);
-                        emitter.addEvent({
-                            type: ModelEventType.SET,
-                            prop: key,
-                            value: newValue,
-                        });
-                    },
-                },
-            ])
-        )
-    );
+    Object.keys(target).forEach((key) => {
+        Object.defineProperty(modelObj, key, {
+            get: () => {
+                return fieldMap.getOrMake(key, target[key as keyof T]).get();
+            },
+            set: (newValue) => {
+                fieldMap.getOrMake(key, newValue).set(newValue);
+                emitter.addEvent({
+                    type: ModelEventType.SET,
+                    prop: key,
+                    value: newValue,
+                });
+            },
+        });
+    });
+    Object.defineProperty(modelObj, '__handle', { get: () => modelHandle });
     return modelObj;
 }
 

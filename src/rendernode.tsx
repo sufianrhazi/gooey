@@ -297,25 +297,25 @@ export class ArrayRenderNode implements RenderNode {
     declare _commitPhase: RenderNodeCommitPhase;
     private declare children: RenderNode[];
     private declare slotSizes: number[];
-    private declare attached: boolean[];
+    private declare attached: boolean;
 
     constructor(children: RenderNode[], debugName?: string) {
         this._type = RenderNodeType;
         this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.children = children;
         this.slotSizes = children.map(() => 0);
-        this.attached = children.map(() => false);
+        this.attached = false;
 
         this.__debugName = debugName ?? 'array';
         this.__refcount = 0;
     }
 
     detach() {
-        for (const [index, child] of this.children.entries()) {
-            if (this.attached[index]) {
+        if (this.attached) {
+            for (const child of this.children) {
                 child.detach();
-                this.attached[index] = false;
             }
+            this.attached = false;
         }
     }
 
@@ -329,8 +329,8 @@ export class ArrayRenderNode implements RenderNode {
                     emitter(event);
                 }
             }, parentXmlNamespace);
-            this.attached[index] = true;
         }
+        this.attached = true;
     }
 
     setMounted(isMounted: boolean) {
@@ -635,12 +635,13 @@ export class IntrinsicRenderNode implements RenderNode {
     private declare emitter?: NodeEmitter | undefined;
     private declare detachedError?: Error | undefined;
     private declare xmlNamespace?: string | undefined;
-    private declare childXmlNamespace?: string | undefined;
     private declare props?: Record<string, any> | undefined;
     private declare children: ArrayRenderNode;
     private declare portalRenderNode?: PortalRenderNode | undefined;
-    private declare calculations?: Map<string, Calculation<any>>;
-    private declare fields?: Map<string, Field<any>>;
+    private declare boundAttributes?: Map<
+        string,
+        Field<any> | Calculation<any>
+    >;
     private declare subscriptions?: Set<() => void>;
 
     constructor(
@@ -686,58 +687,57 @@ export class IntrinsicRenderNode implements RenderNode {
                     continue;
                 }
                 if (isCalcUnsubscribe(val) || isCalculation(val)) {
-                    if (!this.calculations) {
-                        this.calculations = new Map();
+                    if (!this.boundAttributes) {
+                        this.boundAttributes = new Map();
                     }
-                    this.calculations.set(
+                    this.boundAttributes.set(
                         prop,
                         isCalculation(val) ? val : val.calculation
                     );
                 } else if (val instanceof Field) {
-                    if (!this.fields) {
-                        this.fields = new Map();
+                    if (!this.boundAttributes) {
+                        this.boundAttributes = new Map();
                     }
-                    this.fields.set(prop, val);
+                    this.boundAttributes.set(prop, val);
                 } else {
                     this.setProp(element, prop, val);
                 }
             }
-            if (this.calculations) {
+            if (this.boundAttributes) {
                 if (!this.subscriptions) {
                     this.subscriptions = new Set();
                 }
-                for (const [prop, calculation] of this.calculations.entries()) {
-                    calculation.retain();
-                    const currentVal = calculation();
+                for (const [
+                    prop,
+                    boundAttr,
+                ] of this.boundAttributes.entries()) {
+                    boundAttr.retain();
+                    const currentVal =
+                        boundAttr instanceof Field
+                            ? boundAttr.get()
+                            : boundAttr();
                     this.setProp(element, prop, currentVal);
-                    this.subscriptions.add(
-                        calculation.subscribe((error, updatedVal) => {
-                            if (error) {
-                                log.error('Unhandled error in bound prop', {
-                                    prop,
-                                    element,
-                                    error: updatedVal,
-                                });
-                            } else {
+                    if (boundAttr instanceof Field) {
+                        this.subscriptions.add(
+                            boundAttr.subscribe((updatedVal) => {
                                 this.setProp(element, prop, updatedVal);
-                            }
-                        })
-                    );
-                }
-            }
-            if (this.fields) {
-                if (!this.subscriptions) {
-                    this.subscriptions = new Set();
-                }
-                for (const [prop, field] of this.fields.entries()) {
-                    retain(field);
-                    const currentVal = field.get();
-                    this.setProp(element, prop, currentVal);
-                    this.subscriptions.add(
-                        field.subscribe((updatedVal) => {
-                            this.setProp(element, prop, updatedVal);
-                        })
-                    );
+                            })
+                        );
+                    } else {
+                        this.subscriptions.add(
+                            boundAttr.subscribe((error, updatedVal) => {
+                                if (error) {
+                                    log.error('Unhandled error in bound prop', {
+                                        prop,
+                                        element,
+                                        error: updatedVal,
+                                    });
+                                } else {
+                                    this.setProp(element, prop, updatedVal);
+                                }
+                            })
+                        );
+                    }
                 }
             }
         }
@@ -905,8 +905,8 @@ export class IntrinsicRenderNode implements RenderNode {
         );
     }
     __dead() {
-        if (this.calculations) {
-            for (const calculation of this.calculations.values()) {
+        if (this.boundAttributes) {
+            for (const calculation of this.boundAttributes.values()) {
                 release(calculation);
             }
         }
@@ -941,7 +941,6 @@ enum MountState {
 export class PortalRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
     declare _commitPhase: RenderNodeCommitPhase;
-    private declare tagName: string;
     private declare element: Element;
     private declare childEvents: ArrayEvent<Node>[];
     private declare committedNodes: Node[];
@@ -951,7 +950,6 @@ export class PortalRenderNode implements RenderNode {
     private declare refProp?: RefObjectOrCallback<Element> | undefined;
     private declare mountState?: MountState | undefined;
     private declare emitter?: NodeEmitter | undefined;
-    private declare existingOffset: number;
     private declare arrayRenderNode: ArrayRenderNode;
     private declare calculations?: Map<string, Calculation<any>>;
     private declare calculationSubscriptions?: Set<() => void>;
@@ -975,10 +973,8 @@ export class PortalRenderNode implements RenderNode {
             this.refProp = refProp;
             this.mountState = MountState.UNMOUNTED;
         }
-        this.tagName = this.element.tagName;
-        this.existingOffset = element.childNodes.length;
 
-        this.__debugName = debugName ?? `mount:${this.tagName}`;
+        this.__debugName = debugName ?? `mount:${element.tagName}`;
         this.__refcount = 0;
     }
 
@@ -1064,10 +1060,7 @@ export class PortalRenderNode implements RenderNode {
             phase === RenderNodeCommitPhase.COMMIT_DEL &&
             this.deadNodeSet.size > 0
         ) {
-            if (
-                this.deadNodeSet.size === this.liveNodeSet.size &&
-                this.existingOffset === 0
-            ) {
+            if (this.deadNodeSet.size === this.liveNodeSet.size) {
                 this.element.replaceChildren();
                 this.liveNodeSet.clear();
                 this.committedNodes = [];
@@ -1802,9 +1795,14 @@ export function renderJSXChildren(
 }
 
 export function mount(target: Element, node: RenderNode): () => void {
+    const children: RenderNode[] = [];
+    for (let i = 0; i < target.childNodes.length; ++i) {
+        children.push(new ForeignRenderNode(target.childNodes[i]));
+    }
+    children.push(node);
     const root = new PortalRenderNode(
         target,
-        new ArrayRenderNode([node]),
+        new ArrayRenderNode(children),
         null,
         'root'
     );
