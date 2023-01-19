@@ -126,13 +126,13 @@ const Benchmark: Component = () => {
                                         <td>
                                             {(sorted[
                                                 Math.floor(
-                                                    (sorted.length * 0.95) / 2
+                                                    (sorted.length - 1) * 0.95
                                                 )
                                             ] +
                                                 sorted[
                                                     Math.ceil(
-                                                        (sorted.length * 0.95) /
-                                                            2
+                                                        (sorted.length - 1) *
+                                                            0.95
                                                     )
                                                 ]) /
                                                 2}
@@ -140,13 +140,13 @@ const Benchmark: Component = () => {
                                         <td>
                                             {(sorted[
                                                 Math.floor(
-                                                    (sorted.length * 0.99) / 2
+                                                    (sorted.length - 1) * 0.99
                                                 )
                                             ] +
                                                 sorted[
                                                     Math.ceil(
-                                                        (sorted.length * 0.99) /
-                                                            2
+                                                        (sorted.length - 1) *
+                                                            0.99
                                                     )
                                                 ]) /
                                                 2}
