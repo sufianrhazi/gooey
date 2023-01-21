@@ -8,6 +8,7 @@ import Gooey, {
     model,
     mount,
     ref,
+    debugGetGraph,
 } from '../../index';
 import { makeGraphvizDebuggerRef } from '../debug';
 
@@ -179,6 +180,15 @@ const App = () => {
                         Mutate items
                     </button>
                 </div>
+            </div>
+            <hr />
+            <div class="container my-4">
+                <button
+                    class="btn btn-secondary"
+                    on:click={() => console.log(debugGetGraph())}
+                >
+                    Export Graph
+                </button>
             </div>
             <div class="container-fluid d-flex my-4 justify-content-center">
                 <div class="border" ref={graphvizRef} />

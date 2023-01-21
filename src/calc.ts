@@ -203,6 +203,8 @@ export class Calculation<out T> extends Function implements Retainable, Processa
     declare private _retained?: Set<Retainable | (Processable & Retainable)>;
     declare private _val?: T;
     declare private _error?: any;
+    // Note: only present when debugging
+    declare private _fn?: () => T;
 
     declare __processable: true;
     declare __debugName: string;
@@ -371,6 +373,9 @@ export class Calculation<out T> extends Function implements Retainable, Processa
 
         impl._type = CalculationSymbol;
         impl._state = CalculationState.DEAD;
+        if (DEBUG) {
+            impl._fn = fn;
+        }
 
         Object.setPrototypeOf(impl, Calculation.prototype);
 
