@@ -22,7 +22,14 @@ export { ArrayEventType, applyArrayEvent } from './arrayevent';
 export { collection } from './collection';
 export { calc, CalculationErrorType } from './calc';
 export type { Calculation } from './calc';
-export { reset, subscribe, flush, debug, debugSubscribe } from './engine';
+export {
+    reset,
+    subscribe,
+    flush,
+    debug,
+    debugSubscribe,
+    debugGetGraph,
+} from './engine';
 
 export { InvariantError } from './types';
 export type { RefObjectOrCallback, Ref, RefCallback } from './ref';

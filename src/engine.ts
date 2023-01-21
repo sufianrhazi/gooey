@@ -371,5 +371,10 @@ export function debugSubscribe(fn: (label: string, graphviz: string) => void) {
 }
 
 export function debugGetGraph() {
-    return globalDependencyGraph;
+    const { vertices, edges } = globalDependencyGraph.debugGetGraph();
+    const labels = new Map<Processable, string>();
+    vertices.forEach((vertex) => {
+        labels.set(vertex, vertex.__debugName);
+    });
+    return { vertices, edges, labels };
 }

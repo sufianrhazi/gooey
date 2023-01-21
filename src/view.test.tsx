@@ -4267,7 +4267,7 @@ suite('automatic memory management', () => {
         );
         unmount();
 
-        assert.deepEqual([], debugGetGraph()._test_getVertices());
+        assert.deepEqual([], debugGetGraph().vertices);
     });
 
     test('component with mapView leaves empty graph', () => {
@@ -4286,7 +4286,7 @@ suite('automatic memory management', () => {
         flush();
         unmount();
 
-        assert.deepEqual([], debugGetGraph()._test_getVertices());
+        assert.deepEqual([], debugGetGraph().vertices);
     });
 });
 

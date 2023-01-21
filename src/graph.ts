@@ -943,6 +943,34 @@ export class Graph<TVertex> {
             this.debugSubscriptions.delete(entry);
         };
     }
+
+    debugGetGraph() {
+        const vertices: TVertex[] = [];
+        for (let i = 0; i < this.topologicalOrdering.length; ++i) {
+            const vertexId = this.topologicalOrdering[i];
+            const vertex = vertexId !== undefined && this.vertexById[vertexId];
+            if (vertex) {
+                vertices.push(vertex);
+            }
+        }
+        const edges: [TVertex, TVertex][] = [];
+        for (let i = 0; i < this.forwardAdjacencyEither.length; ++i) {
+            const source = this.vertexById[i];
+            if (source) {
+                for (
+                    let j = 0;
+                    j < this.forwardAdjacencyEither[i].length;
+                    ++j
+                ) {
+                    const target = this.vertexById[j];
+                    if (target) {
+                        edges.push([source, target]);
+                    }
+                }
+            }
+        }
+        return { vertices, edges };
+    }
 }
 
 /**
