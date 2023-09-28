@@ -165,7 +165,6 @@ enum CalculationState {
 }
 
 const CalculationSymbol = Symbol('calculation');
-const CalculationUnsubscribeSymbol = Symbol('calculationUnsubscribe');
 export const CalculationSubscribeWithPostAction = Symbol('calculationSubscribeWithPostAction');
 
 interface CalcSubscriptionHandlerHack<T> {
@@ -184,11 +183,7 @@ interface CalcSubscriptionHandlerHack<T> {
 type CalcSubscriptionHandler<out T> =
     CalcSubscriptionHandlerHack<T>['bivarianceHack'];
 
-interface CalcUnsubscribe<T> {
-    (): void;
-    _type: typeof CalculationUnsubscribeSymbol;
-    calculation: Calculation<T>;
-}
+type CalcUnsubscribe = () => void;
 
 type CalcErrorHandler<T> = (error: Error) => T;
 
@@ -374,7 +369,7 @@ export class Calculation<out T> implements Retainable, Processable {
         return this;
     }
 
-    subscribe(handler: (value: T) => void): CalcUnsubscribe<T> {
+    subscribe(handler: (value: T) => void): CalcUnsubscribe {
         return this[CalculationSubscribeWithPostAction]((errorType, value, hoopdoop) => {
             if (errorType === undefined) {
                 handler(value);
@@ -382,7 +377,7 @@ export class Calculation<out T> implements Retainable, Processable {
         });
     }
 
-    subscribeWithError(handler: (...args: [error: undefined, value: T] | [error: Error, value: undefined]) => void): CalcUnsubscribe<T> {
+    subscribeWithError(handler: (...args: [error: undefined, value: T] | [error: Error, value: undefined]) => void): CalcUnsubscribe {
         return this[CalculationSubscribeWithPostAction]((error, value, hoopdoop) => {
             if (error) {
                 handler(error, value);
@@ -392,7 +387,7 @@ export class Calculation<out T> implements Retainable, Processable {
         });
     }
 
-    [CalculationSubscribeWithPostAction](handler: CalcSubscriptionHandler<T>): CalcUnsubscribe<T> {
+    [CalculationSubscribeWithPostAction](handler: CalcSubscriptionHandler<T>): CalcUnsubscribe {
         retain(this);
         try {
             this.get();
@@ -407,11 +402,7 @@ export class Calculation<out T> implements Retainable, Processable {
             this._subscriptions?.delete(handler);
             release(this);
         };
-        const unsubscribeData = {
-            _type: CalculationUnsubscribeSymbol,
-            calculation: this,
-        } as const;
-        return Object.assign(unsubscribe, unsubscribeData);
+        return unsubscribe;
     }
 
     retain() {
@@ -565,14 +556,6 @@ export class Calculation<out T> implements Retainable, Processable {
                 log.assertExhausted(this._state, 'Calculation in unknown state');
         }
     }
-}
-
-export function isCalculation(val: any): val is Calculation<unknown> {
-    return val && (val instanceof Calculation);
-}
-
-export function isCalcUnsubscribe(val: any): val is CalcUnsubscribe<unknown> {
-    return val && val._type === CalculationUnsubscribeSymbol;
 }
 
 export class CycleError extends Error {

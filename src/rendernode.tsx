@@ -19,12 +19,7 @@ import {
     applyArrayEvent,
     addArrayEvent,
 } from './arrayevent';
-import {
-    isCalculation,
-    isCalcUnsubscribe,
-    Calculation,
-    CalculationSubscribeWithPostAction,
-} from './calc';
+import { Calculation, CalculationSubscribeWithPostAction } from './calc';
 import { isCollection, isView, Collection, View } from './collection';
 import { Field } from './field';
 import { wrapError } from './util';
@@ -688,14 +683,11 @@ export class IntrinsicRenderNode implements RenderNode {
                 ) {
                     continue;
                 }
-                if (isCalcUnsubscribe(val) || isCalculation(val)) {
+                if (val instanceof Calculation) {
                     if (!this.boundAttributes) {
                         this.boundAttributes = new Map();
                     }
-                    this.boundAttributes.set(
-                        prop,
-                        isCalculation(val) ? val : val.calculation
-                    );
+                    this.boundAttributes.set(prop, val);
                 } else if (val instanceof Field) {
                     if (!this.boundAttributes) {
                         this.boundAttributes = new Map();
@@ -1626,7 +1618,7 @@ export class CollectionRenderNode implements RenderNode {
 }
 
 function isCalculationRenderNode(val: any): val is Calculation<JSXNode> {
-    return isCalculation(val);
+    return val instanceof Calculation;
 }
 
 export class FieldRenderNode implements RenderNode {
