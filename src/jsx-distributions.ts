@@ -25,7 +25,7 @@ export type DistributeCalculation<
                 Exclude<TTmp, TUnionReduction>
             > extends infer TSubset
                 ? TSubset extends Calculation<any>
-                    ? Calculation<TUnion | ReturnType<TSubset['_call']>>
+                    ? Calculation<TUnion | ReturnType<TSubset['get']>>
                     : never
                 : never)
     : never;

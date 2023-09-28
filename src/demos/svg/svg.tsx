@@ -15,8 +15,12 @@ const ClockHand: Component<{
             stroke-linecap="round"
             x1={cx}
             y1={cy}
-            x2={calc(() => cx + radius * Math.cos((angle() * Math.PI) / 180))}
-            y2={calc(() => cy + radius * Math.sin((angle() * Math.PI) / 180))}
+            x2={calc(
+                () => cx + radius * Math.cos((angle.get() * Math.PI) / 180)
+            )}
+            y2={calc(
+                () => cy + radius * Math.sin((angle.get() * Math.PI) / 180)
+            )}
         />
     );
 };
@@ -94,7 +98,7 @@ const Clock: Component = (_props, { onMount, onUnmount }) => {
                     radius={30}
                     strokeWidth={5}
                     stroke="#000000"
-                    angle={calc(() => (getHours() * 360) / 12 - 90)}
+                    angle={calc(() => (getHours.get() * 360) / 12 - 90)}
                 />
                 <ClockHand
                     cx={50}
@@ -102,7 +106,7 @@ const Clock: Component = (_props, { onMount, onUnmount }) => {
                     radius={40}
                     strokeWidth={3}
                     stroke="#444444"
-                    angle={calc(() => (getMinutes() * 360) / 60 - 90)}
+                    angle={calc(() => (getMinutes.get() * 360) / 60 - 90)}
                 />
                 <ClockHand
                     cx={50}
@@ -110,7 +114,7 @@ const Clock: Component = (_props, { onMount, onUnmount }) => {
                     radius={45}
                     strokeWidth={1}
                     stroke="#666666"
-                    angle={calc(() => (getSeconds() * 360) / 60 - 90)}
+                    angle={calc(() => (getSeconds.get() * 360) / 60 - 90)}
                 />
             </svg>
             <div class="clock">
@@ -118,13 +122,15 @@ const Clock: Component = (_props, { onMount, onUnmount }) => {
                     Current count:{' '}
                     {calc(() => (
                         <>
-                            {Math.floor(getHours()).toString().padStart(2, '0')}
-                            :
-                            {Math.floor(getMinutes())
+                            {Math.floor(getHours.get())
                                 .toString()
                                 .padStart(2, '0')}
                             :
-                            {Math.floor(getSeconds())
+                            {Math.floor(getMinutes.get())
+                                .toString()
+                                .padStart(2, '0')}
+                            :
+                            {Math.floor(getSeconds.get())
                                 .toString()
                                 .padStart(2, '0')}
                         </>

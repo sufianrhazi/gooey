@@ -195,7 +195,7 @@ interface CalcUnsubscribe<T> {
 
 type CalcErrorHandler<T> = (errorType: CalculationErrorType, val: Error) => T;
 
-export class Calculation<out T> extends Function implements Retainable, Processable {
+export class Calculation<out T> implements Retainable, Processable {
     declare private _subscriptions?: Set<CalcSubscriptionHandler<T>>;
     declare private _type: typeof CalculationSymbol;
     declare private _errorHandler?: CalcErrorHandler<T>;
@@ -203,183 +203,170 @@ export class Calculation<out T> extends Function implements Retainable, Processa
     declare private _retained?: Set<Retainable | (Processable & Retainable)>;
     declare private _val?: T;
     declare private _error?: any;
-    // Note: only present when debugging
-    declare private _fn?: () => T;
+    declare private _fn: () => T;
 
     declare __processable: true;
     declare __debugName: string;
     declare __refcount: number;
 
-    // XXX: this function is unfortunately only present in order to appease a type checker, but sure, use it if you want
-    _call(): T {
-        return this();
-    }
+    get(): T {
+        notifyRead(this);
 
-    // @ts-expect-error https://github.com/microsoft/TypeScript/issues/33927
-    constructor(fn: () => T, debugName?: string) {
-        const impl: Calculation<T> = (function calculationCall(): T {
-            notifyRead(impl);
-
-            const state = impl._state;
-            switch (state) {
-                case CalculationState.DEAD:
-                    // Note: dead calculations are just plain old functions
-                    return fn();
-                case CalculationState.CACHED:
-                    return impl._val as T;
-                case CalculationState.CALLING:
-                    impl._state = CalculationState.ERROR;
-                impl._error = new CycleError(
+        const state = this._state;
+        switch (state) {
+            case CalculationState.DEAD:
+                // Note: dead calculations are just plain old functions
+                return this._fn();
+            case CalculationState.CACHED:
+                return this._val as T;
+            case CalculationState.CALLING:
+                this._state = CalculationState.ERROR;
+                this._error = new CycleError(
                     'Cycle reached: calculation reached itself',
-                    impl
+                    this
                 );
-                throw impl._error;
-                case CalculationState.ERROR:
-                    if (impl._error === Sentinel) {
+                throw this._error;
+            case CalculationState.ERROR:
+                if (this._error === Sentinel) {
                     throw new Error('Cycle reached: calculation reached itself');
                 } else {
                     throw new Error(
-                        'Calculation in error state: ' + impl._error.message
+                        'Calculation in error state: ' + this._error.message
                     );
                 }
                 break;
-                case CalculationState.READY: {
-                    const calculationReads: Set<Retainable> = new Set();
-                    let result: T | Sentinel = Sentinel;
-                    let exception: any;
-                    impl._state = CalculationState.CALLING;
-                    try {
-                        result = trackReads(
-                            calculationReads,
-                            () => fn(),
-                                impl.__debugName
+            case CalculationState.READY: {
+                const calculationReads: Set<Retainable> = new Set();
+                let result: T | Sentinel = Sentinel;
+                let exception: any;
+                this._state = CalculationState.CALLING;
+                try {
+                    result = trackReads(
+                        calculationReads,
+                        () => this._fn(),
+                        this.__debugName
+                    );
+                } catch (e) {
+                    exception = e;
+                }
+
+                if (
+                    (this._state as CalculationState) ===
+                    CalculationState.DEAD
+                ) {
+                    // It's possible that a cycle which is recalculated releases itself entirely
+                    // In this case we release all of the things retained (automatically, see note XXX:AUTO_RETAIN)
+                    for (const retained of calculationReads) {
+                        release(retained);
+                    }
+                    if (result === Sentinel) throw exception;
+                    return result;
+                }
+
+                // If A calls B, which calls A, and B has an error handler:
+                // B will catch and return the self-cycle error.
+                // In this case, A will mark itself in the ERROR state.
+                if (
+                    // Cast due to TypeScript limitation
+                    (this._state as CalculationState) ===
+                    CalculationState.ERROR
+                ) {
+                    exception = this._error;
+                }
+
+                let isActiveCycle = false;
+                let isActiveCycleRoot = false;
+                if (exception) {
+                    if (exception instanceof CycleError) {
+                        isActiveCycle = true;
+                        isActiveCycleRoot =
+                            exception.sourceCalculation === this;
+                    }
+                    const errorHandler = this._errorHandler;
+                    if (errorHandler) {
+                        result = untrackReads(
+                            () =>
+                            isActiveCycle
+                            ? errorHandler(
+                                CalculationErrorType.CYCLE,
+                                new Error('Cycle')
+                            )
+                            : errorHandler(
+                                CalculationErrorType.EXCEPTION,
+                                exception
+                            ),
+                            this.__debugName
                         );
-                    } catch (e) {
-                        exception = e;
                     }
 
-                    if (
-                        (impl._state as CalculationState) ===
-                        CalculationState.DEAD
-                    ) {
-                        // It's possible that a cycle which is recalculated releases itself entirely
-                        // In this case we release all of the things retained (automatically, see note XXX:AUTO_RETAIN)
-                        for (const retained of calculationReads) {
-                            release(retained);
-                        }
-                        if (result === Sentinel) throw exception;
-                        return result;
-                    }
-
-                    // If A calls B, which calls A, and B has an error handler:
-                    // B will catch and return the self-cycle error.
-                    // In this case, A will mark itself in the ERROR state.
-                    if (
-                        // Cast due to TypeScript limitation
-                        (impl._state as CalculationState) ===
-                            CalculationState.ERROR
-                    ) {
-                        exception = impl._error;
-                    }
-
-                    let isActiveCycle = false;
-                    let isActiveCycleRoot = false;
-                    if (exception) {
-                        if (exception instanceof CycleError) {
-                            isActiveCycle = true;
-                            isActiveCycleRoot =
-                                exception.sourceCalculation === impl;
-                        }
-                        const errorHandler = impl._errorHandler;
-                        if (errorHandler) {
-                            result = untrackReads(
-                                () =>
-                                isActiveCycle
-                                    ? errorHandler(
-                                        CalculationErrorType.CYCLE,
-                                        new Error('Cycle')
-                                    )
-                                        : errorHandler(
-                                            CalculationErrorType.EXCEPTION,
-                                            exception
-                                        ),
-                                        impl.__debugName
-                            );
-                        }
-
-                        if (isActiveCycle) {
-                            markCycleInformed(impl);
-                        }
-                    }
-
-                    if (result === Sentinel) {
-                        if ('_val' in impl) {
-                            delete impl._val;
-                        }
-                        impl._error = exception;
-                        impl._state = CalculationState.ERROR;
-                    } else {
-                        impl._val = result;
-                        if ('_error' in impl) {
-                            delete impl._error;
-                        }
-                        impl._state = CalculationState.CACHED;
-                        unmarkDirty(impl);
-                    }
-
-                    if (impl._retained) {
-                        for (const priorDependency of impl._retained) {
-                            if (
-                                isProcessable(priorDependency) &&
-                                !calculationReads.has(priorDependency)
-                            ) {
-                                removeHardEdge(priorDependency, impl);
-                            }
-                            // XXX:AUTO_RETAIN: THIS IS SURPRISING
-                            // We retain all dependencies read when they are first added to a tracked calculation
-                            // So we need to release prior dependencies to keep the refcount stable
-                            // This is a bit gross...
-                            release(priorDependency);
-                        }
-                    }
-                    for (const dependency of calculationReads) {
-                        if (isProcessable(dependency)) {
-                            if (
-                                !impl._retained ||
-                                !impl._retained.has(dependency)
-                            ) {
-                                addHardEdge(dependency, impl);
-                            }
-                        }
-                    }
-                    impl._retained = calculationReads;
-
-                    if (result === Sentinel) {
-                        throw exception;
-                    } else if (isActiveCycle && !isActiveCycleRoot) {
-                        throw exception;
-                    } else {
-                        return result;
+                    if (isActiveCycle) {
+                        markCycleInformed(this);
                     }
                 }
-                default:
-                    log.assertExhausted(state, 'Calculation in unknown state');
+
+                if (result === Sentinel) {
+                    if ('_val' in this) {
+                        delete this._val;
+                    }
+                    this._error = exception;
+                    this._state = CalculationState.ERROR;
+                } else {
+                    this._val = result;
+                    if ('_error' in this) {
+                        delete this._error;
+                    }
+                    this._state = CalculationState.CACHED;
+                    unmarkDirty(this);
+                }
+
+                if (this._retained) {
+                    for (const priorDependency of this._retained) {
+                        if (
+                            isProcessable(priorDependency) &&
+                            !calculationReads.has(priorDependency)
+                        ) {
+                            removeHardEdge(priorDependency, this);
+                        }
+                        // XXX:AUTO_RETAIN: THIS IS SURPRISING
+                        // We retain all dependencies read when they are first added to a tracked calculation
+                        // So we need to release prior dependencies to keep the refcount stable
+                        // This is a bit gross...
+                        release(priorDependency);
+                    }
+                }
+                for (const dependency of calculationReads) {
+                    if (isProcessable(dependency)) {
+                        if (
+                            !this._retained ||
+                            !this._retained.has(dependency)
+                        ) {
+                            addHardEdge(dependency, this);
+                        }
+                    }
+                }
+                this._retained = calculationReads;
+
+                if (result === Sentinel) {
+                    throw exception;
+                } else if (isActiveCycle && !isActiveCycleRoot) {
+                    throw exception;
+                } else {
+                    return result;
+                }
             }
-        } as any);
-
-        impl.__debugName = debugName ?? 'calc';
-        impl.__refcount = 0;
-        impl.__processable = true;
-
-        impl._type = CalculationSymbol;
-        impl._state = CalculationState.DEAD;
-        if (DEBUG) {
-            impl._fn = fn;
+            default:
+                log.assertExhausted(state, 'Calculation in unknown state');
         }
+    }
 
-        Object.setPrototypeOf(impl, Calculation.prototype);
+    constructor(fn: () => T, debugName?: string) {
+        this.__debugName = debugName ?? 'calc';
+        this.__refcount = 0;
+        this.__processable = true;
 
-        return impl as any as Calculation<T>;
+        this._type = CalculationSymbol;
+        this._state = CalculationState.DEAD;
+        this._fn = fn;
     }
 
     onError(handler: CalcErrorHandler<T>): this {
@@ -399,7 +386,7 @@ export class Calculation<out T> extends Function implements Retainable, Processa
     subscribe(handler: CalcSubscriptionHandler<T>): CalcUnsubscribe<T> {
         retain(this);
         try {
-            this();
+            this.get();
         } catch (e) {
             // Intentionally ignore exception
         }
@@ -461,7 +448,7 @@ export class Calculation<out T> extends Function implements Retainable, Processa
                 this._state = CalculationState.READY;
                 let newResult: T;
                 try {
-                    newResult = this();
+                    newResult = this.get();
                 } catch (e) {
                     this._state = CalculationState.ERROR;
                     this._error = e;

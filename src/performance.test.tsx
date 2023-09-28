@@ -459,7 +459,7 @@ suite('perf tests', () => {
             }
             measure(() => {
                 for (let i = 0; i < COUNT; ++i) {
-                    calculations[i]();
+                    calculations[i].get();
                 }
             });
             for (let i = 0; i < COUNT; ++i) {
@@ -481,7 +481,7 @@ suite('perf tests', () => {
                 }
             });
             for (let i = 0; i < COUNT; ++i) {
-                calculations[i]();
+                calculations[i].get();
             }
             for (let i = 0; i < COUNT; ++i) {
                 calculations[i].release();
@@ -500,7 +500,7 @@ suite('perf tests', () => {
                 calculations.push(calculation);
             }
             for (let i = 0; i < COUNT; ++i) {
-                calculations[i]();
+                calculations[i].get();
             }
             measure(() => {
                 for (let i = 0; i < COUNT; ++i) {
@@ -520,7 +520,7 @@ suite('perf tests', () => {
                 return i + modelObj.num;
             });
             calculation.retain();
-            calculation();
+            calculation.get();
             calculations.push(calculation);
         }
         await assert.medianRuntimeLessThan(4, (measure) => {

@@ -16,7 +16,7 @@ suite('map', () => {
             log.push(dict.get('key'));
         });
         retain(c);
-        c();
+        c.get();
         flush();
 
         assert.deepEqual([undefined], log);
@@ -38,7 +38,7 @@ suite('map', () => {
             log.push(dict.get('key'));
         });
         retain(c);
-        c();
+        c.get();
         flush();
 
         assert.deepEqual(['init'], log);
@@ -54,7 +54,7 @@ suite('map', () => {
             log.push(dict.get('key'));
         });
         retain(c);
-        c();
+        c.get();
         flush();
 
         assert.deepEqual(['init'], log);
@@ -76,7 +76,7 @@ suite('map', () => {
             log.push({ keySum, valSum });
         });
         retain(c);
-        c();
+        c.get();
         flush();
 
         assert.deepEqual({ keySum: 1, valSum: 1 }, log[log.length - 1]);

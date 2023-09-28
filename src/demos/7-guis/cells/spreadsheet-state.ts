@@ -63,7 +63,7 @@ export class SpreadsheetState {
         const name = positionToString(position);
         const cellCalc = this.evaluatedData.get(name);
         if (!cellCalc) return { ok: true, value: '' };
-        return cellCalc();
+        return cellCalc.get();
     }
 
     readRaw(position: Position): string {

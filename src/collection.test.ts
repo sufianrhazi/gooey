@@ -140,9 +140,9 @@ suite('collection', () => {
         inSplice.retain();
         afterSplice.retain();
 
-        assert.is(1, beforeSplice());
-        assert.is(3, inSplice());
-        assert.is(5, afterSplice());
+        assert.is(1, beforeSplice.get());
+        assert.is(3, inSplice.get());
+        assert.is(5, afterSplice.get());
         assert.is(1, beforeSpliceCount);
         assert.is(1, inSpliceCount);
         assert.is(1, afterSpliceCount);
@@ -150,9 +150,9 @@ suite('collection', () => {
         numbers.splice(2, 3, 102, 103, 104);
         flush();
 
-        assert.is(1, beforeSplice());
-        assert.is(103, inSplice());
-        assert.is(5, afterSplice());
+        assert.is(1, beforeSplice.get());
+        assert.is(103, inSplice.get());
+        assert.is(5, afterSplice.get());
         assert.is(1, beforeSpliceCount);
         assert.is(2, inSpliceCount);
         assert.is(1, afterSpliceCount);
@@ -181,9 +181,9 @@ suite('collection', () => {
         inSplice.retain();
         afterSplice.retain();
 
-        assert.is(1, beforeSplice());
-        assert.is(3, inSplice());
-        assert.is(5, afterSplice());
+        assert.is(1, beforeSplice.get());
+        assert.is(3, inSplice.get());
+        assert.is(5, afterSplice.get());
         assert.is(1, beforeSpliceCount);
         assert.is(1, inSpliceCount);
         assert.is(1, afterSpliceCount);
@@ -191,9 +191,9 @@ suite('collection', () => {
         numbers.splice(2, 3, 102, 103);
         flush();
 
-        assert.is(1, beforeSplice());
-        assert.is(103, inSplice());
-        assert.is(6, afterSplice());
+        assert.is(1, beforeSplice.get());
+        assert.is(103, inSplice.get());
+        assert.is(6, afterSplice.get());
         assert.is(1, beforeSpliceCount);
         assert.is(2, inSpliceCount);
         assert.is(2, afterSpliceCount);
@@ -222,9 +222,9 @@ suite('collection', () => {
         inSplice.retain();
         afterSplice.retain();
 
-        assert.is(1, beforeSplice());
-        assert.is(3, inSplice());
-        assert.is(5, afterSplice());
+        assert.is(1, beforeSplice.get());
+        assert.is(3, inSplice.get());
+        assert.is(5, afterSplice.get());
         assert.is(1, beforeSpliceCount);
         assert.is(1, inSpliceCount);
         assert.is(1, afterSpliceCount);
@@ -232,9 +232,9 @@ suite('collection', () => {
         numbers.splice(2, 3, 102, 103, 104, 105);
         flush();
 
-        assert.is(1, beforeSplice());
-        assert.is(103, inSplice());
-        assert.is(105, afterSplice());
+        assert.is(1, beforeSplice.get());
+        assert.is(103, inSplice.get());
+        assert.is(105, afterSplice.get());
         assert.is(1, beforeSpliceCount);
         assert.is(2, inSpliceCount);
         assert.is(2, afterSpliceCount);
@@ -263,9 +263,9 @@ suite('collection', () => {
         inSplice.retain();
         afterSplice.retain();
 
-        assert.is(1, beforeSplice());
-        assert.is(3, inSplice());
-        assert.is(5, afterSplice());
+        assert.is(1, beforeSplice.get());
+        assert.is(3, inSplice.get());
+        assert.is(5, afterSplice.get());
         assert.is(1, beforeSpliceCount);
         assert.is(1, inSpliceCount);
         assert.is(1, afterSpliceCount);
@@ -273,9 +273,9 @@ suite('collection', () => {
         numbers.splice(2, 3);
         flush();
 
-        assert.is(1, beforeSplice());
-        assert.is(6, inSplice());
-        assert.is(undefined, afterSplice());
+        assert.is(1, beforeSplice.get());
+        assert.is(6, inSplice.get());
+        assert.is(undefined, afterSplice.get());
         assert.is(1, beforeSpliceCount);
         assert.is(2, inSpliceCount);
         assert.is(2, afterSpliceCount);
@@ -330,7 +330,7 @@ suite('collection', () => {
         retain(view);
 
         calculation.retain();
-        calculation();
+        calculation.get();
 
         m.isActive = true;
         coll.push('foo');
@@ -342,7 +342,7 @@ suite('collection', () => {
         assert.deepEqual([3], view);
         assert.is(3, view[0]);
         assert.is(1, view.length);
-        assert.is(true, calculation());
+        assert.is(true, calculation.get());
     });
 
     test('collections can be iterated over in a calculation', () => {
@@ -356,19 +356,19 @@ suite('collection', () => {
         });
 
         calculation.retain();
-        assert.is('foobarbaz', calculation());
+        assert.is('foobarbaz', calculation.get());
 
         strings.push('bum');
         flush();
-        assert.is('foobarbazbum', calculation());
+        assert.is('foobarbazbum', calculation.get());
 
         strings.splice(1, 2, '-');
         flush();
-        assert.is('foo-bum', calculation());
+        assert.is('foo-bum', calculation.get());
 
         strings[1] = 'bar';
         flush();
-        assert.is('foobarbum', calculation());
+        assert.is('foobarbum', calculation.get());
     });
 
     test('collections keys can be iterated over in a calculation', () => {
@@ -382,19 +382,19 @@ suite('collection', () => {
         });
 
         calculation.retain();
-        assert.is('foobarbaz', calculation());
+        assert.is('foobarbaz', calculation.get());
 
         strings.push('bum');
         flush();
-        assert.is('foobarbazbum', calculation());
+        assert.is('foobarbazbum', calculation.get());
 
         strings.splice(1, 2, '-');
         flush();
-        assert.is('foo-bum', calculation());
+        assert.is('foo-bum', calculation.get());
 
         strings[1] = 'bar';
         flush();
-        assert.is('foobarbum', calculation());
+        assert.is('foobarbum', calculation.get());
     });
 
     test('collections values can be iterated over in a calculation', () => {
@@ -408,19 +408,19 @@ suite('collection', () => {
         });
 
         calculation.retain();
-        assert.is('foobarbaz', calculation());
+        assert.is('foobarbaz', calculation.get());
 
         strings.push('bum');
         flush();
-        assert.is('foobarbazbum', calculation());
+        assert.is('foobarbazbum', calculation.get());
 
         strings.splice(1, 2, '-');
         flush();
-        assert.is('foo-bum', calculation());
+        assert.is('foo-bum', calculation.get());
 
         strings[1] = 'bar';
         flush();
-        assert.is('foobarbum', calculation());
+        assert.is('foobarbum', calculation.get());
     });
 
     test('collections entries can be iterated over in a calculation', () => {
@@ -434,19 +434,19 @@ suite('collection', () => {
         });
 
         calculation.retain();
-        assert.is('foobarbaz', calculation());
+        assert.is('foobarbaz', calculation.get());
 
         strings.push('bum');
         flush();
-        assert.is('foobarbazbum', calculation());
+        assert.is('foobarbazbum', calculation.get());
 
         strings.splice(1, 2, '-');
         flush();
-        assert.is('foo-bum', calculation());
+        assert.is('foo-bum', calculation.get());
 
         strings[1] = 'bar';
         flush();
-        assert.is('foobarbum', calculation());
+        assert.is('foobarbum', calculation.get());
     });
 });
 
@@ -742,7 +742,7 @@ suite('mapView', () => {
             return result;
         });
         retain(exclaimOne);
-        exclaimOne();
+        exclaimOne.get();
         phrases.sort();
         flush();
         assert.deepEqual(['quick!', 'brown!'], values);

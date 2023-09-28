@@ -28,7 +28,7 @@ suite('field', () => {
             log.push(simple.get());
         });
         retain(reader);
-        reader();
+        reader.get();
         assert.deepEqual(['hi'], log);
         simple.set('hello');
         simple.set('hola');

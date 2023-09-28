@@ -946,24 +946,19 @@ export class Graph<TVertex> {
 
     debugGetGraph() {
         const vertices: TVertex[] = [];
-        for (let i = 0; i < this.topologicalOrdering.length; ++i) {
-            const vertexId = this.topologicalOrdering[i];
-            const vertex = vertexId !== undefined && this.vertexById[vertexId];
+        for (let i = 0; i < this.vertexById.length; ++i) {
+            const vertex = this.vertexById[i];
             if (vertex) {
                 vertices.push(vertex);
             }
         }
         const edges: [TVertex, TVertex][] = [];
-        for (let i = 0; i < this.forwardAdjacencyEither.length; ++i) {
-            const source = this.vertexById[i];
-            if (source) {
-                for (
-                    let j = 0;
-                    j < this.forwardAdjacencyEither[i].length;
-                    ++j
-                ) {
-                    const target = this.vertexById[j];
-                    if (target) {
+        for (let id = 0; id < this.vertexById.length; ++id) {
+            if (this.forwardAdjacencyEither[id]) {
+                for (const toId of this.forwardAdjacencyEither[id]) {
+                    const source = this.vertexById[id];
+                    const target = this.vertexById[toId];
+                    if (source && target) {
                         edges.push([source, target]);
                     }
                 }

@@ -712,10 +712,7 @@ export class IntrinsicRenderNode implements RenderNode {
                     boundAttr,
                 ] of this.boundAttributes.entries()) {
                     boundAttr.retain();
-                    const currentVal =
-                        boundAttr instanceof Field
-                            ? boundAttr.get()
-                            : boundAttr();
+                    const currentVal = boundAttr.get();
                     this.setProp(element, prop, currentVal);
                     if (boundAttr instanceof Field) {
                         this.subscriptions.add(
@@ -1300,7 +1297,7 @@ export class CalculationRenderNode implements RenderNode {
             this.calculationSubscription = this.calculation.subscribe(
                 this.subscribe
             );
-            this.subscribe(undefined, this.calculation(), (action) => {
+            this.subscribe(undefined, this.calculation.get(), (action) => {
                 action();
             });
         } catch (e) {

@@ -56,9 +56,9 @@ export const Cell: Component<{
         <td
             ref={cellRef}
             class={calc(() =>
-                ['cell', isActive() ? 'cell--active' : ''].join(' ')
+                ['cell', isActive.get() ? 'cell--active' : ''].join(' ')
             )}
-            tabindex={calc(() => (isActive() ? 0 : -1))}
+            tabindex={calc(() => (isActive.get() ? 0 : -1))}
             id={positionToString(position)}
             on:click={(e, tdEl) => {
                 if (e.target === tdEl) {
@@ -95,7 +95,7 @@ export const Cell: Component<{
                         />
                     );
                 }
-                const result = evalContent();
+                const result = evalContent.get();
                 if (result.ok) return result.value;
                 return (
                     <div class="cell__error">

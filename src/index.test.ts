@@ -81,14 +81,15 @@ suite('behavior', () => {
             }, 'itemRenderer:' + item.task);
         };
 
-        const itemRenderers = new WeakMap();
+        const itemRenderers = new WeakMap<any, gooey.Calculation<any>>();
         const getItemRenderer = (todoItem: TodoItem): Renderer => {
             let renderer = itemRenderers.get(todoItem);
             if (!renderer) {
                 renderer = makeItemRenderer(todoItem);
                 itemRenderers.set(todoItem, renderer);
             }
-            return renderer;
+            const r = renderer;
+            return () => r.get();
         };
 
         const makeTodoListRenderer = (todoList: TodoList) => {
@@ -120,33 +121,33 @@ suite('behavior', () => {
     test('initial render renders tree', () => {
         const { model0, app, renders } = setUp();
 
-        assert.is(app(), 'Shopping:\n[ ] apples\n[ ] bananas');
+        assert.is(app.get(), 'Shopping:\n[ ] apples\n[ ] bananas');
         assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
         model0.task = 'what';
         gooey.flush();
-        assert.is(app(), 'Shopping:\n[ ] what\n[ ] bananas');
+        assert.is(app.get(), 'Shopping:\n[ ] what\n[ ] bananas');
     });
 
     test('no-op rerender does nothing', () => {
         const { app, renders } = setUp();
         assert.deepEqual(renders, []);
-        app();
+        app.get();
         assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
-        app();
+        app.get();
         assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
     });
 
     test('change a dependency does nothing if flush not called', () => {
         const { model0, app, renders } = setUp();
-        app(); // Force initial render
+        app.get(); // Force initial render
         model0.done = true;
-        assert.is(app(), 'Shopping:\n[ ] apples\n[ ] bananas');
+        assert.is(app.get(), 'Shopping:\n[ ] apples\n[ ] bananas');
         assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
     });
 
     test('flush causes update', () => {
         const { model0, app, renders } = setUp();
-        app(); // Force initial render
+        app.get(); // Force initial render
 
         model0.done = true;
 
@@ -159,13 +160,13 @@ suite('behavior', () => {
 
         // manual recomupute does nothing
         renders.splice(0, renders.length); // clear renders
-        assert.is(app(), 'Shopping:\n[x] apples\n[ ] bananas');
+        assert.is(app.get(), 'Shopping:\n[x] apples\n[ ] bananas');
         assert.deepEqual(renders, []);
     });
 
     test('duplicate flush does nothing', () => {
         const { model0, app, renders } = setUp();
-        app(); // Force initial render
+        app.get(); // Force initial render
         assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
 
         model0.done = true;
@@ -183,7 +184,7 @@ suite('behavior', () => {
 
     test('change multiple dependencies', () => {
         const { model0, model1, app, renders } = setUp();
-        app(); // initial render
+        app.get(); // initial render
         assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
 
         renders.splice(0, renders.length);
@@ -204,24 +205,24 @@ suite('behavior', () => {
             renders.indexOf('list')
         );
 
-        assert.is(app(), 'Shopping:\n[x] apples\n[ ] cherries');
+        assert.is(app.get(), 'Shopping:\n[x] apples\n[ ] cherries');
     });
 
     test('high level dependencies does not cause child dependencies to rerender', () => {
         const { todoList, app, renders } = setUp();
-        app(); // initial render
+        app.get(); // initial render
         assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
 
         renders.splice(0, renders.length);
         todoList.name = 'Grocery';
         gooey.flush();
         assert.deepEqual(renders, ['list']);
-        assert.is(app(), 'Grocery:\n[ ] apples\n[ ] bananas');
+        assert.is(app.get(), 'Grocery:\n[ ] apples\n[ ] bananas');
     });
 
     test('adding new items updates collection and renders new items', () => {
         const { model2, model3, todoList, app, renders } = setUp();
-        app(); // initial render
+        app.get(); // initial render
         assert.deepEqual(renders, ['list', 'item:model0', 'item:model1']);
 
         renders.splice(0, renders.length);
@@ -230,7 +231,7 @@ suite('behavior', () => {
         gooey.flush();
         assert.deepEqual(['list', 'item:model3', 'item:model2'], renders);
         assert.is(
-            app(),
+            app.get(),
             'Shopping:\n[ ] cookies\n[ ] apples\n[ ] bananas\n[ ] milk'
         );
     });
@@ -247,7 +248,7 @@ suite('behavior', () => {
             renders,
         } = setUp();
         todoList.items = gooey.collection([model3, model0, model1, model2]);
-        app(); // initial render
+        app.get(); // initial render
 
         todoList.items.splice(1, 2, model4);
         gooey.flush();
@@ -261,12 +262,12 @@ suite('behavior', () => {
             'list',
             'item:model4',
         ]);
-        assert.is(app(), 'Shopping:\n[ ] cookies\n[x] and\n[ ] milk');
+        assert.is(app.get(), 'Shopping:\n[ ] cookies\n[x] and\n[ ] milk');
     });
 
     test('updating items that once caused renders but no longer do takes no effect', () => {
         const { model0, todoList, app, renders } = setUp();
-        app(); // initial render
+        app.get(); // initial render
         todoList.items.shift(); // remove model0
         gooey.flush(); // flush 1: update with model0 removed
         model0.task = 'whatever';
@@ -279,7 +280,7 @@ suite('behavior', () => {
             'list',
             // <<flush 2 here>>
         ]);
-        assert.is(app(), 'Shopping:\n[ ] bananas');
+        assert.is(app.get(), 'Shopping:\n[ ] bananas');
     });
 });
 

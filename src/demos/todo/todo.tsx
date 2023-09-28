@@ -35,11 +35,7 @@ const globalState: Model<TodoList> = model(
     {
         name: 'Groceries',
         items: collection<Model<TodoItem>>(
-            [
-                makeTodoListItem('apples'),
-                makeTodoListItem('bananas'),
-                makeTodoListItem('celery'),
-            ],
+            [makeTodoListItem('eggs'), makeTodoListItem('bread')],
             'TodoListItems'
         ),
     },
@@ -63,16 +59,16 @@ const TodoItem: Component<{ item: TodoItem }> = ({ item }) => {
                     type="checkbox"
                     class="form-check-input me-3"
                     on:change={onChange}
-                    checked={calc(() => item.done, 'ItemCheckbox')}
+                    checked={calc(() => item.done, `item:${item.task}:checked`)}
                 />
                 <span
                     style={calc(
                         () =>
                             item.done ? 'text-decoration: line-through' : '',
-                        'ItemStyle'
+                        `item:${item.task}:style`
                     )}
                 >
-                    {calc(() => item.task, 'ItemName')}
+                    {calc(() => item.task, `item:${item.task}:text`)}
                 </span>
             </label>
         </li>

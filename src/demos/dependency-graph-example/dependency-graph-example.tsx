@@ -220,24 +220,28 @@ const Connector: Component<{
     visible: Calculation<boolean>;
     extra: Record<string, boolean>;
 }> = ({ x1, y1, x2, y2, delta, visible, extra }) => {
-    const mx = calc(() => (x1() + x2()) / 2);
-    const my = calc(() => (y1() + y2()) / 2 - delta());
-    const controlX = calc(() => (x2() - x1()) / 4);
-    const controlY = calc(() => (y2() - y1()) / 4 + delta());
+    const mx = calc(() => (x1.get() + x2.get()) / 2);
+    const my = calc(() => (y1.get() + y2.get()) / 2 - delta.get());
+    const controlX = calc(() => (x2.get() - x1.get()) / 4);
+    const controlY = calc(() => (y2.get() - y1.get()) / 4 + delta.get());
     return (
         <path
             class={calc(() =>
                 classNames({
                     dge_edge: true,
-                    'dge_edge--hidden': !visible(),
+                    'dge_edge--hidden': !visible.get(),
                     ...extra,
                 })
             )}
             d={calc(
                 () => `
-M ${x1()} ${y1()}
-C ${x1()} ${y1() - controlY()} ${mx() - controlX()} ${my()} ${mx()} ${my()}
-C ${mx() + controlX()} ${my()} ${x2()} ${y2() - controlY()} ${x2()} ${y2()}
+M ${x1.get()} ${y1.get()}
+C ${x1.get()} ${y1.get() - controlY.get()} ${
+                    mx.get() - controlX.get()
+                } ${my.get()} ${mx.get()} ${my.get()}
+C ${mx.get() + controlX.get()} ${my.get()} ${x2.get()} ${
+                    y2.get() - controlY.get()
+                } ${x2.get()} ${y2.get()}
 `
             )}
         />

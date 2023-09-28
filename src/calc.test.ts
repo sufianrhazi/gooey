@@ -18,8 +18,8 @@ suite('calc', () => {
             return 1 + 1;
         });
         retain(calculation);
-        const a = calculation();
-        const b = calculation();
+        const a = calculation.get();
+        const b = calculation.get();
         assert.is(2, a);
         assert.is(2, b);
         assert.deepEqual(['call'], calls);
@@ -38,13 +38,13 @@ suite('calc', () => {
             return dependency.value;
         }, 'calculation');
         retain(calculation);
-        const a = calculation();
+        const a = calculation.get();
         dependency.value = 2;
-        const b = calculation();
+        const b = calculation.get();
         assert.deepEqual(['call'], calls);
         flush();
         assert.deepEqual(['call', 'call'], calls);
-        const c = calculation();
+        const c = calculation.get();
         assert.deepEqual(['call', 'call'], calls);
         assert.is(1, a);
         assert.is(1, b);
@@ -147,13 +147,13 @@ suite('calc', () => {
             return dependency.length;
         });
         retain(calculation);
-        const a = calculation();
+        const a = calculation.get();
         dependency.push('item 2');
-        const b = calculation();
+        const b = calculation.get();
         assert.deepEqual(['call'], calls);
         flush();
         assert.deepEqual(['call', 'call'], calls);
-        const c = calculation();
+        const c = calculation.get();
         assert.deepEqual(['call', 'call'], calls);
         assert.is(1, a);
         assert.is(1, b);
@@ -181,19 +181,19 @@ suite('calc', () => {
         }, 'root');
         const left = calc(() => {
             calls.push('left');
-            return root() + 1;
+            return root.get() + 1;
         }, 'left');
         const right = calc(() => {
             calls.push('right');
-            return root() + 2;
+            return root.get() + 2;
         }, 'right');
         const bottom = calc(() => {
             calls.push('bottom');
-            return left() + right();
+            return left.get() + right.get();
         }, 'bottom');
         retain(bottom);
 
-        const result = bottom();
+        const result = bottom.get();
         assert.is(5, result);
 
         assert.deepEqual(['bottom', 'left', 'root', 'right'], calls);
@@ -202,7 +202,7 @@ suite('calc', () => {
         calls = [];
         flush();
 
-        const result2 = bottom();
+        const result2 = bottom.get();
         assert.is(7, result2);
 
         assert.is(0, calls.indexOf('root'));
@@ -239,7 +239,7 @@ suite('calc', () => {
             }
         }, 'calculation');
         retain(calculation);
-        calculation();
+        calculation.get();
         flush();
         assert.deepEqual(['call a'], calls);
 
@@ -277,8 +277,8 @@ suite('calc', () => {
             calls.push('call');
             return 1 + 1;
         });
-        const a = calculation();
-        const b = calculation();
+        const a = calculation.get();
+        const b = calculation.get();
         assert.is(2, a);
         assert.is(2, b);
         assert.deepEqual(['call', 'call'], calls);
@@ -341,19 +341,19 @@ suite('cycles', () => {
     test('calculations that are cycles throw an error', () => {
         const calculations: Record<string, Calculation<string>> = {};
         calculations.a = calc(() => {
-            return calculations.c() + 'a';
+            return calculations.c.get() + 'a';
         }, 'a');
         calculations.b = calc(() => {
-            return calculations.a() + 'b';
+            return calculations.a.get() + 'b';
         }, 'b');
         calculations.c = calc(() => {
-            return calculations.b() + 'c';
+            return calculations.b.get() + 'c';
         }, 'c');
         retain(calculations.a);
         retain(calculations.b);
         retain(calculations.c);
 
-        assert.throwsMatching(/cycle reached/i, () => calculations.a());
+        assert.throwsMatching(/cycle reached/i, () => calculations.a.get());
     });
 
     test('calculations that become cycles throw errors when called', () => {
@@ -363,31 +363,31 @@ suite('cycles', () => {
         });
         calculations.a = calc(() => {
             if (data.isCycle) {
-                return calculations.c() + 'x';
+                return calculations.c.get() + 'x';
             } else {
                 return 'a';
             }
         }, 'a');
         calculations.b = calc(() => {
-            return calculations.a() + 'b';
+            return calculations.a.get() + 'b';
         }, 'b');
         calculations.c = calc(() => {
-            return calculations.b() + 'c';
+            return calculations.b.get() + 'c';
         }, 'c');
         retain(calculations.a);
         retain(calculations.b);
         retain(calculations.c);
 
-        assert.is('a', calculations.a());
-        assert.is('ab', calculations.b());
-        assert.is('abc', calculations.c());
+        assert.is('a', calculations.a.get());
+        assert.is('ab', calculations.b.get());
+        assert.is('abc', calculations.c.get());
 
         data.isCycle = true;
         flush();
 
-        assert.throwsMatching(/cycle reached/i, () => calculations.a());
-        assert.throwsMatching(/cycle reached/i, () => calculations.b());
-        assert.throwsMatching(/cycle reached/i, () => calculations.c());
+        assert.throwsMatching(/cycle reached/i, () => calculations.a.get());
+        assert.throwsMatching(/cycle reached/i, () => calculations.b.get());
+        assert.throwsMatching(/cycle reached/i, () => calculations.c.get());
     });
 
     test('dirtying cycle-unaware calculations that are part of cycles does not throw an error if flushed', () => {
@@ -403,18 +403,18 @@ suite('cycles', () => {
         calculations.a = calc(() => {
             calls.push('a');
             if (data.isCycle) {
-                return data.value + calculations.c();
+                return data.value + calculations.c.get();
             } else {
                 return 'a';
             }
         }, 'a');
         calculations.b = calc(() => {
             calls.push('b');
-            return 'b' + calculations.a();
+            return 'b' + calculations.a.get();
         }, 'b');
         calculations.c = calc(() => {
             calls.push('c');
-            return 'c' + calculations.b();
+            return 'c' + calculations.b.get();
         }, 'c');
         retain(calculations.a);
         retain(calculations.b);
@@ -437,9 +437,9 @@ suite('cycles', () => {
         //    |
         //    c  value
 
-        assert.is('a', calculations.a());
-        assert.is('ba', calculations.b());
-        assert.is('cba', calculations.c());
+        assert.is('a', calculations.a.get());
+        assert.is('ba', calculations.b.get());
+        assert.is('cba', calculations.c.get());
 
         data.isCycle = true;
         flush();
@@ -483,7 +483,7 @@ suite('cycles', () => {
             calculations.a = calc(() => {
                 calls.push('a');
                 if (data.hasCycle > 0) {
-                    return 'a' + calculations.c() + 'a';
+                    return 'a' + calculations.c.get() + 'a';
                 } else {
                     return 'x';
                 }
@@ -492,19 +492,19 @@ suite('cycles', () => {
             });
             calculations.b = calc(() => {
                 calls.push('b');
-                return 'b' + calculations.a() + 'b';
+                return 'b' + calculations.a.get() + 'b';
             }, 'b').onError(() => {
                 return 'B';
             });
             calculations.c = calc(() => {
                 calls.push('c');
-                return 'c' + calculations.b() + 'c';
+                return 'c' + calculations.b.get() + 'c';
             }, 'c').onError(() => {
                 return 'C';
             });
             calculations.d = calc(() => {
                 calls.push('d');
-                const result = 'd' + calculations.c() + 'd';
+                const result = 'd' + calculations.c.get() + 'd';
                 return result;
             }, 'd').onError(() => {
                 return 'D';
@@ -521,36 +521,36 @@ suite('cycles', () => {
             const { calculations, data } = makeData();
             data.hasCycle = 1;
 
-            assert.is('A', calculations.a());
-            assert.is('B', calculations.b());
-            assert.is('C', calculations.c());
-            assert.is('dCd', calculations.d()); // because c caught its cycle, d is unaware and runs as expected
+            assert.is('A', calculations.a.get());
+            assert.is('B', calculations.b.get());
+            assert.is('C', calculations.c.get());
+            assert.is('dCd', calculations.d.get()); // because c caught its cycle, d is unaware and runs as expected
         });
 
         test('cycles can be caught when triggered via recalculation', () => {
             const { calculations, data } = makeData();
-            assert.is('dcbxbcd', calculations.d());
+            assert.is('dcbxbcd', calculations.d.get());
 
             data.hasCycle = 1;
             flush();
 
-            assert.is('A', calculations.a());
-            assert.is('B', calculations.b());
-            assert.is('C', calculations.c());
-            assert.is('dCd', calculations.d()); // because c caught its cycle, d is unaware and runs as expected
+            assert.is('A', calculations.a.get());
+            assert.is('B', calculations.b.get());
+            assert.is('C', calculations.c.get());
+            assert.is('dCd', calculations.d.get()); // because c caught its cycle, d is unaware and runs as expected
 
             data.hasCycle = 0;
             flush();
 
-            assert.is('x', calculations.a());
-            assert.is('bxb', calculations.b());
-            assert.is('cbxbc', calculations.c());
-            assert.is('dcbxbcd', calculations.d());
+            assert.is('x', calculations.a.get());
+            assert.is('bxb', calculations.b.get());
+            assert.is('cbxbc', calculations.c.get());
+            assert.is('dcbxbcd', calculations.d.get());
         });
 
         test('cycles do not get re-processed if unrelated fields are modified', () => {
             const { calculations, data, calls } = makeData();
-            assert.is('dcbxbcd', calculations.d());
+            assert.is('dcbxbcd', calculations.d.get());
 
             assert.deepEqual(['d', 'c', 'b', 'a'], calls);
 
@@ -576,31 +576,31 @@ suite('cycles', () => {
 
             calculations.a = calc(() => {
                 if (data.hasCycle) {
-                    return 'a' + calculations.c() + 'a';
+                    return 'a' + calculations.c.get() + 'a';
                 } else {
                     return 'x';
                 }
             }, 'a');
             calculations.b = calc(() => {
-                return 'b' + calculations.a() + 'b';
+                return 'b' + calculations.a.get() + 'b';
             }, 'b');
             calculations.c = calc(() => {
-                return 'c' + calculations.b() + 'c';
+                return 'c' + calculations.b.get() + 'c';
             }, 'c');
             calculations.d = calc(() => {
-                const result = 'd' + calculations.c() + 'd';
+                const result = 'd' + calculations.c.get() + 'd';
                 return result;
             }, 'd');
             calculations.e = calc(() => {
-                const result = 'e' + calculations.d() + 'e';
+                const result = 'e' + calculations.d.get() + 'e';
                 return result;
             }, 'e').onError(() => 'E');
             calculations.f = calc(() => {
-                const result = 'f' + calculations.c() + 'f';
+                const result = 'f' + calculations.c.get() + 'f';
                 return result;
             }, 'f').onError(() => 'F');
             calculations.g = calc(() => {
-                const result = 'g' + calculations.f() + 'g';
+                const result = 'g' + calculations.f.get() + 'g';
                 return result;
             }, 'g').onError(() => 'G');
 
@@ -618,36 +618,36 @@ suite('cycles', () => {
             const { calculations, data } = makeData();
             data.hasCycle = true;
 
-            assert.throwsMatching(/cycle/i, () => calculations.a());
-            assert.throwsMatching(/cycle/i, () => calculations.b());
-            assert.throwsMatching(/cycle/i, () => calculations.c());
-            assert.throwsMatching(/error/i, () => calculations.d()); // D is not a part of the cycle
-            assert.is('E', calculations.e());
-            assert.is('F', calculations.f());
-            assert.is('gFg', calculations.g());
+            assert.throwsMatching(/cycle/i, () => calculations.a.get());
+            assert.throwsMatching(/cycle/i, () => calculations.b.get());
+            assert.throwsMatching(/cycle/i, () => calculations.c.get());
+            assert.throwsMatching(/error/i, () => calculations.d.get()); // D is not a part of the cycle
+            assert.is('E', calculations.e.get());
+            assert.is('F', calculations.f.get());
+            assert.is('gFg', calculations.g.get());
         });
 
         test('cycles can be caught when triggered via recalculation', () => {
             const { calculations, data } = makeData();
-            assert.is('edcbxbcde', calculations.e());
-            assert.is('gfcbxbcfg', calculations.g());
+            assert.is('edcbxbcde', calculations.e.get());
+            assert.is('gfcbxbcfg', calculations.g.get());
 
             data.hasCycle = true;
             flush();
 
-            assert.throwsMatching(/cycle/i, () => calculations.a());
-            assert.throwsMatching(/cycle/i, () => calculations.b());
-            assert.throwsMatching(/cycle/i, () => calculations.c());
-            assert.throwsMatching(/error/i, () => calculations.d());
-            assert.is('E', calculations.e());
-            assert.is('F', calculations.f());
-            assert.is('gFg', calculations.g());
+            assert.throwsMatching(/cycle/i, () => calculations.a.get());
+            assert.throwsMatching(/cycle/i, () => calculations.b.get());
+            assert.throwsMatching(/cycle/i, () => calculations.c.get());
+            assert.throwsMatching(/error/i, () => calculations.d.get());
+            assert.is('E', calculations.e.get());
+            assert.is('F', calculations.f.get());
+            assert.is('gFg', calculations.g.get());
 
             data.hasCycle = false;
             flush(); // Properly recalculates things
 
-            assert.is('edcbxbcde', calculations.e());
-            assert.is('gfcbxbcfg', calculations.g());
+            assert.is('edcbxbcde', calculations.e.get());
+            assert.is('gfcbxbcfg', calculations.g.get());
         });
     });
 
@@ -678,22 +678,22 @@ suite('cycles', () => {
             calculations.a = calc(() => {
                 calls.push('a');
                 if (data.hasCycle > 0) {
-                    return 'a' + calculations.c() + 'a';
+                    return 'a' + calculations.c.get() + 'a';
                 } else {
                     return 'x';
                 }
             }, 'a');
             calculations.b = calc(() => {
                 calls.push('b');
-                return 'b' + calculations.a() + 'b';
+                return 'b' + calculations.a.get() + 'b';
             }, 'b');
             calculations.c = calc(() => {
                 calls.push('c');
-                return 'c' + calculations.b() + 'c';
+                return 'c' + calculations.b.get() + 'c';
             }, 'c');
             calculations.d = calc(() => {
                 calls.push('d');
-                const result = 'd' + calculations.c() + 'd';
+                const result = 'd' + calculations.c.get() + 'd';
                 return result;
             }, 'd');
 
@@ -705,7 +705,9 @@ suite('cycles', () => {
             const { calculations, data, calls } = makeData();
             data.hasCycle = 1;
 
-            assert.throwsMatching(/Cycle reached.*/i, () => calculations.d());
+            assert.throwsMatching(/Cycle reached.*/i, () =>
+                calculations.d.get()
+            );
             assert.deepEqual(['d', 'c', 'b', 'a'], calls);
 
             calls.splice(0, calls.length);
@@ -719,7 +721,7 @@ suite('cycles', () => {
 
         test('cycle nodes called only once when recalculating', () => {
             const { calculations, data, calls } = makeData();
-            calculations.d();
+            calculations.d.get();
 
             assert.deepEqual(['d', 'c', 'b', 'a'], calls);
 
@@ -747,26 +749,26 @@ suite('cycles', () => {
 
         calculations.a = calc(() => {
             if (!data.hasCycle) return 'a no cycle';
-            return 'a cycle:' + calculations.b();
+            return 'a cycle:' + calculations.b.get();
         }, 'a').onError(() => {
             return 'A CAUGHT';
         });
         calculations.b = calc(() => {
             if (!data.hasCycle) return 'b no cycle';
-            return 'b cycle:' + calculations.a();
+            return 'b cycle:' + calculations.a.get();
         }, 'b').onError(() => {
             return 'B CAUGHT';
         });
 
         const catcher = calc(() => {
-            return [calculations.a(), calculations.b()];
+            return [calculations.a.get(), calculations.b.get()];
         }, 'catcher').onError(() => {
             return ['catcher caught'];
         });
 
         retain(catcher);
 
-        assert.deepEqual(['a no cycle', 'b no cycle'], catcher());
+        assert.deepEqual(['a no cycle', 'b no cycle'], catcher.get());
 
         data.hasCycle = true;
         flush();
@@ -782,7 +784,7 @@ suite('cycles', () => {
         // handler _after_ confirming that yes, the cycle remains after
         // recalculating the node.
 
-        assert.deepEqual(['A CAUGHT', 'B CAUGHT'], catcher());
+        assert.deepEqual(['A CAUGHT', 'B CAUGHT'], catcher.get());
     });
 
     test('cycle can catch and resolve itself (depend on one)', () => {
@@ -792,31 +794,31 @@ suite('cycles', () => {
 
         calculations.a = calc(() => {
             if (!data.hasCycle) return 'a no cycle';
-            return 'a cycle' + calculations.b();
+            return 'a cycle' + calculations.b.get();
         }, 'a').onError(() => {
             return 'A CAUGHT';
         });
         calculations.b = calc(() => {
             if (!data.hasCycle) return 'b no cycle';
-            return 'b cycle' + calculations.a();
+            return 'b cycle' + calculations.a.get();
         }, 'b').onError(() => {
             return 'B CAUGHT';
         });
 
         const catcher = calc(() => {
-            return calculations.a();
+            return calculations.a.get();
         }, 'catcher').onError(() => {
             return 'catcher caught';
         });
 
         retain(catcher);
 
-        assert.deepEqual('a no cycle', catcher());
+        assert.deepEqual('a no cycle', catcher.get());
 
         data.hasCycle = true;
         flush();
 
-        assert.deepEqual('A CAUGHT', catcher());
+        assert.deepEqual('A CAUGHT', catcher.get());
     });
 
     test('cycle does not catch and resolve itself if all cycles do not catch', () => {
@@ -826,17 +828,17 @@ suite('cycles', () => {
 
         calculations.a = calc(() => {
             if (!data.hasCycle) return 'a no cycle';
-            return 'a cycle' + calculations.b();
+            return 'a cycle' + calculations.b.get();
         }, 'a');
         calculations.b = calc(() => {
             if (!data.hasCycle) return 'b no cycle';
-            return 'b cycle' + calculations.a();
+            return 'b cycle' + calculations.a.get();
         }, 'b').onError(() => {
             return 'B CAUGHT';
         });
 
         const catcher = calc(() => {
-            return calculations.a();
+            return calculations.a.get();
         }, 'catcher').onError(() => {
             return 'catcher caught';
         });
@@ -861,12 +863,12 @@ suite('cycles', () => {
 
         retain(catcher);
 
-        assert.deepEqual('a no cycle', catcher());
+        assert.deepEqual('a no cycle', catcher.get());
 
         data.hasCycle = true;
         flush();
 
-        assert.deepEqual('catcher caught', catcher());
+        assert.deepEqual('catcher caught', catcher.get());
     });
 
     test('cycle expanded by recalculation is detected correctly on all nodes', () => {
@@ -890,37 +892,39 @@ suite('cycles', () => {
         const calculations: Record<string, Calculation<any>> = {};
         const data = model({ e: 0 }, 'data');
         calculations.a = calc(() => {
-            return calculations.b() + ' and A';
+            return calculations.b.get() + ' and A';
         }, 'a');
         calculations.b = calc(() => {
-            return calculations.c() + ' and ' + calculations.a() + ' and B';
+            return (
+                calculations.c.get() + ' and ' + calculations.a.get() + ' and B'
+            );
         }, 'b');
         calculations.c = calc(() => {
             if (data.e > 0) {
-                return calculations.d() + ' and C';
+                return calculations.d.get() + ' and C';
             }
             return 'C';
         }, 'c');
         calculations.d = calc(() => {
-            return calculations.a() + ' and D';
+            return calculations.a.get() + ' and D';
         }, 'd');
         retain(calculations.a);
         retain(calculations.b);
         retain(calculations.c);
         retain(calculations.d);
 
-        assert.throwsMatching(/cycle/i, () => calculations.a());
-        assert.throwsMatching(/cycle/i, () => calculations.b());
-        assert.is('C', calculations.c());
-        assert.throwsMatching(/error/, () => calculations.d());
+        assert.throwsMatching(/cycle/i, () => calculations.a.get());
+        assert.throwsMatching(/cycle/i, () => calculations.b.get());
+        assert.is('C', calculations.c.get());
+        assert.throwsMatching(/error/, () => calculations.d.get());
 
         data.e = 1;
         flush();
 
-        assert.throwsMatching(/cycle/i, () => calculations.a());
-        assert.throwsMatching(/cycle/i, () => calculations.b());
-        assert.throwsMatching(/cycle/i, () => calculations.c());
-        assert.throwsMatching(/cycle/i, () => calculations.d());
+        assert.throwsMatching(/cycle/i, () => calculations.a.get());
+        assert.throwsMatching(/cycle/i, () => calculations.b.get());
+        assert.throwsMatching(/cycle/i, () => calculations.c.get());
+        assert.throwsMatching(/cycle/i, () => calculations.d.get());
     });
 
     test('cycle created by recalculation is detected correctly on all nodes', () => {
@@ -944,37 +948,37 @@ suite('cycles', () => {
         const calculations: Record<string, Calculation<any>> = {};
         const data = model({ e: 0 }, 'data');
         calculations.a = calc(() => {
-            return calculations.b() + ' and A';
+            return calculations.b.get() + ' and A';
         }, 'a');
         calculations.b = calc(() => {
-            return calculations.c() + ' and B';
+            return calculations.c.get() + ' and B';
         }, 'b');
         calculations.c = calc(() => {
             if (data.e > 0) {
-                return calculations.d() + ' and C';
+                return calculations.d.get() + ' and C';
             }
             return 'C';
         }, 'c');
         calculations.d = calc(() => {
-            return calculations.a() + ' and D';
+            return calculations.a.get() + ' and D';
         }, 'd');
         retain(calculations.a);
         retain(calculations.b);
         retain(calculations.c);
         retain(calculations.d);
 
-        assert.is('C and B and A', calculations.a());
-        assert.is('C and B', calculations.b());
-        assert.is('C', calculations.c());
-        assert.is('C and B and A and D', calculations.d());
+        assert.is('C and B and A', calculations.a.get());
+        assert.is('C and B', calculations.b.get());
+        assert.is('C', calculations.c.get());
+        assert.is('C and B and A and D', calculations.d.get());
 
         data.e = 1;
         flush();
 
-        assert.throwsMatching(/cycle/i, () => calculations.a());
-        assert.throwsMatching(/cycle/i, () => calculations.b());
-        assert.throwsMatching(/cycle/i, () => calculations.c());
-        assert.throwsMatching(/cycle/i, () => calculations.d());
+        assert.throwsMatching(/cycle/i, () => calculations.a.get());
+        assert.throwsMatching(/cycle/i, () => calculations.b.get());
+        assert.throwsMatching(/cycle/i, () => calculations.c.get());
+        assert.throwsMatching(/cycle/i, () => calculations.d.get());
     });
 });
 
@@ -1013,25 +1017,25 @@ suite('near cycles', () => {
         calculations.a = calc(() => {
             switch (data.e) {
                 case 0:
-                    return calculations.c() + ' and A';
+                    return calculations.c.get() + ' and A';
                 case 1:
-                    return calculations.b() + ' and A';
+                    return calculations.b.get() + ' and A';
                 case 2:
-                    return calculations.c() + ' and A';
+                    return calculations.c.get() + ' and A';
                 case 3:
-                    return calculations.b() + ' and A';
+                    return calculations.b.get() + ' and A';
             }
         }, 'a');
         calculations.b = calc(() => {
             switch (data.e) {
                 case 0:
-                    return calculations.a() + ' and B';
+                    return calculations.a.get() + ' and B';
                 case 1:
                     return 'B';
                 case 2:
                     return 'B';
                 case 3:
-                    return calculations.d() + ' and B';
+                    return calculations.d.get() + ' and B';
             }
         }, 'b');
         calculations.c = calc(() => {
@@ -1039,9 +1043,9 @@ suite('near cycles', () => {
                 case 0:
                     return 'C';
                 case 1:
-                    return calculations.a() + ' and C';
+                    return calculations.a.get() + ' and C';
                 case 2:
-                    return calculations.d() + ' and C';
+                    return calculations.d.get() + ' and C';
                 case 3:
                     return 'C';
             }
@@ -1049,13 +1053,13 @@ suite('near cycles', () => {
         calculations.d = calc(() => {
             switch (data.e) {
                 case 0:
-                    return calculations.b() + ' and D';
+                    return calculations.b.get() + ' and D';
                 case 1:
-                    return calculations.c() + ' and D';
+                    return calculations.c.get() + ' and D';
                 case 2:
-                    return calculations.b() + ' and D';
+                    return calculations.b.get() + ' and D';
                 case 3:
-                    return calculations.c() + ' and D';
+                    return calculations.c.get() + ' and D';
             }
         }, 'd');
         retain(calculations.a);
@@ -1066,31 +1070,31 @@ suite('near cycles', () => {
     });
 
     function assertCase0() {
-        assert.is('C and A', calculations.a());
-        assert.is('C and A and B', calculations.b());
-        assert.is('C', calculations.c());
-        assert.is('C and A and B and D', calculations.d());
+        assert.is('C and A', calculations.a.get());
+        assert.is('C and A and B', calculations.b.get());
+        assert.is('C', calculations.c.get());
+        assert.is('C and A and B and D', calculations.d.get());
     }
 
     function assertCase1() {
-        assert.is('B and A', calculations.a());
-        assert.is('B', calculations.b());
-        assert.is('B and A and C', calculations.c());
-        assert.is('B and A and C and D', calculations.d());
+        assert.is('B and A', calculations.a.get());
+        assert.is('B', calculations.b.get());
+        assert.is('B and A and C', calculations.c.get());
+        assert.is('B and A and C and D', calculations.d.get());
     }
 
     function assertCase2() {
-        assert.is('B and D and C and A', calculations.a());
-        assert.is('B', calculations.b());
-        assert.is('B and D and C', calculations.c());
-        assert.is('B and D', calculations.d());
+        assert.is('B and D and C and A', calculations.a.get());
+        assert.is('B', calculations.b.get());
+        assert.is('B and D and C', calculations.c.get());
+        assert.is('B and D', calculations.d.get());
     }
 
     function assertCase3() {
-        assert.is('C and D and B and A', calculations.a());
-        assert.is('C and D and B', calculations.b());
-        assert.is('C', calculations.c());
-        assert.is('C and D', calculations.d());
+        assert.is('C and D and B and A', calculations.a.get());
+        assert.is('C and D and B', calculations.b.get());
+        assert.is('C', calculations.c.get());
+        assert.is('C and D', calculations.d.get());
     }
 
     test('initialization works for case E=0', () => {
@@ -1168,10 +1172,10 @@ suite('errors', () => {
         });
         const items: (number | string)[] = [];
         const root = calc(() => {
-            items.push(divide());
+            items.push(divide.get());
         }, 'root');
         retain(root);
-        root();
+        root.get();
         return { items, data };
     }
     test('errors thrown as a result of recalculation can be caught', () => {
@@ -1202,5 +1206,24 @@ suite('errors', () => {
         data.denom = 1;
         flush();
         assert.deepEqual([2, 'caught error', 4], items);
+    });
+});
+
+suite('type tests', () => {
+    test('return type of calculations is correctly inferred', () => {
+        const x = calc(() => {
+            return 'hello';
+        });
+        const v = x.get();
+        type VIsString = typeof v extends string
+            ? string extends typeof v
+                ? 'Yes'
+                : 'No'
+            : 'No';
+        const isXType = (val: VIsString) => null;
+
+        isXType('Yes');
+        // @ts-expect-error
+        isXType('No');
     });
 });

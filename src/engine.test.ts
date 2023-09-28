@@ -16,7 +16,7 @@ suite('flushing behavior', () => {
             log.push(val.get());
         });
         retain(c);
-        c();
+        c.get();
         val.set('hello');
         flush();
         assert.deepEqual(['hi', 'hello'], log);
@@ -29,7 +29,7 @@ suite('flushing behavior', () => {
             log.push(val.get());
         });
         retain(c);
-        c();
+        c.get();
         val.set('hello');
         flush();
         assert.deepEqual(['hi', 'hello'], log);
@@ -78,8 +78,8 @@ suite('flushing behavior', () => {
             }
         });
 
-        mainCalc();
-        sideCalc();
+        mainCalc.get();
+        sideCalc.get();
         val.set('go');
         flush();
         assert.deepEqual(['other', 'other 2'], log);

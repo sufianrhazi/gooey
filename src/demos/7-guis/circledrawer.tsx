@@ -55,7 +55,7 @@ class UndoStack<TAction, TResult> {
     }
 
     undo() {
-        if (!this.canUndo()) {
+        if (!this.canUndo.get()) {
             return;
         }
         this.state.index--;
@@ -64,7 +64,7 @@ class UndoStack<TAction, TResult> {
     }
 
     redo() {
-        if (!this.canRedo()) {
+        if (!this.canRedo.get()) {
             return;
         }
         const action = this.actions[this.state.index];
@@ -254,13 +254,13 @@ export class CircleDrawer extends ClassComponent {
                 <div class="row stretch main-center">
                     <button
                         on:click={this.onUndoClick}
-                        disabled={calc(() => !this.undoStack.canUndo())}
+                        disabled={calc(() => !this.undoStack.canUndo.get())}
                     >
                         Undo
                     </button>
                     <button
                         on:click={this.onRedoClick}
-                        disabled={calc(() => !this.undoStack.canRedo())}
+                        disabled={calc(() => !this.undoStack.canRedo.get())}
                     >
                         Redo
                     </button>
