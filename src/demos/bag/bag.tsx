@@ -1,4 +1,4 @@
-import Gooey, { mount, map, model, calc, setLogLevel } from '../../index';
+import Gooey, { mount, dict, model, calc, setLogLevel } from '../../index';
 import { makeGraphvizDebuggerRef } from '../debug';
 
 const graphvizRef = makeGraphvizDebuggerRef();
@@ -6,7 +6,7 @@ const graphvizRef = makeGraphvizDebuggerRef();
 setLogLevel('debug');
 
 const App = () => {
-    const bag = map<string, string>(
+    const bag = dict<string, string>(
         [
             ['some', 'starter'],
             ['text', 'here'],
@@ -32,7 +32,7 @@ const App = () => {
 
     return (
         <>
-            <h1>map keys demo</h1>
+            <h1>dict keys demo</h1>
             <p>Key items:</p>
             <ul>
                 {calc(

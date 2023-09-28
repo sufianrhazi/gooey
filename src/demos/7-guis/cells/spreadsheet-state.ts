@@ -1,10 +1,4 @@
-import {
-    TrackedMap,
-    Calculation,
-    map,
-    calc,
-    CalculationErrorType,
-} from '../../..';
+import { Dict, Calculation, dict, calc, CycleError } from '../../..';
 import { Expression, FunctionExpression, parseFormula } from './parser';
 import { Position, positionToString } from './utils';
 
@@ -17,12 +11,12 @@ export type EvalResult =
     | { ok: false; isCycle: false; error: Error };
 
 export class SpreadsheetState {
-    rawData: TrackedMap<string, string>;
-    evaluatedData: TrackedMap<string, Calculation<EvalResult>>;
+    rawData: Dict<string, string>;
+    evaluatedData: Dict<string, Calculation<EvalResult>>;
 
     constructor() {
-        this.rawData = map([], 'rawData');
-        this.evaluatedData = map([], 'evaluatedData');
+        this.rawData = dict([], 'rawData');
+        this.evaluatedData = dict([], 'evaluatedData');
     }
 
     set(position: Position, value: string) {
@@ -43,18 +37,16 @@ export class SpreadsheetState {
                         ok: true,
                         value: this.evalExpression(parseFormula(contents)),
                     };
-                }, `eval-${position.col}-${position.row}`).onError(
-                    (errorType, error) => {
-                        if (errorType === CalculationErrorType.CYCLE) {
-                            return { ok: false, isCycle: true };
-                        }
-                        return {
-                            ok: false,
-                            isCycle: false,
-                            error: error ?? new Error('Unknown error'),
-                        };
+                }, `eval-${position.col}-${position.row}`).onError((error) => {
+                    if (error instanceof CycleError) {
+                        return { ok: false, isCycle: true };
                     }
-                )
+                    return {
+                        ok: false,
+                        isCycle: false,
+                        error: error ?? new Error('Unknown error'),
+                    };
+                })
             );
         }
     }

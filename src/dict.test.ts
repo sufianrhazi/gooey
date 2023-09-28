@@ -1,5 +1,5 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
-import { map, MapEventType } from './map';
+import { dict, DictEventType } from './dict';
 import { calc } from './calc';
 import { retain, release, reset, flush, subscribe } from './engine';
 
@@ -8,64 +8,64 @@ beforeEach(() => {
     subscribe();
 });
 
-suite('map', () => {
+suite('dict', () => {
     test('get set delete', () => {
         const log: any[] = [];
-        const dict = map<string, any>();
+        const bag = dict<string, any>();
         const c = calc(() => {
-            log.push(dict.get('key'));
+            log.push(bag.get('key'));
         });
         retain(c);
         c.get();
         flush();
 
         assert.deepEqual([undefined], log);
-        dict.set('key', 'one');
+        bag.set('key', 'one');
         flush();
         assert.deepEqual([undefined, 'one'], log);
-        dict.set('key', 'two');
+        bag.set('key', 'two');
         flush();
         assert.deepEqual([undefined, 'one', 'two'], log);
-        dict.delete('key');
+        bag.delete('key');
         flush();
         assert.deepEqual([undefined, 'one', 'two', undefined], log);
     });
 
     test('can start with values', () => {
         const log: any[] = [];
-        const dict = map<string, any>([['key', 'init']]);
+        const bag = dict<string, any>([['key', 'init']]);
         const c = calc(() => {
-            log.push(dict.get('key'));
+            log.push(bag.get('key'));
         });
         retain(c);
         c.get();
         flush();
 
         assert.deepEqual(['init'], log);
-        dict.set('key', 'one');
+        bag.set('key', 'one');
         flush();
         assert.deepEqual(['init', 'one'], log);
     });
 
     test('can be cleared', () => {
         const log: any[] = [];
-        const dict = map<string, any>([['key', 'init']]);
+        const bag = dict<string, any>([['key', 'init']]);
         const c = calc(() => {
-            log.push(dict.get('key'));
+            log.push(bag.get('key'));
         });
         retain(c);
         c.get();
         flush();
 
         assert.deepEqual(['init'], log);
-        dict.clear();
+        bag.clear();
         flush();
         assert.deepEqual(['init', undefined], log);
     });
 
     test('can be iterated over', () => {
         const log: any[] = [];
-        const numbers = map<number, number>([[1, 1]]);
+        const numbers = dict<number, number>([[1, 1]]);
         const c = calc(() => {
             let keySum = 0;
             let valSum = 0;
@@ -90,7 +90,7 @@ suite('map', () => {
 
     test('can subscribe to events', () => {
         const log: any[] = [];
-        const bag = map([
+        const bag = dict([
             ['foo', 'bar'],
             ['baz', 'bum'],
         ]);
@@ -105,17 +105,17 @@ suite('map', () => {
         assert.deepEqual(
             [
                 {
-                    type: MapEventType.SET,
+                    type: DictEventType.SET,
                     prop: 'foo',
                     value: 'BAR',
                 },
                 {
-                    type: MapEventType.ADD,
+                    type: DictEventType.ADD,
                     prop: 'bum',
                     value: 'BUT',
                 },
                 {
-                    type: MapEventType.DEL,
+                    type: DictEventType.DEL,
                     prop: 'baz',
                 },
             ],
@@ -128,17 +128,17 @@ suite('map', () => {
         assert.deepEqual(
             [
                 {
-                    type: MapEventType.SET,
+                    type: DictEventType.SET,
                     prop: 'foo',
                     value: 'BAR',
                 },
                 {
-                    type: MapEventType.ADD,
+                    type: DictEventType.ADD,
                     prop: 'bum',
                     value: 'BUT',
                 },
                 {
-                    type: MapEventType.DEL,
+                    type: DictEventType.DEL,
                     prop: 'baz',
                 },
             ],
@@ -147,7 +147,7 @@ suite('map', () => {
     });
 
     test('.keys produces view of keys', () => {
-        const simple = map<string, any>([], 'model');
+        const simple = dict<string, any>([], 'model');
         const keys = simple.keys();
         retain(keys);
         assert.arrayEqualsUnsorted([], keys);
@@ -167,7 +167,7 @@ suite('map', () => {
     });
 
     test('.keys mapped view handles delete', () => {
-        const simple = map<string, any>([], 'model');
+        const simple = dict<string, any>([], 'model');
         const keys = simple.keys();
         const caps = keys
             .filterView((key) => key.startsWith('b'))
@@ -196,7 +196,7 @@ suite('map', () => {
     });
 
     test('.keys waits for flush', () => {
-        const simple = map<string, any>();
+        const simple = dict<string, any>();
         const keys = simple.keys();
         retain(keys);
         assert.arrayEqualsUnsorted([], keys);
@@ -214,7 +214,7 @@ suite('map', () => {
     });
 
     test('.keys does nothing after release', () => {
-        const simple = map<string, any>();
+        const simple = dict<string, any>();
         const keys = simple.keys();
         retain(keys);
         assert.arrayEqualsUnsorted([], keys);
@@ -234,7 +234,7 @@ suite('map', () => {
     });
 
     test('.keys obeys subscription logic/notification', () => {
-        const simple = map<string, any>();
+        const simple = dict<string, any>();
         simple.set('before', 'before');
         const keys = simple.keys();
         retain(keys);

@@ -1,8 +1,8 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { model } from './model';
-import { map } from './map';
+import { dict } from './dict';
 import { collection } from './collection';
-import { Calculation, CalculationErrorType, calc } from './calc';
+import { Calculation, calc } from './calc';
 import { flush, retain, release, reset, subscribe } from './engine';
 
 beforeEach(() => {
@@ -52,7 +52,7 @@ suite('calc', () => {
         release(calculation);
     });
 
-    test('emits event when subscribed', () => {
+    test('emits event when subscribed via subscribeWithError', () => {
         const calls: string[] = [];
         const dependency = model(
             {
@@ -65,7 +65,7 @@ suite('calc', () => {
             return dependency.value;
         }, 'calculation');
         const events: any[] = [];
-        const unsubscribe = calculation.subscribe((err, val) => {
+        const unsubscribe = calculation.subscribeWithError((err, val) => {
             events.push({ err, val });
         });
 
@@ -98,7 +98,7 @@ suite('calc', () => {
         );
     });
 
-    test('emits error event when subscribed and no error handler', () => {
+    test('emits error event when subscribeWithError and no error handler', () => {
         const calls: string[] = [];
         const state = model({
             crash: false,
@@ -108,7 +108,7 @@ suite('calc', () => {
             if (state.crash) throw new Error('ruh roh');
         });
         const events: any[] = [];
-        calculation.subscribe((err, val) => {
+        calculation.subscribeWithError((err, val) => {
             events.push({ err, val });
         });
 
@@ -117,8 +117,8 @@ suite('calc', () => {
         flush();
         assert.deepEqual(['call', 'call'], calls);
         assert.is(events.length, 1);
-        assert.is(events[0].err, CalculationErrorType.EXCEPTION);
-        assert.is(events[0].val.message, 'ruh roh');
+        assert.is(events[0].err.message, 'ruh roh');
+        assert.is(events[0].val, undefined);
     });
 
     test('ignores exception on subscription and no handler', () => {
@@ -131,7 +131,7 @@ suite('calc', () => {
             if (state.crash) throw new Error('ruh roh');
         });
         const events: any[] = [];
-        calculation.subscribe((err, val) => {
+        calculation.subscribeWithError((err, val) => {
             events.push({ err, val });
         });
 
@@ -288,7 +288,7 @@ suite('calc', () => {
         const numbers = collection([1, 2, 3]);
         const sum = calc(() => numbers.reduce((acc, val) => acc + val, 0));
         const values: any[] = [];
-        sum.subscribe((err, val) => values.push(val));
+        sum.subscribeWithError((err, val) => values.push(val));
         assert.deepEqual([], values);
         numbers.push(4);
         flush();
@@ -303,7 +303,7 @@ suite('calc', () => {
         const doubled = numbers.mapView((num) => num * 2);
         const sum = calc(() => doubled.reduce((acc, val) => acc + val, 0));
         const values: any[] = [];
-        sum.subscribe((err, val) => values.push(val));
+        sum.subscribeWithError((err, val) => values.push(val));
         assert.deepEqual([], values);
         numbers.push(4);
         flush();
@@ -313,12 +313,12 @@ suite('calc', () => {
         assert.deepEqual([(1 + 2 + 3 + 4) * 2, (5 + 2 + 3 + 4) * 2], values);
     });
 
-    test('retains map keys appropriately', () => {
-        const bag = map();
+    test('retains dict keys appropriately', () => {
+        const bag = dict();
         const keys = bag.keys();
         const size = calc(() => keys.length, 'calc length');
         const values: any[] = [];
-        size.subscribe((err, val) => values.push(val));
+        size.subscribeWithError((err, val) => values.push(val));
         assert.deepEqual([], values);
         bag.set('foo', 'bar');
         flush();

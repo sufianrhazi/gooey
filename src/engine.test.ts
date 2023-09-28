@@ -1,6 +1,6 @@
 import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
 import { field } from './field';
-import { calc, CalculationErrorType } from './calc';
+import { calc } from './calc';
 import { flush, retain, reset, subscribe } from './engine';
 
 beforeEach(() => {
@@ -57,21 +57,19 @@ suite('flushing behavior', () => {
         retain(sideCalc);
         const mainRecalcs: any[] = [];
         const sideRecalcs: any[] = [];
-        mainCalc.subscribe((errorType, val) => {
-            if (errorType) {
+        mainCalc.subscribeWithError((error, val) => {
+            if (error) {
                 mainRecalcs.push({
-                    errorType: CalculationErrorType[errorType],
-                    message: (val as any)?.message,
+                    error,
                 });
             } else {
                 mainRecalcs.push({ val });
             }
         });
-        sideCalc.subscribe((errorType, val) => {
-            if (errorType) {
+        sideCalc.subscribeWithError((error, val) => {
+            if (error) {
                 sideRecalcs.push({
-                    errorType: CalculationErrorType[errorType],
-                    val,
+                    error,
                 });
             } else {
                 sideRecalcs.push({ val });

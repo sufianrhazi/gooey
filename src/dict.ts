@@ -8,29 +8,26 @@ import { ArrayEvent, ArrayEventType, addArrayEvent } from './arrayevent';
 import { View, ViewImpl, ViewHandler, makeViewPrototype } from './collection';
 import { Sentinel } from './sentinel';
 
-export enum MapEventType {
+export enum DictEventType {
     ADD = 'add',
     SET = 'set',
     DEL = 'del',
 }
-export type MapEvent<K, V> =
-    | { type: MapEventType.ADD; prop: K; value: V }
-    | { type: MapEventType.SET; prop: K; value: V }
-    | { type: MapEventType.DEL; prop: K; value?: V };
+export type DictEvent<K, V> =
+    | { type: DictEventType.ADD; prop: K; value: V }
+    | { type: DictEventType.SET; prop: K; value: V }
+    | { type: DictEventType.DEL; prop: K; value?: V };
 
 export type Model<T extends {}> = T;
 
-export function addMapEvent<K, V>(
-    events: MapEvent<K, V>[],
-    event: MapEvent<K, V>
-) {
+function addDictEvent<K, V>(events: DictEvent<K, V>[], event: DictEvent<K, V>) {
     // TODO: make smarter
     events.push(event);
 }
 
-export class TrackedMap<K, V> implements Retainable {
+export class Dict<K, V> implements Retainable {
     private declare keysField: Field<number>;
-    private declare emitter: SubscriptionEmitter<MapEvent<K, V>>;
+    private declare emitter: SubscriptionEmitter<DictEvent<K, V>>;
     private declare fieldMap: FieldMap;
     private declare ownKeys: Set<K>;
     declare __refcount: number;
@@ -39,8 +36,8 @@ export class TrackedMap<K, V> implements Retainable {
     constructor(entries: [K, V][] = [], debugName?: string) {
         this.ownKeys = new Set();
         this.keysField = new Field<number>(entries.length);
-        this.emitter = new SubscriptionEmitter<MapEvent<K, V>>(
-            addMapEvent,
+        this.emitter = new SubscriptionEmitter<DictEvent<K, V>>(
+            addDictEvent,
             debugName ?? 'map'
         );
         this.fieldMap = new FieldMap(
@@ -62,7 +59,7 @@ export class TrackedMap<K, V> implements Retainable {
         this.fieldMap.clear();
         this.ownKeys.forEach((key) => {
             this.emitter.addEvent({
-                type: MapEventType.DEL,
+                type: DictEventType.DEL,
                 prop: key,
             });
         });
@@ -75,7 +72,7 @@ export class TrackedMap<K, V> implements Retainable {
         if (this.ownKeys.has(key)) {
             this.ownKeys.delete(key);
             this.emitter.addEvent({
-                type: MapEventType.DEL,
+                type: DictEventType.DEL,
                 prop: key,
             });
             this.keysField.set(this.ownKeys.size);
@@ -106,14 +103,14 @@ export class TrackedMap<K, V> implements Retainable {
         this.fieldMap.set(key, value);
         if (this.ownKeys.has(key)) {
             this.emitter.addEvent({
-                type: MapEventType.SET,
+                type: DictEventType.SET,
                 prop: key,
                 value,
             });
         } else {
             this.ownKeys.add(key);
             this.emitter.addEvent({
-                type: MapEventType.ADD,
+                type: DictEventType.ADD,
                 prop: key,
                 value,
             });
@@ -128,7 +125,7 @@ export class TrackedMap<K, V> implements Retainable {
             [K, V][],
             ViewImpl<[K, V]>,
             ArrayEvent<[K, V]>,
-            MapEvent<K, V>
+            DictEvent<K, V>
         >(
             initialEntries,
             ViewHandler,
@@ -136,7 +133,7 @@ export class TrackedMap<K, V> implements Retainable {
             this.emitter,
             function* keysHandler(
                 target: [K, V][],
-                events: MapEvent<K, V>[]
+                events: DictEvent<K, V>[]
             ): IterableIterator<ArrayEvent<[K, V]>> {
                 const addEvent = (prop: K, value: V): ArrayEvent<[K, V]> => {
                     const length = target.length;
@@ -156,7 +153,7 @@ export class TrackedMap<K, V> implements Retainable {
 
                 for (const event of events) {
                     switch (event.type) {
-                        case MapEventType.DEL: {
+                        case DictEventType.DEL: {
                             const index = target.findIndex(
                                 (item) => item[0] === event.prop
                             );
@@ -191,11 +188,11 @@ export class TrackedMap<K, V> implements Retainable {
                             }
                             break;
                         }
-                        case MapEventType.ADD: {
+                        case DictEventType.ADD: {
                             yield addEvent(event.prop, event.value);
                             break;
                         }
-                        case MapEventType.SET: {
+                        case DictEventType.SET: {
                             const index = target.findIndex(
                                 (item) => item[0] === event.prop
                             );
@@ -219,7 +216,7 @@ export class TrackedMap<K, V> implements Retainable {
                 }
             },
             addArrayEvent,
-            addMapEvent,
+            addDictEvent,
             debugName
         );
         return derivedCollection.revocable.proxy;
@@ -233,7 +230,7 @@ export class TrackedMap<K, V> implements Retainable {
         return this.entries(debugName).mapView(([key, value]) => value);
     }
 
-    subscribe(handler: (events: MapEvent<K, V>[]) => void) {
+    subscribe(handler: (events: DictEvent<K, V>[]) => void) {
         retain(this.fieldMap);
         const unsubscribe = this.emitter.subscribe((events) => {
             handler(events);
@@ -256,6 +253,6 @@ export class TrackedMap<K, V> implements Retainable {
     }
 }
 
-export function map<K, V>(entries: [K, V][] = [], debugName?: string) {
-    return new TrackedMap<K, V>(entries, debugName);
+export function dict<K, V>(entries: [K, V][] = [], debugName?: string) {
+    return new Dict<K, V>(entries, debugName);
 }

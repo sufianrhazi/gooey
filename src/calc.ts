@@ -164,27 +164,24 @@ enum CalculationState {
     DEAD,
 }
 
-export enum CalculationErrorType {
-    CYCLE,
-    EXCEPTION,
-}
-
 const CalculationSymbol = Symbol('calculation');
 const CalculationUnsubscribeSymbol = Symbol('calculationUnsubscribe');
+export const CalculationSubscribeWithPostAction = Symbol('calculationSubscribeWithPostAction');
 
 interface CalcSubscriptionHandlerHack<T> {
     bivarianceHack(
+        ...args: [
         errorType: undefined,
         val: T,
         addPostAction: (postAction: () => void) => void
-    ): void;
-    bivarianceHack(
-        errorType: CalculationErrorType,
-        val: Error,
+        ] | [
+        errorType: Error,
+        val: undefined,
         addPostAction: (postAction: () => void) => void
+        ]
     ): void;
 }
-type CalcSubscriptionHandler<T> =
+type CalcSubscriptionHandler<out T> =
     CalcSubscriptionHandlerHack<T>['bivarianceHack'];
 
 interface CalcUnsubscribe<T> {
@@ -193,7 +190,7 @@ interface CalcUnsubscribe<T> {
     calculation: Calculation<T>;
 }
 
-type CalcErrorHandler<T> = (errorType: CalculationErrorType, val: Error) => T;
+type CalcErrorHandler<T> = (error: Error) => T;
 
 export class Calculation<out T> implements Retainable, Processable {
     declare private _subscriptions?: Set<CalcSubscriptionHandler<T>>;
@@ -286,13 +283,7 @@ export class Calculation<out T> implements Retainable, Processable {
                     if (errorHandler) {
                         result = untrackReads(
                             () =>
-                            isActiveCycle
-                            ? errorHandler(
-                                CalculationErrorType.CYCLE,
-                                new Error('Cycle')
-                            )
-                            : errorHandler(
-                                CalculationErrorType.EXCEPTION,
+                            errorHandler(
                                 exception
                             ),
                             this.__debugName
@@ -383,7 +374,25 @@ export class Calculation<out T> implements Retainable, Processable {
         return this;
     }
 
-    subscribe(handler: CalcSubscriptionHandler<T>): CalcUnsubscribe<T> {
+    subscribe(handler: (value: T) => void): CalcUnsubscribe<T> {
+        return this[CalculationSubscribeWithPostAction]((errorType, value, hoopdoop) => {
+            if (errorType === undefined) {
+                handler(value);
+            }
+        });
+    }
+
+    subscribeWithError(handler: (...args: [error: undefined, value: T] | [error: Error, value: undefined]) => void): CalcUnsubscribe<T> {
+        return this[CalculationSubscribeWithPostAction]((error, value, hoopdoop) => {
+            if (error) {
+                handler(error, value);
+            } else {
+                handler(error, value);
+            }
+        });
+    }
+
+    [CalculationSubscribeWithPostAction](handler: CalcSubscriptionHandler<T>): CalcUnsubscribe<T> {
         retain(this);
         try {
             this.get();
@@ -456,8 +465,8 @@ export class Calculation<out T> implements Retainable, Processable {
                         const error = wrapError(e, 'Unknown error in calculation');
                         for (const subscription of this._subscriptions) {
                             subscription(
-                                CalculationErrorType.EXCEPTION,
                                 error,
+                                undefined,
                                 addPostAction
                             );
                         }
@@ -521,8 +530,7 @@ export class Calculation<out T> implements Retainable, Processable {
                     this._val = untrackReads(
                         () =>
                         errorHandler(
-                            CalculationErrorType.CYCLE,
-                            new Error('Cycle')
+                            new CycleError('Calculation is part of a cycle', this)
                         ),
                         this.__debugName
                     );
@@ -534,8 +542,8 @@ export class Calculation<out T> implements Retainable, Processable {
                     if (this._subscriptions) {
                         for (const subscription of this._subscriptions) {
                             subscription(
-                                CalculationErrorType.CYCLE,
-                                new Error('Cycle'),
+                                new CycleError('Calculation is part of a cycle', this),
+                                undefined,
                                 addPostAction
                             );
                         }
@@ -567,7 +575,7 @@ export function isCalcUnsubscribe(val: any): val is CalcUnsubscribe<unknown> {
     return val && val._type === CalculationUnsubscribeSymbol;
 }
 
-class CycleError extends Error {
+export class CycleError extends Error {
     declare sourceCalculation: Calculation<any>;
 
     constructor(msg: string, sourceCalculation: Calculation<any>) {

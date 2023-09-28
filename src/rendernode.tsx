@@ -23,7 +23,7 @@ import {
     isCalculation,
     isCalcUnsubscribe,
     Calculation,
-    CalculationErrorType,
+    CalculationSubscribeWithPostAction,
 } from './calc';
 import { isCollection, isView, Collection, View } from './collection';
 import { Field } from './field';
@@ -724,17 +724,22 @@ export class IntrinsicRenderNode implements RenderNode {
                         );
                     } else {
                         this.subscriptions.add(
-                            boundAttr.subscribe((error, updatedVal) => {
-                                if (error) {
-                                    log.error('Unhandled error in bound prop', {
-                                        prop,
-                                        element,
-                                        error: updatedVal,
-                                    });
-                                } else {
-                                    this.setProp(element, prop, updatedVal);
+                            boundAttr.subscribeWithError(
+                                (error, updatedVal) => {
+                                    if (error) {
+                                        log.error(
+                                            'Unhandled error in bound prop',
+                                            {
+                                                prop,
+                                                element,
+                                                error: updatedVal,
+                                            }
+                                        );
+                                    } else {
+                                        this.setProp(element, prop, updatedVal);
+                                    }
                                 }
-                            })
+                            )
                         );
                     }
                 }
@@ -1260,25 +1265,25 @@ export class CalculationRenderNode implements RenderNode {
     }
 
     subscribe(
-        errorType: undefined,
+        error: Error,
+        val: undefined,
+        addPostAction: (postAction: () => void) => void
+    ): void;
+    subscribe(
+        error: undefined,
         val: any,
         addPostAction: (postAction: () => void) => void
     ): void;
     subscribe(
-        errorType: CalculationErrorType,
-        val: Error,
-        addPostAction: (postAction: () => void) => void
-    ): void;
-    subscribe(
-        errorType: undefined | CalculationErrorType,
-        val: Error,
+        error: undefined | Error,
+        val: undefined | any,
         addPostAction: (postAction: () => void) => void
     ): void {
         this.cleanPrior();
-        if (errorType) {
-            this.error = val;
+        if (error) {
+            this.error = error;
             if (this.emitter) {
-                this.emitter(val);
+                this.emitter(error);
             } else {
                 log.warn(
                     'Unhandled error on detached CalculationRenderNode',
@@ -1287,7 +1292,7 @@ export class CalculationRenderNode implements RenderNode {
             }
         } else {
             addPostAction(() => {
-                const renderNode = renderJSXNode(val as any);
+                const renderNode = renderJSXNode(val);
                 own(this, renderNode);
                 this.renderNode = renderNode;
                 if (this.emitter && this.parentXmlNamespace) {
@@ -1315,20 +1320,16 @@ export class CalculationRenderNode implements RenderNode {
     declare __refcount: number;
     __alive() {
         try {
-            this.calculationSubscription = this.calculation.subscribe(
-                this.subscribe
-            );
+            this.calculationSubscription = this.calculation[
+                CalculationSubscribeWithPostAction
+            ](this.subscribe);
             this.subscribe(undefined, this.calculation.get(), (action) => {
                 action();
             });
         } catch (e) {
-            this.subscribe(
-                CalculationErrorType.EXCEPTION,
-                wrapError(e),
-                (action) => {
-                    action();
-                }
-            );
+            this.subscribe(wrapError(e), undefined, (action) => {
+                action();
+            });
         }
     }
     __dead() {
