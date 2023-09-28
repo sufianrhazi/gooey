@@ -432,6 +432,49 @@ suite('IntrinsicRenderNode', () => {
         assert.is(node3, intrinsicEl.childNodes[1]);
         assert.is(node2, intrinsicEl.childNodes[2]);
     });
+
+    test('element can receive and insert a middle node dynamically', () => {
+        const tracerLeft = new TracingRenderNode();
+        const tracerCenter = new TracingRenderNode();
+        const tracerRight = new TracingRenderNode();
+        const a = document.createElement('div');
+        a.textContent = 'a';
+        const b = document.createElement('div');
+        b.textContent = 'b';
+        const c = document.createElement('div');
+        c.textContent = 'c';
+        const d = document.createElement('div');
+        d.textContent = 'd';
+        const e = document.createElement('div');
+        e.textContent = 'e';
+        const intrinsic = new IntrinsicRenderNode('div', {}, [
+            tracerLeft,
+            tracerCenter,
+            tracerRight,
+        ]);
+        mount(testRoot, intrinsic);
+        tracerLeft.emitter?.({
+            type: ArrayEventType.SPLICE,
+            index: 0,
+            count: 0,
+            items: [a, b],
+        });
+        tracerRight.emitter?.({
+            type: ArrayEventType.SPLICE,
+            index: 0,
+            count: 0,
+            items: [d, e],
+        });
+        flush();
+        tracerCenter.emitter?.({
+            type: ArrayEventType.SPLICE,
+            index: 0,
+            count: 0,
+            items: [c],
+        });
+        flush();
+        assert.is(testRoot.textContent, 'abcde');
+    });
 });
 
 suite('CalculationRenderNode', () => {

@@ -673,9 +673,11 @@ export class IntrinsicRenderNode implements RenderNode {
                                 (e) => {
                                     try {
                                         val(e, element);
-                                    } finally {
+                                    } catch (e) {
                                         flush();
+                                        throw e;
                                     }
+                                    flush();
                                 },
                                 param
                             );
@@ -1076,23 +1078,42 @@ export class PortalRenderNode implements RenderNode {
             phase === RenderNodeCommitPhase.COMMIT_INS &&
             this.liveNodes.length > 0
         ) {
-            let toInsert: Node[] = [];
+            // At this point, we've removed all the nodes from this.element and this.committedNodes
+            // And need to insert nodes in this.liveNodes in order to this.committedNodes
+            //
+            // Scan through this.liveNodes, if we hit the end corresponding missing node  and this.liveNodes
             let liveIndex = 0;
-            let currIndex = 0;
             while (liveIndex < this.liveNodes.length) {
-                if (
-                    this.committedNodes[currIndex] === this.liveNodes[liveIndex]
-                ) {
-                    this.insertBefore(toInsert, liveIndex);
-                    toInsert = [];
-                    liveIndex += 1;
-                    currIndex += 1;
-                } else {
-                    toInsert.push(this.liveNodes[liveIndex]);
-                    liveIndex += 1;
+                if (liveIndex >= this.committedNodes.length) {
+                    // We're at the end of the committed set, insert the remaining liveNodes at the end
+                    this.insertBefore(
+                        this.liveNodes.slice(liveIndex),
+                        liveIndex
+                    );
+                    break;
                 }
+                if (
+                    this.liveNodes[liveIndex] !== this.committedNodes[liveIndex]
+                ) {
+                    let checkIndex = liveIndex + 1;
+                    while (
+                        checkIndex < this.liveNodes.length &&
+                        checkIndex < this.committedNodes.length &&
+                        this.liveNodes[checkIndex] !==
+                            this.committedNodes[liveIndex]
+                    ) {
+                        checkIndex++;
+                    }
+                    // [liveIndex...checkIndex] need to be inserted before this.committedNodes[liveIndex]
+                    this.insertBefore(
+                        this.liveNodes.slice(liveIndex, checkIndex),
+                        liveIndex
+                    );
+                    liveIndex = checkIndex;
+                    continue;
+                }
+                liveIndex++;
             }
-            this.insertBefore(toInsert, this.liveNodes.length);
         }
         if (
             phase === RenderNodeCommitPhase.COMMIT_MOUNT &&
@@ -1133,7 +1154,7 @@ export class PortalRenderNode implements RenderNode {
         if (toInsert) {
             this.element.insertBefore(
                 toInsert,
-                this.liveNodes[targetIndex] || null // TODO: should this be committedNodes[targetIndex] or liveNodes[targetIndex]?
+                this.element.childNodes[targetIndex] || null
             );
         }
     }

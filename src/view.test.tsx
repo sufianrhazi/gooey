@@ -4313,4 +4313,47 @@ suite('bugs', () => {
         testRoot.querySelector('#test')?.dispatchEvent(new MouseEvent('click'));
         flush();
     });
+
+    test('event that triggers rerender on other element on refocus does not cause an infinite loop (note: requires window to be focused!)', () => {
+        let numRenders = 0;
+        let numFocuses = 0;
+        const state = field({ numFocuses });
+        const buttonRef = ref<HTMLButtonElement>();
+        mount(
+            testRoot,
+            <div>
+                <div class="p-lg">
+                    <h1>Beepsheet</h1>
+                </div>
+                <hr />
+                {calc(() => {
+                    numRenders += 1;
+                    return (
+                        <div>
+                            Value: {state.get().numFocuses} / {numRenders}
+                        </div>
+                    );
+                })}
+                <hr />
+                <div class="adjacent">
+                    <button
+                        class="button"
+                        ref={buttonRef}
+                        on:focus={() => {
+                            numFocuses += 1;
+                            if (numFocuses < 10) {
+                                state.set({ numFocuses });
+                            }
+                        }}
+                    >
+                        Click me
+                    </button>
+                </div>
+            </div>
+        );
+        assert.is(1, numRenders);
+        buttonRef.current?.focus();
+        flush();
+        assert.is(2, numRenders);
+    });
 });
