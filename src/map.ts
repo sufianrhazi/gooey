@@ -88,7 +88,7 @@ export class TrackedMap<K, V> implements Retainable {
         }
     }
 
-    get(key: K) {
+    get(key: K): V | undefined {
         const field = this.fieldMap.getOrMake(key, Sentinel);
         const value = field.get();
         if (value === Sentinel) return undefined;
