@@ -722,6 +722,28 @@ ${customAttrs.name}`
       this.debugSubscriptions.delete(entry);
     };
   }
+  debugGetGraph() {
+    const vertices = [];
+    for (let i = 0; i < this.vertexById.length; ++i) {
+      const vertex = this.vertexById[i];
+      if (vertex) {
+        vertices.push(vertex);
+      }
+    }
+    const edges = [];
+    for (let id = 0; id < this.vertexById.length; ++id) {
+      if (this.forwardAdjacencyEither[id]) {
+        for (const toId of this.forwardAdjacencyEither[id]) {
+          const source = this.vertexById[id];
+          const target = this.vertexById[toId];
+          if (source && target) {
+            edges.push([source, target]);
+          }
+        }
+      }
+    }
+    return { vertices, edges };
+  }
 };
 Graph.EDGE_SOFT = 1 /* EDGE_SOFT */;
 Graph.EDGE_HARD = 2 /* EDGE_HARD */;
@@ -979,6 +1001,14 @@ function debugSubscribe(fn) {
       name: vertex.__debugName
     };
   }, fn);
+}
+function debugGetGraph() {
+  const { vertices, edges } = globalDependencyGraph.debugGetGraph();
+  const labels = /* @__PURE__ */ new Map();
+  vertices.forEach((vertex) => {
+    labels.set(vertex, vertex.__debugName);
+  });
+  return { vertices, edges, labels };
 }
 
 // src/ref.ts
@@ -1414,145 +1444,130 @@ function addArrayEvent(events, event) {
 var Sentinel = Symbol("sentinel");
 
 // src/calc.ts
-var CalculationErrorType = /* @__PURE__ */ ((CalculationErrorType2) => {
-  CalculationErrorType2[CalculationErrorType2["CYCLE"] = 0] = "CYCLE";
-  CalculationErrorType2[CalculationErrorType2["EXCEPTION"] = 1] = "EXCEPTION";
-  return CalculationErrorType2;
-})(CalculationErrorType || {});
 var CalculationSymbol = Symbol("calculation");
-var CalculationUnsubscribeSymbol = Symbol("calculationUnsubscribe");
-var Calculation = class extends Function {
-  // @ts-expect-error https://github.com/microsoft/TypeScript/issues/33927
-  constructor(fn, debugName) {
-    const impl = function calculationCall() {
-      notifyRead(impl);
-      const state = impl._state;
-      switch (state) {
-        case 4 /* DEAD */:
-          return fn();
-        case 2 /* CACHED */:
-          return impl._val;
-        case 1 /* CALLING */:
-          impl._state = 3 /* ERROR */;
-          impl._error = new CycleError(
-            "Cycle reached: calculation reached itself",
-            impl
+var CalculationSubscribeWithPostAction = Symbol("calculationSubscribeWithPostAction");
+var Calculation = class {
+  get() {
+    notifyRead(this);
+    const state = this._state;
+    switch (state) {
+      case 4 /* DEAD */:
+        return this._fn();
+      case 2 /* CACHED */:
+        return this._val;
+      case 1 /* CALLING */:
+        this._state = 3 /* ERROR */;
+        this._error = new CycleError(
+          "Cycle reached: calculation reached itself",
+          this
+        );
+        throw this._error;
+      case 3 /* ERROR */:
+        if (this._error === Sentinel) {
+          throw new Error("Cycle reached: calculation reached itself");
+        } else {
+          throw new Error(
+            "Calculation in error state: " + this._error.message
           );
-          throw impl._error;
-        case 3 /* ERROR */:
-          if (impl._error === Sentinel) {
-            throw new Error("Cycle reached: calculation reached itself");
-          } else {
-            throw new Error(
-              "Calculation in error state: " + impl._error.message
+        }
+        break;
+      case 0 /* READY */: {
+        const calculationReads = /* @__PURE__ */ new Set();
+        let result = Sentinel;
+        let exception;
+        this._state = 1 /* CALLING */;
+        try {
+          result = trackReads(
+            calculationReads,
+            () => this._fn(),
+            this.__debugName
+          );
+        } catch (e) {
+          exception = e;
+        }
+        if (this._state === 4 /* DEAD */) {
+          for (const retained of calculationReads) {
+            release(retained);
+          }
+          if (result === Sentinel)
+            throw exception;
+          return result;
+        }
+        if (
+          // Cast due to TypeScript limitation
+          this._state === 3 /* ERROR */
+        ) {
+          exception = this._error;
+        }
+        let isActiveCycle = false;
+        let isActiveCycleRoot = false;
+        if (exception) {
+          if (exception instanceof CycleError) {
+            isActiveCycle = true;
+            isActiveCycleRoot = exception.sourceCalculation === this;
+          }
+          const errorHandler = this._errorHandler;
+          if (errorHandler) {
+            result = untrackReads(
+              () => errorHandler(
+                exception
+              ),
+              this.__debugName
             );
           }
-          break;
-        case 0 /* READY */: {
-          const calculationReads = /* @__PURE__ */ new Set();
-          let result = Sentinel;
-          let exception;
-          impl._state = 1 /* CALLING */;
-          try {
-            result = trackReads(
-              calculationReads,
-              () => fn(),
-              impl.__debugName
-            );
-          } catch (e) {
-            exception = e;
-          }
-          if (impl._state === 4 /* DEAD */) {
-            for (const retained of calculationReads) {
-              release(retained);
-            }
-            if (result === Sentinel)
-              throw exception;
-            return result;
-          }
-          if (
-            // Cast due to TypeScript limitation
-            impl._state === 3 /* ERROR */
-          ) {
-            exception = impl._error;
-          }
-          let isActiveCycle = false;
-          let isActiveCycleRoot = false;
-          if (exception) {
-            if (exception instanceof CycleError) {
-              isActiveCycle = true;
-              isActiveCycleRoot = exception.sourceCalculation === impl;
-            }
-            const errorHandler = impl._errorHandler;
-            if (errorHandler) {
-              result = untrackReads(
-                () => isActiveCycle ? errorHandler(
-                  0 /* CYCLE */,
-                  new Error("Cycle")
-                ) : errorHandler(
-                  1 /* EXCEPTION */,
-                  exception
-                ),
-                impl.__debugName
-              );
-            }
-            if (isActiveCycle) {
-              markCycleInformed(impl);
-            }
-          }
-          if (result === Sentinel) {
-            if ("_val" in impl) {
-              delete impl._val;
-            }
-            impl._error = exception;
-            impl._state = 3 /* ERROR */;
-          } else {
-            impl._val = result;
-            if ("_error" in impl) {
-              delete impl._error;
-            }
-            impl._state = 2 /* CACHED */;
-            unmarkDirty(impl);
-          }
-          if (impl._retained) {
-            for (const priorDependency of impl._retained) {
-              if (isProcessable(priorDependency) && !calculationReads.has(priorDependency)) {
-                removeHardEdge(priorDependency, impl);
-              }
-              release(priorDependency);
-            }
-          }
-          for (const dependency of calculationReads) {
-            if (isProcessable(dependency)) {
-              if (!impl._retained || !impl._retained.has(dependency)) {
-                addHardEdge(dependency, impl);
-              }
-            }
-          }
-          impl._retained = calculationReads;
-          if (result === Sentinel) {
-            throw exception;
-          } else if (isActiveCycle && !isActiveCycleRoot) {
-            throw exception;
-          } else {
-            return result;
+          if (isActiveCycle) {
+            markCycleInformed(this);
           }
         }
-        default:
-          assertExhausted(state, "Calculation in unknown state");
+        if (result === Sentinel) {
+          if ("_val" in this) {
+            delete this._val;
+          }
+          this._error = exception;
+          this._state = 3 /* ERROR */;
+        } else {
+          this._val = result;
+          if ("_error" in this) {
+            delete this._error;
+          }
+          this._state = 2 /* CACHED */;
+          unmarkDirty(this);
+        }
+        if (this._retained) {
+          for (const priorDependency of this._retained) {
+            if (isProcessable(priorDependency) && !calculationReads.has(priorDependency)) {
+              removeHardEdge(priorDependency, this);
+            }
+            release(priorDependency);
+          }
+        }
+        for (const dependency of calculationReads) {
+          if (isProcessable(dependency)) {
+            if (!this._retained || !this._retained.has(dependency)) {
+              addHardEdge(dependency, this);
+            }
+          }
+        }
+        this._retained = calculationReads;
+        if (result === Sentinel) {
+          throw exception;
+        } else if (isActiveCycle && !isActiveCycleRoot) {
+          throw exception;
+        } else {
+          return result;
+        }
       }
-    };
-    impl.__debugName = debugName ?? "calc";
-    impl.__refcount = 0;
-    impl.__processable = true;
-    impl._type = CalculationSymbol;
-    impl._state = 4 /* DEAD */;
-    Object.setPrototypeOf(impl, Calculation.prototype);
-    return impl;
+      default:
+        assertExhausted(state, "Calculation in unknown state");
+    }
   }
-  // XXX: this function is unfortunately only present in order to appease a type checker, but sure, use it if you want
-  _call() {
-    return this();
+  constructor(fn, debugName) {
+    this.__debugName = debugName ?? "calc";
+    this.__refcount = 0;
+    this.__processable = true;
+    this._type = CalculationSymbol;
+    this._state = 4 /* DEAD */;
+    this._fn = fn;
   }
   onError(handler) {
     this._errorHandler = handler;
@@ -1566,9 +1581,25 @@ var Calculation = class extends Function {
     return this;
   }
   subscribe(handler) {
+    return this[CalculationSubscribeWithPostAction]((errorType, value, hoopdoop) => {
+      if (errorType === void 0) {
+        handler(value);
+      }
+    });
+  }
+  subscribeWithError(handler) {
+    return this[CalculationSubscribeWithPostAction]((error2, value, hoopdoop) => {
+      if (error2) {
+        handler(error2, value);
+      } else {
+        handler(error2, value);
+      }
+    });
+  }
+  [CalculationSubscribeWithPostAction](handler) {
     retain(this);
     try {
-      this();
+      this.get();
     } catch (e) {
     }
     if (!this._subscriptions) {
@@ -1579,11 +1610,7 @@ var Calculation = class extends Function {
       this._subscriptions?.delete(handler);
       release(this);
     };
-    const unsubscribeData = {
-      _type: CalculationUnsubscribeSymbol,
-      calculation: this
-    };
-    return Object.assign(unsubscribe, unsubscribeData);
+    return unsubscribe;
   }
   retain() {
     retain(this);
@@ -1624,7 +1651,7 @@ var Calculation = class extends Function {
         this._state = 0 /* READY */;
         let newResult;
         try {
-          newResult = this();
+          newResult = this.get();
         } catch (e) {
           this._state = 3 /* ERROR */;
           this._error = e;
@@ -1632,8 +1659,8 @@ var Calculation = class extends Function {
             const error2 = wrapError(e, "Unknown error in calculation");
             for (const subscription of this._subscriptions) {
               subscription(
-                1 /* EXCEPTION */,
                 error2,
+                void 0,
                 addPostAction
               );
             }
@@ -1692,8 +1719,7 @@ var Calculation = class extends Function {
         if (errorHandler) {
           this._val = untrackReads(
             () => errorHandler(
-              0 /* CYCLE */,
-              new Error("Cycle")
+              new CycleError("Calculation is part of a cycle", this)
             ),
             this.__debugName
           );
@@ -1705,8 +1731,8 @@ var Calculation = class extends Function {
           if (this._subscriptions) {
             for (const subscription of this._subscriptions) {
               subscription(
-                0 /* CYCLE */,
-                new Error("Cycle"),
+                new CycleError("Calculation is part of a cycle", this),
+                void 0,
                 addPostAction
               );
             }
@@ -1729,12 +1755,6 @@ var Calculation = class extends Function {
     }
   }
 };
-function isCalculation(val) {
-  return val && val instanceof Calculation;
-}
-function isCalcUnsubscribe(val) {
-  return val && val._type === CalculationUnsubscribeSymbol;
-}
 var CycleError = class extends Error {
   constructor(msg, sourceCalculation) {
     super(msg);
@@ -1772,10 +1792,16 @@ var Field = class {
     }
   }
   subscribe(subscriber) {
+    this.retain();
     if (!this._subscribers)
       this._subscribers = /* @__PURE__ */ new Map();
     this._subscribers.set(subscriber, this._changeClock);
-    return () => this._subscribers?.delete(subscriber);
+    return () => {
+      if (this._subscribers?.has(subscriber)) {
+        this._subscribers?.delete(subscriber);
+        this.release();
+      }
+    };
   }
   retain() {
     retain(this);
@@ -3064,9 +3090,11 @@ var IntrinsicRenderNode = class {
               (e) => {
                 try {
                   val(e, element);
-                } finally {
+                } catch (e2) {
                   flush();
+                  throw e2;
                 }
+                flush();
               },
               param
             );
@@ -3076,14 +3104,11 @@ var IntrinsicRenderNode = class {
         })) {
           continue;
         }
-        if (isCalcUnsubscribe(val) || isCalculation(val)) {
+        if (val instanceof Calculation) {
           if (!this.boundAttributes) {
             this.boundAttributes = /* @__PURE__ */ new Map();
           }
-          this.boundAttributes.set(
-            prop,
-            isCalculation(val) ? val : val.calculation
-          );
+          this.boundAttributes.set(prop, val);
         } else if (val instanceof Field) {
           if (!this.boundAttributes) {
             this.boundAttributes = /* @__PURE__ */ new Map();
@@ -3102,7 +3127,7 @@ var IntrinsicRenderNode = class {
           boundAttr
         ] of this.boundAttributes.entries()) {
           boundAttr.retain();
-          const currentVal = boundAttr instanceof Field ? boundAttr.get() : boundAttr();
+          const currentVal = boundAttr.get();
           this.setProp(element, prop, currentVal);
           if (boundAttr instanceof Field) {
             this.subscriptions.add(
@@ -3112,17 +3137,22 @@ var IntrinsicRenderNode = class {
             );
           } else {
             this.subscriptions.add(
-              boundAttr.subscribe((error2, updatedVal) => {
-                if (error2) {
-                  error("Unhandled error in bound prop", {
-                    prop,
-                    element,
-                    error: updatedVal
-                  });
-                } else {
-                  this.setProp(element, prop, updatedVal);
+              boundAttr.subscribeWithError(
+                (error2, updatedVal) => {
+                  if (error2) {
+                    error(
+                      "Unhandled error in bound prop",
+                      {
+                        prop,
+                        element,
+                        error: updatedVal
+                      }
+                    );
+                  } else {
+                    this.setProp(element, prop, updatedVal);
+                  }
                 }
-              })
+              )
             );
           }
         }
@@ -3358,21 +3388,29 @@ var PortalRenderNode = class {
       this.deadNodeSet.clear();
     }
     if (phase === 2 /* COMMIT_INS */ && this.liveNodes.length > 0) {
-      let toInsert = [];
       let liveIndex = 0;
-      let currIndex = 0;
       while (liveIndex < this.liveNodes.length) {
-        if (this.committedNodes[currIndex] === this.liveNodes[liveIndex]) {
-          this.insertBefore(toInsert, liveIndex);
-          toInsert = [];
-          liveIndex += 1;
-          currIndex += 1;
-        } else {
-          toInsert.push(this.liveNodes[liveIndex]);
-          liveIndex += 1;
+        if (liveIndex >= this.committedNodes.length) {
+          this.insertBefore(
+            this.liveNodes.slice(liveIndex),
+            liveIndex
+          );
+          break;
         }
+        if (this.liveNodes[liveIndex] !== this.committedNodes[liveIndex]) {
+          let checkIndex = liveIndex + 1;
+          while (checkIndex < this.liveNodes.length && checkIndex < this.committedNodes.length && this.liveNodes[checkIndex] !== this.committedNodes[liveIndex]) {
+            checkIndex++;
+          }
+          this.insertBefore(
+            this.liveNodes.slice(liveIndex, checkIndex),
+            liveIndex
+          );
+          liveIndex = checkIndex;
+          continue;
+        }
+        liveIndex++;
       }
-      this.insertBefore(toInsert, this.liveNodes.length);
     }
     if (phase === 3 /* COMMIT_MOUNT */ && this.refProp && this.mountState === 1 /* NOTIFY_MOUNT */) {
       if (this.refProp instanceof Ref) {
@@ -3407,8 +3445,7 @@ var PortalRenderNode = class {
     if (toInsert) {
       this.element.insertBefore(
         toInsert,
-        this.liveNodes[targetIndex] || null
-        // TODO: should this be committedNodes[targetIndex] or liveNodes[targetIndex]?
+        this.element.childNodes[targetIndex] || null
       );
     }
   }
@@ -3484,12 +3521,12 @@ var CalculationRenderNode = class {
       this.renderNode = void 0;
     }
   }
-  subscribe(errorType, val, addPostAction) {
+  subscribe(error2, val, addPostAction) {
     this.cleanPrior();
-    if (errorType) {
-      this.error = val;
+    if (error2) {
+      this.error = error2;
       if (this.emitter) {
-        this.emitter(val);
+        this.emitter(error2);
       } else {
         warn(
           "Unhandled error on detached CalculationRenderNode",
@@ -3521,20 +3558,14 @@ var CalculationRenderNode = class {
   }
   __alive() {
     try {
-      this.calculationSubscription = this.calculation.subscribe(
-        this.subscribe
-      );
-      this.subscribe(void 0, this.calculation(), (action) => {
+      this.calculationSubscription = this.calculation[CalculationSubscribeWithPostAction](this.subscribe);
+      this.subscribe(void 0, this.calculation.get(), (action) => {
         action();
       });
     } catch (e) {
-      this.subscribe(
-        1 /* EXCEPTION */,
-        wrapError(e),
-        (action) => {
-          action();
-        }
-      );
+      this.subscribe(wrapError(e), void 0, (action) => {
+        action();
+      });
     }
   }
   __dead() {
@@ -3770,7 +3801,7 @@ var CollectionRenderNode = class {
   }
 };
 function isCalculationRenderNode(val) {
-  return isCalculation(val);
+  return val instanceof Calculation;
 }
 var FieldRenderNode = class {
   constructor(field2, debugName) {
@@ -4448,22 +4479,22 @@ model.field = function modelField(sourceModel, field2) {
   );
 };
 
-// src/map.ts
-var MapEventType = /* @__PURE__ */ ((MapEventType2) => {
-  MapEventType2["ADD"] = "add";
-  MapEventType2["SET"] = "set";
-  MapEventType2["DEL"] = "del";
-  return MapEventType2;
-})(MapEventType || {});
-function addMapEvent(events, event) {
+// src/dict.ts
+var DictEventType = /* @__PURE__ */ ((DictEventType2) => {
+  DictEventType2["ADD"] = "add";
+  DictEventType2["SET"] = "set";
+  DictEventType2["DEL"] = "del";
+  return DictEventType2;
+})(DictEventType || {});
+function addDictEvent(events, event) {
   events.push(event);
 }
-var TrackedMap = class {
+var Dict = class {
   constructor(entries = [], debugName) {
     this.ownKeys = /* @__PURE__ */ new Set();
     this.keysField = new Field(entries.length);
     this.emitter = new SubscriptionEmitter(
-      addMapEvent,
+      addDictEvent,
       debugName ?? "map"
     );
     this.fieldMap = new FieldMap(
@@ -4622,7 +4653,7 @@ var TrackedMap = class {
         }
       },
       addArrayEvent,
-      addMapEvent,
+      addDictEvent,
       debugName
     );
     return derivedCollection.revocable.proxy;
@@ -4653,36 +4684,68 @@ var TrackedMap = class {
     retain(this.emitter);
   }
 };
-function map(entries = [], debugName) {
-  return new TrackedMap(entries, debugName);
+function dict(entries = [], debugName) {
+  return new Dict(entries, debugName);
+}
+
+// src/dyn.ts
+function dynGet(wrapper) {
+  if (wrapper instanceof Field || wrapper instanceof Calculation) {
+    return wrapper.get();
+  }
+  return wrapper;
+}
+function dynSet(wrapper, value) {
+  if (wrapper instanceof Field) {
+    wrapper.set(value);
+    return true;
+  }
+  if (wrapper instanceof Calculation) {
+    return false;
+  }
+  return false;
+}
+function dynSubscribe(wrapper, callback) {
+  if (wrapper instanceof Field) {
+    return wrapper.subscribe(callback);
+  }
+  if (wrapper instanceof Calculation) {
+    return wrapper.subscribe(callback);
+  }
+  callback(wrapper);
+  return noop;
 }
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.15.0" : "development";
+var VERSION = true ? "0.16.0" : "development";
 export {
   ArrayEventType,
-  CalculationErrorType,
   ClassComponent,
+  CycleError,
+  Dict,
+  DictEventType,
   Fragment,
   IntrinsicObserver,
   IntrinsicObserverEventType,
   InvariantError,
-  MapEventType,
   ModelEventType,
-  TrackedMap,
   VERSION,
   applyArrayEvent,
   calc,
   collection,
   createElement,
   debug2 as debug,
+  debugGetGraph,
   debugSubscribe,
   src_default as default,
+  dict,
+  dynGet,
+  dynSet,
+  dynSubscribe,
   field,
   flush,
   getLogLevel,
-  map,
   model,
   mount,
   ref,
