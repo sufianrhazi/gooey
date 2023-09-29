@@ -1,4 +1,4 @@
-import { TrackedMap, Calculation } from '../../..';
+import { Dict, Calculation } from '../../..';
 import { Expression, FunctionExpression } from './parser';
 import { Position } from './utils';
 export type EvalResult = {
@@ -13,8 +13,8 @@ export type EvalResult = {
     error: Error;
 };
 export declare class SpreadsheetState {
-    rawData: TrackedMap<string, string>;
-    evaluatedData: TrackedMap<string, Calculation<EvalResult>>;
+    rawData: Dict<string, string>;
+    evaluatedData: Dict<string, Calculation<EvalResult>>;
     constructor();
     set(position: Position, value: string): void;
     read(position: Position): EvalResult;

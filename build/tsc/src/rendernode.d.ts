@@ -1,7 +1,7 @@
 import { Retainable } from './engine';
 import { RefObjectOrCallback } from './ref';
 import { ArrayEvent } from './arrayevent';
-import { Calculation, CalculationErrorType } from './calc';
+import { Calculation } from './calc';
 import { Collection, View } from './collection';
 import { Field } from './field';
 export interface ComponentLifecycle {
@@ -225,8 +225,8 @@ export declare class CalculationRenderNode implements RenderNode {
     retain(): void;
     release(): void;
     cleanPrior(): void;
-    subscribe(errorType: undefined, val: any, addPostAction: (postAction: () => void) => void): void;
-    subscribe(errorType: CalculationErrorType, val: Error, addPostAction: (postAction: () => void) => void): void;
+    subscribe(error: Error, val: undefined, addPostAction: (postAction: () => void) => void): void;
+    subscribe(error: undefined, val: any, addPostAction: (postAction: () => void) => void): void;
     commit(phase: RenderNodeCommitPhase): void;
     clone(): RenderNode;
     __debugName: string;

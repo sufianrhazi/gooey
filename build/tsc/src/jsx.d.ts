@@ -4,7 +4,7 @@ import { RenderNode } from './rendernode';
 import type { ClassComponentInterface } from './rendernode';
 import type { RefObjectOrCallback } from './ref';
 import type { Field } from './field';
-import type { DistributeCalculation, DistributeField } from './jsx-distributions';
+import type { Dyn } from './dyn';
 /**
  * The core type that can be used as a child or root of a JSX expression
  */
@@ -678,7 +678,7 @@ type EventHandler<TEvent extends Event, TElement extends Element> = undefined | 
 interface JSXRefProps<TElement extends Element> {
     ref?: undefined | RefObjectOrCallback<TElement>;
 }
-type DynamicPropValue<T> = DistributeCalculation<T> | DistributeField<T> | T;
+type DynamicPropValue<T> = Dyn<T>;
 interface JSXAttrProps {
     [key: `attr:${string}`]: DynamicPropValue<string | number | boolean | undefined>;
     [key: `prop:${string}`]: DynamicPropValue<string | number | boolean | undefined>;

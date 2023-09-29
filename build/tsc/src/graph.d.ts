@@ -79,6 +79,10 @@ export declare class Graph<TVertex> {
     private propagateDirty;
     debug(getAttrs: DebugFormatter<TVertex>, label?: string): string;
     debugSubscribe(formatter: DebugFormatter<TVertex>, subscription: (graphviz: string, label: string) => void): () => void;
+    debugGetGraph(): {
+        vertices: TVertex[];
+        edges: [TVertex, TVertex][];
+    };
 }
 /**
  * Test-only interfaces; omitted in build

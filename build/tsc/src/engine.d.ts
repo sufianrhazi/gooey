@@ -1,4 +1,3 @@
-import { Graph } from './graph';
 import type { RenderNode } from './rendernode';
 export interface Retainable {
     __debugName: string;
@@ -38,5 +37,9 @@ export declare function notifyCreate(retainable: Retainable): void;
 export declare function notifyRead(dependency: Retainable): void;
 export declare function debug(activeVertex?: Processable, label?: string): string;
 export declare function debugSubscribe(fn: (label: string, graphviz: string) => void): () => void;
-export declare function debugGetGraph(): Graph<Processable>;
+export declare function debugGetGraph(): {
+    vertices: Processable[];
+    edges: [Processable, Processable][];
+    labels: Map<Processable, string>;
+};
 //# sourceMappingURL=engine.d.ts.map

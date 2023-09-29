@@ -13,6 +13,6 @@ import type { Field } from './field';
  *
  * Per https://stackoverflow.com/a/73911604
  */
-export type DistributeCalculation<TUnion, TTmp = TUnion> = TUnion extends infer TUnionReduction ? Calculation<TUnion> | (DistributeCalculation<Exclude<TTmp, TUnionReduction>> extends infer TSubset ? TSubset extends Calculation<any> ? Calculation<TUnion | ReturnType<TSubset['_call']>> : never : never) : never;
+export type DistributeCalculation<TUnion, TTmp = TUnion> = TUnion extends infer TUnionReduction ? Calculation<TUnion> | (DistributeCalculation<Exclude<TTmp, TUnionReduction>> extends infer TSubset ? TSubset extends Calculation<any> ? Calculation<TUnion | ReturnType<TSubset['get']>> : never : never) : never;
 export type DistributeField<TUnion, TTmp = TUnion> = TUnion extends infer TUnionReduction ? Field<TUnion> | (DistributeField<Exclude<TTmp, TUnionReduction>> extends infer TSubset ? TSubset extends Field<any> ? Field<TUnion | ReturnType<TSubset['get']>> : never : never) : never;
 //# sourceMappingURL=jsx-distributions.d.ts.map
