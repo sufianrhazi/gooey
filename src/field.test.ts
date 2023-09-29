@@ -41,7 +41,6 @@ suite('field', () => {
         const log: string[] = [];
         const simple = field('init');
         simple.subscribe((val) => log.push(val));
-        retain(simple);
         assert.deepEqual([], log);
         simple.set('one');
         assert.deepEqual([], log);
@@ -57,7 +56,6 @@ suite('field', () => {
         const log: string[] = [];
         const simple = field('init');
         const unsubscribe = simple.subscribe((val) => log.push(val));
-        retain(simple);
         assert.deepEqual([], log);
         simple.set('one');
         flush();
@@ -72,7 +70,6 @@ suite('field', () => {
         const log: string[] = [];
         const simple = field('init');
         const unsubscribe = simple.subscribe((val) => log.push(val));
-        retain(simple);
         assert.deepEqual([], log);
         simple.set('one');
         flush();
@@ -86,7 +83,6 @@ suite('field', () => {
     test('observed values only occur after observation', () => {
         const log: string[] = [];
         const simple = field('init');
-        retain(simple);
         assert.deepEqual([], log);
         simple.set('one');
         simple.subscribe((val) => log.push(val));

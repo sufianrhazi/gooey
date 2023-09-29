@@ -53,9 +53,15 @@ export class Field<T> implements Processable, Retainable {
     }
 
     subscribe(subscriber: FieldSubscriber<T>): () => void {
+        this.retain();
         if (!this._subscribers) this._subscribers = new Map();
         this._subscribers.set(subscriber, this._changeClock);
-        return () => this._subscribers?.delete(subscriber);
+        return () => {
+            if (this._subscribers?.has(subscriber)) {
+                this._subscribers?.delete(subscriber);
+                this.release();
+            }
+        };
     }
 
     retain() {
