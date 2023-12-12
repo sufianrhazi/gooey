@@ -22,7 +22,7 @@ export const Cell: Component<{
     rawContent: Calculation<string>;
     evalContent: Calculation<EvalResult>;
     onContentChange: (newContent: string) => void;
-    api: Ref<CellApi>;
+    api: Ref<CellApi | undefined>;
 }> = ({
     position,
     isActive,

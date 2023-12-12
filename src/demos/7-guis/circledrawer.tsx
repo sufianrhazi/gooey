@@ -92,7 +92,7 @@ export class CircleDrawer extends ClassComponent {
         selected: null | Circle;
         dynamicR: number;
     }>;
-    svgContainerEl: Ref<HTMLDivElement>;
+    svgContainerEl: Ref<HTMLDivElement | undefined>;
     actions: Action[];
 
     constructor(props: {}) {
@@ -140,7 +140,7 @@ export class CircleDrawer extends ClassComponent {
         });
         this.childWindowPosition = undefined;
 
-        this.svgContainerEl = ref<HTMLDivElement>();
+        this.svgContainerEl = ref();
     }
 
     renderChildWindow() {

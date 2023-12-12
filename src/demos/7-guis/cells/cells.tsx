@@ -24,14 +24,14 @@ import './cells.css';
 
 export class Cells extends ClassComponent {
     cellState: SpreadsheetState;
-    cellRefs: Record<string, Ref<CellApi>>;
+    cellRefs: Record<string, Ref<CellApi | undefined>>;
     state: Model<{
         hasFocus: boolean;
         activePosition: Position;
         editing: false;
     }>;
 
-    tableRef: Ref<HTMLTableElement>;
+    tableRef: Ref<HTMLTableElement | undefined>;
 
     constructor(props: EmptyProps) {
         super(props);
@@ -46,7 +46,7 @@ export class Cells extends ClassComponent {
             }
         }
 
-        this.tableRef = ref<HTMLTableElement>();
+        this.tableRef = ref();
 
         this.state = model({
             hasFocus: false,

@@ -1,9 +1,9 @@
 /**
  * A ref object that can be passed to native elements.
  */
-export class Ref<T> {
-    declare current: T | undefined;
-    constructor(current?: T | undefined) {
+export class Ref<in out T> {
+    declare current: T;
+    constructor(current: T) {
         this.current = current;
     }
 }
@@ -11,7 +11,9 @@ export class Ref<T> {
 /**
  * Make a ref object that can be passed to native elements.
  */
-export function ref<T>(val?: T): Ref<T> {
+export function ref<T>(val: T): Ref<T>;
+export function ref<T>(val?: T): Ref<T | undefined>;
+export function ref<T>(val?: T): Ref<T | undefined> {
     return new Ref(val);
 }
 

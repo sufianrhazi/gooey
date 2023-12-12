@@ -10,6 +10,7 @@ import Gooey, {
     field,
     reset,
     ref,
+    Ref,
     subscribe,
     IntrinsicObserver,
 } from './index';
@@ -612,6 +613,28 @@ suite('mount static', () => {
             divRef.current?.style.getPropertyValue('--woah-nellie')
         );
         assert.is('center', divRef.current?.style.getPropertyValue('--coolio'));
+    });
+
+    test('mount can be performed on a shadow root', () => {
+        const div = document.createElement('div');
+        div.textContent = 'neato';
+        testRoot.appendChild(div);
+        const shadowRoot = div.attachShadow({
+            mode: 'open',
+        });
+        mount(
+            shadowRoot,
+            <p id="neat">
+                Hello from the <slot /> shadow world
+            </p>
+        );
+        // afaict there isn't a clean way to get the "composed" text content inclusive of the shadow root & host element
+        // So just ensure the expected elements were rendered in the shadow root
+        assert.is(
+            'Hello from the  shadow world',
+            shadowRoot.getElementById('neat')?.textContent
+        );
+        assert.is('neato', div.textContent);
     });
 });
 
@@ -4171,6 +4194,31 @@ if (2 < 1) {
         const g = <div tabindex={objectField} />;
 
         assert.isTruthy([a, b, c, d, e, f, g]);
+    });
+
+    test('ref callback infers element correctly', () => {
+        function assertIsNever(val: never): never {
+            throw new Error('Ruh roh');
+        }
+        <div
+            ref={(el) => {
+                if (el && !(el instanceof HTMLDivElement)) {
+                    assertIsNever(el);
+                }
+            }}
+        />;
+    });
+
+    test('ref prop value not accepted by different kind of element', () => {
+        const divRef = ref<HTMLDivElement>();
+        <div ref={divRef} />;
+        // @ts-expect-error
+        <span ref={divRef} />;
+    });
+
+    test('ref constructor can build a specialized ref', () => {
+        const r: Ref<string | undefined> = ref();
+        assert.isTruthy(r);
     });
 }
 

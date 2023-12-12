@@ -937,13 +937,15 @@ enum MountState {
 export class PortalRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
     declare _commitPhase: RenderNodeCommitPhase;
-    private declare element: Element;
+    private declare element: Element | ShadowRoot;
     private declare childEvents: ArrayEvent<Node>[];
     private declare committedNodes: Node[];
     private declare liveNodes: Node[];
     private declare liveNodeSet: Set<Node>;
     private declare deadNodeSet: Set<Node>;
-    private declare refProp?: RefObjectOrCallback<Element> | undefined;
+    private declare refProp?:
+        | RefObjectOrCallback<Element | ShadowRoot | undefined>
+        | undefined;
     private declare mountState?: MountState | undefined;
     private declare emitter?: NodeEmitter | undefined;
     private declare arrayRenderNode: ArrayRenderNode;
@@ -951,9 +953,12 @@ export class PortalRenderNode implements RenderNode {
     private declare calculationSubscriptions?: Set<() => void>;
 
     constructor(
-        element: Element,
+        element: Element | ShadowRoot,
         children: ArrayRenderNode,
-        refProp: RefObjectOrCallback<Element> | null | undefined,
+        refProp:
+            | RefObjectOrCallback<Element | ShadowRoot | undefined>
+            | null
+            | undefined,
         debugName?: string
     ) {
         this._type = RenderNodeType;
@@ -970,7 +975,13 @@ export class PortalRenderNode implements RenderNode {
             this.mountState = MountState.UNMOUNTED;
         }
 
-        this.__debugName = debugName ?? `mount:${element.tagName}`;
+        this.__debugName =
+            debugName ??
+            `mount:${
+                element instanceof Element
+                    ? element.tagName
+                    : `shadow:${element.host.tagName}`
+            }`;
         this.__refcount = 0;
     }
 
@@ -1805,7 +1816,10 @@ export function renderJSXChildren(
     return childRenderNodes;
 }
 
-export function mount(target: Element, node: RenderNode): () => void {
+export function mount(
+    target: Element | ShadowRoot,
+    node: RenderNode
+): () => void {
     const children: RenderNode[] = [];
     for (let i = 0; i < target.childNodes.length; ++i) {
         children.push(new ForeignRenderNode(target.childNodes[i]));
@@ -1825,7 +1839,7 @@ export function mount(target: Element, node: RenderNode): () => void {
             log.error('Unhandled mount error', event);
             return;
         }
-    }, target.namespaceURI ?? HTML_NAMESPACE);
+    }, (target instanceof Element ? target.namespaceURI : target.host.namespaceURI) ?? HTML_NAMESPACE);
     if (syncError) {
         release(root);
         throw syncError;

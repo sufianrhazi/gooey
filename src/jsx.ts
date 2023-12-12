@@ -1277,7 +1277,7 @@ type EventHandler<TEvent extends Event, TElement extends Element> =
       }['bivarianceHack'];
 
 interface JSXRefProps<TElement extends Element> {
-    ref?: undefined | RefObjectOrCallback<TElement>;
+    ref?: undefined | RefObjectOrCallback<TElement | undefined>;
 }
 
 type DynamicPropValue<T> = Dyn<T>;

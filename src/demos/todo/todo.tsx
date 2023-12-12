@@ -2,7 +2,6 @@ import Gooey, {
     Collection,
     Component,
     Model,
-    Ref,
     calc,
     collection,
     model,
@@ -93,7 +92,7 @@ const TodoList = () => {
 };
 
 const TodoControls: Component<{}> = (_props, { onMount }) => {
-    const inputRef: Ref<HTMLInputElement> = ref();
+    const inputRef = ref<HTMLInputElement>();
 
     onMount(() => {
         // Auto-focus the input on render
