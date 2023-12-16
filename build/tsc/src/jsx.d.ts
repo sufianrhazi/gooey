@@ -8,7 +8,7 @@ import type { Dyn } from './dyn';
 /**
  * The core type that can be used as a child or root of a JSX expression
  */
-export type JSXNode = string | number | boolean | null | undefined | bigint | symbol | Function | Element | RenderNode | JSXNodeCalculation | JSXNodeCollection | JSXNodeView | JSXNodeArray | JSXNodeField;
+export type JSXNode = string | number | boolean | null | undefined | bigint | symbol | Function | Node | RenderNode | JSXNodeCalculation | JSXNodeCollection | JSXNodeView | JSXNodeArray | JSXNodeField;
 export interface JSXNodeCalculation extends Calculation<JSXNode> {
 }
 export interface JSXNodeCollection extends Collection<JSXNode> {
@@ -18,6 +18,8 @@ export interface JSXNodeView extends View<JSXNode, any> {
 export interface JSXNodeArray extends Array<JSXNode> {
 }
 export interface JSXNodeField extends Field<JSXNode> {
+}
+export interface CustomElements {
 }
 declare global {
     namespace JSX {
@@ -37,7 +39,7 @@ declare global {
         /**
          * The mapping of element name to intrinsic element path
          */
-        type IntrinsicElements = KnownElements & Record<string, any>;
+        type IntrinsicElements = KnownElements & CustomElements & Record<string, any>;
         /**
          * The object property of children
          */
@@ -676,7 +678,7 @@ type EventHandler<TEvent extends Event, TElement extends Element> = undefined | 
     bivarianceHack(event: TEvent, target: TElement): void;
 }['bivarianceHack'];
 interface JSXRefProps<TElement extends Element> {
-    ref?: undefined | RefObjectOrCallback<TElement>;
+    ref?: undefined | RefObjectOrCallback<TElement | undefined>;
 }
 type DynamicPropValue<T> = Dyn<T>;
 interface JSXAttrProps {
@@ -909,7 +911,7 @@ interface JSXDataProps {
     [key: `data-${string}`]: DynamicPropValue<string | number | boolean | undefined>;
 }
 type JSXElementInterfaceProps<TJSXType extends JSXElementInterface> = {
-    [Key in keyof TJSXType]: DynamicPropValue<TJSXType[Key]>;
+    [Key in keyof TJSXType]: Key extends 'is' ? string | undefined : DynamicPropValue<TJSXType[Key]>;
 };
 type JSXChildrenProps<HasChildren extends boolean> = HasChildren extends true ? {
     children?: JSX.Node | JSX.Node[];

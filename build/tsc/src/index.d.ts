@@ -1,8 +1,8 @@
 export { getLogLevel, setLogLevel } from './log';
 export type { LogLevel } from './log';
 import { createElement } from './view';
-export { createElement, IntrinsicObserver, Fragment, mount } from './view';
-export type { Component, EmptyProps, ComponentLifecycle, IntrinsicObserverNodeCallback, IntrinsicObserverElementCallback, } from './rendernode';
+export { createElement, IntrinsicObserver, Fragment, mount, defineCustomElement, } from './view';
+export type { Component, EmptyProps, ComponentLifecycle, WebComponent, WebComponentLifecycle, IntrinsicObserverNodeCallback, IntrinsicObserverElementCallback, } from './rendernode';
 export { ClassComponent, IntrinsicObserverEventType } from './rendernode';
 export type { Model, ModelEvent } from './model';
 export { model, ModelEventType } from './model';
@@ -19,6 +19,7 @@ export { collection } from './collection';
 export { calc, CycleError } from './calc';
 export type { Calculation } from './calc';
 export { reset, subscribe, flush, debug, debugSubscribe, debugGetGraph, } from './engine';
+export type { CustomElements } from './jsx';
 export { InvariantError } from './types';
 export type { RefObjectOrCallback, Ref, RefCallback } from './ref';
 export { ref } from './ref';

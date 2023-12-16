@@ -38,7 +38,7 @@ export declare class CircleDrawer extends ClassComponent {
         selected: null | Circle;
         dynamicR: number;
     }>;
-    svgContainerEl: Ref<HTMLDivElement>;
+    svgContainerEl: Ref<HTMLDivElement | undefined>;
     actions: Action[];
     constructor(props: {});
     renderChildWindow(): import("../../rendernode").RenderNode;

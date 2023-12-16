@@ -5,13 +5,13 @@ import { CellApi } from './cell';
 import './cells.css';
 export declare class Cells extends ClassComponent {
     cellState: SpreadsheetState;
-    cellRefs: Record<string, Ref<CellApi>>;
+    cellRefs: Record<string, Ref<CellApi | undefined>>;
     state: Model<{
         hasFocus: boolean;
         activePosition: Position;
         editing: false;
     }>;
-    tableRef: Ref<HTMLTableElement>;
+    tableRef: Ref<HTMLTableElement | undefined>;
     constructor(props: EmptyProps);
     moveFocusTo(position: Position): void;
     onKeyDown: (e: KeyboardEvent, tableEl: HTMLTableElement) => void;
