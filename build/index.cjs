@@ -39,6 +39,7 @@ __export(src_exports, {
   debugGetGraph: () => debugGetGraph,
   debugSubscribe: () => debugSubscribe,
   default: () => src_default,
+  defineCustomElement: () => defineCustomElement,
   dict: () => dict,
   dynGet: () => dynGet,
   dynSet: () => dynSet,
@@ -931,24 +932,26 @@ function processHandler(vertex, action, addPostAction) {
 }
 function flushInner() {
   isFlushing = true;
+  const toCommit = renderNodesToCommit;
+  renderNodesToCommit = /* @__PURE__ */ new Set();
   globalDependencyGraph.process();
-  for (const renderNode of renderNodesToCommit) {
+  for (const renderNode of toCommit) {
     renderNode.commit?.(0 /* COMMIT_UNMOUNT */);
   }
   const prevFocus = document.activeElement;
-  for (const renderNode of renderNodesToCommit) {
+  for (const renderNode of toCommit) {
     renderNode.commit?.(1 /* COMMIT_DEL */);
   }
-  for (const renderNode of renderNodesToCommit) {
+  for (const renderNode of toCommit) {
     renderNode.commit?.(2 /* COMMIT_INS */);
   }
   if (prevFocus && (prevFocus instanceof HTMLElement || prevFocus instanceof SVGElement) && document.documentElement.contains(prevFocus)) {
     prevFocus.focus();
   }
-  for (const renderNode of renderNodesToCommit) {
+  for (const renderNode of toCommit) {
     renderNode.commit?.(3 /* COMMIT_MOUNT */);
   }
-  renderNodesToCommit.clear();
+  toCommit.clear();
   isFlushing = false;
   if (needsFlush) {
     flush();
@@ -1322,179 +1325,70 @@ function assignProp(element, attribute, value) {
   setAttribute(element, attribute, value);
 }
 
-// src/arrayevent.ts
-var ArrayEventType = /* @__PURE__ */ ((ArrayEventType2) => {
-  ArrayEventType2["SPLICE"] = "splice";
-  ArrayEventType2["MOVE"] = "move";
-  ArrayEventType2["SORT"] = "sort";
-  return ArrayEventType2;
-})(ArrayEventType || {});
-function shiftEventBy(shiftAmount, event) {
-  switch (event.type) {
-    case "splice" /* SPLICE */: {
-      event.index += shiftAmount;
-      break;
-    }
-    case "sort" /* SORT */: {
-      event.from += shiftAmount;
-      for (let i = 0; i < event.indexes.length; ++i) {
-        event.indexes[i] += shiftAmount;
+// src/field.ts
+var Field = class {
+  constructor(val, debugName) {
+    this._val = val;
+    this._changeClock = 0;
+    this.__processable = true;
+    this.__refcount = 0;
+    this.__debugName = debugName ?? "field";
+  }
+  get() {
+    notifyRead(this);
+    return this._val;
+  }
+  set(newVal) {
+    if (newVal !== this._val) {
+      if (this._subscribers) {
+        this._changeClock += 1;
       }
-      break;
-    }
-    case "move" /* MOVE */: {
-      event.from += shiftAmount;
-      event.to += shiftAmount;
-      break;
-    }
-    default:
-      assertExhausted(event);
-  }
-}
-function shiftEvent(slotSizes, slotIndex, event) {
-  let shiftAmount = 0;
-  for (let i = 0; i < slotIndex; ++i) {
-    shiftAmount += slotSizes[i];
-  }
-  if (shiftAmount > 0) {
-    shiftEventBy(shiftAmount, event);
-  }
-  if (event.type === "splice" /* SPLICE */) {
-    slotSizes[slotIndex] += (event.items?.length ?? 0) - event.count;
-  }
-}
-var EMPTY_ARRAY = [];
-function applyArrayEvent(target, event) {
-  switch (event.type) {
-    case "splice" /* SPLICE */: {
-      if (event.items) {
-        return target.splice(event.index, event.count, ...event.items);
-      } else {
-        return target.splice(event.index, event.count);
+      this._val = newVal;
+      if (this.__refcount > 0) {
+        markDirty(this);
       }
     }
-    case "sort" /* SORT */: {
-      const duped = target.slice(event.from);
-      for (let i = 0; i < event.indexes.length; ++i) {
-        target[i] = duped[event.indexes[i] - event.from];
-      }
-      break;
-    }
-    case "move" /* MOVE */: {
-      const slice = target.splice(event.from, event.count);
-      target.splice(event.to, 0, ...slice);
-      break;
-    }
-    default:
-      assertExhausted(event);
   }
-  return EMPTY_ARRAY;
-}
-function* arrayEventFlatMap(slotSizes, flatMap, target, event) {
-  switch (event.type) {
-    case "splice" /* SPLICE */: {
-      let fromIndex = 0;
-      let count = 0;
-      for (let i = 0; i < event.index; ++i) {
-        fromIndex += i < slotSizes.length ? slotSizes[i] : 0;
+  subscribe(subscriber) {
+    this.retain();
+    if (!this._subscribers)
+      this._subscribers = /* @__PURE__ */ new Map();
+    this._subscribers.set(subscriber, this._changeClock);
+    return () => {
+      if (this._subscribers?.has(subscriber)) {
+        this._subscribers?.delete(subscriber);
+        this.release();
       }
-      for (let i = 0; i < event.count; ++i) {
-        const slotIndex = event.index + i;
-        count += slotIndex < slotSizes.length ? slotSizes[slotIndex] : 0;
-      }
-      const slotItems = [];
-      const items = [];
-      if (event.items) {
-        for (const item of event.items) {
-          const slot = flatMap(item);
-          slotItems.push(slot.length);
-          items.push(...slot);
+    };
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  __alive() {
+    addVertex(this);
+  }
+  __dead() {
+    removeVertex(this);
+  }
+  __recalculate() {
+    assert(this.__refcount > 0, "cannot flush dead field");
+    if (this._subscribers) {
+      for (const [subscriber, observeClock] of this._subscribers) {
+        if (observeClock < this._changeClock) {
+          subscriber(this._val);
         }
+        this._subscribers.set(subscriber, 0);
       }
-      target.splice(fromIndex, count, ...items);
-      slotSizes.splice(event.index, event.count, ...slotItems);
-      yield {
-        type: "splice" /* SPLICE */,
-        index: fromIndex,
-        count,
-        items
-      };
-      break;
+      this._changeClock = 0;
     }
-    case "sort" /* SORT */: {
-      const slotStartIndex = [];
-      let realIndex = 0;
-      for (const slotSize of slotSizes) {
-        slotStartIndex.push(realIndex);
-        realIndex += slotSize;
-      }
-      const copiedSlotSizes = slotSizes.slice();
-      const copiedSource = target.slice();
-      const newIndexes = [];
-      let destSlotIndex = 0;
-      let destIndex = 0;
-      for (const sourceIndex of event.indexes) {
-        const realCount = copiedSlotSizes[sourceIndex];
-        const realIndex2 = slotStartIndex[sourceIndex];
-        for (let i = 0; i < realCount; ++i) {
-          newIndexes.push(realIndex2 + i);
-          target[destIndex] = copiedSource[realIndex2 + i];
-          destIndex += 1;
-        }
-        slotSizes[destSlotIndex] = copiedSlotSizes[sourceIndex];
-        destSlotIndex += 1;
-      }
-      yield {
-        type: "sort" /* SORT */,
-        from: slotStartIndex[event.from],
-        indexes: newIndexes
-      };
-      break;
-    }
-    case "move" /* MOVE */: {
-      let fromIndex = 0;
-      let toIndex = 0;
-      let count = 0;
-      for (let i = 0; i < event.from; ++i) {
-        fromIndex += slotSizes[i];
-      }
-      for (let i = 0; i < event.count; ++i) {
-        count += slotSizes[event.from + i];
-      }
-      const movedSlots = slotSizes.splice(event.from, event.count);
-      const movedItems = target.splice(fromIndex, count);
-      for (let i = 0; i < event.to; ++i) {
-        toIndex += slotSizes[i];
-      }
-      slotSizes.splice(event.to, 0, ...movedSlots);
-      target.splice(toIndex, 0, ...movedItems);
-      yield {
-        type: "move" /* MOVE */,
-        from: fromIndex,
-        count,
-        to: toIndex
-      };
-      break;
-    }
-    default:
-      assertExhausted(event);
+    return true;
   }
-}
-function addArrayEvent(events, event) {
-  const lastEvent = events.length > 0 ? events[events.length - 1] : null;
-  if (lastEvent && event.type === "splice" /* SPLICE */ && lastEvent.type === "splice" /* SPLICE */) {
-    const lastEventSpliceEnd = lastEvent.index + (lastEvent.items?.length ?? 0);
-    if (lastEventSpliceEnd === event.index) {
-      lastEvent.count += event.count;
-      if (lastEvent.items && event.items) {
-        lastEvent.items.push(...event.items);
-      } else if (event.items) {
-        lastEvent.items = event.items;
-      }
-      return;
-    }
-  }
-  events.push(event);
+};
+function field(val, debugName) {
+  return new Field(val, debugName);
 }
 
 // src/sentinel.ts
@@ -1824,70 +1718,207 @@ function calc(fn, debugName) {
   return calculation;
 }
 
-// src/field.ts
-var Field = class {
-  constructor(val, debugName) {
-    this._val = val;
-    this._changeClock = 0;
-    this.__processable = true;
-    this.__refcount = 0;
-    this.__debugName = debugName ?? "field";
+// src/dyn.ts
+function dynGet(wrapper) {
+  if (wrapper instanceof Field || wrapper instanceof Calculation) {
+    return wrapper.get();
   }
-  get() {
-    notifyRead(this);
-    return this._val;
-  }
-  set(newVal) {
-    if (newVal !== this._val) {
-      if (this._subscribers) {
-        this._changeClock += 1;
-      }
-      this._val = newVal;
-      if (this.__refcount > 0) {
-        markDirty(this);
-      }
-    }
-  }
-  subscribe(subscriber) {
-    this.retain();
-    if (!this._subscribers)
-      this._subscribers = /* @__PURE__ */ new Map();
-    this._subscribers.set(subscriber, this._changeClock);
-    return () => {
-      if (this._subscribers?.has(subscriber)) {
-        this._subscribers?.delete(subscriber);
-        this.release();
-      }
-    };
-  }
-  retain() {
-    retain(this);
-  }
-  release() {
-    release(this);
-  }
-  __alive() {
-    addVertex(this);
-  }
-  __dead() {
-    removeVertex(this);
-  }
-  __recalculate() {
-    assert(this.__refcount > 0, "cannot flush dead field");
-    if (this._subscribers) {
-      for (const [subscriber, observeClock] of this._subscribers) {
-        if (observeClock < this._changeClock) {
-          subscriber(this._val);
-        }
-        this._subscribers.set(subscriber, 0);
-      }
-      this._changeClock = 0;
-    }
+  return wrapper;
+}
+function dynSet(wrapper, value) {
+  if (wrapper instanceof Field) {
+    wrapper.set(value);
     return true;
   }
-};
-function field(val, debugName) {
-  return new Field(val, debugName);
+  if (wrapper instanceof Calculation) {
+    return false;
+  }
+  return false;
+}
+function dynSubscribe(wrapper, callback) {
+  if (wrapper instanceof Field) {
+    return wrapper.subscribe(callback);
+  }
+  if (wrapper instanceof Calculation) {
+    return wrapper.subscribe(callback);
+  }
+  callback(wrapper);
+  return noop;
+}
+
+// src/arrayevent.ts
+var ArrayEventType = /* @__PURE__ */ ((ArrayEventType2) => {
+  ArrayEventType2["SPLICE"] = "splice";
+  ArrayEventType2["MOVE"] = "move";
+  ArrayEventType2["SORT"] = "sort";
+  return ArrayEventType2;
+})(ArrayEventType || {});
+function shiftEventBy(shiftAmount, event) {
+  switch (event.type) {
+    case "splice" /* SPLICE */: {
+      event.index += shiftAmount;
+      break;
+    }
+    case "sort" /* SORT */: {
+      event.from += shiftAmount;
+      for (let i = 0; i < event.indexes.length; ++i) {
+        event.indexes[i] += shiftAmount;
+      }
+      break;
+    }
+    case "move" /* MOVE */: {
+      event.from += shiftAmount;
+      event.to += shiftAmount;
+      break;
+    }
+    default:
+      assertExhausted(event);
+  }
+}
+function shiftEvent(slotSizes, slotIndex, event) {
+  let shiftAmount = 0;
+  for (let i = 0; i < slotIndex; ++i) {
+    shiftAmount += slotSizes[i];
+  }
+  if (shiftAmount > 0) {
+    shiftEventBy(shiftAmount, event);
+  }
+  if (event.type === "splice" /* SPLICE */) {
+    slotSizes[slotIndex] += (event.items?.length ?? 0) - event.count;
+  }
+}
+var EMPTY_ARRAY = [];
+function applyArrayEvent(target, event) {
+  switch (event.type) {
+    case "splice" /* SPLICE */: {
+      if (event.items) {
+        return target.splice(event.index, event.count, ...event.items);
+      } else {
+        return target.splice(event.index, event.count);
+      }
+    }
+    case "sort" /* SORT */: {
+      const duped = target.slice(event.from);
+      for (let i = 0; i < event.indexes.length; ++i) {
+        target[i] = duped[event.indexes[i] - event.from];
+      }
+      break;
+    }
+    case "move" /* MOVE */: {
+      const slice = target.splice(event.from, event.count);
+      target.splice(event.to, 0, ...slice);
+      break;
+    }
+    default:
+      assertExhausted(event);
+  }
+  return EMPTY_ARRAY;
+}
+function* arrayEventFlatMap(slotSizes, flatMap, target, event) {
+  switch (event.type) {
+    case "splice" /* SPLICE */: {
+      let fromIndex = 0;
+      let count = 0;
+      for (let i = 0; i < event.index; ++i) {
+        fromIndex += i < slotSizes.length ? slotSizes[i] : 0;
+      }
+      for (let i = 0; i < event.count; ++i) {
+        const slotIndex = event.index + i;
+        count += slotIndex < slotSizes.length ? slotSizes[slotIndex] : 0;
+      }
+      const slotItems = [];
+      const items = [];
+      if (event.items) {
+        for (const item of event.items) {
+          const slot = flatMap(item);
+          slotItems.push(slot.length);
+          items.push(...slot);
+        }
+      }
+      target.splice(fromIndex, count, ...items);
+      slotSizes.splice(event.index, event.count, ...slotItems);
+      yield {
+        type: "splice" /* SPLICE */,
+        index: fromIndex,
+        count,
+        items
+      };
+      break;
+    }
+    case "sort" /* SORT */: {
+      const slotStartIndex = [];
+      let realIndex = 0;
+      for (const slotSize of slotSizes) {
+        slotStartIndex.push(realIndex);
+        realIndex += slotSize;
+      }
+      const copiedSlotSizes = slotSizes.slice();
+      const copiedSource = target.slice();
+      const newIndexes = [];
+      let destSlotIndex = 0;
+      let destIndex = 0;
+      for (const sourceIndex of event.indexes) {
+        const realCount = copiedSlotSizes[sourceIndex];
+        const realIndex2 = slotStartIndex[sourceIndex];
+        for (let i = 0; i < realCount; ++i) {
+          newIndexes.push(realIndex2 + i);
+          target[destIndex] = copiedSource[realIndex2 + i];
+          destIndex += 1;
+        }
+        slotSizes[destSlotIndex] = copiedSlotSizes[sourceIndex];
+        destSlotIndex += 1;
+      }
+      yield {
+        type: "sort" /* SORT */,
+        from: slotStartIndex[event.from],
+        indexes: newIndexes
+      };
+      break;
+    }
+    case "move" /* MOVE */: {
+      let fromIndex = 0;
+      let toIndex = 0;
+      let count = 0;
+      for (let i = 0; i < event.from; ++i) {
+        fromIndex += slotSizes[i];
+      }
+      for (let i = 0; i < event.count; ++i) {
+        count += slotSizes[event.from + i];
+      }
+      const movedSlots = slotSizes.splice(event.from, event.count);
+      const movedItems = target.splice(fromIndex, count);
+      for (let i = 0; i < event.to; ++i) {
+        toIndex += slotSizes[i];
+      }
+      slotSizes.splice(event.to, 0, ...movedSlots);
+      target.splice(toIndex, 0, ...movedItems);
+      yield {
+        type: "move" /* MOVE */,
+        from: fromIndex,
+        count,
+        to: toIndex
+      };
+      break;
+    }
+    default:
+      assertExhausted(event);
+  }
+}
+function addArrayEvent(events, event) {
+  const lastEvent = events.length > 0 ? events[events.length - 1] : null;
+  if (lastEvent && event.type === "splice" /* SPLICE */ && lastEvent.type === "splice" /* SPLICE */) {
+    const lastEventSpliceEnd = lastEvent.index + (lastEvent.items?.length ?? 0);
+    if (lastEventSpliceEnd === event.index) {
+      lastEvent.count += event.count;
+      if (lastEvent.items && event.items) {
+        lastEvent.items.push(...event.items);
+      } else if (event.items) {
+        lastEvent.items = event.items;
+      }
+      return;
+    }
+  }
+  events.push(event);
 }
 
 // src/fieldmap.ts
@@ -3135,10 +3166,19 @@ var IntrinsicRenderNode = class {
     this.__refcount = 0;
   }
   createElement(xmlNamespace) {
-    const element = document.createElementNS(xmlNamespace, this.tagName);
+    let element;
+    if (this.tagName in webComponentTagConstructors && typeof this.props?.is === "string") {
+      element = document.createElement(this.tagName, {
+        is: this.props.is
+      });
+    } else {
+      element = document.createElementNS(xmlNamespace, this.tagName);
+    }
     if (this.props) {
       for (const [prop, val] of Object.entries(this.props)) {
         if (prop === "ref")
+          continue;
+        if (prop === "is")
           continue;
         if (EventProps.some(({ prefix, param }) => {
           if (prop.startsWith(prefix)) {
@@ -3360,7 +3400,7 @@ var PortalRenderNode = class {
     };
     this._type = RenderNodeType;
     this._commitPhase = 3 /* COMMIT_MOUNT */;
-    this.arrayRenderNode = children;
+    this.childrenRenderNode = children;
     this.childEvents = [];
     this.committedNodes = [];
     this.liveNodes = [];
@@ -3371,17 +3411,17 @@ var PortalRenderNode = class {
       this.refProp = refProp;
       this.mountState = 3 /* UNMOUNTED */;
     }
-    this.__debugName = debugName ?? `mount:${element.tagName}`;
+    this.__debugName = debugName ?? `mount:${element instanceof Element ? element.tagName : `shadow:${element.host.tagName}`}`;
     this.__refcount = 0;
   }
   detach() {
     this.emitter = void 0;
-    this.arrayRenderNode.detach();
+    this.childrenRenderNode.detach();
   }
   attach(emitter, parentXmlNamespace) {
     assert(!this.emitter, "Invariant: Intrinsic node double attached");
     this.emitter = emitter;
-    this.arrayRenderNode.attach(
+    this.childrenRenderNode.attach(
       this.handleEvent,
       // Note: portal elements & namespaces are weird! parentXmlNamespace is not quite the right word -- it's the "child" XML namespace.
       parentXmlNamespace
@@ -3389,7 +3429,7 @@ var PortalRenderNode = class {
   }
   setMounted(isMounted) {
     if (isMounted) {
-      this.arrayRenderNode.setMounted(true);
+      this.childrenRenderNode.setMounted(true);
       if (this.refProp) {
         dirtyRenderNode(this);
         this.mountState = 1 /* NOTIFY_MOUNT */;
@@ -3399,14 +3439,14 @@ var PortalRenderNode = class {
         dirtyRenderNode(this);
         this.mountState = 2 /* NOTIFY_UNMOUNT */;
       }
-      this.arrayRenderNode.setMounted(false);
+      this.childrenRenderNode.setMounted(false);
     }
   }
   commit(phase) {
     if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
       return;
     }
-    this.arrayRenderNode.commit(phase);
+    this.childrenRenderNode.commit(phase);
     this._commitPhase = phase;
     if (phase === 0 /* COMMIT_UNMOUNT */ && this.childEvents.length > 0) {
       const childEvents = this.childEvents;
@@ -3481,7 +3521,7 @@ var PortalRenderNode = class {
   clone() {
     return new PortalRenderNode(
       this.element,
-      this.arrayRenderNode.clone(),
+      this.childrenRenderNode.clone(),
       this.refProp
     );
   }
@@ -3513,7 +3553,7 @@ var PortalRenderNode = class {
     release(this);
   }
   __alive() {
-    own(this, this.arrayRenderNode);
+    own(this, this.childrenRenderNode);
   }
   __dead() {
     if (this.calculations) {
@@ -3527,7 +3567,7 @@ var PortalRenderNode = class {
       }
       this.calculationSubscriptions.clear();
     }
-    disown(this, this.arrayRenderNode);
+    disown(this, this.childrenRenderNode);
     removeRenderNode(this);
     this.emitter = void 0;
   }
@@ -3957,7 +3997,7 @@ function renderJSXNode(jsxNode) {
   if (isCollectionOrViewRenderNode(jsxNode)) {
     return new CollectionRenderNode(jsxNode);
   }
-  if (jsxNode instanceof Element) {
+  if (jsxNode instanceof Node) {
     return new ForeignRenderNode(jsxNode);
   }
   if (Array.isArray(jsxNode)) {
@@ -4019,7 +4059,7 @@ function mount(target, node) {
       error("Unhandled mount error", event);
       return;
     }
-  }, target.namespaceURI ?? HTML_NAMESPACE);
+  }, (target instanceof Element ? target.namespaceURI : target.host.namespaceURI) ?? HTML_NAMESPACE);
   if (syncError) {
     release(root);
     throw syncError;
@@ -4032,6 +4072,70 @@ function mount(target, node) {
     flush();
     release(root);
   };
+}
+function defineCustomElement(options) {
+  const Superclass = options.extends ? webComponentTagConstructors[options.extends] : HTMLElement;
+  class GooeyCustomElement extends Superclass {
+    constructor() {
+      super();
+      const shadowRoot = options.shadowMode ? this.attachShadow({
+        delegatesFocus: options.delegatesFocus,
+        mode: options.shadowMode
+      }) : void 0;
+      this._renderNode = new WebComponentRenderNode(
+        this,
+        shadowRoot,
+        options
+      );
+      this._portalRenderNode = new PortalRenderNode(
+        shadowRoot || this,
+        this._renderNode,
+        void 0
+      );
+      this._rendered = false;
+    }
+    destroy() {
+      this._portalRenderNode?.setMounted(false);
+      this._portalRenderNode?.release();
+      this._portalRenderNode = null;
+      this._renderNode = null;
+    }
+    connectedCallback() {
+      if (!this._rendered) {
+        let children = [];
+        if (!options.shadowMode) {
+          children = Array.from(this.childNodes);
+          this.replaceChildren();
+          this._renderNode?.childrenField.set(children);
+        }
+        this._portalRenderNode?.retain();
+        this._portalRenderNode?.attach((event) => {
+          if (event instanceof Error) {
+            error("Unhandled web component mount error", event);
+          }
+        }, this.namespaceURI ?? HTML_NAMESPACE);
+        this._rendered = true;
+      }
+      this._portalRenderNode?.setMounted(true);
+    }
+    disconnectedCallback() {
+      this._portalRenderNode?.setMounted(false);
+    }
+    adoptedCallback() {
+    }
+    attributeChangedCallback(name, oldValue, newValue) {
+      this._renderNode?.fields[name].set(newValue);
+    }
+  }
+  GooeyCustomElement.formAssociated = options.formAssociated || false;
+  GooeyCustomElement.observedAttributes = options.observedAttributes ?? [];
+  if (options.extends) {
+    customElements.define(options.tagName, GooeyCustomElement, {
+      extends: options.extends
+    });
+  } else {
+    customElements.define(options.tagName, GooeyCustomElement);
+  }
 }
 var IntrinsicObserverEventType = /* @__PURE__ */ ((IntrinsicObserverEventType2) => {
   IntrinsicObserverEventType2["MOUNT"] = "mount";
@@ -4422,6 +4526,456 @@ var ComponentRenderNode = class {
     removeRenderNode(this);
   }
 };
+var webComponentTagConstructors = {
+  a: HTMLAnchorElement,
+  abbr: HTMLElement,
+  address: HTMLElement,
+  area: HTMLAreaElement,
+  article: HTMLElement,
+  aside: HTMLElement,
+  audio: HTMLAudioElement,
+  b: HTMLElement,
+  base: HTMLBaseElement,
+  bdi: HTMLElement,
+  bdo: HTMLElement,
+  blockquote: HTMLQuoteElement,
+  body: HTMLBodyElement,
+  br: HTMLBRElement,
+  button: HTMLButtonElement,
+  canvas: HTMLCanvasElement,
+  caption: HTMLTableCaptionElement,
+  cite: HTMLElement,
+  code: HTMLElement,
+  col: HTMLTableColElement,
+  colgroup: HTMLTableColElement,
+  data: HTMLDataElement,
+  datalist: HTMLDataListElement,
+  dd: HTMLElement,
+  del: HTMLModElement,
+  details: HTMLDetailsElement,
+  dfn: HTMLElement,
+  dialog: HTMLDialogElement,
+  div: HTMLDivElement,
+  dl: HTMLDListElement,
+  dt: HTMLElement,
+  em: HTMLElement,
+  embed: HTMLEmbedElement,
+  fieldset: HTMLFieldSetElement,
+  figcaption: HTMLElement,
+  figure: HTMLElement,
+  footer: HTMLElement,
+  form: HTMLFormElement,
+  h1: HTMLHeadingElement,
+  h2: HTMLHeadingElement,
+  h3: HTMLHeadingElement,
+  h4: HTMLHeadingElement,
+  h5: HTMLHeadingElement,
+  h6: HTMLHeadingElement,
+  head: HTMLHeadElement,
+  header: HTMLElement,
+  hgroup: HTMLElement,
+  hr: HTMLHRElement,
+  html: HTMLHtmlElement,
+  i: HTMLElement,
+  iframe: HTMLIFrameElement,
+  img: HTMLImageElement,
+  input: HTMLInputElement,
+  ins: HTMLModElement,
+  kbd: HTMLElement,
+  label: HTMLLabelElement,
+  legend: HTMLLegendElement,
+  li: HTMLLIElement,
+  link: HTMLLinkElement,
+  main: HTMLElement,
+  map: HTMLMapElement,
+  mark: HTMLElement,
+  menu: HTMLMenuElement,
+  meta: HTMLMetaElement,
+  meter: HTMLMeterElement,
+  nav: HTMLElement,
+  noscript: HTMLElement,
+  object: HTMLObjectElement,
+  ol: HTMLOListElement,
+  optgroup: HTMLOptGroupElement,
+  option: HTMLOptionElement,
+  output: HTMLOutputElement,
+  p: HTMLParagraphElement,
+  picture: HTMLPictureElement,
+  pre: HTMLPreElement,
+  progress: HTMLProgressElement,
+  q: HTMLQuoteElement,
+  rp: HTMLElement,
+  rt: HTMLElement,
+  ruby: HTMLElement,
+  s: HTMLElement,
+  samp: HTMLElement,
+  script: HTMLScriptElement,
+  section: HTMLElement,
+  select: HTMLSelectElement,
+  slot: HTMLSlotElement,
+  small: HTMLElement,
+  source: HTMLSourceElement,
+  span: HTMLSpanElement,
+  strong: HTMLElement,
+  style: HTMLStyleElement,
+  sub: HTMLElement,
+  summary: HTMLElement,
+  sup: HTMLElement,
+  table: HTMLTableElement,
+  tbody: HTMLTableSectionElement,
+  td: HTMLTableCellElement,
+  template: HTMLTemplateElement,
+  textarea: HTMLTextAreaElement,
+  tfoot: HTMLTableSectionElement,
+  th: HTMLTableCellElement,
+  thead: HTMLTableSectionElement,
+  time: HTMLTimeElement,
+  title: HTMLTitleElement,
+  tr: HTMLTableRowElement,
+  track: HTMLTrackElement,
+  u: HTMLElement,
+  ul: HTMLUListElement,
+  var: HTMLElement,
+  video: HTMLVideoElement,
+  wbr: HTMLElement
+};
+var WebComponentRenderNode = class {
+  constructor(host, shadowRoot, options, debugName) {
+    this.handleEvent = (event) => {
+      assert(
+        !(this.result instanceof Error),
+        "Invariant: received event on calculation error"
+      );
+      if (event instanceof Error && this.errorHandler) {
+        if (this.result) {
+          if (this.resultAttached) {
+            if (this.isMounted) {
+              this.result.setMounted(false);
+            }
+            this.result.detach();
+            this.resultAttached = false;
+          }
+          disown(this, this.result);
+          this.result = void 0;
+        }
+        const handledResult = this.errorHandler(event);
+        this.result = handledResult ? renderJSXNode(handledResult) : emptyRenderNode;
+        own(this, this.result);
+        if (this.emitter && this.parentXmlNamespace) {
+          this.result.attach(this.handleEvent, this.parentXmlNamespace);
+          this.resultAttached = true;
+        }
+        if (this.isMounted) {
+          this.result.setMounted(true);
+        }
+      } else {
+        this.emitter?.(event);
+      }
+    };
+    this._type = RenderNodeType;
+    this._commitPhase = 3 /* COMMIT_MOUNT */;
+    this.host = host;
+    this.shadowRoot = shadowRoot;
+    this.options = options;
+    this.childrenField = field(void 0);
+    this.fields = {};
+    this.options.observedAttributes?.forEach((attr) => {
+      this.fields[attr] = field(void 0);
+    });
+    if (!options.extends) {
+      this.elementInternals = this.host.attachInternals();
+    }
+    this.owned = /* @__PURE__ */ new Set();
+    this.isMounted = false;
+    this.resultAttached = false;
+    this.__debugName = debugName ?? `web-component(${options.tagName})`;
+    this.__refcount = 0;
+  }
+  detach() {
+    assert(this.result, "Invariant: missing component result");
+    if (this.result instanceof Error) {
+      return;
+    }
+    assert(
+      this.resultAttached,
+      "Invariant: detached unattached component result"
+    );
+    this.result.detach();
+    this.resultAttached = false;
+    this.emitter = void 0;
+  }
+  ensureResult() {
+    if (!this.result) {
+      let callbacksAllowed = true;
+      const lifecycle = {
+        onMount: (handler) => {
+          assert(
+            callbacksAllowed,
+            "onMount must be called in component body"
+          );
+          if (!this.onMountCallbacks)
+            this.onMountCallbacks = [];
+          this.onMountCallbacks.push(handler);
+        },
+        onUnmount: (handler) => {
+          assert(
+            callbacksAllowed,
+            "onUnmount must be called in component body"
+          );
+          if (!this.onUnmountCallbacks)
+            this.onUnmountCallbacks = [];
+          this.onUnmountCallbacks.push(handler);
+        },
+        onDestroy: (handler) => {
+          assert(
+            callbacksAllowed,
+            "onDestroy must be called in component body"
+          );
+          if (!this.onDestroyCallbacks)
+            this.onDestroyCallbacks = [];
+          this.onDestroyCallbacks.push(handler);
+        },
+        onError: (errorHandler) => {
+          assert(
+            callbacksAllowed,
+            "onError must be called in component body"
+          );
+          assert(
+            !this.errorHandler,
+            "onError called multiple times"
+          );
+          this.errorHandler = errorHandler;
+        },
+        host: this.host,
+        elementInternals: this.elementInternals,
+        shadowRoot: this.shadowRoot,
+        addEventListener: (name, handler, options) => {
+          const listener = (event) => {
+            handler.call(this.host, event, this.host);
+          };
+          this.host.addEventListener(name, listener, options);
+          const unsubscribe = () => {
+            this.host.removeEventListener(name, listener, options);
+          };
+          if (!this.onDestroyCallbacks)
+            this.onDestroyCallbacks = [];
+          this.onDestroyCallbacks.push(unsubscribe);
+          return unsubscribe;
+        },
+        bindElementInternalsAttribute: (param, value) => {
+          this.elementInternals[param] = dynGet(value);
+          const unsubscribe = dynSubscribe(value, (newValue) => {
+            this.elementInternals[param] = value;
+          });
+          if (!this.onDestroyCallbacks)
+            this.onDestroyCallbacks = [];
+          this.onDestroyCallbacks.push(unsubscribe);
+          return unsubscribe;
+        },
+        bindFormValue: (formValue) => {
+          if (!this.elementInternals) {
+            throw new Error(
+              `ElementInternals not available on custom element ${this.options.tagName}`
+            );
+          }
+          const update = (formValue2) => {
+            if (typeof formValue2 === "string" || formValue2 instanceof File || formValue2 instanceof FormData) {
+              this.elementInternals?.setFormValue(formValue2);
+            } else {
+              const { value, state } = formValue2;
+              if (state === void 0) {
+                this.elementInternals?.setFormValue(value);
+              } else {
+                this.elementInternals?.setFormValue(
+                  value,
+                  state
+                );
+              }
+            }
+          };
+          update(dynGet(formValue));
+          const unsubscribe = dynSubscribe(
+            formValue,
+            (newVal) => update(newVal)
+          );
+          if (!this.onDestroyCallbacks)
+            this.onDestroyCallbacks = [];
+          this.onDestroyCallbacks.push(unsubscribe);
+          return unsubscribe;
+        },
+        bindValidity: (validity) => {
+          if (!this.elementInternals) {
+            throw new Error(
+              `ElementInternals not available on custom element ${this.options.tagName}`
+            );
+          }
+          const update = (validity2) => {
+            const { flags, message, anchor } = validity2;
+            this.elementInternals?.setValidity(
+              flags,
+              message,
+              anchor
+            );
+          };
+          const val = dynGet(validity);
+          update(val);
+          const unsubscribe = dynSubscribe(
+            validity,
+            (val2) => update(val2)
+          );
+          if (!this.onDestroyCallbacks)
+            this.onDestroyCallbacks = [];
+          this.onDestroyCallbacks.push(unsubscribe);
+          return unsubscribe;
+        },
+        checkValidity: () => {
+          if (!this.elementInternals) {
+            throw new Error(
+              `ElementInternals not available on custom element ${this.options.tagName}`
+            );
+          }
+          this.elementInternals?.checkValidity();
+        },
+        reportValidity: () => {
+          if (!this.elementInternals) {
+            throw new Error(
+              `ElementInternals not available on custom element ${this.options.tagName}`
+            );
+          }
+          this.elementInternals?.reportValidity();
+        }
+      };
+      const componentProps = this.options.shadowMode === void 0 ? {
+        ...this.fields,
+        children: renderJSXNode(this.childrenField)
+      } : {
+        ...this.fields
+      };
+      const Component2 = this.options.Component;
+      let jsxResult;
+      try {
+        jsxResult = trackCreates(
+          this.owned,
+          () => Component2(componentProps, lifecycle) || emptyRenderNode
+        );
+      } catch (e) {
+        const error2 = wrapError(e, "Unknown error rendering component");
+        if (this.errorHandler) {
+          jsxResult = this.errorHandler(error2) ?? emptyRenderNode;
+        } else {
+          jsxResult = error2;
+        }
+      }
+      callbacksAllowed = false;
+      for (const item of this.owned) {
+        retain(item);
+      }
+      if (!(jsxResult instanceof Error)) {
+        this.result = renderJSXNode(jsxResult);
+        own(this, this.result);
+      } else {
+        this.result = jsxResult;
+      }
+    }
+    return this.result;
+  }
+  attach(emitter, parentXmlNamespace) {
+    assert(
+      this.__refcount > 0,
+      "Invariant: dead ComponentRenderNode called attach"
+    );
+    this.emitter = emitter;
+    this.parentXmlNamespace = parentXmlNamespace;
+    const result = this.ensureResult();
+    if (result instanceof Error) {
+      emitter(result);
+    } else {
+      result.attach(this.handleEvent, parentXmlNamespace);
+      this.resultAttached = true;
+    }
+  }
+  setMounted(isMounted) {
+    assert(this.result, "Invariant: missing result");
+    this.isMounted = isMounted;
+    if (this.result instanceof Error) {
+      return;
+    }
+    if (isMounted) {
+      this.needsMount = true;
+      dirtyRenderNode(this);
+      this.result.setMounted(isMounted);
+    } else {
+      this.result.setMounted(isMounted);
+      if (this.onUnmountCallbacks) {
+        for (const callback of this.onUnmountCallbacks) {
+          callback();
+        }
+      }
+    }
+  }
+  commit(phase) {
+    if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+      return;
+    }
+    if (this.result && !(this.result instanceof Error)) {
+      this.result.commit(phase);
+    }
+    this._commitPhase = phase;
+    if (phase === 3 /* COMMIT_MOUNT */ && this.needsMount && this.onMountCallbacks) {
+      for (const callback of this.onMountCallbacks) {
+        const maybeOnUnmount = callback();
+        if (typeof maybeOnUnmount === "function") {
+          if (!this.onUnmountCallbacks) {
+            this.onUnmountCallbacks = [];
+          }
+          const onUnmount = () => {
+            maybeOnUnmount();
+            if (this.onUnmountCallbacks) {
+              const index = this.onUnmountCallbacks.indexOf(onUnmount);
+              if (index >= 0) {
+                this.onUnmountCallbacks.splice(index, 1);
+              }
+            }
+          };
+          this.onUnmountCallbacks.push(onUnmount);
+        }
+      }
+      this.needsMount = false;
+    }
+  }
+  clone(props = {}, children = []) {
+    return new WebComponentRenderNode(
+      this.host,
+      this.shadowRoot,
+      this.options
+    );
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  __alive() {
+    this.ensureResult();
+  }
+  __dead() {
+    if (this.onDestroyCallbacks) {
+      for (const callback of this.onDestroyCallbacks) {
+        callback();
+      }
+    }
+    if (this.result && !(this.result instanceof Error)) {
+      disown(this, this.result);
+    }
+    this.result = void 0;
+    for (const item of this.owned) {
+      release(item);
+    }
+    this.emitter = void 0;
+    removeRenderNode(this);
+  }
+};
 function classComponentToFunctionComponentRenderNode(Component2, props, children) {
   return new ComponentRenderNode(
     (props2, lifecycle) => {
@@ -4745,35 +5299,7 @@ function dict(entries = [], debugName) {
   return new Dict(entries, debugName);
 }
 
-// src/dyn.ts
-function dynGet(wrapper) {
-  if (wrapper instanceof Field || wrapper instanceof Calculation) {
-    return wrapper.get();
-  }
-  return wrapper;
-}
-function dynSet(wrapper, value) {
-  if (wrapper instanceof Field) {
-    wrapper.set(value);
-    return true;
-  }
-  if (wrapper instanceof Calculation) {
-    return false;
-  }
-  return false;
-}
-function dynSubscribe(wrapper, callback) {
-  if (wrapper instanceof Field) {
-    return wrapper.subscribe(callback);
-  }
-  if (wrapper instanceof Calculation) {
-    return wrapper.subscribe(callback);
-  }
-  callback(wrapper);
-  return noop;
-}
-
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.16.0" : "development";
+var VERSION = true ? "0.17.0" : "development";
 //# sourceMappingURL=index.cjs.map
