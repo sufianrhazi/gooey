@@ -147,15 +147,17 @@ function flushInner() {
     // - 4.5: restore document.activeElement if it was moved
     // - 5: notify "onMount"
     isFlushing = true;
+    const toCommit = renderNodesToCommit;
+    renderNodesToCommit = new Set();
     globalDependencyGraph.process();
-    for (const renderNode of renderNodesToCommit) {
+    for (const renderNode of toCommit) {
         renderNode.commit?.(RenderNodeCommitPhase.COMMIT_UNMOUNT);
     }
     const prevFocus = document.activeElement;
-    for (const renderNode of renderNodesToCommit) {
+    for (const renderNode of toCommit) {
         renderNode.commit?.(RenderNodeCommitPhase.COMMIT_DEL);
     }
-    for (const renderNode of renderNodesToCommit) {
+    for (const renderNode of toCommit) {
         renderNode.commit?.(RenderNodeCommitPhase.COMMIT_INS);
     }
     if (
@@ -165,10 +167,10 @@ function flushInner() {
     ) {
         prevFocus.focus();
     }
-    for (const renderNode of renderNodesToCommit) {
+    for (const renderNode of toCommit) {
         renderNode.commit?.(RenderNodeCommitPhase.COMMIT_MOUNT);
     }
-    renderNodesToCommit.clear();
+    toCommit.clear();
     isFlushing = false;
     if (needsFlush) {
         flush();

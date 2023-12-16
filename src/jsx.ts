@@ -18,7 +18,7 @@ export type JSXNode =
     | bigint
     | symbol
     | Function
-    | Element
+    | Node
     | RenderNode
     | JSXNodeCalculation
     | JSXNodeCollection
@@ -43,6 +43,9 @@ export interface JSXNodeArray extends Array<JSXNode> {}
 // eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface JSXNodeField extends Field<JSXNode> {}
 
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface CustomElements {}
+
 declare global {
     // eslint-disable-next-line @typescript-eslint/no-namespace
     namespace JSX {
@@ -64,7 +67,9 @@ declare global {
         /**
          * The mapping of element name to intrinsic element path
          */
-        type IntrinsicElements = KnownElements & Record<string, any>;
+        type IntrinsicElements = KnownElements &
+            CustomElements &
+            Record<string, any>;
 
         /**
          * The object property of children
@@ -1534,7 +1539,9 @@ interface JSXDataProps {
 }
 
 type JSXElementInterfaceProps<TJSXType extends JSXElementInterface> = {
-    [Key in keyof TJSXType]: DynamicPropValue<TJSXType[Key]>;
+    [Key in keyof TJSXType]: Key extends 'is'
+        ? string | undefined
+        : DynamicPropValue<TJSXType[Key]>;
 };
 
 type JSXChildrenProps<HasChildren extends boolean> = HasChildren extends true

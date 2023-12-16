@@ -1,11 +1,19 @@
 export { getLogLevel, setLogLevel } from './log';
 export type { LogLevel } from './log';
 import { createElement } from './view';
-export { createElement, IntrinsicObserver, Fragment, mount } from './view';
+export {
+    createElement,
+    IntrinsicObserver,
+    Fragment,
+    mount,
+    defineCustomElement,
+} from './view';
 export type {
     Component,
     EmptyProps,
     ComponentLifecycle,
+    WebComponent,
+    WebComponentLifecycle,
     IntrinsicObserverNodeCallback,
     IntrinsicObserverElementCallback,
 } from './rendernode';
@@ -32,6 +40,7 @@ export {
     debugSubscribe,
     debugGetGraph,
 } from './engine';
+export type { CustomElements } from './jsx';
 
 export { InvariantError } from './types';
 export type { RefObjectOrCallback, Ref, RefCallback } from './ref';

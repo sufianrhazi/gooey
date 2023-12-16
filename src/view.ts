@@ -14,7 +14,7 @@ import {
 
 export { IntrinsicObserver } from './rendernode';
 
-export { mount } from './rendernode';
+export { mount, defineCustomElement } from './rendernode';
 
 export const Fragment: Component<{ children?: JSX.Node | JSX.Node[] }> = ({
     children,

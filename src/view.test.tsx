@@ -1,5 +1,6 @@
 import Gooey, {
     ClassComponent,
+    dynGet,
     Component,
     calc,
     collection,
@@ -13,7 +14,9 @@ import Gooey, {
     Ref,
     subscribe,
     IntrinsicObserver,
+    defineCustomElement,
 } from './index';
+import type { Dyn } from './index';
 import { debugGetGraph } from './engine';
 import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
 
@@ -4220,6 +4223,52 @@ if (2 < 1) {
         const r: Ref<string | undefined> = ref();
         assert.isTruthy(r);
     });
+
+    test('unspecified custom elements have "any" props', () => {
+        <my-custom-element />;
+        <my-custom-element name="foo" />;
+        <my-custom-element name={{ yeehaw: true }} />;
+        <my-custom-element>
+            <div>children</div>
+        </my-custom-element>;
+    });
+}
+
+// More type tests
+declare module './index' {
+    interface CustomElements {
+        'my-interface-merged-custom-element': {
+            name: Dyn<string>;
+            children: JSX.Element;
+        };
+    }
+}
+
+// eslint-disable-next-line no-constant-condition
+if (2 < 1) {
+    // Note: the test below requires the merged declaration above
+    test('custom elements may be specified by providing an interface to CustomElements', () => {
+        <my-interface-merged-custom-element name="yes">
+            <div>One child</div>
+        </my-interface-merged-custom-element>;
+
+        // @ts-expect-error
+        <my-interface-merged-custom-element />;
+
+        // @ts-expect-error
+        <my-interface-merged-custom-element name="yes" />;
+
+        // @ts-expect-error
+        <my-interface-merged-custom-element>
+            <div>Exactly one child</div>
+        </my-interface-merged-custom-element>;
+
+        // @ts-expect-error
+        <my-interface-merged-custom-element name="yes">
+            <div>Exactly one child</div>
+            <div>Exactly one child</div>
+        </my-interface-merged-custom-element>;
+    });
 }
 
 suite('automatic memory management', () => {
@@ -4404,4 +4453,524 @@ suite('bugs', () => {
         flush();
         assert.is(2, numRenders);
     });
+});
+
+let uniqueid = 0;
+const makeUniqueTagname = (name: string): `${string}-${string}` =>
+    `${name}-${uniqueid++}`;
+
+suite('custom elements', () => {
+    test('a non-shadow custom element renders contents as expected via createElement', () => {
+        const tagName = makeUniqueTagname('custom-non-shadow');
+        const val = field('After');
+        defineCustomElement({
+            tagName,
+            observedAttributes: [],
+            Component: ({ children }) => {
+                return (
+                    <>
+                        <div>Before</div>
+                        {children}
+                        <div>{calc(() => val)}</div>
+                    </>
+                );
+            },
+        });
+        const el = document.createElement(tagName);
+        el.appendChild(document.createTextNode('Middle1'));
+        el.appendChild(document.createTextNode('Middle2'));
+        testRoot.appendChild(el);
+        flush();
+        assert.is(el.textContent, 'BeforeMiddle1Middle2After');
+        val.set('Updated');
+        flush();
+        assert.is(el.textContent, 'BeforeMiddle1Middle2Updated');
+        testRoot.removeChild(el);
+        flush();
+        assert.is(el.textContent, 'BeforeMiddle1Middle2Updated');
+    });
+
+    test('a non-shadow custom element renders contents as expected via innerHTML', () => {
+        const tagName = makeUniqueTagname('custom-non-shadow');
+        const val = field('After');
+        defineCustomElement({
+            tagName,
+            observedAttributes: [],
+            Component: ({ children }) => {
+                return (
+                    <>
+                        <div>Before</div>
+                        {children}
+                        <div>{calc(() => val)}</div>
+                    </>
+                );
+            },
+        });
+        testRoot.innerHTML = `<${tagName}>Middle1Middle2</${tagName}>`;
+        const el = testRoot.childNodes[0];
+        flush();
+        assert.is(el.textContent, 'BeforeMiddle1Middle2After');
+        val.set('Updated');
+        flush();
+        assert.is(el.textContent, 'BeforeMiddle1Middle2Updated');
+        testRoot.removeChild(el);
+        flush();
+        assert.is(el.textContent, 'BeforeMiddle1Middle2Updated');
+    });
+
+    test('a non-shadow custom element renders contents as expected via jsx', () => {
+        const tagName = makeUniqueTagname('custom-non-shadow');
+        const val = field('After');
+        defineCustomElement({
+            tagName,
+            observedAttributes: [],
+            Component: ({ children }) => {
+                return (
+                    <>
+                        <div>Before</div>
+                        {children}
+                        <div>{calc(() => val)}</div>
+                    </>
+                );
+            },
+        });
+        const TagName: string = tagName;
+        const elRef = ref<HTMLElement | undefined>();
+        mount(testRoot, <TagName ref={elRef}>Middle1Middle2</TagName>);
+        flush();
+        const el = elRef.current as HTMLElement;
+        assert.is(el.textContent, 'BeforeMiddle1Middle2After');
+        val.set('Updated');
+        flush();
+        assert.is(el.textContent, 'BeforeMiddle1Middle2Updated');
+        testRoot.removeChild(el);
+        flush();
+        assert.is(el.textContent, 'BeforeMiddle1Middle2Updated');
+    });
+
+    test('a non-shadow custom element can be rendered as jsx', () => {
+        const tagName = makeUniqueTagname('custom-non-shadow');
+        const val = field('After');
+        defineCustomElement({
+            tagName,
+            observedAttributes: [],
+            Component: ({ children }) => {
+                return (
+                    <>
+                        <div>Before</div>
+                        {children}
+                        <div>{calc(() => val)}</div>
+                    </>
+                );
+            },
+        });
+        const TagName: string = tagName;
+        mount(
+            testRoot,
+            <>
+                <TagName>
+                    <div>Foo</div>
+                    <div>Bar</div>
+                </TagName>
+            </>
+        );
+        flush();
+        assert.is(testRoot.textContent, 'BeforeFooBarAfter');
+        val.set('Updated');
+        flush();
+        assert.is(testRoot.textContent, 'BeforeFooBarUpdated');
+    });
+
+    test('a non-shadow custom element can observe attributes', () => {
+        const tagName = makeUniqueTagname('custom-non-shadow');
+
+        defineCustomElement({
+            tagName,
+            observedAttributes: ['name'],
+            Component: ({ name, children }) => {
+                return <>Hello, {calc(() => dynGet(name) ?? 'world')}</>;
+            },
+        });
+        testRoot.innerHTML = `<div>1: <${tagName}></${tagName}></div>
+<div>2: <${tagName} name="human" id="updateable"></${tagName}>`;
+        flush();
+        assert.is(testRoot.textContent, '1: Hello, world\n2: Hello, human');
+        testRoot.querySelector(tagName)?.setAttribute('name', 'first');
+        testRoot.querySelector('#updateable')?.setAttribute('name', 'second');
+        flush();
+        assert.is(testRoot.textContent, '1: Hello, first\n2: Hello, second');
+        testRoot.querySelector(tagName)?.removeAttribute('name');
+        testRoot.querySelector('#updateable')?.removeAttribute('name');
+        flush();
+        assert.is(testRoot.textContent, '1: Hello, world\n2: Hello, world');
+    });
+
+    test('an open shadow custom element renders to the shadow dom', () => {
+        const tagName = makeUniqueTagname('custom-shadow');
+
+        defineCustomElement({
+            tagName,
+            observedAttributes: ['name'],
+            shadowMode: 'open',
+            Component: ({ name }) => {
+                return (
+                    <>
+                        <div>One {name}</div>
+                        <slot name="one" />
+                        <div>Two</div>
+                        <slot name="two" />
+                        <div>Three</div>
+                        <slot id="empty-slot" />
+                        <div>Four</div>
+                    </>
+                );
+            },
+        });
+        testRoot.innerHTML = `<${tagName} name="foo"><span slot="two">Goodbye</span><span>Other stuff</span><span slot="one">Hello</span></${tagName}>`;
+        flush();
+        assert.is(
+            'One fooTwoThreeFour',
+            testRoot.querySelector(tagName)?.shadowRoot?.textContent
+        );
+        testRoot.querySelector(tagName)?.setAttribute('name', 'hooray');
+        flush();
+        assert.is(
+            'One hoorayTwoThreeFour',
+            testRoot.querySelector(tagName)?.shadowRoot?.textContent
+        );
+        assert.is(
+            'Hello',
+            (
+                testRoot
+                    .querySelector(tagName)
+                    ?.shadowRoot?.querySelector(
+                        'slot[name="one"]'
+                    ) as HTMLSlotElement
+            ).assignedNodes()[0].textContent
+        );
+        assert.is(
+            'Goodbye',
+            (
+                testRoot
+                    .querySelector(tagName)
+                    ?.shadowRoot?.querySelector(
+                        'slot[name="two"]'
+                    ) as HTMLSlotElement
+            ).assignedNodes()[0].textContent
+        );
+        assert.is(
+            'Other stuff',
+            (
+                testRoot
+                    .querySelector(tagName)
+                    ?.shadowRoot?.querySelector(
+                        'slot#empty-slot'
+                    ) as HTMLSlotElement
+            ).assignedNodes()[0].textContent
+        );
+    });
+
+    test('a closed shadow custom element renders to the shadow dom, but users do not have access', () => {
+        const tagName = makeUniqueTagname('custom-shadow');
+
+        defineCustomElement({
+            tagName,
+            observedAttributes: ['name'],
+            shadowMode: 'closed',
+            Component: ({ name }) => {
+                return (
+                    <>
+                        <div>One {name}</div>
+                        <slot name="one" />
+                        <div>Two</div>
+                        <slot name="two" />
+                        <div>Three</div>
+                        <slot id="empty-slot" />
+                        <div>Four</div>
+                    </>
+                );
+            },
+        });
+        testRoot.innerHTML = `
+            <${tagName} name="foo"><span slot="two">Goodbye</span><span>Other stuff</span><span slot="one">Hello</span></${tagName}>
+            <div name="foo"><span slot="two">Goodbye</span><span>Other stuff</span><span slot="one">Hello</span></div>
+        `;
+        flush();
+        assert.is(null, testRoot.querySelector(tagName)?.shadowRoot);
+        const shadowMeasured = testRoot
+            .querySelector(tagName)!
+            .getBoundingClientRect();
+        const normalMeasured = testRoot
+            .querySelector('div')!
+            .getBoundingClientRect();
+
+        // We cannot directly query the presence of the shadow dom, but we can
+        // assume that the height of the normal element, which renders in a
+        // single line, is equal to the height of the rendered-as-a-shadow
+        // element, which renders in 7 lines
+        // Note: we use ABS(diff) < 0.1 to account for subtle precision differences (firefox is not exact in this regard)
+        assert.lessThan(
+            Math.abs(normalMeasured.height * 7 - shadowMeasured.height),
+            0.1
+        );
+    });
+
+    test('a customized built-in element renders as expected (NOTE: fails in safari, see https://bugs.webkit.org/show_bug.cgi?id=182671)', () => {
+        const tagName = makeUniqueTagname('custom-builtin');
+
+        defineCustomElement({
+            tagName,
+            observedAttributes: ['name'],
+            extends: 'button',
+            Component: ({ name, children }) => {
+                return (
+                    <>
+                        Hello {name} this is {children}
+                    </>
+                );
+            },
+        });
+        mount(
+            testRoot,
+            <button is={tagName} name="cool">
+                nice
+            </button>
+        );
+        flush();
+        assert.is('Hello cool this is nice', testRoot.textContent);
+    });
+
+    test('a non-shadow custom element can add event handlers', () => {
+        const tagName = makeUniqueTagname('custom-non-shadow');
+        const clicks = field(0);
+        defineCustomElement({
+            tagName,
+            observedAttributes: [],
+            Component: ({ children }, { addEventListener }) => {
+                addEventListener('click', () => {
+                    clicks.set(clicks.get() + 1);
+                });
+                return (
+                    <div id="component-main">
+                        <div id="component-inner-1">component-inner-1</div>
+                        {children}
+                        <div id="component-inner-2">component-inner-2</div>
+                    </div>
+                );
+            },
+        });
+        const TagName: string = tagName;
+        mount(
+            testRoot,
+            <>
+                <fieldset>
+                    <legend>Component</legend>
+                    <TagName>
+                        <div id="host-child-1">host-child-1</div>
+                        <div id="host-child-2">host-child-2</div>
+                    </TagName>
+                </fieldset>
+                <fieldset>
+                    <legend>Diagnostics</legend>
+                    <button on:click={() => clicks.set(clicks.get() + 1)}>
+                        Click
+                    </button>
+                    <p>{clicks} clicks</p>
+                </fieldset>
+            </>
+        );
+        assert.is(0, clicks.get());
+        testRoot.querySelector(tagName)?.dispatchEvent(new MouseEvent('click'));
+        flush();
+        assert.is(1, clicks.get());
+    });
+
+    test('a shadow custom element can add event handlers', () => {
+        const tagName = makeUniqueTagname('custom-non-shadow');
+        const clicks = field(0);
+        defineCustomElement({
+            tagName,
+            observedAttributes: [],
+            shadowMode: 'closed',
+            Component: (props, { addEventListener }) => {
+                addEventListener('click', () => {
+                    clicks.set(clicks.get() + 1);
+                });
+                return (
+                    <div id="component-main">
+                        <div id="component-inner-1">component-inner-1</div>
+                        <slot />
+                        <div id="component-inner-2">component-inner-2</div>
+                    </div>
+                );
+            },
+        });
+        const TagName: string = tagName;
+        mount(
+            testRoot,
+            <>
+                <fieldset>
+                    <legend>Component</legend>
+                    <TagName>
+                        <div id="host-child-1">host-child-1</div>
+                        <div id="host-child-2">host-child-2</div>
+                    </TagName>
+                </fieldset>
+                <fieldset>
+                    <legend>Diagnostics</legend>
+                    <button on:click={() => clicks.set(clicks.get() + 1)}>
+                        Click
+                    </button>
+                    <p>{clicks} clicks</p>
+                </fieldset>
+            </>
+        );
+        assert.is(0, clicks.get());
+        testRoot
+            .querySelector(tagName)
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        flush();
+        assert.is(1, clicks.get());
+        testRoot
+            .querySelector('#host-child-1')
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        flush();
+        assert.is(2, clicks.get());
+    });
+
+    test('a custom element can bind form values', () => {
+        const tagName = makeUniqueTagname('my-custom');
+        defineCustomElement({
+            tagName,
+            observedAttributes: [],
+            formAssociated: true,
+            delegatesFocus: true,
+            shadowMode: 'closed',
+            Component: (props, { addEventListener, bindFormValue }) => {
+                const label = field('hello');
+                bindFormValue(label);
+                addEventListener('click', () => {
+                    label.set('goodbye');
+                    flush();
+                });
+                return (
+                    <div>
+                        <div
+                            tabindex={0}
+                            style="width: 100px; height: 100px; background-color: green"
+                        />
+                        {label}
+                    </div>
+                );
+            },
+        });
+        const TagName: string = tagName;
+        const formRef = ref<HTMLFormElement | undefined>(undefined);
+        mount(
+            testRoot,
+            <>
+                <fieldset>
+                    <legend>Component</legend>
+                    <form ref={formRef}>
+                        <TagName name="cool" />
+                        <button>submit</button>
+                    </form>
+                </fieldset>
+            </>
+        );
+        flush();
+        assert.is('hello', new FormData(formRef.current!).get('cool'));
+        testRoot.querySelector(tagName)?.dispatchEvent(new MouseEvent('click'));
+        flush();
+        assert.is('goodbye', new FormData(formRef.current!).get('cool'));
+    });
+
+    // Type-only tests
+    // eslint-disable-next-line no-constant-condition
+    if (2 < 1) {
+        test('closed shadow dom elements cannot have children', () => {
+            defineCustomElement({
+                tagName: 'foo-bar',
+                observedAttributes: [],
+                shadowMode: 'closed',
+                // @ts-expect-error
+                Component: ({ children }) => {
+                    return <></>;
+                },
+            });
+        });
+        test('open shadow dom elements cannot have children', () => {
+            defineCustomElement({
+                tagName: 'foo-bar',
+                observedAttributes: [],
+                shadowMode: 'open',
+                // @ts-expect-error
+                Component: ({ children }) => {
+                    return <></>;
+                },
+            });
+        });
+        test('non-shadow custom elements may have children', () => {
+            defineCustomElement({
+                tagName: 'foo-bar',
+                observedAttributes: [],
+                shadowMode: undefined,
+                Component: ({ children }) => {
+                    return <></>;
+                },
+            });
+        });
+
+        test('custom elements must have a hyphen in their tagname', () => {
+            defineCustomElement({
+                // @ts-expect-error
+                tagName: 'foobar',
+                observedAttributes: [],
+                shadowMode: undefined,
+                Component: ({ children }) => {
+                    return <></>;
+                },
+            });
+        });
+
+        test('custom elements attributes must match component props', () => {
+            defineCustomElement({
+                tagName: 'foo-bar',
+                observedAttributes: [
+                    'name',
+                    'age',
+                    'sex',
+                    'occupationOrModeOfEmploymentJustALongIdentifierSoWeCanGetOnePerLine',
+                ],
+                shadowMode: undefined,
+                Component: ({
+                    name,
+                    age,
+                    occupationOrModeOfEmploymentJustALongIdentifierSoWeCanGetOnePerLine,
+                    // @ts-expect-error
+                    dateOfBirth,
+                }) => {
+                    return <></>;
+                },
+            });
+        });
+
+        test('the "is" prop cannot be dynamic', () => {
+            defineCustomElement({
+                tagName: 'foo-bar',
+                observedAttributes: ['name'],
+                extends: 'div',
+                Component: ({ name }) => {
+                    return <></>;
+                },
+            });
+            <div is="foo-bar" />;
+            <div is={undefined} />;
+
+            // @ts-expect-error
+            <div is={field('foo-bar')} />;
+            // @ts-expect-error
+            <div is={calc(() => 'foo-bar')} />;
+        });
+    }
 });

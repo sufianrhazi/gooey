@@ -11,6 +11,8 @@ import {
 } from './engine';
 import { RefObjectOrCallback, Ref } from './ref';
 import { JSXNode, setAttribute, assignProp } from './jsx';
+import { dynGet, dynSubscribe } from './dyn';
+import type { Dyn } from './dyn';
 import {
     ArrayEvent,
     ArrayEventType,
@@ -21,7 +23,7 @@ import {
 } from './arrayevent';
 import { Calculation, CalculationSubscribeWithPostAction } from './calc';
 import { isCollection, isView, Collection, View } from './collection';
-import { Field } from './field';
+import { field, Field } from './field';
 import { wrapError } from './util';
 
 export interface ComponentLifecycle {
@@ -31,6 +33,109 @@ export interface ComponentLifecycle {
     onError: (handler: (e: Error) => JSX.Element | null) => void;
 }
 
+// List per https://developer.mozilla.org/en-US/docs/Web/API/ElementInternals
+type WebComponentInternalsKey =
+    | 'ariaAtomic'
+    | 'ariaAutoComplete'
+    | 'ariaBusy'
+    | 'ariaChecked'
+    | 'ariaColCount'
+    | 'ariaColIndex'
+    | 'ariaColSpan'
+    | 'ariaCurrent'
+    | 'ariaDescription'
+    | 'ariaDisabled'
+    | 'ariaExpanded'
+    | 'ariaHasPopup'
+    | 'ariaHidden'
+    | 'ariaKeyShortcuts'
+    | 'ariaLabel'
+    | 'ariaLevel'
+    | 'ariaLive'
+    | 'ariaModal'
+    | 'ariaMultiLine'
+    | 'ariaMultiSelectable'
+    | 'ariaOrientation'
+    | 'ariaPlaceholder'
+    | 'ariaPosInSet'
+    | 'ariaPressed'
+    | 'ariaReadOnly'
+    | 'ariaRequired'
+    | 'ariaRoleDescription'
+    | 'ariaRowCount'
+    | 'ariaRowIndex'
+    | 'ariaRowSpan'
+    | 'ariaSelected'
+    | 'ariaSetSize'
+    | 'ariaSort'
+    | 'ariaValueMax'
+    | 'ariaValueMin'
+    | 'ariaValueNow'
+    | 'ariaValueText'
+    | 'role'
+    // Non-standard properties
+    | 'ariaRelevant'
+    // Experimental properties
+    | 'ariaRowIndexText'
+    | 'ariaColIndexText';
+
+interface Validity {
+    flags: {
+        valueMissing?: boolean;
+        typeMismatch?: boolean;
+        patternMismatch?: boolean;
+        tooLong?: boolean;
+        tooShort?: boolean;
+        rangeUnderflow?: boolean;
+        rangeOverflow?: boolean;
+        stepMismatch?: boolean;
+        badInput?: boolean;
+        customError?: boolean;
+    };
+    message?: string | undefined;
+    anchor?: HTMLElement | undefined;
+}
+type FormValue =
+    | string
+    | File
+    | FormData
+    | {
+          value: string | File | FormData;
+          state?: string | File | FormData | undefined;
+      };
+
+export interface WebComponentLifecycle extends ComponentLifecycle {
+    host: HTMLElement;
+    shadowRoot: ShadowRoot | undefined;
+    elementInternals: ElementInternals | undefined;
+    addEventListener<K extends keyof HTMLElementEventMap>(
+        type: K,
+        listener: (
+            this: HTMLElement,
+            ev: HTMLElementEventMap[K],
+            el: HTMLElement // Added for convenience
+        ) => any,
+        options?: boolean | AddEventListenerOptions
+    ): () => void;
+    addEventListener(
+        type: string,
+        listener: (
+            this: HTMLElement,
+            ev: Event,
+            el: HTMLElement // Added for convenience
+        ) => any,
+        options?: boolean | AddEventListenerOptions
+    ): void;
+    bindElementInternalsAttribute: (
+        param: WebComponentInternalsKey,
+        value: Dyn<string | null>
+    ) => () => void;
+    bindFormValue: (formValue: Dyn<FormValue>) => () => void;
+    bindValidity: (validity: Dyn<Validity>) => () => void;
+    checkValidity: () => void;
+    reportValidity: () => void;
+}
+
 // NOTE: UnusedSymbolForChildrenOmission is present solely for the typechecker to not allow assignment of { children?: JSXNode | JSXNode[] } to TProps if TProps is {}
 // Which allows components to flag type errors when they do not specify a `children` prop, but children are given
 declare const UnusedSymbolForChildrenOmission: unique symbol;
@@ -38,6 +143,26 @@ export type EmptyProps = { [UnusedSymbolForChildrenOmission]?: boolean };
 export type Component<TProps = {}> =
     | FunctionComponent<TProps>
     | ClassComponentConstructor<TProps>;
+
+export type WebComponent<
+    TKeys extends string,
+    TShadowMode extends 'open' | 'closed' | undefined
+> = WebFunctionComponent<TKeys, TShadowMode>;
+
+type WebComponentProps<
+    TKeys extends string,
+    TShadowMode extends 'open' | 'closed' | undefined
+> = TShadowMode extends undefined
+    ? { [Key in TKeys]?: Dyn<string | undefined> } & { children: JSXNode }
+    : { [Key in TKeys]?: Dyn<string | undefined> };
+
+export type WebFunctionComponent<
+    TKeys extends string,
+    TShadowMode extends 'open' | 'closed' | undefined
+> = (
+    props: WebComponentProps<TKeys, TShadowMode>,
+    lifecycle: WebComponentLifecycle
+) => JSX.Element | null;
 
 export type FunctionComponent<TProps = {}> = (
     props: TProps & EmptyProps,
@@ -656,10 +781,21 @@ export class IntrinsicRenderNode implements RenderNode {
     }
 
     private createElement(xmlNamespace: string) {
-        const element = document.createElementNS(xmlNamespace, this.tagName);
+        let element: Element;
+        if (
+            this.tagName in webComponentTagConstructors &&
+            typeof this.props?.is === 'string'
+        ) {
+            element = document.createElement(this.tagName, {
+                is: this.props.is,
+            });
+        } else {
+            element = document.createElementNS(xmlNamespace, this.tagName);
+        }
         if (this.props) {
             for (const [prop, val] of Object.entries(this.props)) {
                 if (prop === 'ref') continue; // specially handled by PortalRenderNode
+                if (prop === 'is') continue; // specially handled above
                 if (
                     EventProps.some(({ prefix, param }) => {
                         if (prop.startsWith(prefix)) {
@@ -948,13 +1084,13 @@ export class PortalRenderNode implements RenderNode {
         | undefined;
     private declare mountState?: MountState | undefined;
     private declare emitter?: NodeEmitter | undefined;
-    private declare arrayRenderNode: ArrayRenderNode;
+    private declare childrenRenderNode: RenderNode;
     private declare calculations?: Map<string, Calculation<any>>;
     private declare calculationSubscriptions?: Set<() => void>;
 
     constructor(
         element: Element | ShadowRoot,
-        children: ArrayRenderNode,
+        children: RenderNode,
         refProp:
             | RefObjectOrCallback<Element | ShadowRoot | undefined>
             | null
@@ -963,7 +1099,7 @@ export class PortalRenderNode implements RenderNode {
     ) {
         this._type = RenderNodeType;
         this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
-        this.arrayRenderNode = children;
+        this.childrenRenderNode = children;
         this.childEvents = [];
         this.committedNodes = [];
         this.liveNodes = [];
@@ -1000,13 +1136,13 @@ export class PortalRenderNode implements RenderNode {
 
     detach() {
         this.emitter = undefined;
-        this.arrayRenderNode.detach();
+        this.childrenRenderNode.detach();
     }
 
     attach(emitter: NodeEmitter, parentXmlNamespace: string) {
         log.assert(!this.emitter, 'Invariant: Intrinsic node double attached');
         this.emitter = emitter;
-        this.arrayRenderNode.attach(
+        this.childrenRenderNode.attach(
             this.handleEvent,
             // Note: portal elements & namespaces are weird! parentXmlNamespace is not quite the right word -- it's the "child" XML namespace.
             parentXmlNamespace
@@ -1015,7 +1151,7 @@ export class PortalRenderNode implements RenderNode {
 
     setMounted(isMounted: boolean) {
         if (isMounted) {
-            this.arrayRenderNode.setMounted(true);
+            this.childrenRenderNode.setMounted(true);
             if (this.refProp) {
                 dirtyRenderNode(this);
                 this.mountState = MountState.NOTIFY_MOUNT;
@@ -1025,7 +1161,7 @@ export class PortalRenderNode implements RenderNode {
                 dirtyRenderNode(this);
                 this.mountState = MountState.NOTIFY_UNMOUNT;
             }
-            this.arrayRenderNode.setMounted(false);
+            this.childrenRenderNode.setMounted(false);
         }
     }
 
@@ -1033,7 +1169,7 @@ export class PortalRenderNode implements RenderNode {
         if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
             return;
         }
-        this.arrayRenderNode.commit(phase);
+        this.childrenRenderNode.commit(phase);
         this._commitPhase = phase;
         if (
             phase === RenderNodeCommitPhase.COMMIT_UNMOUNT &&
@@ -1140,7 +1276,7 @@ export class PortalRenderNode implements RenderNode {
     clone(): RenderNode {
         return new PortalRenderNode(
             this.element,
-            this.arrayRenderNode.clone() as ArrayRenderNode,
+            this.childrenRenderNode.clone(),
             this.refProp
         );
     }
@@ -1178,7 +1314,7 @@ export class PortalRenderNode implements RenderNode {
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
-        own(this, this.arrayRenderNode);
+        own(this, this.childrenRenderNode);
     }
     __dead() {
         if (this.calculations) {
@@ -1193,7 +1329,7 @@ export class PortalRenderNode implements RenderNode {
             this.calculationSubscriptions.clear();
         }
 
-        disown(this, this.arrayRenderNode);
+        disown(this, this.childrenRenderNode);
         removeRenderNode(this);
         this.emitter = undefined;
     }
@@ -1762,7 +1898,7 @@ export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
     if (isCollectionOrViewRenderNode(jsxNode)) {
         return new CollectionRenderNode(jsxNode);
     }
-    if (jsxNode instanceof Element) {
+    if (jsxNode instanceof Node) {
         return new ForeignRenderNode(jsxNode);
     }
     if (Array.isArray(jsxNode)) {
@@ -1859,6 +1995,101 @@ export function mount(
         flush();
         release(root);
     };
+}
+
+export function defineCustomElement<
+    TKeys extends string,
+    TShadowMode extends 'open' | 'closed' | undefined = undefined,
+    TExtends extends
+        | keyof typeof webComponentTagConstructors
+        | undefined = undefined
+>(options: WebComponentOptions<TKeys, TShadowMode, TExtends>) {
+    const Superclass = options.extends
+        ? webComponentTagConstructors[options.extends]
+        : HTMLElement;
+    class GooeyCustomElement extends Superclass {
+        _unmount: (() => void) | undefined;
+        _portalRenderNode: PortalRenderNode | null;
+        _renderNode: WebComponentRenderNode<
+            TKeys,
+            TShadowMode,
+            TExtends
+        > | null;
+        static formAssociated = options.formAssociated || false;
+        static observedAttributes = options.observedAttributes ?? [];
+        _rendered: boolean;
+
+        constructor() {
+            super();
+            const shadowRoot = options.shadowMode
+                ? this.attachShadow({
+                      delegatesFocus: options.delegatesFocus,
+                      mode: options.shadowMode,
+                  })
+                : undefined;
+
+            this._renderNode = new WebComponentRenderNode(
+                this,
+                shadowRoot,
+                options
+            );
+            this._portalRenderNode = new PortalRenderNode(
+                shadowRoot || this,
+                this._renderNode,
+                undefined
+            );
+            this._rendered = false;
+        }
+
+        destroy() {
+            this._portalRenderNode?.setMounted(false);
+            this._portalRenderNode?.release();
+            this._portalRenderNode = null;
+            this._renderNode = null;
+        }
+
+        connectedCallback() {
+            if (!this._rendered) {
+                let children: Node[] = [];
+                if (!options.shadowMode) {
+                    children = Array.from(this.childNodes);
+                    this.replaceChildren();
+                    this._renderNode?.childrenField.set(children);
+                }
+                this._portalRenderNode?.retain();
+                this._portalRenderNode?.attach((event) => {
+                    if (event instanceof Error) {
+                        log.error('Unhandled web component mount error', event);
+                    }
+                }, this.namespaceURI ?? HTML_NAMESPACE);
+                this._rendered = true;
+            }
+            this._portalRenderNode?.setMounted(true);
+        }
+
+        disconnectedCallback() {
+            this._portalRenderNode?.setMounted(false);
+        }
+
+        adoptedCallback() {
+            // TODO: what should be done here?
+        }
+
+        attributeChangedCallback(
+            name: string,
+            oldValue: string,
+            newValue: string
+        ) {
+            this._renderNode?.fields[name as TKeys].set(newValue);
+        }
+    }
+    if (options.extends) {
+        customElements.define(options.tagName, GooeyCustomElement, {
+            extends: options.extends,
+        });
+    } else {
+        customElements.define(options.tagName, GooeyCustomElement);
+    }
 }
 
 export enum IntrinsicObserverEventType {
@@ -2314,6 +2545,649 @@ export class ComponentRenderNode<TProps> implements RenderNode {
                 ? { ...this.props, ...props }
                 : ((props || this.props) as TProps),
             children
+        );
+    }
+
+    retain() {
+        retain(this);
+    }
+
+    release() {
+        release(this);
+    }
+
+    // Retainable
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {
+        this.ensureResult();
+    }
+    __dead() {
+        if (this.onDestroyCallbacks) {
+            for (const callback of this.onDestroyCallbacks) {
+                callback();
+            }
+        }
+
+        if (this.result && !(this.result instanceof Error)) {
+            disown(this, this.result);
+        }
+        this.result = undefined;
+        for (const item of this.owned) {
+            release(item);
+        }
+        this.emitter = undefined;
+        removeRenderNode(this);
+    }
+}
+
+const webComponentTagConstructors = {
+    a: HTMLAnchorElement,
+    abbr: HTMLElement,
+    address: HTMLElement,
+    area: HTMLAreaElement,
+    article: HTMLElement,
+    aside: HTMLElement,
+    audio: HTMLAudioElement,
+    b: HTMLElement,
+    base: HTMLBaseElement,
+    bdi: HTMLElement,
+    bdo: HTMLElement,
+    blockquote: HTMLQuoteElement,
+    body: HTMLBodyElement,
+    br: HTMLBRElement,
+    button: HTMLButtonElement,
+    canvas: HTMLCanvasElement,
+    caption: HTMLTableCaptionElement,
+    cite: HTMLElement,
+    code: HTMLElement,
+    col: HTMLTableColElement,
+    colgroup: HTMLTableColElement,
+    data: HTMLDataElement,
+    datalist: HTMLDataListElement,
+    dd: HTMLElement,
+    del: HTMLModElement,
+    details: HTMLDetailsElement,
+    dfn: HTMLElement,
+    dialog: HTMLDialogElement,
+    div: HTMLDivElement,
+    dl: HTMLDListElement,
+    dt: HTMLElement,
+    em: HTMLElement,
+    embed: HTMLEmbedElement,
+    fieldset: HTMLFieldSetElement,
+    figcaption: HTMLElement,
+    figure: HTMLElement,
+    footer: HTMLElement,
+    form: HTMLFormElement,
+    h1: HTMLHeadingElement,
+    h2: HTMLHeadingElement,
+    h3: HTMLHeadingElement,
+    h4: HTMLHeadingElement,
+    h5: HTMLHeadingElement,
+    h6: HTMLHeadingElement,
+    head: HTMLHeadElement,
+    header: HTMLElement,
+    hgroup: HTMLElement,
+    hr: HTMLHRElement,
+    html: HTMLHtmlElement,
+    i: HTMLElement,
+    iframe: HTMLIFrameElement,
+    img: HTMLImageElement,
+    input: HTMLInputElement,
+    ins: HTMLModElement,
+    kbd: HTMLElement,
+    label: HTMLLabelElement,
+    legend: HTMLLegendElement,
+    li: HTMLLIElement,
+    link: HTMLLinkElement,
+    main: HTMLElement,
+    map: HTMLMapElement,
+    mark: HTMLElement,
+    menu: HTMLMenuElement,
+    meta: HTMLMetaElement,
+    meter: HTMLMeterElement,
+    nav: HTMLElement,
+    noscript: HTMLElement,
+    object: HTMLObjectElement,
+    ol: HTMLOListElement,
+    optgroup: HTMLOptGroupElement,
+    option: HTMLOptionElement,
+    output: HTMLOutputElement,
+    p: HTMLParagraphElement,
+    picture: HTMLPictureElement,
+    pre: HTMLPreElement,
+    progress: HTMLProgressElement,
+    q: HTMLQuoteElement,
+    rp: HTMLElement,
+    rt: HTMLElement,
+    ruby: HTMLElement,
+    s: HTMLElement,
+    samp: HTMLElement,
+    script: HTMLScriptElement,
+    section: HTMLElement,
+    select: HTMLSelectElement,
+    slot: HTMLSlotElement,
+    small: HTMLElement,
+    source: HTMLSourceElement,
+    span: HTMLSpanElement,
+    strong: HTMLElement,
+    style: HTMLStyleElement,
+    sub: HTMLElement,
+    summary: HTMLElement,
+    sup: HTMLElement,
+    table: HTMLTableElement,
+    tbody: HTMLTableSectionElement,
+    td: HTMLTableCellElement,
+    template: HTMLTemplateElement,
+    textarea: HTMLTextAreaElement,
+    tfoot: HTMLTableSectionElement,
+    th: HTMLTableCellElement,
+    thead: HTMLTableSectionElement,
+    time: HTMLTimeElement,
+    title: HTMLTitleElement,
+    tr: HTMLTableRowElement,
+    track: HTMLTrackElement,
+    u: HTMLElement,
+    ul: HTMLUListElement,
+    var: HTMLElement,
+    video: HTMLVideoElement,
+    wbr: HTMLElement,
+};
+
+type WebComponentShadowSupportedExtends =
+    | undefined
+    | 'article'
+    | 'aside'
+    | 'blockquote'
+    | 'body'
+    | 'div'
+    | 'footer'
+    | 'h1'
+    | 'h2'
+    | 'h3'
+    | 'h4'
+    | 'h5'
+    | 'h6'
+    | 'header'
+    | 'main'
+    | 'nav'
+    | 'p'
+    | 'section'
+    | 'span';
+
+interface WebComponentOptions<
+    TKeys extends string,
+    TShadowMode extends 'open' | 'closed' | undefined,
+    TExtends extends keyof typeof webComponentTagConstructors | undefined
+> {
+    tagName: `${string}-${string}`;
+    Component: WebComponent<TKeys, TShadowMode>;
+    observedAttributes?: TKeys[] | undefined;
+    formAssociated?: boolean | undefined;
+    shadowMode?: TExtends extends WebComponentShadowSupportedExtends
+        ? TShadowMode
+        : undefined;
+    delegatesFocus?: boolean | undefined;
+    extends?: TExtends;
+}
+
+/**
+ * Renders a set of children known only at attach time
+ */
+export class WebComponentChildrenRenderNode implements RenderNode {
+    declare _type: typeof RenderNodeType;
+    declare _commitPhase: RenderNodeCommitPhase;
+    private declare children?: Node[] | undefined;
+    private declare emitter?: NodeEmitter | undefined;
+
+    constructor(debugName?: string) {
+        this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
+
+        this.__debugName = debugName ?? 'web-component-children';
+        this.__refcount = 0;
+    }
+
+    detach() {
+        if (this.children) {
+            this.emitter?.({
+                type: ArrayEventType.SPLICE,
+                index: 0,
+                count: this.children.length,
+            });
+        }
+        this.emitter = undefined;
+    }
+
+    setChildren(children: Node[]) {
+        if (this.emitter) {
+            this.emitter?.({
+                type: ArrayEventType.SPLICE,
+                index: 0,
+                count: this.children?.length ?? 0,
+                items: children,
+            });
+        }
+        this.children = children;
+    }
+
+    hasChildren() {
+        return !!this.children;
+    }
+
+    revokeChildren() {
+        const children = this.children;
+        this.children = undefined;
+        return children;
+    }
+
+    attach(emitter: NodeEmitter) {
+        log.assert(!this.emitter, 'Invariant: Foreign node double attached');
+        this.emitter = emitter;
+        if (this.children) {
+            this.emitter?.({
+                type: ArrayEventType.SPLICE,
+                index: 0,
+                count: 0,
+                items: this.children,
+            });
+        }
+    }
+
+    setMounted() {}
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
+    }
+    commit(phase: RenderNodeCommitPhase) {
+        // No children, no commit action
+    }
+    clone(): RenderNode {
+        return new WebComponentChildrenRenderNode();
+    }
+
+    // Retainable
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {}
+    __dead() {
+        this.emitter = undefined;
+        removeRenderNode(this);
+    }
+}
+
+export class WebComponentRenderNode<
+    TKeys extends string,
+    TShadowMode extends 'open' | 'closed' | undefined,
+    TExtends extends keyof typeof webComponentTagConstructors | undefined
+> implements RenderNode
+{
+    declare _type: typeof RenderNodeType;
+    declare _commitPhase: RenderNodeCommitPhase;
+    declare host: HTMLElement;
+    declare shadowRoot: ShadowRoot | undefined;
+    declare fields: Record<TKeys, Field<string | undefined>>;
+    declare childrenField: Field<Node[] | undefined>;
+    declare elementInternals?: ElementInternals;
+    declare options: WebComponentOptions<TKeys, TShadowMode, TExtends>;
+    declare result?: RenderNode | Error | undefined;
+    declare resultAttached: boolean;
+    declare onMountCallbacks?: (() => (() => void) | void)[];
+    declare onUnmountCallbacks?: (() => void)[];
+    declare onDestroyCallbacks?: (() => void)[];
+    declare owned: Set<Retainable>;
+    declare errorHandler?: ((e: Error) => RenderNode | null) | undefined;
+    declare emitter?: NodeEmitter | undefined;
+    declare parentXmlNamespace?: string | undefined;
+    declare isMounted: boolean;
+    private declare needsMount?: boolean | undefined;
+
+    constructor(
+        host: HTMLElement,
+        shadowRoot: ShadowRoot | undefined,
+        options: WebComponentOptions<TKeys, TShadowMode, TExtends>,
+        debugName?: string
+    ) {
+        this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
+        this.host = host;
+        this.shadowRoot = shadowRoot;
+        this.options = options;
+        this.childrenField = field<Node[] | undefined>(undefined);
+        this.fields = {} as Record<TKeys, Field<string | undefined>>;
+        this.options.observedAttributes?.forEach((attr) => {
+            this.fields[attr] = field(undefined);
+        });
+
+        if (!options.extends) {
+            this.elementInternals = this.host.attachInternals();
+        }
+
+        this.owned = new Set();
+        this.isMounted = false;
+
+        this.resultAttached = false;
+
+        this.__debugName = debugName ?? `web-component(${options.tagName})`;
+        this.__refcount = 0;
+    }
+
+    detach() {
+        log.assert(this.result, 'Invariant: missing component result');
+        if (this.result instanceof Error) {
+            return;
+        }
+        log.assert(
+            this.resultAttached,
+            'Invariant: detached unattached component result'
+        );
+        this.result.detach();
+        this.resultAttached = false;
+        this.emitter = undefined;
+    }
+
+    private ensureResult() {
+        if (!this.result) {
+            let callbacksAllowed = true;
+            const lifecycle: WebComponentLifecycle = {
+                onMount: (handler: () => (() => void) | void) => {
+                    log.assert(
+                        callbacksAllowed,
+                        'onMount must be called in component body'
+                    );
+                    if (!this.onMountCallbacks) this.onMountCallbacks = [];
+                    this.onMountCallbacks.push(handler);
+                },
+                onUnmount: (handler: () => void) => {
+                    log.assert(
+                        callbacksAllowed,
+                        'onUnmount must be called in component body'
+                    );
+                    if (!this.onUnmountCallbacks) this.onUnmountCallbacks = [];
+                    this.onUnmountCallbacks.push(handler);
+                },
+                onDestroy: (handler: () => void) => {
+                    log.assert(
+                        callbacksAllowed,
+                        'onDestroy must be called in component body'
+                    );
+                    if (!this.onDestroyCallbacks) this.onDestroyCallbacks = [];
+                    this.onDestroyCallbacks.push(handler);
+                },
+                onError: (errorHandler: (e: Error) => RenderNode | null) => {
+                    log.assert(
+                        callbacksAllowed,
+                        'onError must be called in component body'
+                    );
+                    log.assert(
+                        !this.errorHandler,
+                        'onError called multiple times'
+                    );
+                    this.errorHandler = errorHandler;
+                },
+                host: this.host,
+                elementInternals: this.elementInternals,
+                shadowRoot: this.shadowRoot,
+                addEventListener: (
+                    name: string,
+                    handler: (
+                        this: HTMLElement,
+                        event: Event,
+                        el: HTMLElement
+                    ) => void,
+                    options?: boolean | AddEventListenerOptions
+                ) => {
+                    const listener = (event: Event) => {
+                        handler.call(this.host, event, this.host);
+                    };
+                    this.host.addEventListener(name, listener, options);
+                    const unsubscribe = () => {
+                        this.host.removeEventListener(name, listener, options);
+                    };
+                    if (!this.onDestroyCallbacks) this.onDestroyCallbacks = [];
+                    this.onDestroyCallbacks.push(unsubscribe);
+                    return unsubscribe;
+                },
+                bindElementInternalsAttribute: (param, value) => {
+                    // @ts-expect-error // for some reason, ariaDescription is missing from the ARIAMixin definition. Probably need to update type dependencies
+                    this.elementInternals[param] = dynGet(value);
+                    const unsubscribe = dynSubscribe(value, (newValue) => {
+                        // @ts-expect-error // for some reason, ariaDescription is missing from the ARIAMixin definition. Probably need to update type dependencies
+                        this.elementInternals[param] = value;
+                    });
+                    if (!this.onDestroyCallbacks) this.onDestroyCallbacks = [];
+                    this.onDestroyCallbacks.push(unsubscribe);
+                    return unsubscribe;
+                },
+                bindFormValue: (formValue) => {
+                    if (!this.elementInternals) {
+                        throw new Error(
+                            `ElementInternals not available on custom element ${this.options.tagName}`
+                        );
+                    }
+                    const update = (formValue: FormValue) => {
+                        if (
+                            typeof formValue === 'string' ||
+                            formValue instanceof File ||
+                            formValue instanceof FormData
+                        ) {
+                            this.elementInternals?.setFormValue(formValue);
+                        } else {
+                            const { value, state } = formValue;
+                            if (state === undefined) {
+                                this.elementInternals?.setFormValue(value);
+                            } else {
+                                this.elementInternals?.setFormValue(
+                                    value,
+                                    state
+                                );
+                            }
+                        }
+                    };
+                    update(dynGet(formValue));
+                    const unsubscribe = dynSubscribe(formValue, (newVal) =>
+                        update(newVal)
+                    );
+                    if (!this.onDestroyCallbacks) this.onDestroyCallbacks = [];
+                    this.onDestroyCallbacks.push(unsubscribe);
+                    return unsubscribe;
+                },
+                bindValidity: (validity) => {
+                    if (!this.elementInternals) {
+                        throw new Error(
+                            `ElementInternals not available on custom element ${this.options.tagName}`
+                        );
+                    }
+                    const update = (validity: Validity) => {
+                        const { flags, message, anchor } = validity;
+                        this.elementInternals?.setValidity(
+                            flags,
+                            message,
+                            anchor
+                        );
+                    };
+                    const val = dynGet(validity);
+                    update(val);
+                    const unsubscribe = dynSubscribe(validity, (val) =>
+                        update(val)
+                    );
+                    if (!this.onDestroyCallbacks) this.onDestroyCallbacks = [];
+                    this.onDestroyCallbacks.push(unsubscribe);
+                    return unsubscribe;
+                },
+                checkValidity: () => {
+                    if (!this.elementInternals) {
+                        throw new Error(
+                            `ElementInternals not available on custom element ${this.options.tagName}`
+                        );
+                    }
+                    this.elementInternals?.checkValidity();
+                },
+                reportValidity: () => {
+                    if (!this.elementInternals) {
+                        throw new Error(
+                            `ElementInternals not available on custom element ${this.options.tagName}`
+                        );
+                    }
+                    this.elementInternals?.reportValidity();
+                },
+            };
+
+            const componentProps: any =
+                this.options.shadowMode === undefined
+                    ? {
+                          ...this.fields,
+                          children: renderJSXNode(this.childrenField),
+                      }
+                    : {
+                          ...this.fields,
+                      };
+            const Component = this.options.Component;
+            let jsxResult: RenderNode | Error;
+            try {
+                jsxResult = trackCreates(
+                    this.owned,
+                    () =>
+                        Component(componentProps, lifecycle) || emptyRenderNode
+                );
+            } catch (e) {
+                const error = wrapError(e, 'Unknown error rendering component');
+                if (this.errorHandler) {
+                    jsxResult = this.errorHandler(error) ?? emptyRenderNode;
+                } else {
+                    jsxResult = error;
+                }
+            }
+            callbacksAllowed = false;
+            for (const item of this.owned) {
+                retain(item);
+            }
+            if (!(jsxResult instanceof Error)) {
+                this.result = renderJSXNode(jsxResult);
+                own(this, this.result);
+            } else {
+                this.result = jsxResult;
+            }
+        }
+        return this.result;
+    }
+
+    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
+        log.assert(
+            this.__refcount > 0,
+            'Invariant: dead ComponentRenderNode called attach'
+        );
+        this.emitter = emitter;
+        this.parentXmlNamespace = parentXmlNamespace;
+        const result = this.ensureResult();
+        if (result instanceof Error) {
+            emitter(result);
+        } else {
+            result.attach(this.handleEvent, parentXmlNamespace);
+            this.resultAttached = true;
+        }
+    }
+
+    handleEvent = (event: ArrayEvent<Node> | Error) => {
+        log.assert(
+            !(this.result instanceof Error),
+            'Invariant: received event on calculation error'
+        );
+        if (event instanceof Error && this.errorHandler) {
+            if (this.result) {
+                if (this.resultAttached) {
+                    if (this.isMounted) {
+                        this.result.setMounted(false);
+                    }
+                    this.result.detach();
+                    this.resultAttached = false;
+                }
+                disown(this, this.result);
+                this.result = undefined;
+            }
+            const handledResult = this.errorHandler(event);
+            this.result = handledResult
+                ? renderJSXNode(handledResult)
+                : emptyRenderNode;
+            own(this, this.result);
+
+            if (this.emitter && this.parentXmlNamespace) {
+                this.result.attach(this.handleEvent, this.parentXmlNamespace);
+                this.resultAttached = true;
+            }
+
+            if (this.isMounted) {
+                this.result.setMounted(true);
+            }
+        } else {
+            this.emitter?.(event);
+        }
+    };
+
+    setMounted(isMounted: boolean) {
+        log.assert(this.result, 'Invariant: missing result');
+        this.isMounted = isMounted;
+        if (this.result instanceof Error) {
+            return;
+        }
+        if (isMounted) {
+            this.needsMount = true;
+            dirtyRenderNode(this);
+            this.result.setMounted(isMounted);
+        } else {
+            this.result.setMounted(isMounted);
+            if (this.onUnmountCallbacks) {
+                for (const callback of this.onUnmountCallbacks) {
+                    callback();
+                }
+            }
+        }
+    }
+
+    commit(phase: RenderNodeCommitPhase) {
+        if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+            return;
+        }
+        if (this.result && !(this.result instanceof Error)) {
+            this.result.commit(phase);
+        }
+        this._commitPhase = phase;
+        if (
+            phase === RenderNodeCommitPhase.COMMIT_MOUNT &&
+            this.needsMount &&
+            this.onMountCallbacks
+        ) {
+            for (const callback of this.onMountCallbacks) {
+                const maybeOnUnmount = callback();
+                if (typeof maybeOnUnmount === 'function') {
+                    if (!this.onUnmountCallbacks) {
+                        this.onUnmountCallbacks = [];
+                    }
+                    const onUnmount = () => {
+                        maybeOnUnmount();
+                        if (this.onUnmountCallbacks) {
+                            const index =
+                                this.onUnmountCallbacks.indexOf(onUnmount);
+                            if (index >= 0) {
+                                this.onUnmountCallbacks.splice(index, 1);
+                            }
+                        }
+                    };
+                    this.onUnmountCallbacks.push(onUnmount);
+                }
+            }
+            this.needsMount = false;
+        }
+    }
+
+    clone(props: {} = {}, children: RenderNode[] = []) {
+        return new WebComponentRenderNode(
+            this.host,
+            this.shadowRoot,
+            this.options
         );
     }
 
