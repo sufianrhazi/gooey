@@ -861,6 +861,7 @@ type WebComponentShadowSupportedExtends = undefined | 'article' | 'aside' | 'blo
 interface WebComponentOptions<TKeys extends string, TShadowMode extends 'open' | 'closed' | undefined, TExtends extends keyof typeof webComponentTagConstructors | undefined> {
     tagName: `${string}-${string}`;
     Component: WebComponent<TKeys, TShadowMode>;
+    hydrateTemplateChild?: boolean | undefined;
     observedAttributes?: TKeys[] | undefined;
     formAssociated?: boolean | undefined;
     shadowMode?: TExtends extends WebComponentShadowSupportedExtends ? TShadowMode : undefined;
