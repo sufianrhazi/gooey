@@ -4885,6 +4885,355 @@ suite('custom elements', () => {
         assert.is('goodbye', new FormData(formRef.current!).get('cool'));
     });
 
+    test('custom shadow components hydrated from HTML may contain a <template> wrapper which is erased when rendering the contents of the element', () => {
+        const tagName = makeUniqueTagname('my-custom');
+        testRoot.innerHTML = `
+<p id="without-template">
+	Before-text
+	<${tagName}>
+		<div slot="foo">slot-foo</div>
+		<div slot="bar">slot-bar</div>
+	</${tagName}>
+	After-text
+</p><p id="with-template">
+	Before-text
+	<${tagName}>
+        <template>
+            <div slot="foo">slot-foo</div>
+            <div slot="bar">slot-bar</div>
+        </template>
+    </${tagName}>
+	After-text
+</p>
+`.trim();
+        defineCustomElement({
+            tagName,
+            shadowMode: 'open',
+            Component: () => {
+                return (
+                    <>
+                        <style>{`
+:host { display: block; padding: 16px; background-color: #ddd; }
+.grid { grid-template-columns: max-content 1fr; gap: 4px; }
+`}</style>
+                        <div class="grid">
+                            <span>foo is</span>
+                            <span>
+                                <slot name="foo" />
+                            </span>
+                            <span>bar is</span>
+                            <span>
+                                <slot name="bar" />
+                            </span>
+                            <span>rest is</span>
+                            <span>
+                                <slot />
+                            </span>
+                        </div>
+                    </>
+                );
+            },
+        });
+        flush();
+
+        /*
+         * The following assertions confirm the surprising html5 rules that parsing the above html for
+         *     <p id="without-template">
+         *         Before-text
+         *         <custom-shadow-element>
+         *             <div slot="foo">slot-foo</div>
+         *             <div slot="bar">slot-bar</div>
+         *         </custom-shadow-element>
+         *         After-text
+         *     </p>
+         *
+         * Results in the DOM tree:
+         * - P#without-template
+         *   - Text: Before-text
+         * - DIV[slot="foo"]
+         *   - Text: slot-foo
+         * - DIV[slot="foo"]
+         *   - Text: slot-bar
+         * - Text: After text
+         * - P (empty, no children)
+         *
+         * This is because <p> elements cannot have child <div> elements when being constructed via parsing html.
+         */
+        assert.is(
+            'Before-text',
+            document.getElementById('without-template')?.textContent?.trim()
+        );
+        assert.is(
+            'DIV',
+            document.getElementById('without-template')?.nextElementSibling
+                ?.tagName
+        );
+        assert.is(
+            'slot-foo',
+            document.getElementById('without-template')?.nextElementSibling
+                ?.textContent
+        );
+        assert.is(
+            'DIV',
+            document.getElementById('without-template')?.nextElementSibling
+                ?.nextElementSibling?.tagName
+        );
+        assert.is(
+            'slot-bar',
+            document.getElementById('without-template')?.nextElementSibling
+                ?.nextElementSibling?.textContent
+        );
+        assert.is(
+            'P',
+            document.getElementById('without-template')?.nextElementSibling
+                ?.nextElementSibling?.nextElementSibling?.tagName
+        );
+        assert.is(
+            'After-text',
+            (
+                document.getElementById('without-template')?.nextElementSibling
+                    ?.nextElementSibling?.nextElementSibling
+                    ?.previousSibling as Text
+            ).data.trim()
+        );
+
+        const withTemplateP = document.getElementById('with-template');
+        assert.is(
+            '<WS>Before-text<WS>slot-foo<WS>slot-bar<WS>After-text<WS>',
+            withTemplateP?.textContent?.replace(/\s+/g, '<WS>')
+        );
+        assert.is(
+            'Before-text',
+            (withTemplateP?.childNodes[0] as Text)?.data?.trim()
+        );
+        assert.is(
+            tagName.toUpperCase(),
+            (withTemplateP?.childNodes[1] as Element)?.tagName
+        );
+        const renderedComponent = withTemplateP?.childNodes[1] as HTMLElement;
+        assert.is('DIV', renderedComponent.children[0].tagName);
+        assert.is('foo', renderedComponent.children[0].getAttribute('slot'));
+        assert.is('DIV', renderedComponent.children[1].tagName);
+        assert.is('bar', renderedComponent.children[1].getAttribute('slot'));
+        assert.is(
+            'After-text',
+            (withTemplateP?.childNodes[2] as Text)?.data?.trim()
+        );
+    });
+
+    test('custom non-shadow components hydrated from HTML may contain a <template> wrapper which is erased when rendering the contents of the element', () => {
+        const tagName = makeUniqueTagname('custom-non-shadow');
+        testRoot.innerHTML = `
+<p id="without-template">
+	Before-text
+	<${tagName}>
+        <div>host-child-1</div>
+        <div>host-child-2</div>
+    </${tagName}>
+	After-text
+</p><p id="with-template">
+	Before-text
+	<${tagName}>
+        <template>
+            <div>host-child-1</div>
+            <div>host-child-2</div>
+        </template>
+    </${tagName}>
+	After-text
+</p>
+`.trim();
+        defineCustomElement({
+            tagName,
+            Component: ({ children }) => {
+                return (
+                    <>
+                        <div>inner-child-1</div>
+                        {children}
+                        <div>inner-child-2</div>
+                    </>
+                );
+            },
+        });
+        flush();
+
+        /*
+         * The following assertions confirm the surprising html5 rules that parsing the above html for
+         *     <p id="without-template">
+         *         Before-text
+         *         <custom-nonshadow-element>
+         *             <div>host-child-1</div>
+         *             <div>host-child-2</div>
+         *         </custom-nonshadow-element>
+         *         After-text
+         *     </p>
+         *
+         * Results in the DOM tree:
+         * - P#without-template
+         *   - Text: Before-text
+         * - DIV
+         *   - Text: host-child-1
+         * - DIV
+         *   - Text: host-child-2
+         * - Text: After text
+         * - P (empty, no children)
+         *
+         * So when the custom element is rendered, it has no children, so the rendered DOM tree becomes:
+         * - P#without-template
+         *   - Text: Before-text
+         *   - DIV
+         *     - Text: inner-child-1
+         *   - DIV
+         *     - Text: inner-child-2
+         * - DIV
+         *   - Text: host-child-1
+         * - DIV
+         *   - Text: host-child-2
+         * - Text: After text
+         * - P (empty, no children)
+         *
+         * This is because <p> elements cannot have child <div> elements when being constructed via parsing html.
+         */
+        assert.is(
+            'Before-text',
+            (
+                document.getElementById('without-template')
+                    ?.childNodes[0] as Text
+            )?.data?.trim()
+        );
+        assert.is(
+            tagName.toUpperCase(),
+            (
+                document.getElementById('without-template')
+                    ?.childNodes[1] as HTMLElement
+            )?.tagName
+        );
+        assert.is(
+            '<div>inner-child-1</div>',
+            (
+                document.getElementById('without-template')
+                    ?.childNodes[1] as HTMLElement
+            )?.children[0]?.outerHTML
+        );
+        assert.is(
+            '<div>inner-child-2</div>',
+            (
+                document.getElementById('without-template')
+                    ?.childNodes[1] as HTMLElement
+            )?.children[1]?.outerHTML
+        );
+        assert.is(
+            'DIV',
+            document.getElementById('without-template')?.nextElementSibling
+                ?.tagName
+        );
+        assert.is(
+            'host-child-1',
+            document.getElementById('without-template')?.nextElementSibling
+                ?.textContent
+        );
+        assert.is(
+            'DIV',
+            document.getElementById('without-template')?.nextElementSibling
+                ?.nextElementSibling?.tagName
+        );
+        assert.is(
+            'host-child-2',
+            document.getElementById('without-template')?.nextElementSibling
+                ?.nextElementSibling?.textContent
+        );
+        assert.is(
+            'P',
+            document.getElementById('without-template')?.nextElementSibling
+                ?.nextElementSibling?.nextElementSibling?.tagName
+        );
+        assert.is(
+            'After-text',
+            (
+                document.getElementById('without-template')?.nextElementSibling
+                    ?.nextElementSibling?.nextElementSibling
+                    ?.previousSibling as Text
+            ).data.trim()
+        );
+
+        // Ok! now to test the "fixed" version
+        const withTemplateP = document.getElementById('with-template');
+        assert.is(
+            '<WS>Before-text<WS>inner-child-1<WS>host-child-1<WS>host-child-2<WS>inner-child-2<WS>After-text<WS>',
+            withTemplateP?.textContent?.replace(/\s+/g, '<WS>')
+        );
+        assert.is(
+            'Before-text',
+            (withTemplateP?.childNodes[0] as Text)?.data?.trim()
+        );
+        assert.is(
+            tagName.toUpperCase(),
+            (withTemplateP?.childNodes[1] as Element)?.tagName
+        );
+        const renderedComponent = withTemplateP?.childNodes[1] as HTMLElement;
+        assert.is('inner-child-1', renderedComponent.children[0].textContent);
+        assert.is('host-child-1', renderedComponent.children[1].textContent);
+        assert.is('host-child-2', renderedComponent.children[2].textContent);
+        assert.is('inner-child-2', renderedComponent.children[3].textContent);
+        assert.is(
+            'After-text',
+            (withTemplateP?.childNodes[2] as Text)?.data?.trim()
+        );
+    });
+
+    test('custom components can opt out of <template> hydration with a boolean flag', () => {
+        const tagName = makeUniqueTagname('my-custom');
+        testRoot.innerHTML = `
+<p id="with-template">
+	Before-text
+	<${tagName}>
+        <template>
+            <div slot="foo">slot-foo</div>
+            <div slot="bar">slot-bar</div>
+        </template>
+    </${tagName}>
+	After-text
+</p>
+`.trim();
+        defineCustomElement({
+            tagName,
+            shadowMode: 'open',
+            hydrateTemplateChild: false,
+            Component: () => {
+                return (
+                    <>
+                        <style>{`
+:host { display: block; padding: 16px; background-color: #ddd; }
+.grid { grid-template-columns: max-content 1fr; gap: 4px; }
+`}</style>
+                        <div class="grid">
+                            <span>foo is</span>
+                            <span>
+                                <slot name="foo" />
+                            </span>
+                            <span>bar is</span>
+                            <span>
+                                <slot name="bar" />
+                            </span>
+                            <span>rest is</span>
+                            <span>
+                                <slot />
+                            </span>
+                        </div>
+                    </>
+                );
+            },
+        });
+        flush();
+
+        const withTemplateP = document.getElementById('with-template');
+        assert.is(
+            tagName.toUpperCase(),
+            (withTemplateP?.childNodes[1] as Element)?.tagName
+        );
+        const renderedComponent = withTemplateP?.childNodes[1] as HTMLElement;
+        assert.is('TEMPLATE', renderedComponent.children[0].tagName);
+    });
+
     // Type-only tests
     // eslint-disable-next-line no-constant-condition
     if (2 < 1) {

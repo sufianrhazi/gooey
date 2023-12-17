@@ -2050,6 +2050,19 @@ export function defineCustomElement<
 
         connectedCallback() {
             if (!this._rendered) {
+                if (
+                    options.hydrateTemplateChild !== false &&
+                    this.children.length === 1 &&
+                    this.children[0] instanceof HTMLTemplateElement
+                ) {
+                    this.replaceChildren(
+                        ...Array.from(this.childNodes).map((node) =>
+                            node instanceof HTMLTemplateElement
+                                ? node.content
+                                : node
+                        )
+                    );
+                }
                 let children: Node[] = [];
                 if (!options.shadowMode) {
                     children = Array.from(this.childNodes);
@@ -2723,6 +2736,7 @@ interface WebComponentOptions<
 > {
     tagName: `${string}-${string}`;
     Component: WebComponent<TKeys, TShadowMode>;
+    hydrateTemplateChild?: boolean | undefined;
     observedAttributes?: TKeys[] | undefined;
     formAssociated?: boolean | undefined;
     shadowMode?: TExtends extends WebComponentShadowSupportedExtends
