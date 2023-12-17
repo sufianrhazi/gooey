@@ -4190,6 +4190,13 @@ function defineCustomElement(options) {
     }
     connectedCallback() {
       if (!this._rendered) {
+        if (options.hydrateTemplateChild !== false && this.children.length === 1 && this.children[0] instanceof HTMLTemplateElement) {
+          this.replaceChildren(
+            ...Array.from(this.childNodes).map(
+              (node) => node instanceof HTMLTemplateElement ? node.content : node
+            )
+          );
+        }
         let children = [];
         if (!options.shadowMode) {
           children = Array.from(this.childNodes);
@@ -5389,5 +5396,5 @@ function dict(entries = [], debugName) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.17.0" : "development";
+var VERSION = true ? "0.17.1" : "development";
 //# sourceMappingURL=index.debug.cjs.map
