@@ -4112,9 +4112,11 @@ function defineCustomElement(options) {
         delegatesFocus: options.delegatesFocus,
         mode: options.shadowMode
       }) : void 0;
+      const elementInternals = options.extends ? void 0 : this.attachInternals();
       this._renderNode = new WebComponentRenderNode(
         this,
         shadowRoot,
+        elementInternals,
         options
       );
       this._portalRenderNode = new PortalRenderNode(
@@ -4122,41 +4124,51 @@ function defineCustomElement(options) {
         this._renderNode,
         void 0
       );
-      this._rendered = false;
+      this._originalChildren = null;
+      this.__debugName = `custom:${options.tagName}`;
+      this.__refcount = 0;
     }
-    destroy() {
-      this._portalRenderNode?.setMounted(false);
+    __dead() {
       this._portalRenderNode?.release();
-      this._portalRenderNode = null;
-      this._renderNode = null;
+      if (this._originalChildren) {
+        this.replaceChildren(...this._originalChildren);
+      }
+    }
+    __alive() {
+      if (options.hydrateTemplateChild !== false && this.children.length === 1 && this.children[0] instanceof HTMLTemplateElement) {
+        this._originalChildren = Array.from(this.childNodes);
+        this.replaceChildren(
+          ...this._originalChildren.map(
+            (node) => node instanceof HTMLTemplateElement ? node.content : node
+          )
+        );
+      }
+      let children = [];
+      if (!options.shadowMode) {
+        children = Array.from(this.childNodes);
+        this.replaceChildren();
+        this._renderNode?.childrenField.set(children);
+      }
+      this._portalRenderNode?.retain();
+      this._portalRenderNode?.attach((event) => {
+        if (event instanceof Error) {
+          error("Unhandled web component mount error", event);
+        }
+      }, this.namespaceURI ?? HTML_NAMESPACE);
+    }
+    retain() {
+      retain(this);
+    }
+    release() {
+      release(this);
     }
     connectedCallback() {
-      if (!this._rendered) {
-        if (options.hydrateTemplateChild !== false && this.children.length === 1 && this.children[0] instanceof HTMLTemplateElement) {
-          this.replaceChildren(
-            ...Array.from(this.childNodes).map(
-              (node) => node instanceof HTMLTemplateElement ? node.content : node
-            )
-          );
-        }
-        let children = [];
-        if (!options.shadowMode) {
-          children = Array.from(this.childNodes);
-          this.replaceChildren();
-          this._renderNode?.childrenField.set(children);
-        }
-        this._portalRenderNode?.retain();
-        this._portalRenderNode?.attach((event) => {
-          if (event instanceof Error) {
-            error("Unhandled web component mount error", event);
-          }
-        }, this.namespaceURI ?? HTML_NAMESPACE);
-        this._rendered = true;
-      }
+      this.retain();
       this._portalRenderNode?.setMounted(true);
     }
     disconnectedCallback() {
       this._portalRenderNode?.setMounted(false);
+      this.release();
     }
     adoptedCallback() {
     }
@@ -4677,7 +4689,7 @@ var webComponentTagConstructors = {
   wbr: HTMLElement
 };
 var WebComponentRenderNode = class {
-  constructor(host, shadowRoot, options, debugName) {
+  constructor(host, shadowRoot, elementInternals, options, debugName) {
     this.handleEvent = (event) => {
       assert(
         !(this.result instanceof Error),
@@ -4713,15 +4725,13 @@ var WebComponentRenderNode = class {
     this._commitPhase = 3 /* COMMIT_MOUNT */;
     this.host = host;
     this.shadowRoot = shadowRoot;
+    this.elementInternals = elementInternals;
     this.options = options;
     this.childrenField = field(void 0);
     this.fields = {};
     this.options.observedAttributes?.forEach((attr) => {
       this.fields[attr] = field(void 0);
     });
-    if (!options.extends) {
-      this.elementInternals = this.host.attachInternals();
-    }
     this.owned = /* @__PURE__ */ new Set();
     this.isMounted = false;
     this.resultAttached = false;
@@ -4984,6 +4994,7 @@ var WebComponentRenderNode = class {
     return new WebComponentRenderNode(
       this.host,
       this.shadowRoot,
+      this.elementInternals,
       this.options
     );
   }
@@ -5001,6 +5012,13 @@ var WebComponentRenderNode = class {
       for (const callback of this.onDestroyCallbacks) {
         callback();
       }
+      this.onDestroyCallbacks = void 0;
+    }
+    if (this.onMountCallbacks) {
+      this.onMountCallbacks = void 0;
+    }
+    if (this.onUnmountCallbacks) {
+      this.onUnmountCallbacks = void 0;
     }
     if (this.result && !(this.result instanceof Error)) {
       disown(this, this.result);
@@ -5009,6 +5027,7 @@ var WebComponentRenderNode = class {
     for (const item of this.owned) {
       release(item);
     }
+    this.owned.clear();
     this.emitter = void 0;
     removeRenderNode(this);
   }
@@ -5338,7 +5357,7 @@ function dict(entries = [], debugName) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.17.1" : "development";
+var VERSION = true ? "0.17.2" : "development";
 export {
   ArrayEventType,
   ClassComponent,
