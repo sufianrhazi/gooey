@@ -2007,7 +2007,10 @@ export function defineCustomElement<
     const Superclass = options.extends
         ? webComponentTagConstructors[options.extends]
         : HTMLElement;
-    class GooeyCustomElement extends Superclass {
+    class GooeyCustomElement extends Superclass implements Retainable {
+        __debugName: string;
+        __refcount: number;
+        _originalChildren: Node[] | null;
         _unmount: (() => void) | undefined;
         _portalRenderNode: PortalRenderNode | null;
         _renderNode: WebComponentRenderNode<
@@ -2017,7 +2020,6 @@ export function defineCustomElement<
         > | null;
         static formAssociated = options.formAssociated || false;
         static observedAttributes = options.observedAttributes ?? [];
-        _rendered: boolean;
 
         constructor() {
             super();
@@ -2028,9 +2030,14 @@ export function defineCustomElement<
                   })
                 : undefined;
 
+            const elementInternals = options.extends
+                ? undefined
+                : this.attachInternals();
+
             this._renderNode = new WebComponentRenderNode(
                 this,
                 shadowRoot,
+                elementInternals,
                 options
             );
             this._portalRenderNode = new PortalRenderNode(
@@ -2038,50 +2045,63 @@ export function defineCustomElement<
                 this._renderNode,
                 undefined
             );
-            this._rendered = false;
+            this._originalChildren = null;
+            this.__debugName = `custom:${options.tagName}`;
+            this.__refcount = 0;
         }
 
-        destroy() {
-            this._portalRenderNode?.setMounted(false);
+        __dead() {
             this._portalRenderNode?.release();
-            this._portalRenderNode = null;
-            this._renderNode = null;
+            if (this._originalChildren) {
+                this.replaceChildren(...this._originalChildren);
+            }
+        }
+
+        __alive() {
+            if (
+                options.hydrateTemplateChild !== false &&
+                this.children.length === 1 &&
+                this.children[0] instanceof HTMLTemplateElement
+            ) {
+                this._originalChildren = Array.from(this.childNodes);
+                this.replaceChildren(
+                    ...this._originalChildren.map((node) =>
+                        node instanceof HTMLTemplateElement
+                            ? node.content
+                            : node
+                    )
+                );
+            }
+            let children: Node[] = [];
+            if (!options.shadowMode) {
+                children = Array.from(this.childNodes);
+                this.replaceChildren();
+                this._renderNode?.childrenField.set(children);
+            }
+            this._portalRenderNode?.retain();
+            this._portalRenderNode?.attach((event) => {
+                if (event instanceof Error) {
+                    log.error('Unhandled web component mount error', event);
+                }
+            }, this.namespaceURI ?? HTML_NAMESPACE);
+        }
+
+        retain() {
+            retain(this);
+        }
+
+        release() {
+            release(this);
         }
 
         connectedCallback() {
-            if (!this._rendered) {
-                if (
-                    options.hydrateTemplateChild !== false &&
-                    this.children.length === 1 &&
-                    this.children[0] instanceof HTMLTemplateElement
-                ) {
-                    this.replaceChildren(
-                        ...Array.from(this.childNodes).map((node) =>
-                            node instanceof HTMLTemplateElement
-                                ? node.content
-                                : node
-                        )
-                    );
-                }
-                let children: Node[] = [];
-                if (!options.shadowMode) {
-                    children = Array.from(this.childNodes);
-                    this.replaceChildren();
-                    this._renderNode?.childrenField.set(children);
-                }
-                this._portalRenderNode?.retain();
-                this._portalRenderNode?.attach((event) => {
-                    if (event instanceof Error) {
-                        log.error('Unhandled web component mount error', event);
-                    }
-                }, this.namespaceURI ?? HTML_NAMESPACE);
-                this._rendered = true;
-            }
+            this.retain();
             this._portalRenderNode?.setMounted(true);
         }
 
         disconnectedCallback() {
             this._portalRenderNode?.setMounted(false);
+            this.release();
         }
 
         adoptedCallback() {
@@ -2845,7 +2865,7 @@ export class WebComponentRenderNode<
     declare shadowRoot: ShadowRoot | undefined;
     declare fields: Record<TKeys, Field<string | undefined>>;
     declare childrenField: Field<Node[] | undefined>;
-    declare elementInternals?: ElementInternals;
+    declare elementInternals?: ElementInternals | undefined;
     declare options: WebComponentOptions<TKeys, TShadowMode, TExtends>;
     declare result?: RenderNode | Error | undefined;
     declare resultAttached: boolean;
@@ -2862,6 +2882,7 @@ export class WebComponentRenderNode<
     constructor(
         host: HTMLElement,
         shadowRoot: ShadowRoot | undefined,
+        elementInternals: ElementInternals | undefined,
         options: WebComponentOptions<TKeys, TShadowMode, TExtends>,
         debugName?: string
     ) {
@@ -2869,16 +2890,13 @@ export class WebComponentRenderNode<
         this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.host = host;
         this.shadowRoot = shadowRoot;
+        this.elementInternals = elementInternals;
         this.options = options;
         this.childrenField = field<Node[] | undefined>(undefined);
         this.fields = {} as Record<TKeys, Field<string | undefined>>;
         this.options.observedAttributes?.forEach((attr) => {
             this.fields[attr] = field(undefined);
         });
-
-        if (!options.extends) {
-            this.elementInternals = this.host.attachInternals();
-        }
 
         this.owned = new Set();
         this.isMounted = false;
@@ -3201,6 +3219,7 @@ export class WebComponentRenderNode<
         return new WebComponentRenderNode(
             this.host,
             this.shadowRoot,
+            this.elementInternals,
             this.options
         );
     }
@@ -3224,6 +3243,13 @@ export class WebComponentRenderNode<
             for (const callback of this.onDestroyCallbacks) {
                 callback();
             }
+            this.onDestroyCallbacks = undefined;
+        }
+        if (this.onMountCallbacks) {
+            this.onMountCallbacks = undefined;
+        }
+        if (this.onUnmountCallbacks) {
+            this.onUnmountCallbacks = undefined;
         }
 
         if (this.result && !(this.result instanceof Error)) {
@@ -3233,6 +3259,7 @@ export class WebComponentRenderNode<
         for (const item of this.owned) {
             release(item);
         }
+        this.owned.clear();
         this.emitter = undefined;
         removeRenderNode(this);
     }

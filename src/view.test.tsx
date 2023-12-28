@@ -5234,6 +5234,172 @@ suite('custom elements', () => {
         assert.is('TEMPLATE', renderedComponent.children[0].tagName);
     });
 
+    test('custom elements can be retained, unmounted, and remounted', () => {
+        const tagName = makeUniqueTagname('my-custom');
+        const log: string[] = [];
+
+        defineCustomElement({
+            tagName,
+            Component: ({ children }, { onMount, onUnmount, onDestroy }) => {
+                log.push('render');
+                onMount(() => {
+                    log.push('onMount');
+                });
+                onUnmount(() => {
+                    log.push('onUnmount');
+                });
+                onDestroy(() => {
+                    log.push('onDestroy');
+                });
+                return (
+                    <>
+                        Before
+                        <div class="children">{children}</div>
+                        After
+                    </>
+                );
+            },
+        });
+        const span = document.createElement('span');
+        span.innerHTML = `<${tagName}>
+                <div class="child-one">child-one</div>
+                <div class="child-two">child-two</div>
+        </${tagName}>`;
+
+        flush();
+
+        assert.is(
+            '<WS>child-one<WS>child-two<WS>',
+            span.textContent?.replace(/\s+/g, '<WS>')
+        );
+        assert.deepEqual([], log);
+
+        (span.childNodes[0] as any).retain();
+        flush();
+
+        assert.is(
+            'Before<WS>child-one<WS>child-two<WS>After',
+            span.textContent?.replace(/\s+/g, '<WS>')
+        );
+        assert.deepEqual(['render'], log);
+
+        testRoot.appendChild(span);
+        flush();
+
+        assert.deepEqual(['render', 'onMount'], log);
+
+        testRoot.removeChild(span);
+        flush();
+
+        assert.deepEqual(['render', 'onMount', 'onUnmount'], log);
+
+        testRoot.appendChild(span);
+        flush();
+
+        assert.deepEqual(['render', 'onMount', 'onUnmount', 'onMount'], log);
+
+        testRoot.removeChild(span);
+        flush();
+
+        assert.deepEqual(
+            ['render', 'onMount', 'onUnmount', 'onMount', 'onUnmount'],
+            log
+        );
+
+        (span.childNodes[0] as any).release();
+        flush();
+
+        assert.deepEqual(
+            [
+                'render',
+                'onMount',
+                'onUnmount',
+                'onMount',
+                'onUnmount',
+                'onDestroy',
+            ],
+            log
+        );
+    });
+
+    test('custom elements are initialized and deinitialized on unmount & remount', () => {
+        const tagName = makeUniqueTagname('my-custom');
+        const log: string[] = [];
+
+        defineCustomElement({
+            tagName,
+            Component: ({ children }, { onMount, onUnmount, onDestroy }) => {
+                log.push('render');
+                onMount(() => {
+                    log.push('onMount');
+                });
+                onUnmount(() => {
+                    log.push('onUnmount');
+                });
+                onDestroy(() => {
+                    log.push('onDestroy');
+                });
+                return (
+                    <>
+                        Before
+                        <div class="children">{children}</div>
+                        After
+                    </>
+                );
+            },
+        });
+        const span = document.createElement('span');
+        span.innerHTML = `<${tagName}>
+                <div class="child-one">child-one</div>
+                <div class="child-two">child-two</div>
+        </${tagName}>`;
+        testRoot.appendChild(span);
+
+        flush();
+        assert.is(
+            'Before<WS>child-one<WS>child-two<WS>After',
+            span.textContent?.replace(/\s+/g, '<WS>')
+        );
+        assert.deepEqual(['render', 'onMount'], log);
+
+        testRoot.removeChild(span);
+        flush();
+
+        assert.deepEqual(['render', 'onMount', 'onUnmount', 'onDestroy'], log);
+
+        testRoot.appendChild(span);
+        flush();
+
+        assert.deepEqual(
+            [
+                'render',
+                'onMount',
+                'onUnmount',
+                'onDestroy',
+                'render',
+                'onMount',
+            ],
+            log
+        );
+
+        testRoot.removeChild(span);
+        flush();
+
+        assert.deepEqual(
+            [
+                'render',
+                'onMount',
+                'onUnmount',
+                'onDestroy',
+                'render',
+                'onMount',
+                'onUnmount',
+                'onDestroy',
+            ],
+            log
+        );
+    });
+
     // Type-only tests
     // eslint-disable-next-line no-constant-condition
     if (2 < 1) {
