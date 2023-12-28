@@ -899,7 +899,7 @@ export declare class WebComponentRenderNode<TKeys extends string, TShadowMode ex
     shadowRoot: ShadowRoot | undefined;
     fields: Record<TKeys, Field<string | undefined>>;
     childrenField: Field<Node[] | undefined>;
-    elementInternals?: ElementInternals;
+    elementInternals?: ElementInternals | undefined;
     options: WebComponentOptions<TKeys, TShadowMode, TExtends>;
     result?: RenderNode | Error | undefined;
     resultAttached: boolean;
@@ -912,7 +912,7 @@ export declare class WebComponentRenderNode<TKeys extends string, TShadowMode ex
     parentXmlNamespace?: string | undefined;
     isMounted: boolean;
     private needsMount?;
-    constructor(host: HTMLElement, shadowRoot: ShadowRoot | undefined, options: WebComponentOptions<TKeys, TShadowMode, TExtends>, debugName?: string);
+    constructor(host: HTMLElement, shadowRoot: ShadowRoot | undefined, elementInternals: ElementInternals | undefined, options: WebComponentOptions<TKeys, TShadowMode, TExtends>, debugName?: string);
     detach(): void;
     private ensureResult;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
