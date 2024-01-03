@@ -3124,19 +3124,21 @@ var IntrinsicRenderNode = class {
           continue;
         if (EventProps.some(({ prefix, param }) => {
           if (prop.startsWith(prefix)) {
-            element.addEventListener(
-              prop.slice(prefix.length),
-              (e) => {
-                try {
-                  val(e, element);
-                } catch (e2) {
+            if (val) {
+              element.addEventListener(
+                prop.slice(prefix.length),
+                (e) => {
+                  try {
+                    val(e, element);
+                  } catch (e2) {
+                    flush();
+                    throw e2;
+                  }
                   flush();
-                  throw e2;
-                }
-                flush();
-              },
-              param
-            );
+                },
+                param
+              );
+            }
             return true;
           }
           return false;
@@ -5269,7 +5271,7 @@ function dict(entries = [], debugName) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.17.2" : "development";
+var VERSION = true ? "0.17.3" : "development";
 export {
   ArrayEventType,
   ClassComponent,
