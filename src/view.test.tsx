@@ -353,6 +353,21 @@ suite('mount static', () => {
         ]);
     });
 
+    test('on:event handlers can be passed undefined', () => {
+        mount(
+            testRoot,
+            <div id="outer" on:click={undefined}>
+                <div id="mid" on:click={undefined}>
+                    <div id="inner" on:click={undefined}></div>
+                </div>
+            </div>
+        );
+        flush();
+        testRoot
+            .querySelector('#inner')
+            ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
     test('on:event handlers flush after triggering', () => {
         const state = model({
             count: 0,

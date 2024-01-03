@@ -799,19 +799,21 @@ export class IntrinsicRenderNode implements RenderNode {
                 if (
                     EventProps.some(({ prefix, param }) => {
                         if (prop.startsWith(prefix)) {
-                            element.addEventListener(
-                                prop.slice(prefix.length),
-                                (e) => {
-                                    try {
-                                        val(e, element);
-                                    } catch (e) {
+                            if (val) {
+                                element.addEventListener(
+                                    prop.slice(prefix.length),
+                                    (e) => {
+                                        try {
+                                            val(e, element);
+                                        } catch (e) {
+                                            flush();
+                                            throw e;
+                                        }
                                         flush();
-                                        throw e;
-                                    }
-                                    flush();
-                                },
-                                param
-                            );
+                                    },
+                                    param
+                                );
+                            }
                             return true;
                         }
                         return false;
