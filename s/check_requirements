@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 source "s/_tools.sh"
 
 if ! command -v node > /dev/null; then
-    echo_error "nodejs is required. Please install via https://yarnpkg.com/"
+    echo_error "nodejs is required. Please install via https://nodejs.org/"
     exit 1
 fi
 
@@ -20,11 +20,6 @@ if [ "$NODE_VERSION" != "$RECOMMEND_NODE_VERSION" ]; then
     echo_info "$RECOMMEND_NODE_VERSION"
     echo_warn "To fix, please install nvm via https://github.com/nvm-sh/nvm and run: nvm use"
     sleep 3
-fi
-
-if ! command -v yarn > /dev/null; then
-    echo_error "yarn is required. Please install via https://yarnpkg.com/"
-    exit 1
 fi
 
 if ! command -v jo > /dev/null; then

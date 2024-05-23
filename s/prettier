@@ -8,7 +8,7 @@ echo_info "Checking requirements..."
 s/check_requirements
 
 echo_info "Installing dependencies..."
-yarn
+npm install
 
 echo_info "Formatting with prettier..."
 node_modules/.bin/prettier -w 'src/**.(ts|tsx)'
