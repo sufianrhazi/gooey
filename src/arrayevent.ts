@@ -70,6 +70,23 @@ export function shiftEvent<T>(
 
 const EMPTY_ARRAY: readonly [] = [];
 
+export function applySort<T>(target: T[], from: number, indexes: number[]) {
+    const duped = target.slice(from, from + indexes.length);
+    for (let i = 0; i < indexes.length; ++i) {
+        target[i + from] = duped[indexes[i] - from];
+    }
+}
+
+export function applyMove<T>(
+    target: T[],
+    from: number,
+    count: number,
+    to: number
+) {
+    const slice = target.splice(from, count);
+    target.splice(to, 0, ...slice);
+}
+
 export function applyArrayEvent<T>(
     target: T[],
     event: ArrayEvent<T>
@@ -83,15 +100,11 @@ export function applyArrayEvent<T>(
             }
         }
         case ArrayEventType.SORT: {
-            const duped = target.slice(event.from);
-            for (let i = 0; i < event.indexes.length; ++i) {
-                target[i] = duped[event.indexes[i] - event.from];
-            }
+            applySort(target, event.from, event.indexes);
             break;
         }
         case ArrayEventType.MOVE: {
-            const slice = target.splice(event.from, event.count);
-            target.splice(event.to, 0, ...slice);
+            applyMove(target, event.from, event.count, event.to);
             break;
         }
         default:
