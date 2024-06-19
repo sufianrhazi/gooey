@@ -1141,7 +1141,7 @@ export function CalculationRenderNode(
             addPostAction(() => {
                 childRenderNode = renderJSXNode(val);
                 own(customRenderNode, childRenderNode);
-                customRenderNode.spliceChildren(0, 0, [renderJSXNode(val)]);
+                customRenderNode.spliceChildren(0, 0, [childRenderNode]);
             });
         }
     }
