@@ -1237,7 +1237,7 @@ export function CollectionRenderNode(
             },
         },
         [],
-        debugName ?? `rendercoll`
+        debugName ?? `CollectionRenderNode(${collection.__debugName})`
     );
 
     return customRenderNode;
