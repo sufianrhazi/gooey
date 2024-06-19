@@ -1,6 +1,5 @@
 import {
     RenderNode,
-    renderJSXNode,
     renderJSXChildren,
     ArrayRenderNode,
     ComponentRenderNode,
@@ -24,13 +23,13 @@ export function createElement<TProps extends {} | undefined>(
     type: string | Component<TProps>,
     props: TProps,
     ...children: JSX.Node[]
-): IntrinsicRenderNode | ComponentRenderNode<TProps> {
+): RenderNode | ComponentRenderNode<TProps> {
     if (typeof type === 'string') {
-        const childNodes: RenderNode[] = [];
-        for (const jsxNode of children) {
-            childNodes.push(renderJSXNode(jsxNode));
-        }
-        return new IntrinsicRenderNode(type, props, childNodes);
+        return IntrinsicRenderNode(
+            type,
+            props,
+            ArrayRenderNode(renderJSXChildren(children))
+        );
     }
     if (isClassComponent(type)) {
         return classComponentToFunctionComponentRenderNode<TProps>(

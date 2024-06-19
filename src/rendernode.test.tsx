@@ -187,7 +187,7 @@ suite('ForeignRenderNode', () => {
 
 suite('IntrinsicRenderNode', () => {
     test('renders element element', () => {
-        const intrinsic = new IntrinsicRenderNode('div', {}, []);
+        const intrinsic = IntrinsicRenderNode('div', {}, new EmptyRenderNode());
         const unmount = mount(testRoot, intrinsic);
         assert.is(1, testRoot.childNodes.length);
         assert.isTruthy(testRoot.childNodes[0] instanceof HTMLDivElement);
@@ -196,7 +196,7 @@ suite('IntrinsicRenderNode', () => {
     });
 
     test('recreates new elements on each attach if not retained', () => {
-        const intrinsic = new IntrinsicRenderNode('div', {}, []);
+        const intrinsic = IntrinsicRenderNode('div', {}, new EmptyRenderNode());
         let unmount = mount(testRoot, intrinsic);
         const first = testRoot.childNodes[0];
         unmount();
@@ -207,7 +207,7 @@ suite('IntrinsicRenderNode', () => {
     });
 
     test('reuses existing element on each attach if retained', () => {
-        const intrinsic = new IntrinsicRenderNode('div', {}, []);
+        const intrinsic = IntrinsicRenderNode('div', {}, new EmptyRenderNode());
         intrinsic.retain();
         let unmount = mount(testRoot, intrinsic);
         const first = testRoot.childNodes[0];
@@ -221,7 +221,7 @@ suite('IntrinsicRenderNode', () => {
 
     test('child gets standard lifecycle called on mount', () => {
         const tracer = new TracingRenderNode();
-        const intrinsic = new IntrinsicRenderNode('div', {}, [tracer]);
+        const intrinsic = IntrinsicRenderNode('div', {}, tracer);
         mount(testRoot, intrinsic);
         assert.deepEqual(
             [
@@ -239,7 +239,7 @@ suite('IntrinsicRenderNode', () => {
 
     test('child gets standard unmount lifecycle called on detach', () => {
         const tracer = new TracingRenderNode();
-        const intrinsic = new IntrinsicRenderNode('div', {}, [tracer]);
+        const intrinsic = IntrinsicRenderNode('div', {}, tracer);
         const unmount = mount(testRoot, intrinsic);
         tracer.clear();
         unmount();
@@ -258,7 +258,7 @@ suite('IntrinsicRenderNode', () => {
 
     test('child can be repeatedly mounted / unmounted if intrinsic node retained', () => {
         const tracer = new TracingRenderNode();
-        const intrinsic = new IntrinsicRenderNode('div', {}, [tracer]);
+        const intrinsic = IntrinsicRenderNode('div', {}, tracer);
         tracer.log('0: retain');
         intrinsic.retain();
         tracer.log('1: mount');
@@ -309,7 +309,7 @@ suite('IntrinsicRenderNode', () => {
 
     test('child can be repeatedly mounted / unmounted if intrinsic node retained (release after unmount)', () => {
         const tracer = new TracingRenderNode();
-        const intrinsic = new IntrinsicRenderNode('div', {}, [tracer]);
+        const intrinsic = IntrinsicRenderNode('div', {}, tracer);
         tracer.log('0: retain');
         intrinsic.retain();
         tracer.log('1: mount');
@@ -360,7 +360,7 @@ suite('IntrinsicRenderNode', () => {
 
     test('child receives emitted elements when committed while rendered', () => {
         const tracer = new TracingRenderNode();
-        const intrinsic = new IntrinsicRenderNode('div', {}, [tracer]);
+        const intrinsic = IntrinsicRenderNode('div', {}, tracer);
         mount(testRoot, intrinsic);
         const node1 = document.createElement('a');
         const node2 = document.createElement('b');
@@ -394,7 +394,7 @@ suite('IntrinsicRenderNode', () => {
 
     test('child processes emitted elements while retained detached', () => {
         const tracer = new TracingRenderNode();
-        const intrinsic = new IntrinsicRenderNode('div', {}, [tracer]);
+        const intrinsic = IntrinsicRenderNode('div', {}, tracer);
         intrinsic.retain();
         const unmount = mount(testRoot, intrinsic);
         const intrinsicEl = testRoot.childNodes[0];
@@ -443,11 +443,11 @@ suite('IntrinsicRenderNode', () => {
         d.textContent = 'd';
         const e = document.createElement('div');
         e.textContent = 'e';
-        const intrinsic = new IntrinsicRenderNode('div', {}, [
-            tracerLeft,
-            tracerCenter,
-            tracerRight,
-        ]);
+        const intrinsic = IntrinsicRenderNode(
+            'div',
+            {},
+            ArrayRenderNode([tracerLeft, tracerCenter, tracerRight])
+        );
         mount(testRoot, intrinsic);
         tracerLeft.emitter?.({
             type: ArrayEventType.SPLICE,
@@ -476,8 +476,8 @@ suite('IntrinsicRenderNode', () => {
 suite('CalculationRenderNode', () => {
     test('emits jsx when attached', () => {
         const state = model({ name: 'hello' });
-        const greet = calc(
-            () => new IntrinsicRenderNode('b', {}, [TextRenderNode(state.name)])
+        const greet = calc(() =>
+            IntrinsicRenderNode('b', {}, TextRenderNode(state.name))
         );
         const node = new CalculationRenderNode(greet);
         node.retain();
@@ -499,8 +499,8 @@ suite('CalculationRenderNode', () => {
 
     test('re-emits jsx when recalculated while attached', () => {
         const state = model({ name: 'hello' });
-        const greet = calc(
-            () => new IntrinsicRenderNode('b', {}, [TextRenderNode(state.name)])
+        const greet = calc(() =>
+            IntrinsicRenderNode('b', {}, TextRenderNode(state.name))
         );
         const node = new CalculationRenderNode(greet);
         node.retain();
@@ -540,8 +540,8 @@ suite('CalculationRenderNode', () => {
 
     test('does not emit jsx when recalculated while detached', () => {
         const state = model({ name: 'hello' });
-        const greet = calc(
-            () => new IntrinsicRenderNode('b', {}, [TextRenderNode(state.name)])
+        const greet = calc(() =>
+            IntrinsicRenderNode('b', {}, TextRenderNode(state.name))
         );
         const node = new CalculationRenderNode(greet);
         node.retain();
@@ -573,8 +573,8 @@ suite('CalculationRenderNode', () => {
 
     test('result after recalculation while detached is emitted when attached again', () => {
         const state = model({ name: 'hello' });
-        const greet = calc(
-            () => new IntrinsicRenderNode('b', {}, [TextRenderNode(state.name)])
+        const greet = calc(() =>
+            IntrinsicRenderNode('b', {}, TextRenderNode(state.name))
         );
         const node = new CalculationRenderNode(greet);
         node.retain();

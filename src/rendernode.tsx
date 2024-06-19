@@ -289,6 +289,10 @@ interface CustomRenderNodeHandlers {
      */
     onEvent?: (event: ArrayEvent<Node>) => boolean | void;
     /**
+     * Called when the RenderNode is committed (all children have already been committed)
+     */
+    onCommit?: (phase: RenderNodeCommitPhase) => void;
+    /**
      * Called when the RenderNode has received an ArrayEvent<Node> event from a specific child; return true to not pass the event to its parent
      */
     onChildEvent?: (
@@ -339,21 +343,18 @@ export class CustomRenderNode implements RenderNode {
             child.commit(phase);
         }
         this._commitPhase = phase;
+        this.handlers.onCommit?.(phase);
     }
 
-    clone(): RenderNode {
+    clone(props?: {}, children?: RenderNode[]): RenderNode {
         if (this.handlers.clone) {
-            return this.handlers.clone(undefined, this.children);
+            return this.handlers.clone(props, children);
         }
         const clonedChildren = this.children.map((child) => child.clone());
         return new CustomRenderNode(this.handlers, clonedChildren);
     }
 
-    private spliceChildren(
-        index: number,
-        count: number,
-        children: RenderNode[]
-    ) {
+    spliceChildren(index: number, count: number, children: RenderNode[]) {
         // unmount & detach children before removing from slots (so they may emit their cleanup events)
         for (let i = index; i < index + count; ++i) {
             const child = this.children[i];
@@ -408,7 +409,11 @@ export class CustomRenderNode implements RenderNode {
             return;
         }
         if (!this.handlers.onEvent?.(event)) {
-            this.emitter?.(event);
+            log.assert(
+                this.emitter,
+                'Unexpected event on detached CustomRenderNode'
+            );
+            this.emitter(event);
         }
     }
 
@@ -584,53 +589,91 @@ const EventProps = [
 /**
  * Renders an intrinsic DOM node
  */
-export class IntrinsicRenderNode implements RenderNode {
-    declare _type: typeof RenderNodeType;
-    declare _commitPhase: RenderNodeCommitPhase;
-    private declare tagName: string;
-    private declare element?: Element | undefined;
-    private declare emitter?: NodeEmitter | undefined;
-    private declare detachedError?: Error | undefined;
-    private declare xmlNamespace?: string | undefined;
-    private declare props?: Record<string, any> | undefined;
-    private declare children: RenderNode;
-    private declare portalRenderNode?: PortalRenderNode | undefined;
-    private declare boundAttributes?: Map<
-        string,
-        Field<any> | Calculation<any>
-    >;
-    private declare subscriptions?: Set<() => void>;
+export function IntrinsicRenderNode(
+    tagName: string,
+    props: Record<string, any> | undefined,
+    childRenderNode: RenderNode,
+    debugName?: string
+): RenderNode {
+    let boundAttributes:
+        | undefined
+        | Map<string, Calculation<unknown> | Field<unknown>>;
+    let subscriptions: undefined | Set<() => void>;
+    let element: undefined | Element;
+    let elementXmlNamespace: undefined | string;
+    let isMounted = false;
+    let portalRenderNode: undefined | RenderNode;
+    let attachedState:
+        | undefined
+        | {
+              emitter: NodeEmitter;
+              parentXmlNamespace: string;
+          };
+    let detachedError: undefined | Error;
 
-    constructor(
-        tagName: string,
-        props: Record<string, any> | undefined,
-        children: RenderNode[],
-        debugName?: string
-    ) {
-        this._type = RenderNodeType;
-        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
-        this.props = props;
-        this.children = ArrayRenderNode(children);
-        this.tagName = tagName;
-
-        this.__debugName = debugName ?? `intrinsic:${this.tagName}`;
-        this.__refcount = 0;
+    function handleEvent(event: ArrayEvent<Node> | Error) {
+        if (event instanceof Error) {
+            if (attachedState) {
+                // Pass up errors while attached
+                attachedState.emitter(event);
+            } else {
+                // We are capable of handling errors while detached
+                log.warn(
+                    'Unhandled error on detached IntrinsicRenderNode',
+                    debugName,
+                    event
+                );
+                detachedError = event;
+                return true;
+            }
+        } else {
+            log.assert(
+                false,
+                'unexpected event in IntrinsicRenderNode from PortalRenderNode'
+            );
+        }
     }
 
-    private createElement(xmlNamespace: string) {
+    function ensureElement(xmlNamespace: string, childXmlNamespace: string) {
+        if (!element || xmlNamespace !== elementXmlNamespace) {
+            elementXmlNamespace = xmlNamespace;
+            element = createElement(xmlNamespace);
+
+            if (portalRenderNode) {
+                if (isMounted) {
+                    portalRenderNode.setMounted(false);
+                }
+                portalRenderNode.detach();
+                disown(customRenderNode, portalRenderNode);
+            }
+            portalRenderNode = new PortalRenderNode(
+                element,
+                childRenderNode,
+                props?.ref
+            );
+            own(customRenderNode, portalRenderNode);
+            portalRenderNode.attach(handleEvent, childXmlNamespace);
+            if (isMounted) {
+                portalRenderNode.setMounted(true);
+            }
+        }
+        return element;
+    }
+
+    function createElement(xmlNamespace: string) {
         let element: Element;
         if (
-            this.tagName in webComponentTagConstructors &&
-            typeof this.props?.is === 'string'
+            tagName in webComponentTagConstructors &&
+            typeof props?.is === 'string'
         ) {
-            element = document.createElement(this.tagName, {
-                is: this.props.is,
+            element = document.createElement(tagName, {
+                is: props.is,
             });
         } else {
-            element = document.createElementNS(xmlNamespace, this.tagName);
+            element = document.createElementNS(xmlNamespace, tagName);
         }
-        if (this.props) {
-            for (const [prop, val] of Object.entries(this.props)) {
+        if (props) {
+            for (const [prop, val] of Object.entries(props)) {
                 if (prop === 'ref') continue; // specially handled by PortalRenderNode
                 if (prop === 'is') continue; // specially handled above
                 if (
@@ -659,38 +702,35 @@ export class IntrinsicRenderNode implements RenderNode {
                     continue;
                 }
                 if (val instanceof Calculation) {
-                    if (!this.boundAttributes) {
-                        this.boundAttributes = new Map();
+                    if (!boundAttributes) {
+                        boundAttributes = new Map();
                     }
-                    this.boundAttributes.set(prop, val);
+                    boundAttributes.set(prop, val);
                 } else if (val instanceof Field) {
-                    if (!this.boundAttributes) {
-                        this.boundAttributes = new Map();
+                    if (!boundAttributes) {
+                        boundAttributes = new Map();
                     }
-                    this.boundAttributes.set(prop, val);
+                    boundAttributes.set(prop, val);
                 } else {
-                    this.setProp(element, prop, val);
+                    setProp(element, prop, val);
                 }
             }
-            if (this.boundAttributes) {
-                if (!this.subscriptions) {
-                    this.subscriptions = new Set();
+            if (boundAttributes) {
+                if (!subscriptions) {
+                    subscriptions = new Set();
                 }
-                for (const [
-                    prop,
-                    boundAttr,
-                ] of this.boundAttributes.entries()) {
+                for (const [prop, boundAttr] of boundAttributes.entries()) {
                     boundAttr.retain();
                     const currentVal = boundAttr.get();
-                    this.setProp(element, prop, currentVal);
+                    setProp(element, prop, currentVal);
                     if (boundAttr instanceof Field) {
-                        this.subscriptions.add(
+                        subscriptions.add(
                             boundAttr.subscribe((updatedVal) => {
-                                this.setProp(element, prop, updatedVal);
+                                setProp(element, prop, updatedVal);
                             })
                         );
                     } else {
-                        this.subscriptions.add(
+                        subscriptions.add(
                             boundAttr.subscribeWithError(
                                 (error, updatedVal) => {
                                     if (error) {
@@ -703,7 +743,7 @@ export class IntrinsicRenderNode implements RenderNode {
                                             }
                                         );
                                     } else {
-                                        this.setProp(element, prop, updatedVal);
+                                        setProp(element, prop, updatedVal);
                                     }
                                 }
                             )
@@ -715,7 +755,7 @@ export class IntrinsicRenderNode implements RenderNode {
         return element;
     }
 
-    private setProp(element: Element, prop: string, val: unknown) {
+    function setProp(element: Element, prop: string, val: unknown) {
         if (prop.startsWith('prop:')) {
             const propName = prop.slice(5);
             (element as any)[propName] = val;
@@ -754,148 +794,100 @@ export class IntrinsicRenderNode implements RenderNode {
         assignProp(element, prop, val);
     }
 
-    private handleEvent = (event: ArrayEvent<Node> | Error) => {
-        if (event instanceof Error) {
-            if (this.emitter) {
-                this.emitter(event);
-            } else {
-                log.warn(
-                    'Unhandled error on detached IntrinsicRenderNode',
-                    this.__debugName,
-                    event
+    const customRenderNode = new CustomRenderNode(
+        {
+            onAttach: (emitter, parentXmlNamespace) => {
+                attachedState = { emitter, parentXmlNamespace };
+                if (detachedError) {
+                    emitter(detachedError);
+                    return;
+                }
+                const namespaceTransition =
+                    elementNamespaceTransitionMap[parentXmlNamespace]?.[
+                        tagName
+                    ];
+                const xmlNamespace =
+                    namespaceTransition?.node ?? parentXmlNamespace;
+                const childXmlNamespace =
+                    namespaceTransition?.children ?? parentXmlNamespace;
+
+                element = ensureElement(xmlNamespace, childXmlNamespace);
+
+                emitter({
+                    type: ArrayEventType.SPLICE,
+                    index: 0,
+                    count: 0,
+                    items: [element],
+                });
+            },
+            onDetach: (emitter) => {
+                emitter({
+                    type: ArrayEventType.SPLICE,
+                    index: 0,
+                    count: 1,
+                });
+                attachedState = undefined;
+            },
+            onMount: () => {
+                isMounted = true;
+                portalRenderNode?.setMounted(true);
+            },
+            onUnmount: () => {
+                isMounted = false;
+                portalRenderNode?.setMounted(false);
+            },
+            onCommit: (phase) => {
+                portalRenderNode?.commit(phase);
+            },
+            clone: (adjustedProps?: {}, newChildren?: RenderNode[]) => {
+                return IntrinsicRenderNode(
+                    tagName,
+                    adjustedProps ? { ...props, ...adjustedProps } : props,
+                    newChildren
+                        ? ArrayRenderNode(newChildren ?? [])
+                        : childRenderNode.clone()
                 );
-                this.detachedError = event;
-            }
-            return;
-        }
-        log.assert(false, 'unexpected event from IntrinsicRenderNode');
-    };
+            },
+            onAlive: () => {
+                // At this point in time, we don't know for sure what the correct XML namespace is, as this could be an SVG
+                // looking element that eventually gets placed within an SVG tree, which ought to result in an
+                // SVGUnknownElement. So we take an educated guess;
+                const xmlNamespaceGuess =
+                    ELEMENT_NAMESPACE_GUESS[tagName] || HTML_NAMESPACE;
 
-    detach() {
-        this.emitter?.({
-            type: ArrayEventType.SPLICE,
-            index: 0,
-            count: 1,
-        });
-        this.emitter = undefined;
-    }
+                // foreignObject is special; it should be created with an SVG namespace but children should have a HTML
+                // namespace
+                ensureElement(
+                    xmlNamespaceGuess,
+                    tagName === 'foreignObject'
+                        ? HTML_NAMESPACE
+                        : xmlNamespaceGuess
+                );
+            },
+            onDestroy: () => {
+                if (boundAttributes) {
+                    for (const calculation of boundAttributes.values()) {
+                        release(calculation);
+                    }
+                }
+                if (subscriptions) {
+                    for (const unsubscribe of subscriptions) {
+                        unsubscribe();
+                    }
+                    subscriptions.clear();
+                }
 
-    ensureElement(xmlNamespace: string, childXmlNamespace: string) {
-        if (!this.element || xmlNamespace !== this.xmlNamespace) {
-            this.xmlNamespace = xmlNamespace;
-            this.element = this.createElement(xmlNamespace);
-
-            if (this.portalRenderNode) {
-                this.portalRenderNode.detach();
-                disown(this, this.portalRenderNode);
-            }
-            this.portalRenderNode = new PortalRenderNode(
-                this.element,
-                this.children,
-                this.props?.ref
-            );
-            own(this, this.portalRenderNode);
-
-            this.portalRenderNode.attach(this.handleEvent, childXmlNamespace);
-        }
-        return this.element;
-    }
-
-    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
-        log.assert(!this.emitter, 'Invariant: Intrinsic node double attached');
-        this.emitter = emitter;
-        if (this.detachedError) {
-            this.emitter(this.detachedError);
-            return;
-        }
-
-        const namespaceTransition =
-            elementNamespaceTransitionMap[parentXmlNamespace]?.[this.tagName];
-        const xmlNamespace = namespaceTransition?.node ?? parentXmlNamespace;
-        const childXmlNamespace =
-            namespaceTransition?.children ?? parentXmlNamespace;
-
-        const element = this.ensureElement(xmlNamespace, childXmlNamespace);
-
-        this.emitter?.({
-            type: ArrayEventType.SPLICE,
-            index: 0,
-            count: 0,
-            items: [element],
-        });
-    }
-
-    setMounted(isMounted: boolean) {
-        this.portalRenderNode?.setMounted(isMounted);
-    }
-
-    retain() {
-        retain(this);
-    }
-
-    release() {
-        release(this);
-    }
-
-    commit(phase: RenderNodeCommitPhase) {
-        if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
-            this.portalRenderNode?.commit(phase);
-            this._commitPhase = phase;
-        }
-    }
-
-    clone(props: {}, children?: RenderNode[]) {
-        return new IntrinsicRenderNode(
-            this.tagName,
-            { ...this.props, ...props },
-            children ? children : [this.children.clone()]
-        );
-    }
-
-    // Retainable
-    declare __debugName: string;
-    declare __refcount: number;
-    __alive() {
-        // At this point in time, we don't know for sure what the correct XML namespace is, as this could be an SVG
-        // looking element that eventually gets placed within an SVG tree, which ought to result in an
-        // SVGUnknownElement. So we take an educated guess;
-        const xmlNamespaceGuess =
-            ELEMENT_NAMESPACE_GUESS[this.tagName] || HTML_NAMESPACE;
-
-        if (this.portalRenderNode) {
-            own(this, this.portalRenderNode);
-        }
-
-        // foreignObject is special; it should be created with an SVG namespace but children should have a HTML
-        // namespace
-        this.ensureElement(
-            xmlNamespaceGuess,
-            this.tagName === 'foreignObject'
-                ? HTML_NAMESPACE
-                : xmlNamespaceGuess
-        );
-    }
-    __dead() {
-        if (this.boundAttributes) {
-            for (const calculation of this.boundAttributes.values()) {
-                release(calculation);
-            }
-        }
-        if (this.subscriptions) {
-            for (const unsubscribe of this.subscriptions) {
-                unsubscribe();
-            }
-            this.subscriptions.clear();
-        }
-
-        this.element = undefined;
-        if (this.portalRenderNode) {
-            disown(this, this.portalRenderNode);
-            this.portalRenderNode = undefined;
-        }
-        removeRenderNode(this);
-        this.emitter = undefined;
-    }
+                element = undefined;
+                if (portalRenderNode) {
+                    disown(customRenderNode, portalRenderNode);
+                    portalRenderNode = undefined;
+                }
+            },
+        },
+        [],
+        debugName ?? `intrinsic(${tagName})`
+    );
+    return customRenderNode;
 }
 
 // A shared document fragment; NOTE: always clear after use
