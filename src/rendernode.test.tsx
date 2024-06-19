@@ -1493,7 +1493,7 @@ suite('ComponentRenderNode', () => {
 suite('IntrinsicObserverRenderNode', () => {
     test('renders children normally', () => {
         const tracer = new TracingRenderNode();
-        const node = new IntrinsicObserverRenderNode(
+        const node = IntrinsicObserverRenderNode(
             undefined,
             undefined,
             ArrayRenderNode([tracer])
@@ -1521,7 +1521,7 @@ suite('IntrinsicObserverRenderNode', () => {
         const tracer = new TracingRenderNode();
         const nodeCalls: [Node, IntrinsicObserverEventType][] = [];
         const elementCalls: [Element, IntrinsicObserverEventType][] = [];
-        const node = new IntrinsicObserverRenderNode(
+        const node = IntrinsicObserverRenderNode(
             (node, type) => nodeCalls.push([node, type]),
             (node, type) => elementCalls.push([node, type]),
             ArrayRenderNode([tracer])
@@ -1582,7 +1582,7 @@ suite('IntrinsicObserverRenderNode', () => {
         const tracer = new TracingRenderNode();
         const nodeCalls: [Node, IntrinsicObserverEventType][] = [];
         const elementCalls: [Element, IntrinsicObserverEventType][] = [];
-        const node = new IntrinsicObserverRenderNode(
+        const node = IntrinsicObserverRenderNode(
             (node, type) => nodeCalls.push([node, type]),
             (node, type) => elementCalls.push([node, type]),
             ArrayRenderNode([tracer])

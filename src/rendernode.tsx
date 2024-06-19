@@ -1544,181 +1544,88 @@ export type IntrinsicObserverElementCallback = (
     event: IntrinsicObserverEventType
 ) => void;
 
-export class IntrinsicObserverRenderNode implements RenderNode {
-    declare _type: typeof RenderNodeType;
-    declare _commitPhase: RenderNodeCommitPhase;
-    declare nodeCallback?: IntrinsicObserverNodeCallback | undefined;
-    declare elementCallback?: IntrinsicObserverElementCallback | undefined;
-    declare child: RenderNode;
-    declare childNodes: Node[];
-    declare pendingMount: Node[];
-    declare pendingUnmount: Node[];
-    declare emitter?: NodeEmitter | undefined;
-    declare isMounted: boolean;
+export function IntrinsicObserverRenderNode(
+    nodeCallback: IntrinsicObserverNodeCallback | undefined,
+    elementCallback: IntrinsicObserverElementCallback | undefined,
+    child: RenderNode,
+    debugName?: string
+): RenderNode {
+    const nodes: Node[] = [];
+    const pendingEvent = new Map<Node, IntrinsicObserverEventType>();
 
-    constructor(
-        nodeCallback: IntrinsicObserverNodeCallback | undefined,
-        elementCallback: IntrinsicObserverElementCallback | undefined,
-        child: RenderNode,
-        debugName?: string
-    ) {
-        this._type = RenderNodeType;
-        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
-        this.nodeCallback = nodeCallback;
-        this.elementCallback = elementCallback;
-        this.child = child;
-        this.childNodes = [];
-        this.pendingMount = [];
-        this.pendingUnmount = [];
-        this.isMounted = false;
-
-        this.__debugName = debugName ?? `lifecycleobserver`;
-        this.__refcount = 0;
-    }
-
-    notify(node: Node, type: IntrinsicObserverEventType) {
-        switch (type) {
-            case IntrinsicObserverEventType.MOUNT:
-                this.pendingMount.push(node);
-                break;
-            case IntrinsicObserverEventType.UNMOUNT:
-                this.pendingUnmount.push(node);
-                break;
-            default:
-                log.assertExhausted(type);
+    function notify(node: Node, eventType: IntrinsicObserverEventType) {
+        nodeCallback?.(node, eventType);
+        if (node instanceof Element) {
+            elementCallback?.(node, eventType);
         }
-        dirtyRenderNode(this);
     }
-
-    commit(phase: RenderNodeCommitPhase) {
-        if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
-            return;
-        }
-        this.child.commit(phase);
-        this._commitPhase = phase;
-
-        switch (phase) {
-            case RenderNodeCommitPhase.COMMIT_UNMOUNT:
-                if (this.pendingUnmount.length > 0) {
-                    for (const node of this.pendingUnmount) {
-                        this.nodeCallback?.(
-                            node,
-                            IntrinsicObserverEventType.UNMOUNT
-                        );
-                        if (node instanceof Element) {
-                            this.elementCallback?.(
-                                node,
-                                IntrinsicObserverEventType.UNMOUNT
-                            );
-                        }
-                    }
-                    this.pendingUnmount = [];
+    const customRenderNode = new CustomRenderNode(
+        {
+            onEvent: (event) => {
+                for (const removedNode of applyArrayEvent(nodes, event)) {
+                    pendingEvent.set(
+                        removedNode,
+                        IntrinsicObserverEventType.UNMOUNT
+                    );
+                    dirtyRenderNode(customRenderNode);
                 }
-                break;
-            case RenderNodeCommitPhase.COMMIT_MOUNT:
-                if (this.pendingMount.length > 0) {
-                    for (const node of this.pendingMount) {
-                        this.nodeCallback?.(
-                            node,
+                if (event.type === ArrayEventType.SPLICE && event.items) {
+                    for (const addedNode of event.items) {
+                        pendingEvent.set(
+                            addedNode,
                             IntrinsicObserverEventType.MOUNT
                         );
-                        if (node instanceof Element) {
-                            this.elementCallback?.(
-                                node,
-                                IntrinsicObserverEventType.MOUNT
-                            );
-                        }
                     }
-                    this.pendingMount = [];
+                    dirtyRenderNode(customRenderNode);
                 }
-                break;
-        }
-    }
-
-    clone(): RenderNode {
-        return new IntrinsicObserverRenderNode(
-            this.nodeCallback,
-            this.elementCallback,
-            this.child.clone()
-        );
-    }
-
-    handleEvent(event: ArrayEvent<Node> | Error) {
-        if (event instanceof Error) {
-            if (this.emitter) {
-                this.emitter(event);
-            } else {
-                log.warn(
-                    'Unhandled error on detached IntrinsicObserverRenderNode',
-                    event
+            },
+            clone: () => {
+                return IntrinsicObserverRenderNode(
+                    nodeCallback,
+                    elementCallback,
+                    child.clone(),
+                    debugName
                 );
-            }
-            return;
-        }
-        if (event.type === ArrayEventType.SPLICE) {
-            for (let i = 0; i < event.count; ++i) {
-                const node = this.childNodes[event.index + i];
-                if (this.isMounted) {
-                    this.notify(node, IntrinsicObserverEventType.UNMOUNT);
+            },
+            onMount: () => {
+                for (const node of nodes) {
+                    pendingEvent.set(node, IntrinsicObserverEventType.MOUNT);
+                    dirtyRenderNode(customRenderNode);
                 }
-            }
-        }
-
-        applyArrayEvent(this.childNodes, event);
-        this.emitter?.(event);
-
-        if (event.type === ArrayEventType.SPLICE) {
-            if (event.items) {
-                for (const node of event.items) {
-                    if (this.isMounted) {
-                        this.notify(node, IntrinsicObserverEventType.MOUNT);
-                    }
+            },
+            onUnmount: () => {
+                for (const node of nodes) {
+                    pendingEvent.set(node, IntrinsicObserverEventType.UNMOUNT);
+                    dirtyRenderNode(customRenderNode);
                 }
-            }
-        }
-    }
-
-    detach() {
-        this.child.detach();
-        this.emitter = undefined;
-    }
-
-    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
-        this.emitter = emitter;
-        this.child.attach((event) => {
-            this.handleEvent(event);
-        }, parentXmlNamespace);
-    }
-
-    setMounted(isMounted: boolean) {
-        this.child.setMounted(isMounted);
-        this.isMounted = isMounted;
-        const event = isMounted
-            ? IntrinsicObserverEventType.MOUNT
-            : IntrinsicObserverEventType.UNMOUNT;
-        for (const node of this.childNodes) {
-            this.notify(node, event);
-        }
-    }
-
-    retain() {
-        retain(this);
-    }
-    release() {
-        release(this);
-    }
-
-    // Retainable
-    declare __debugName: string;
-    declare __refcount: number;
-    __alive() {
-        own(this, this.child);
-    }
-    __dead() {
-        disown(this, this.child);
-        removeRenderNode(this);
-        this.emitter = undefined;
-    }
+            },
+            onCommit: (phase) => {
+                switch (phase) {
+                    case RenderNodeCommitPhase.COMMIT_UNMOUNT:
+                        for (const [node, event] of pendingEvent.entries()) {
+                            if (event === IntrinsicObserverEventType.UNMOUNT) {
+                                notify(
+                                    node,
+                                    IntrinsicObserverEventType.UNMOUNT
+                                );
+                            }
+                        }
+                        break;
+                    case RenderNodeCommitPhase.COMMIT_MOUNT:
+                        for (const [node, event] of pendingEvent.entries()) {
+                            if (event === IntrinsicObserverEventType.MOUNT) {
+                                notify(node, IntrinsicObserverEventType.MOUNT);
+                            }
+                        }
+                        pendingEvent.clear();
+                        break;
+                }
+            },
+        },
+        [child],
+        debugName ?? 'IntrinsicObserverRenderNode'
+    );
+    return customRenderNode;
 }
 
 export const IntrinsicObserver: Component<{
@@ -1726,7 +1633,7 @@ export const IntrinsicObserver: Component<{
     elementCallback?: IntrinsicObserverElementCallback;
     children?: JSX.Node | JSX.Node[];
 }> = ({ nodeCallback, elementCallback, children }) => {
-    return new IntrinsicObserverRenderNode(
+    return IntrinsicObserverRenderNode(
         nodeCallback,
         elementCallback,
         ArrayRenderNode(renderJSXChildren(children))
