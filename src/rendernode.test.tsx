@@ -121,7 +121,7 @@ suite('EmptyRenderNode', () => {
 
 suite('TextRenderNode', () => {
     test('renders text', () => {
-        const text = new TextRenderNode('hello');
+        const text = TextRenderNode('hello');
         const unmount = mount(testRoot, text);
         assert.is(1, testRoot.childNodes.length);
         assert.isTruthy(testRoot.childNodes[0] instanceof Text);
@@ -131,21 +131,17 @@ suite('TextRenderNode', () => {
     });
 
     test('fails if mounted twice', () => {
-        const text = new TextRenderNode('hello');
+        const text = TextRenderNode('hello');
         let unmount = mount(testRoot, text);
-        assert.throwsMatching(/Text node double attached/, () =>
-            mount(testRoot, text)
-        );
+        assert.throwsMatching(/double attached/, () => mount(testRoot, text));
         unmount();
         unmount = mount(testRoot, text);
-        assert.throwsMatching(/Text node double attached/, () =>
-            mount(testRoot, text)
-        );
+        assert.throwsMatching(/double attached/, () => mount(testRoot, text));
         unmount();
     });
 
     test('can be mounted and unmounted while retained', () => {
-        const text = new TextRenderNode('hello');
+        const text = TextRenderNode('hello');
         text.retain();
         let unmount = mount(testRoot, text);
         unmount();
@@ -481,10 +477,7 @@ suite('CalculationRenderNode', () => {
     test('emits jsx when attached', () => {
         const state = model({ name: 'hello' });
         const greet = calc(
-            () =>
-                new IntrinsicRenderNode('b', {}, [
-                    new TextRenderNode(state.name),
-                ])
+            () => new IntrinsicRenderNode('b', {}, [TextRenderNode(state.name)])
         );
         const node = new CalculationRenderNode(greet);
         node.retain();
@@ -507,10 +500,7 @@ suite('CalculationRenderNode', () => {
     test('re-emits jsx when recalculated while attached', () => {
         const state = model({ name: 'hello' });
         const greet = calc(
-            () =>
-                new IntrinsicRenderNode('b', {}, [
-                    new TextRenderNode(state.name),
-                ])
+            () => new IntrinsicRenderNode('b', {}, [TextRenderNode(state.name)])
         );
         const node = new CalculationRenderNode(greet);
         node.retain();
@@ -551,10 +541,7 @@ suite('CalculationRenderNode', () => {
     test('does not emit jsx when recalculated while detached', () => {
         const state = model({ name: 'hello' });
         const greet = calc(
-            () =>
-                new IntrinsicRenderNode('b', {}, [
-                    new TextRenderNode(state.name),
-                ])
+            () => new IntrinsicRenderNode('b', {}, [TextRenderNode(state.name)])
         );
         const node = new CalculationRenderNode(greet);
         node.retain();
@@ -587,10 +574,7 @@ suite('CalculationRenderNode', () => {
     test('result after recalculation while detached is emitted when attached again', () => {
         const state = model({ name: 'hello' });
         const greet = calc(
-            () =>
-                new IntrinsicRenderNode('b', {}, [
-                    new TextRenderNode(state.name),
-                ])
+            () => new IntrinsicRenderNode('b', {}, [TextRenderNode(state.name)])
         );
         const node = new CalculationRenderNode(greet);
         node.retain();

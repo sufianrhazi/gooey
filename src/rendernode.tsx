@@ -21,6 +21,7 @@ import {
     applyArrayEvent,
     addArrayEvent,
 } from './arrayevent';
+import { SlotSizes } from './slotsizes';
 import { Calculation, CalculationSubscribeWithPostAction } from './calc';
 import { isCollection, isView, Collection, View } from './collection';
 import { field, Field } from './field';
@@ -230,7 +231,6 @@ function isNextRenderNodeCommitPhase(
 
 export interface RenderNode extends Retainable {
     _type: typeof RenderNodeType;
-    _commitPhase: RenderNodeCommitPhase;
     detach(): void;
     attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
     setMounted(isMounted: boolean): void;
@@ -250,15 +250,229 @@ function disown(parent: RenderNode, child: RenderNode) {
     release(child);
 }
 
+interface CustomRenderNodeHandlers {
+    /**
+     * Called when the RenderNode is created, before it is attached and mounted
+     */
+    onAlive?: () => void;
+    /**
+     * Called before the RenderNode is destroyed; it may still be attached
+     */
+    onDestroy?: () => void;
+    /**
+     * Called just after the RenderNode is attached to a parent RenderNode -- it may start emitting ArrayEvent<Node> | Error events
+     */
+    onAttach?: (emitter: NodeEmitter, parentXmlNamespace: string) => void;
+    /**
+     * Called just before the RenderNode is detached from a parent RenderNode -- it may synchronously emit ArrayEvent<Node> | Error events, but cannot emit after it returns.
+     */
+    onDetach?: (emitter: NodeEmitter) => void;
+    /**
+     * Called just after the RenderNode is mounted to the DOM (specifically has been attached transitively to a mount() point)
+     */
+    onMount?: () => void;
+    /**
+     * Called just before the RenderNode is mounted to the DOM (specifically has been attached transitively to a mount() point)
+     */
+    onUnmount?: () => void;
+    /**
+     * Called when the RenderNode has received an error event from any child; return true to not pass the event to its parent
+     */
+    onError?: (error: Error) => boolean | void;
+    /**
+     * Called when the RenderNode has received an ArrayEvent<Node> event from any child; return true to not pass the event to its parent
+     */
+    onEvent?: (event: ArrayEvent<Node>) => boolean | void;
+    /**
+     * Called when the RenderNode has received an ArrayEvent<Node> event from a specific child; return true to not pass the event to its parent
+     */
+    onChildEvent?: (
+        child: RenderNode,
+        event: ArrayEvent<Node>
+    ) => boolean | void;
+    /**
+     * Called when the RenderNode is cloned; callers should clone the provided children (if passed to the cloned node) and return a new RenderNode
+     */
+    clone?: (props?: {}, children?: RenderNode[]) => RenderNode;
+}
+
+/**
+ * CustomRenderNode: a generic render node
+ */
+export class CustomRenderNode implements RenderNode {
+    declare _type: typeof RenderNodeType;
+    declare _commitPhase: RenderNodeCommitPhase;
+    declare handlers: CustomRenderNodeHandlers;
+    declare children: RenderNode[];
+    declare emitter?: NodeEmitter | undefined;
+    declare isMounted: boolean;
+    declare slotSizes: SlotSizes<RenderNode>;
+    declare parentXmlNamespace: string;
+
+    constructor(
+        handlers: CustomRenderNodeHandlers,
+        children: RenderNode[],
+        debugName?: string
+    ) {
+        this._type = RenderNodeType;
+        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
+        this.handlers = handlers;
+        this.children = children;
+        this.isMounted = false;
+        this.slotSizes = new SlotSizes([]);
+        this.parentXmlNamespace = HTML_NAMESPACE;
+
+        this.__debugName = debugName ?? `custom`;
+        this.__refcount = 0;
+    }
+
+    commit(phase: RenderNodeCommitPhase) {
+        if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
+            return;
+        }
+        for (const child of this.children) {
+            child.commit(phase);
+        }
+        this._commitPhase = phase;
+    }
+
+    clone(): RenderNode {
+        if (this.handlers.clone) {
+            return this.handlers.clone(undefined, this.children);
+        }
+        const clonedChildren = this.children.map((child) => child.clone());
+        return new CustomRenderNode(this.handlers, clonedChildren);
+    }
+
+    private spliceChildren(
+        index: number,
+        count: number,
+        children: RenderNode[]
+    ) {
+        // unmount & detach children before removing from slots (so they may emit their cleanup events)
+        for (let i = index; i < index + count; ++i) {
+            const child = this.children[i];
+            if (this.isMounted) {
+                child.setMounted(false);
+            }
+            child.detach();
+        }
+        const { removed } = this.slotSizes.splice(index, count, children);
+        for (const child of removed) {
+            disown(this, child);
+        }
+        for (const child of children) {
+            own(this, child);
+            child.attach(
+                (e) => this.handleChildEvent(child, e),
+                this.parentXmlNamespace
+            );
+            if (this.isMounted) {
+                child.setMounted(true);
+            }
+        }
+    }
+
+    private handleChildEvent(
+        child: RenderNode,
+        event: ArrayEvent<Node> | Error
+    ) {
+        if (event instanceof Error) {
+            this.handleEvent(event);
+        } else if (!this.handlers.onChildEvent?.(child, event)) {
+            this.handleEvent(
+                event instanceof Error
+                    ? event
+                    : this.slotSizes.applyEvent(child, event)
+            );
+        }
+    }
+
+    private handleEvent(event: ArrayEvent<Node> | Error) {
+        if (event instanceof Error) {
+            if (!this.handlers.onError?.(event)) {
+                if (this.emitter) {
+                    this.emitter(event);
+                } else {
+                    log.warn(
+                        'Unhandled error on detached CustomRenderNode',
+                        event
+                    );
+                }
+            }
+            return;
+        }
+        if (!this.handlers.onEvent?.(event)) {
+            this.emitter?.(event);
+        }
+    }
+
+    detach() {
+        log.assert(this.emitter, 'double detached');
+        this.handlers.onDetach?.(this.emitter);
+        for (const child of this.children) {
+            child.detach();
+        }
+        this.emitter = undefined;
+        this.parentXmlNamespace = HTML_NAMESPACE;
+    }
+
+    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
+        log.assert(!this.emitter, 'Invariant: double attached');
+        this.emitter = emitter;
+        this.parentXmlNamespace = parentXmlNamespace;
+        for (const child of this.children) {
+            child.attach((event) => {
+                this.handleChildEvent(child, event);
+            }, parentXmlNamespace);
+        }
+        this.handlers.onAttach?.(emitter, parentXmlNamespace);
+    }
+
+    setMounted(isMounted: boolean) {
+        for (const child of this.children) {
+            child.setMounted(isMounted);
+        }
+        if (isMounted) {
+            this.handlers.onMount?.();
+        } else {
+            this.handlers.onUnmount?.();
+        }
+    }
+
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
+    }
+
+    // Retainable
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {
+        for (const child of this.children) {
+            own(this, child);
+        }
+        this.handlers.onAlive?.();
+    }
+    __dead() {
+        this.handlers.onDestroy?.();
+        for (const child of this.children) {
+            disown(this, child);
+        }
+        removeRenderNode(this);
+        this.emitter = undefined;
+    }
+}
+
 /**
  * Renders nothing
  */
 export class EmptyRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
-    declare _commitPhase: RenderNodeCommitPhase;
     constructor() {
         this._type = RenderNodeType;
-        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.__debugName = 'empty';
         this.__refcount = 0;
     }
@@ -296,59 +510,32 @@ export const emptyRenderNode = new EmptyRenderNode();
 /**
  * Renders a Text DOM node
  */
-export class TextRenderNode implements RenderNode {
-    declare _type: typeof RenderNodeType;
-    declare _commitPhase: RenderNodeCommitPhase;
-    private declare text: Text;
-    private declare emitter?: NodeEmitter | undefined;
-
-    constructor(string: string, debugName?: string) {
-        this._type = RenderNodeType;
-        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
-        this.text = document.createTextNode(string);
-
-        this.__debugName = debugName ?? 'text';
-        this.__refcount = 0;
-    }
-
-    detach() {
-        this.emitter?.({ type: ArrayEventType.SPLICE, index: 0, count: 1 });
-        this.emitter = undefined;
-    }
-
-    attach(emitter: NodeEmitter) {
-        log.assert(!this.emitter, 'Invariant: Text node double attached');
-        this.emitter = emitter;
-        this.emitter?.({
-            type: ArrayEventType.SPLICE,
-            index: 0,
-            count: 0,
-            items: [this.text],
-        });
-    }
-
-    setMounted() {}
-    retain() {
-        retain(this);
-    }
-    release() {
-        release(this);
-    }
-    commit() {
-        // No children, no commit action
-    }
-    clone(): RenderNode {
-        return new TextRenderNode(this.text.data);
-    }
-
-    // Retainable
-    declare __debugName: string;
-    declare __refcount: number;
-    __alive() {}
-    __dead() {
-        this.emitter = undefined;
-        removeRenderNode(this);
-    }
+export function TextRenderNode(str: string, debugName?: string): RenderNode {
+    const textNode = document.createTextNode(str);
+    return new CustomRenderNode(
+        {
+            onAttach: (emitter) => {
+                emitter({
+                    type: ArrayEventType.SPLICE,
+                    index: 0,
+                    count: 0,
+                    items: [textNode],
+                });
+            },
+            onDetach: (emitter) => {
+                emitter({
+                    type: ArrayEventType.SPLICE,
+                    index: 0,
+                    count: 1,
+                });
+            },
+            clone: () => {
+                return TextRenderNode(str, debugName);
+            },
+        },
+        [],
+        debugName
+    );
 }
 
 /**
@@ -492,7 +679,7 @@ export class ArrayRenderNode implements RenderNode {
     }
 }
 
-const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
+export const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 const MATHML_NAMESPACE = 'http://www.w3.org/1998/Math/MathML';
 
@@ -1925,10 +2112,10 @@ export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
         return emptyRenderNode;
     }
     if (typeof jsxNode === 'string') {
-        return new TextRenderNode(jsxNode);
+        return TextRenderNode(jsxNode);
     }
     if (typeof jsxNode === 'number' || typeof jsxNode === 'bigint') {
-        return new TextRenderNode(jsxNode.toString());
+        return TextRenderNode(jsxNode.toString());
     }
     log.warn('Unexpected JSX node type, rendering nothing', jsxNode);
     return emptyRenderNode;
