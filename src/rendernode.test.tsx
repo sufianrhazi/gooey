@@ -1027,7 +1027,7 @@ suite('ArrayRenderNode', () => {
 suite('CollectionRenderNode', () => {
     test('emits jsx when attached', () => {
         const items = collection(['hello', 'goodbye']);
-        const node = new CollectionRenderNode(items);
+        const node = CollectionRenderNode(items);
         node.retain();
         const events: any[] = [];
         node.attach((event) => {
@@ -1049,7 +1049,7 @@ suite('CollectionRenderNode', () => {
 
     test('emits events when modified', () => {
         const items = collection(['foo', 'bar', 'baz']);
-        const node = new CollectionRenderNode(items);
+        const node = CollectionRenderNode(items);
         node.retain();
         const events: any[] = [];
         node.attach((event) => {
@@ -1090,7 +1090,7 @@ suite('CollectionRenderNode', () => {
 
     test('emits result when modified while detached', () => {
         const items = collection(['foo', 'bar', 'baz']);
-        const node = new CollectionRenderNode(items);
+        const node = CollectionRenderNode(items);
         node.retain();
         const events: any[] = [];
         node.attach((event) => {
@@ -1237,7 +1237,7 @@ suite('CollectionRenderNode', () => {
         const tracer1 = new TracingRenderNode();
         const tracer2 = new TracingRenderNode();
         const items = collection([tracer1]);
-        const node = new CollectionRenderNode(items);
+        const node = CollectionRenderNode(items);
         const events: any[] = [];
         node.retain();
         node.attach((event) => events.push(event), HTML_NAMESPACE);
@@ -1286,7 +1286,7 @@ suite('CollectionRenderNode', () => {
         const tracer1 = new TracingRenderNode();
         const tracer2 = new TracingRenderNode();
         const items = collection([tracer1]);
-        const node = new CollectionRenderNode(items);
+        const node = CollectionRenderNode(items);
         const events: any[] = [];
         node.retain();
         node.attach((event) => events.push(event), HTML_NAMESPACE);

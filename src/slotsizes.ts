@@ -10,7 +10,7 @@ import type { ArrayEvent } from './arrayevent';
 import * as log from './log';
 
 export class SlotSizes<TEventSource> {
-    private items: TEventSource[];
+    items: TEventSource[];
     private slots: number[];
     private indexes: Map<TEventSource, number>;
 

@@ -21,8 +21,6 @@ import type { Dyn } from './dyn';
 import {
     ArrayEvent,
     ArrayEventType,
-    shiftEvent,
-    shiftEventBy,
     applyArrayEvent,
     addArrayEvent,
 } from './arrayevent';
@@ -312,7 +310,6 @@ export class CustomRenderNode implements RenderNode {
     declare _type: typeof RenderNodeType;
     declare _commitPhase: RenderNodeCommitPhase;
     declare handlers: CustomRenderNodeHandlers;
-    declare children: RenderNode[];
     declare emitter?: NodeEmitter | undefined;
     declare isMounted: boolean;
     declare slotSizes: SlotSizes<RenderNode>;
@@ -326,7 +323,6 @@ export class CustomRenderNode implements RenderNode {
         this._type = RenderNodeType;
         this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.handlers = handlers;
-        this.children = children;
         this.isMounted = false;
         this.slotSizes = new SlotSizes(children);
         this.parentXmlNamespace = HTML_NAMESPACE;
@@ -339,7 +335,7 @@ export class CustomRenderNode implements RenderNode {
         if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
             return;
         }
-        for (const child of this.children) {
+        for (const child of this.slotSizes.items) {
             child.commit(phase);
         }
         this._commitPhase = phase;
@@ -350,14 +346,26 @@ export class CustomRenderNode implements RenderNode {
         if (this.handlers.clone) {
             return this.handlers.clone(props, children);
         }
-        const clonedChildren = this.children.map((child) => child.clone());
+        const clonedChildren = this.slotSizes.items.map((child) =>
+            child.clone()
+        );
         return new CustomRenderNode(this.handlers, clonedChildren);
+    }
+
+    sortChildren(from: number, indexes: number[]) {
+        const event = this.slotSizes.sort(from, indexes);
+        this.emitter?.(event);
+    }
+
+    moveChildren(from: number, count: number, to: number) {
+        const event = this.slotSizes.move(from, count, to);
+        this.emitter?.(event);
     }
 
     spliceChildren(index: number, count: number, children: RenderNode[]) {
         // unmount & detach children before removing from slots (so they may emit their cleanup events)
         for (let i = index; i < index + count; ++i) {
-            const child = this.children[i];
+            const child = this.slotSizes.items[i];
             if (this.isMounted) {
                 child.setMounted(false);
             }
@@ -424,7 +432,7 @@ export class CustomRenderNode implements RenderNode {
     detach() {
         log.assert(this.emitter, 'double detached');
         this.handlers.onDetach?.(this.emitter);
-        for (const child of this.children) {
+        for (const child of this.slotSizes.items) {
             child.detach();
         }
         this.emitter = undefined;
@@ -435,7 +443,7 @@ export class CustomRenderNode implements RenderNode {
         log.assert(!this.emitter, 'Invariant: double attached');
         this.emitter = emitter;
         this.parentXmlNamespace = parentXmlNamespace;
-        for (const child of this.children) {
+        for (const child of this.slotSizes.items) {
             child.attach((event) => {
                 this.handleChildEvent(child, event);
             }, parentXmlNamespace);
@@ -445,7 +453,7 @@ export class CustomRenderNode implements RenderNode {
 
     setMounted(isMounted: boolean) {
         this.isMounted = isMounted;
-        for (const child of this.children) {
+        for (const child of this.slotSizes.items) {
             child.setMounted(isMounted);
         }
         if (isMounted) {
@@ -466,14 +474,14 @@ export class CustomRenderNode implements RenderNode {
     declare __debugName: string;
     declare __refcount: number;
     __alive() {
-        for (const child of this.children) {
+        for (const child of this.slotSizes.items) {
             own(this, child);
         }
         this.handlers.onAlive?.();
     }
     __dead() {
         this.handlers.onDestroy?.();
-        for (const child of this.children) {
+        for (const child of this.slotSizes.items) {
             disown(this, child);
         }
         removeRenderNode(this);
@@ -1182,288 +1190,57 @@ export function CalculationRenderNode(
     return customRenderNode;
 }
 
-export class CollectionRenderNode implements RenderNode {
-    declare _type: typeof RenderNodeType;
-    declare _commitPhase: RenderNodeCommitPhase;
-    private declare children: RenderNode[];
-    private declare batchEvents?:
-        | [childIndex: number, childEvent: ArrayEvent<Node>][]
-        | undefined;
-    private declare childIndex: Map<RenderNode, number>;
-    private declare slotSizes: number[];
-    private declare collection: Collection<any> | View<any>;
-    private declare unsubscribe?: () => void;
-    private declare isMounted: boolean;
-    private declare emitter?: NodeEmitter | undefined;
-    private declare parentXmlNamespace?: string | undefined;
-
-    constructor(collection: Collection<any> | View<any>, debugName?: string) {
-        this._type = RenderNodeType;
-        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
-        this.collection = collection;
-        this.children = [];
-        this.childIndex = new Map();
-        this.slotSizes = [];
-        this.isMounted = false;
-
-        this.__debugName = debugName ?? `rendercoll`;
-        this.__refcount = 0;
-    }
-
-    batchChildEvents(fn: () => void) {
-        this.batchEvents = [];
-        fn();
-        this.batchEvents.sort((a, b) => a[0] - b[0]);
-        let eventIndex = 0;
-        let shiftAmount = 0;
-        for (
-            let slotIndex = 0;
-            eventIndex < this.batchEvents.length &&
-            slotIndex < this.slotSizes.length;
-            ++slotIndex
-        ) {
-            while (
-                eventIndex < this.batchEvents.length &&
-                this.batchEvents[eventIndex][0] === slotIndex
-            ) {
-                const event = this.batchEvents[eventIndex][1];
-                if (event.type === ArrayEventType.SPLICE) {
-                    this.slotSizes[slotIndex] +=
-                        (event.items?.length ?? 0) - event.count;
-                }
-                if (this.emitter) {
-                    shiftEventBy(shiftAmount, event);
-                    this.emitter(event);
-                }
-                eventIndex++;
-            }
-            shiftAmount += this.slotSizes[slotIndex];
-        }
-        this.batchEvents = undefined;
-    }
-
-    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
-        this.emitter = emitter;
-        this.parentXmlNamespace = parentXmlNamespace;
-
-        this.batchChildEvents(() => {
-            for (const child of this.children) {
-                child.attach((event) => {
-                    this.handleChildEvent(event, child);
-                }, parentXmlNamespace);
-            }
-        });
-    }
-
-    detach() {
-        for (const child of this.children) {
-            child.detach();
-        }
-
-        this.emitter = undefined;
-    }
-
-    handleChildEvent(event: ArrayEvent<Node> | Error, child: RenderNode) {
-        if (this.emitter) {
-            if (!(event instanceof Error)) {
-                // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                const index = this.childIndex.get(child)!;
-                if (this.batchEvents) {
-                    this.batchEvents.push([index, event]);
-                } else {
-                    shiftEvent(this.slotSizes, index, event);
-                    this.emitter(event);
-                }
-            } else {
-                this.emitter(event);
-            }
-        }
-    }
-
-    setMounted(isMounted: boolean) {
-        this.isMounted = isMounted;
-        for (const child of this.children) {
-            child.setMounted(isMounted);
-        }
-    }
-
-    retain() {
-        retain(this);
-    }
-    release() {
-        release(this);
-    }
-
-    private releaseChild(child: RenderNode) {
-        if (this.emitter) {
-            if (this.isMounted) {
-                child.setMounted(false);
-            }
-            child.detach();
-        }
-        disown(this, child);
-    }
-    private retainChild(child: RenderNode) {
-        own(this, child);
-        if (this.emitter && this.parentXmlNamespace) {
-            child.attach(
-                (event) => this.handleChildEvent(event, child),
-                this.parentXmlNamespace
-            );
-            if (this.isMounted) {
-                child.setMounted(true);
-            }
-        }
-    }
-
-    private handleCollectionEvent = (events: ArrayEvent<any>[]) => {
+export function CollectionRenderNode(
+    collection: Collection<any> | View<any>,
+    debugName?: string
+): RenderNode {
+    let unsubscribe: undefined | (() => void);
+    function handleEvent(events: ArrayEvent<any>[]) {
         for (const event of events) {
             switch (event.type) {
-                case ArrayEventType.SPLICE: {
-                    const newChildren: RenderNode[] = [];
-                    if (event.items) {
-                        for (const [index, item] of event.items.entries()) {
-                            const child = renderJSXNode(item);
-                            newChildren.push(child);
-                            this.childIndex.set(child, event.index + index);
-                        }
-                    }
-                    const removed = this.children.splice(
+                case ArrayEventType.SPLICE:
+                    customRenderNode.spliceChildren(
                         event.index,
                         event.count,
-                        ...newChildren
+                        event.items?.map((item) => renderJSXNode(item)) ?? []
                     );
-                    this.batchChildEvents(() => {
-                        for (const child of removed) {
-                            this.releaseChild(child);
-                            this.childIndex.delete(child);
-                        }
-                    });
-                    this.slotSizes.splice(
-                        event.index,
+                    break;
+                case ArrayEventType.MOVE:
+                    customRenderNode.moveChildren(
+                        event.from,
                         event.count,
-                        ...newChildren.map(() => 0)
+                        event.to
                     );
-                    if (newChildren.length !== event.count) {
-                        for (
-                            let i = event.index + newChildren.length;
-                            i < this.children.length;
-                            ++i
-                        ) {
-                            this.childIndex.set(this.children[i], i);
-                        }
-                    }
-                    this.batchChildEvents(() => {
-                        for (const child of newChildren) {
-                            this.retainChild(child);
-                        }
-                    });
                     break;
-                }
-                case ArrayEventType.MOVE: {
-                    // Get adjusted data for event
-                    const slotStartIndex: number[] = [];
-                    let realIndex = 0;
-                    for (const slotSize of this.slotSizes) {
-                        slotStartIndex.push(realIndex);
-                        realIndex += slotSize;
-                    }
-                    let realCount = 0;
-                    for (let i = 0; i < event.count; ++i) {
-                        realCount += this.slotSizes[event.from + i];
-                    }
-
-                    // Move slots
-                    applyArrayEvent(this.slotSizes, event);
-
-                    // Update and emit event
-                    event.from = slotStartIndex[event.from];
-                    event.count = realCount;
-                    event.to = slotStartIndex[event.to];
-                    this.emitter?.(event);
+                case ArrayEventType.SORT:
+                    customRenderNode.sortChildren(event.from, event.indexes);
                     break;
-                }
-                case ArrayEventType.SORT: {
-                    // Get adjusted data for event
-                    let realFrom = 0;
-                    for (let i = 0; i < event.from; ++i) {
-                        realFrom += this.slotSizes[i];
-                    }
-                    const nestedIndexes: number[][] = [];
-                    let index = 0;
-                    for (let i = 0; i < this.slotSizes.length; ++i) {
-                        const slotIndexes: number[] = [];
-                        for (let j = 0; j < this.slotSizes[i]; ++j) {
-                            slotIndexes.push(index);
-                            index += 1;
-                        }
-                        nestedIndexes.push(slotIndexes);
-                    }
-
-                    // Sort slots
-                    applyArrayEvent(this.slotSizes, event);
-                    // Sort nested indexes
-                    applyArrayEvent(nestedIndexes, event);
-
-                    // Update and emit event
-                    const sortedIndexes = nestedIndexes
-                        .slice(event.from)
-                        .flat();
-                    event.from = realFrom;
-                    event.indexes = sortedIndexes;
-                    this.emitter?.(event);
-                    break;
-                }
             }
         }
-    };
-
-    commit(phase: RenderNodeCommitPhase) {
-        if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
-            for (const child of this.children) {
-                child.commit(phase);
-            }
-            this._commitPhase = phase;
-        }
     }
+    const customRenderNode = new CustomRenderNode(
+        {
+            onAlive: () => {
+                retain(collection);
+                unsubscribe = collection.subscribe(handleEvent);
+                untrackReads(() => {
+                    customRenderNode.spliceChildren(
+                        0,
+                        0,
+                        collection.map((item) => renderJSXNode(item))
+                    );
+                });
+            },
+            onDestroy: () => {
+                unsubscribe?.();
+                release(collection);
+            },
+        },
+        [],
+        debugName ?? `rendercoll`
+    );
 
-    clone(): RenderNode {
-        return new CollectionRenderNode(this.collection);
-    }
-
-    // Retainable
-    declare __debugName: string;
-    declare __refcount: number;
-    __alive() {
-        retain(this.collection);
-        this.unsubscribe = this.collection.subscribe(
-            this.handleCollectionEvent
-        );
-
-        untrackReads(() => {
-            this.batchChildEvents(() => {
-                for (const [index, item] of this.collection.entries()) {
-                    const child = renderJSXNode(item);
-                    this.children.push(child);
-                    this.slotSizes.push(0);
-                    this.childIndex.set(child, index);
-                    this.retainChild(child);
-                }
-            });
-        });
-    }
-    __dead() {
-        this.unsubscribe?.();
-        release(this.collection);
-        const removed = this.children.splice(0, this.children.length);
-        for (const child of removed) {
-            this.releaseChild(child);
-            this.childIndex.delete(child);
-        }
-        this.slotSizes.splice(0, this.slotSizes.length);
-        this.emitter = undefined;
-        removeRenderNode(this);
-    }
+    return customRenderNode;
 }
 
 function isCalculationRenderNode(val: any): val is Calculation<JSXNode> {
@@ -1598,7 +1375,7 @@ export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
         return CalculationRenderNode(jsxNode);
     }
     if (isCollectionOrViewRenderNode(jsxNode)) {
-        return new CollectionRenderNode(jsxNode);
+        return CollectionRenderNode(jsxNode);
     }
     if (jsxNode instanceof Node) {
         return ForeignRenderNode(jsxNode);
