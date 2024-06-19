@@ -531,7 +531,7 @@ export function TextRenderNode(str: string, debugName?: string): RenderNode {
             },
         },
         [],
-        debugName
+        debugName ?? 'text'
     );
 }
 
@@ -560,7 +560,8 @@ export function ForeignRenderNode(node: Node, debugName?: string): RenderNode {
                 return ForeignRenderNode(node, debugName);
             },
         },
-        []
+        [],
+        debugName ?? 'foreign'
     );
 }
 
@@ -978,7 +979,10 @@ export class PortalRenderNode implements RenderNode {
     }
 
     attach(emitter: NodeEmitter, parentXmlNamespace: string) {
-        log.assert(!this.emitter, 'Invariant: Intrinsic node double attached');
+        log.assert(
+            !this.emitter,
+            'Invariant: PortalRenderNode double attached'
+        );
         this.emitter = emitter;
         this.childrenRenderNode.attach(
             this.handleEvent,
