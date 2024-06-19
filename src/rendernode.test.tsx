@@ -733,7 +733,7 @@ suite('CalculationRenderNode', () => {
 suite('FieldRenderNode', () => {
     test('emits jsx when attached', () => {
         const greeting = field('hello');
-        const node = new FieldRenderNode(greeting);
+        const node = FieldRenderNode(greeting);
         node.retain();
         const events: any[] = [];
         node.attach((event) => {
@@ -752,7 +752,7 @@ suite('FieldRenderNode', () => {
 
     test('re-emits jsx when recalculated while attached', () => {
         const greeting = field('hello');
-        const node = new FieldRenderNode(greeting);
+        const node = FieldRenderNode(greeting);
         node.retain();
         const events: any[] = [];
         node.attach((event) => {
@@ -788,7 +788,7 @@ suite('FieldRenderNode', () => {
 
     test('does not emit jsx when recalculated while detached', () => {
         const greeting = field('hello');
-        const node = new FieldRenderNode(greeting);
+        const node = FieldRenderNode(greeting);
         node.retain();
         const events: any[] = [];
         node.attach((event) => {
@@ -817,7 +817,7 @@ suite('FieldRenderNode', () => {
 
     test('result after recalculation while detached is emitted when attached again', () => {
         const greeting = field('hello');
-        const node = new FieldRenderNode(greeting);
+        const node = FieldRenderNode(greeting);
         node.retain();
         const events: any[] = [];
         node.attach((event) => {
@@ -855,7 +855,7 @@ suite('FieldRenderNode', () => {
     test('mount and unmount are passed through', () => {
         const tracer = new TracingRenderNode();
         const constantField = field(tracer);
-        const node = new FieldRenderNode(constantField);
+        const node = FieldRenderNode(constantField);
         const events: any[] = [];
 
         tracer.log('0: retain');

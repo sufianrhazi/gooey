@@ -1247,114 +1247,40 @@ function isCalculationRenderNode(val: any): val is Calculation<JSXNode> {
     return val instanceof Calculation;
 }
 
-export class FieldRenderNode implements RenderNode {
-    declare _type: typeof RenderNodeType;
-    declare _commitPhase: RenderNodeCommitPhase;
-    private declare field: Field<any>;
-    private declare child: RenderNode;
-    private declare isMounted: boolean;
-    private declare emitter?: NodeEmitter | undefined;
-    private declare parentXmlNamespace?: string | undefined;
-    private declare unsubscribe?: () => void;
+export function FieldRenderNode(
+    field: Field<any>,
+    debugName?: string
+): RenderNode {
+    let subscription: (() => void) | undefined;
+    let childRenderNode: RenderNode = emptyRenderNode;
 
-    constructor(field: Field<any>, debugName?: string) {
-        this._type = RenderNodeType;
-        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
-        this.field = field;
-        this.child = emptyRenderNode;
-        this.isMounted = false;
-
-        this.__debugName = debugName ?? `renderfield`;
-        this.__refcount = 0;
+    function subscribe(val: undefined | any): void {
+        disown(customRenderNode, childRenderNode);
+        childRenderNode = renderJSXNode(val);
+        own(customRenderNode, childRenderNode);
+        customRenderNode.spliceChildren(0, 1, [childRenderNode]);
     }
 
-    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
-        this.emitter = emitter;
-        this.parentXmlNamespace = parentXmlNamespace;
-
-        this.child.attach(emitter, parentXmlNamespace);
-    }
-
-    detach() {
-        this.child.detach();
-        this.emitter = undefined;
-    }
-
-    setMounted(isMounted: boolean) {
-        this.isMounted = isMounted;
-        this.child.setMounted(isMounted);
-    }
-
-    retain() {
-        retain(this);
-    }
-    release() {
-        release(this);
-    }
-
-    private retainChild(child: RenderNode) {
-        own(this, child);
-        if (this.emitter && this.parentXmlNamespace) {
-            child.attach(this.emitter, this.parentXmlNamespace);
-            if (this.isMounted) {
-                child.setMounted(true);
-            }
-        }
-    }
-
-    commit(phase: RenderNodeCommitPhase) {
-        if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
-            this.child.commit(phase);
-            this._commitPhase = phase;
-        }
-    }
-
-    clone(): RenderNode {
-        return new FieldRenderNode(this.field);
-    }
-
-    // Retainable
-    declare __debugName: string;
-    declare __refcount: number;
-
-    releaseChild() {
-        if (this.emitter) {
-            if (this.isMounted) {
-                this.child.setMounted(false);
-            }
-            this.child.detach();
-        }
-        disown(this, this.child);
-    }
-
-    renderChild(val: any) {
-        this.releaseChild();
-        this.child = renderJSXNode(val);
-
-        // Retain
-        own(this, this.child);
-        if (this.emitter && this.parentXmlNamespace) {
-            this.child.attach(this.emitter, this.parentXmlNamespace);
-            if (this.isMounted) {
-                this.child.setMounted(true);
-            }
-        }
-    }
-
-    __alive() {
-        retain(this.field);
-        this.unsubscribe = this.field.subscribe((val) => this.renderChild(val));
-
-        untrackReads(() => {
-            this.renderChild(this.field.get());
-        });
-    }
-    __dead() {
-        this.unsubscribe?.();
-        this.releaseChild();
-        this.emitter = undefined;
-        removeRenderNode(this);
-    }
+    const customRenderNode = new CustomRenderNode(
+        {
+            clone: () => {
+                return FieldRenderNode(field, debugName);
+            },
+            onAlive: () => {
+                subscription = field.subscribe(subscribe);
+                subscribe(field.get());
+            },
+            onDestroy: () => {
+                subscription?.();
+                subscription = undefined;
+                disown(customRenderNode, childRenderNode);
+                childRenderNode = emptyRenderNode;
+            },
+        },
+        [childRenderNode],
+        debugName ?? `FieldRenderNode(${field.__debugName})`
+    );
+    return customRenderNode;
 }
 
 function isCollectionOrViewRenderNode(
@@ -1384,7 +1310,7 @@ export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
         return ArrayRenderNode(jsxNode.map((item) => renderJSXNode(item)));
     }
     if (jsxNode instanceof Field) {
-        return new FieldRenderNode(jsxNode);
+        return FieldRenderNode(jsxNode);
     }
     if (
         jsxNode === null ||
