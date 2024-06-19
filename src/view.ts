@@ -18,7 +18,7 @@ export { mount, defineCustomElement } from './rendernode';
 
 export const Fragment: Component<{ children?: JSX.Node | JSX.Node[] }> = ({
     children,
-}) => new ArrayRenderNode(renderJSXChildren(children));
+}) => ArrayRenderNode(renderJSXChildren(children));
 
 export function createElement<TProps extends {} | undefined>(
     type: string | Component<TProps>,

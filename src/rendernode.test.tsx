@@ -916,7 +916,7 @@ suite('ArrayRenderNode', () => {
         const tracer1 = new TracingRenderNode();
         const tracer2 = new TracingRenderNode();
         const tracer3 = new TracingRenderNode();
-        const node = new ArrayRenderNode([tracer1, tracer2, tracer3]);
+        const node = ArrayRenderNode([tracer1, tracer2, tracer3]);
         const events: any[] = [];
         node.retain();
         node.attach((event) => {
@@ -973,7 +973,7 @@ suite('ArrayRenderNode', () => {
                 },
                 {
                     type: ArrayEventType.SPLICE,
-                    index: 3,
+                    index: 4,
                     count: 0,
                     items: [div5],
                 },
@@ -984,7 +984,7 @@ suite('ArrayRenderNode', () => {
 
     test('standard lifecycle on mount', () => {
         const tracer = new TracingRenderNode();
-        const node = new ArrayRenderNode([tracer]);
+        const node = ArrayRenderNode([tracer]);
         mount(testRoot, node)();
         assert.deepEqual(
             [
@@ -1001,7 +1001,7 @@ suite('ArrayRenderNode', () => {
 
     test('can be unmounted and remounted while retained', () => {
         const tracer = new TracingRenderNode();
-        const node = new ArrayRenderNode([tracer]);
+        const node = ArrayRenderNode([tracer]);
         node.retain();
         mount(testRoot, node)();
         mount(testRoot, node)();
@@ -1496,7 +1496,7 @@ suite('IntrinsicObserverRenderNode', () => {
         const node = new IntrinsicObserverRenderNode(
             undefined,
             undefined,
-            new ArrayRenderNode([tracer])
+            ArrayRenderNode([tracer])
         );
         node.retain();
         node.attach((event) => tracer.log(event), HTML_NAMESPACE);
@@ -1524,7 +1524,7 @@ suite('IntrinsicObserverRenderNode', () => {
         const node = new IntrinsicObserverRenderNode(
             (node, type) => nodeCalls.push([node, type]),
             (node, type) => elementCalls.push([node, type]),
-            new ArrayRenderNode([tracer])
+            ArrayRenderNode([tracer])
         );
 
         const text = document.createTextNode('text');
@@ -1585,7 +1585,7 @@ suite('IntrinsicObserverRenderNode', () => {
         const node = new IntrinsicObserverRenderNode(
             (node, type) => nodeCalls.push([node, type]),
             (node, type) => elementCalls.push([node, type]),
-            new ArrayRenderNode([tracer])
+            ArrayRenderNode([tracer])
         );
 
         const text = document.createTextNode('text');

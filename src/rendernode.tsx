@@ -324,7 +324,7 @@ export class CustomRenderNode implements RenderNode {
         this.handlers = handlers;
         this.children = children;
         this.isMounted = false;
-        this.slotSizes = new SlotSizes([]);
+        this.slotSizes = new SlotSizes(children);
         this.parentXmlNamespace = HTML_NAMESPACE;
 
         this.__debugName = debugName ?? `custom`;
@@ -567,84 +567,11 @@ export function ForeignRenderNode(node: Node, debugName?: string): RenderNode {
 /**
  * Renders an array of render nodes
  */
-export class ArrayRenderNode implements RenderNode {
-    declare _type: typeof RenderNodeType;
-    declare _commitPhase: RenderNodeCommitPhase;
-    private declare children: RenderNode[];
-    private declare slotSizes: number[];
-    private declare attached: boolean;
-
-    constructor(children: RenderNode[], debugName?: string) {
-        this._type = RenderNodeType;
-        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
-        this.children = children;
-        this.slotSizes = children.map(() => 0);
-        this.attached = false;
-
-        this.__debugName = debugName ?? 'array';
-        this.__refcount = 0;
-    }
-
-    detach() {
-        if (this.attached) {
-            for (const child of this.children) {
-                child.detach();
-            }
-            this.attached = false;
-        }
-    }
-
-    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
-        for (const [index, child] of this.children.entries()) {
-            child.attach((event) => {
-                if (event instanceof Error) {
-                    emitter(event);
-                } else {
-                    shiftEvent(this.slotSizes, index, event);
-                    emitter(event);
-                }
-            }, parentXmlNamespace);
-        }
-        this.attached = true;
-    }
-
-    setMounted(isMounted: boolean) {
-        for (const child of this.children) {
-            child.setMounted(isMounted);
-        }
-    }
-    retain() {
-        retain(this);
-    }
-    release() {
-        release(this);
-    }
-    commit(phase: RenderNodeCommitPhase) {
-        if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
-            for (const child of this.children) {
-                child.commit(phase);
-            }
-            this._commitPhase = phase;
-        }
-    }
-    clone(): RenderNode {
-        return new ArrayRenderNode(this.children.map((child) => child.clone()));
-    }
-
-    // Retainable
-    declare __debugName: string;
-    declare __refcount: number;
-    __alive() {
-        for (const child of this.children) {
-            own(this, child);
-        }
-    }
-    __dead() {
-        for (const child of this.children) {
-            disown(this, child);
-        }
-        removeRenderNode(this);
-    }
+export function ArrayRenderNode(
+    children: RenderNode[],
+    debugName?: string
+): RenderNode {
+    return new CustomRenderNode({}, children, debugName);
 }
 
 const EventProps = [
@@ -665,7 +592,7 @@ export class IntrinsicRenderNode implements RenderNode {
     private declare detachedError?: Error | undefined;
     private declare xmlNamespace?: string | undefined;
     private declare props?: Record<string, any> | undefined;
-    private declare children: ArrayRenderNode;
+    private declare children: RenderNode;
     private declare portalRenderNode?: PortalRenderNode | undefined;
     private declare boundAttributes?: Map<
         string,
@@ -682,7 +609,7 @@ export class IntrinsicRenderNode implements RenderNode {
         this._type = RenderNodeType;
         this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.props = props;
-        this.children = new ArrayRenderNode(children);
+        this.children = ArrayRenderNode(children);
         this.tagName = tagName;
 
         this.__debugName = debugName ?? `intrinsic:${this.tagName}`;
@@ -1813,7 +1740,7 @@ export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
         return ForeignRenderNode(jsxNode);
     }
     if (Array.isArray(jsxNode)) {
-        return new ArrayRenderNode(jsxNode.map((item) => renderJSXNode(item)));
+        return ArrayRenderNode(jsxNode.map((item) => renderJSXNode(item)));
     }
     if (jsxNode instanceof Field) {
         return new FieldRenderNode(jsxNode);
@@ -1874,7 +1801,7 @@ export function mount(
     children.push(node);
     const root = new PortalRenderNode(
         target,
-        new ArrayRenderNode(children),
+        ArrayRenderNode(children),
         null,
         'root'
     );
@@ -2055,7 +1982,7 @@ export class IntrinsicObserverRenderNode implements RenderNode {
     declare _commitPhase: RenderNodeCommitPhase;
     declare nodeCallback?: IntrinsicObserverNodeCallback | undefined;
     declare elementCallback?: IntrinsicObserverElementCallback | undefined;
-    declare child: ArrayRenderNode;
+    declare child: RenderNode;
     declare childNodes: Node[];
     declare pendingMount: Node[];
     declare pendingUnmount: Node[];
@@ -2065,7 +1992,7 @@ export class IntrinsicObserverRenderNode implements RenderNode {
     constructor(
         nodeCallback: IntrinsicObserverNodeCallback | undefined,
         elementCallback: IntrinsicObserverElementCallback | undefined,
-        child: ArrayRenderNode,
+        child: RenderNode,
         debugName?: string
     ) {
         this._type = RenderNodeType;
@@ -2145,7 +2072,7 @@ export class IntrinsicObserverRenderNode implements RenderNode {
         return new IntrinsicObserverRenderNode(
             this.nodeCallback,
             this.elementCallback,
-            this.child.clone() as ArrayRenderNode
+            this.child.clone()
         );
     }
 
@@ -2235,7 +2162,7 @@ export const IntrinsicObserver: Component<{
     return new IntrinsicObserverRenderNode(
         nodeCallback,
         elementCallback,
-        new ArrayRenderNode(renderJSXChildren(children))
+        ArrayRenderNode(renderJSXChildren(children))
     );
 };
 
