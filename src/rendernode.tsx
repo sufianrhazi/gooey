@@ -538,59 +538,30 @@ export function TextRenderNode(str: string, debugName?: string): RenderNode {
 /**
  * Renders a foreign managed DOM node
  */
-export class ForeignRenderNode implements RenderNode {
-    declare _type: typeof RenderNodeType;
-    declare _commitPhase: RenderNodeCommitPhase;
-    private declare node: Node;
-    private declare emitter?: NodeEmitter | undefined;
-
-    constructor(node: Node, debugName?: string) {
-        this._type = RenderNodeType;
-        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
-        this.node = node;
-
-        this.__debugName = debugName ?? 'foreign';
-        this.__refcount = 0;
-    }
-
-    detach() {
-        this.emitter?.({ type: ArrayEventType.SPLICE, index: 0, count: 1 });
-        this.emitter = undefined;
-    }
-
-    attach(emitter: NodeEmitter) {
-        log.assert(!this.emitter, 'Invariant: Foreign node double attached');
-        this.emitter = emitter;
-        this.emitter?.({
-            type: ArrayEventType.SPLICE,
-            index: 0,
-            count: 0,
-            items: [this.node],
-        });
-    }
-
-    setMounted() {}
-    retain() {
-        retain(this);
-    }
-    release() {
-        release(this);
-    }
-    commit() {
-        // No children, no commit action
-    }
-    clone(): RenderNode {
-        return new ForeignRenderNode(this.node);
-    }
-
-    // Retainable
-    declare __debugName: string;
-    declare __refcount: number;
-    __alive() {}
-    __dead() {
-        this.emitter = undefined;
-        removeRenderNode(this);
-    }
+export function ForeignRenderNode(node: Node, debugName?: string): RenderNode {
+    return new CustomRenderNode(
+        {
+            onAttach: (emitter) => {
+                emitter({
+                    type: ArrayEventType.SPLICE,
+                    index: 0,
+                    count: 0,
+                    items: [node],
+                });
+            },
+            onDetach: (emitter) => {
+                emitter({
+                    type: ArrayEventType.SPLICE,
+                    index: 0,
+                    count: 1,
+                });
+            },
+            clone: () => {
+                return ForeignRenderNode(node, debugName);
+            },
+        },
+        []
+    );
 }
 
 /**
@@ -1839,7 +1810,7 @@ export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
         return new CollectionRenderNode(jsxNode);
     }
     if (jsxNode instanceof Node) {
-        return new ForeignRenderNode(jsxNode);
+        return ForeignRenderNode(jsxNode);
     }
     if (Array.isArray(jsxNode)) {
         return new ArrayRenderNode(jsxNode.map((item) => renderJSXNode(item)));
@@ -1898,7 +1869,7 @@ export function mount(
 ): () => void {
     const children: RenderNode[] = [];
     for (let i = 0; i < target.childNodes.length; ++i) {
-        children.push(new ForeignRenderNode(target.childNodes[i]));
+        children.push(ForeignRenderNode(target.childNodes[i]));
     }
     children.push(node);
     const root = new PortalRenderNode(

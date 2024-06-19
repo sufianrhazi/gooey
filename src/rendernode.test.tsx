@@ -155,7 +155,7 @@ suite('ForeignRenderNode', () => {
     test('renders provided element', () => {
         const node = document.createElement('div');
         node.textContent = 'hello';
-        const foreign = new ForeignRenderNode(node);
+        const foreign = ForeignRenderNode(node);
         const unmount = mount(testRoot, foreign);
         assert.is(1, testRoot.childNodes.length);
         assert.is(node, testRoot.childNodes[0]);
@@ -165,9 +165,9 @@ suite('ForeignRenderNode', () => {
 
     test('fails if mounted twice', () => {
         const node = document.createElement('div');
-        const foreign = new ForeignRenderNode(node);
+        const foreign = ForeignRenderNode(node);
         const unmount = mount(testRoot, foreign);
-        assert.throwsMatching(/Foreign node double attached/, () =>
+        assert.throwsMatching(/double attached/, () =>
             mount(testRoot, foreign)
         );
         unmount();
@@ -175,7 +175,7 @@ suite('ForeignRenderNode', () => {
 
     test('can be mounted and unmounted while retained', () => {
         const node = document.createElement('div');
-        const foreign = new ForeignRenderNode(node);
+        const foreign = ForeignRenderNode(node);
         foreign.retain();
         let unmount = mount(testRoot, foreign);
         unmount();
@@ -1317,7 +1317,7 @@ suite('ComponentRenderNode', () => {
     test('lifecycle methods called in correct order', () => {
         const events: any[] = [];
         const div = document.createElement('div');
-        const foreign = new ForeignRenderNode(div);
+        const foreign = ForeignRenderNode(div);
 
         const Component: Component = (
             _props,
@@ -1393,7 +1393,7 @@ suite('ComponentRenderNode', () => {
     test('can be detached and reattached while retained', () => {
         const events: any[] = [];
         const div = document.createElement('div');
-        const foreign = new ForeignRenderNode(div);
+        const foreign = ForeignRenderNode(div);
 
         const Component: Component = (
             _props,
