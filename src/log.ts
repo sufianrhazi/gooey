@@ -73,10 +73,14 @@ export function invariant(check: () => any, ...items: any[]) {
 
 export function fail(msg: string, ...items: any[]): never {
     error('Invariant error', msg, ...items);
-    throw new InvariantError(`Invariant error: ${msg}`);
+    throw new InvariantError(`Invariant error: ${msg}`, items);
 }
 
-export function assert(check: any, msg: string): asserts check {
+export function assert(
+    check: any,
+    msg: string,
+    ...items: any[]
+): asserts check {
     if (!check) {
         error(
             'Assertion failure',
@@ -86,9 +90,10 @@ export function assert(check: any, msg: string): asserts check {
                 ? 'null'
                 : check.toString(),
             'is not truthy',
-            msg
+            msg,
+            ...items
         );
-        throw new InvariantError(`Assertion failure: ${msg}`);
+        throw new InvariantError(`Assertion failure: ${msg}`, items);
     }
 }
 
