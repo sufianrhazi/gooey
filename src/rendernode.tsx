@@ -361,7 +361,9 @@ export class CustomRenderNode implements RenderNode {
             if (this.isMounted) {
                 child.setMounted(false);
             }
-            child.detach();
+            if (this.emitter && this.parentXmlNamespace) {
+                child.detach();
+            }
         }
         const { removed } = this.slotSizes.splice(index, count, children);
         for (const child of removed) {
@@ -369,10 +371,12 @@ export class CustomRenderNode implements RenderNode {
         }
         for (const child of children) {
             own(this, child);
-            child.attach(
-                (e) => this.handleChildEvent(child, e),
-                this.parentXmlNamespace
-            );
+            if (this.emitter && this.parentXmlNamespace) {
+                child.attach(
+                    (e) => this.handleChildEvent(child, e),
+                    this.parentXmlNamespace
+                );
+            }
             if (this.isMounted) {
                 child.setMounted(true);
             }
@@ -440,6 +444,7 @@ export class CustomRenderNode implements RenderNode {
     }
 
     setMounted(isMounted: boolean) {
+        this.isMounted = isMounted;
         for (const child of this.children) {
             child.setMounted(isMounted);
         }
@@ -1103,50 +1108,21 @@ export function CalculationRenderNode(
     debugName?: string
 ): RenderNode {
     let calculationError: Error | undefined;
-    let renderNode: RenderNode | undefined;
     let calculationSubscription: (() => void) | undefined;
-    let isMounted = false;
-    let attachState:
-        | undefined
-        | {
-              emitter: NodeEmitter;
-              parentXmlNamespace: string;
-          };
+    let childRenderNode: RenderNode = emptyRenderNode;
+    let nodeEmitter: undefined | NodeEmitter;
 
-    function cleanPrior() {
-        if (renderNode) {
-            if (attachState) {
-                if (isMounted) {
-                    renderNode.setMounted(false);
-                }
-                renderNode.detach();
-            }
-            disown(customRenderNode, renderNode);
-            calculationError = undefined;
-            renderNode = undefined;
-        }
-    }
-
-    function subscribe(
-        error: Error,
-        val: undefined,
-        addPostAction: (postAction: () => void) => void
-    ): void;
-    function subscribe(
-        error: undefined,
-        val: any,
-        addPostAction: (postAction: () => void) => void
-    ): void;
     function subscribe(
         error: undefined | Error,
         val: undefined | any,
         addPostAction: (postAction: () => void) => void
     ): void {
-        cleanPrior();
+        disown(customRenderNode, childRenderNode);
+        customRenderNode.spliceChildren(0, 1, []);
         if (error) {
             calculationError = error;
-            if (attachState) {
-                attachState.emitter(error);
+            if (nodeEmitter) {
+                nodeEmitter(error);
             } else {
                 log.warn(
                     'Unhandled error on detached CalculationRenderNode',
@@ -1155,18 +1131,9 @@ export function CalculationRenderNode(
             }
         } else {
             addPostAction(() => {
-                const result = renderJSXNode(val);
-                own(customRenderNode, result);
-                renderNode = result;
-                if (attachState) {
-                    renderNode.attach(
-                        attachState.emitter,
-                        attachState.parentXmlNamespace
-                    );
-                }
-                if (isMounted) {
-                    renderNode.setMounted(true);
-                }
+                childRenderNode = renderJSXNode(val);
+                own(customRenderNode, childRenderNode);
+                customRenderNode.spliceChildren(0, 0, [renderJSXNode(val)]);
             });
         }
     }
@@ -1174,30 +1141,13 @@ export function CalculationRenderNode(
     const customRenderNode = new CustomRenderNode(
         {
             onDetach: () => {
-                renderNode?.detach();
-                attachState = undefined;
+                nodeEmitter = undefined;
             },
-            onAttach: (emitter, parentXmlNamespace) => {
-                attachState = {
-                    emitter,
-                    parentXmlNamespace,
-                };
+            onAttach: (emitter) => {
+                nodeEmitter = emitter;
                 if (calculationError) {
                     emitter(calculationError);
-                } else {
-                    renderNode?.attach(emitter, parentXmlNamespace);
                 }
-            },
-            onMount: () => {
-                isMounted = true;
-                renderNode?.setMounted(true);
-            },
-            onUnmount: () => {
-                isMounted = false;
-                renderNode?.setMounted(false);
-            },
-            onCommit: (phase) => {
-                renderNode?.commit(phase);
             },
             clone: () => {
                 return CalculationRenderNode(calculation, debugName);
@@ -1218,13 +1168,15 @@ export function CalculationRenderNode(
                 }
             },
             onDestroy: () => {
+                calculationError = undefined;
                 calculationSubscription?.();
                 calculationSubscription = undefined;
-                cleanPrior();
-                attachState = undefined;
+                disown(customRenderNode, childRenderNode);
+                childRenderNode = emptyRenderNode;
+                nodeEmitter = undefined;
             },
         },
-        [],
+        [childRenderNode],
         debugName ?? `rendercalc:${calculation.__debugName}`
     );
     return customRenderNode;
