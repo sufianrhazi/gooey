@@ -1343,7 +1343,7 @@ suite('ComponentRenderNode', () => {
             return foreign;
         };
 
-        const node = new ComponentRenderNode(Component, {}, []);
+        const node = ComponentRenderNode(Component, {}, []);
         events.push('0:retain');
         node.retain();
         events.push('1:attach');
@@ -1360,34 +1360,32 @@ suite('ComponentRenderNode', () => {
         node.detach();
         events.push('5:release');
         node.release();
-
-        assert.deepEqual(
-            [
-                '0:retain',
-                'Component:render',
-                '1:attach',
-                {
-                    type: 'splice',
-                    index: 0,
-                    count: 0,
-                    items: [div],
-                },
-                '2:onMount',
-                'Component:onMount',
-                '3:onUnmount',
-                'Component:onUnmount',
-                'Component:onMount cleanup',
-                '4:detach',
-                {
-                    type: 'splice',
-                    index: 0,
-                    count: 1,
-                },
-                '5:release',
-                'Component:onDestroy',
-            ],
-            events
-        );
+        const expected = [
+            '0:retain',
+            'Component:render',
+            '1:attach',
+            {
+                type: 'splice',
+                index: 0,
+                count: 0,
+                items: [div],
+            },
+            '2:onMount',
+            'Component:onMount',
+            '3:onUnmount',
+            'Component:onUnmount',
+            'Component:onMount cleanup',
+            '4:detach',
+            {
+                type: 'splice',
+                index: 0,
+                count: 1,
+                items: undefined,
+            },
+            '5:release',
+            'Component:onDestroy',
+        ];
+        assert.deepEqual(expected, events);
     });
 
     test('can be detached and reattached while retained', () => {
@@ -1419,7 +1417,7 @@ suite('ComponentRenderNode', () => {
             return foreign;
         };
 
-        const node = new ComponentRenderNode(Component, {}, []);
+        const node = ComponentRenderNode(Component, {}, []);
         events.push('0:retain');
         node.retain();
         events.push('1:mount');
@@ -1482,7 +1480,7 @@ suite('ComponentRenderNode', () => {
             return empty;
         };
 
-        const node = new ComponentRenderNode(Component, {}, []);
+        const node = ComponentRenderNode(Component, {}, []);
         node.retain();
         node.release();
 

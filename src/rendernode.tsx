@@ -1640,60 +1640,22 @@ export const IntrinsicObserver: Component<{
     );
 };
 
-export class ComponentRenderNode<TProps> implements RenderNode {
-    declare _type: typeof RenderNodeType;
-    declare _commitPhase: RenderNodeCommitPhase;
-    declare Component: FunctionComponent<TProps>;
-    declare props: TProps | null | undefined;
-    declare children: JSX.Node[];
-    declare result?: RenderNode | Error | undefined;
-    declare resultAttached: boolean;
-    declare onMountCallbacks?: (() => (() => void) | void)[];
-    declare onUnmountCallbacks?: (() => void)[];
-    declare onDestroyCallbacks?: (() => void)[];
-    declare owned: Set<Retainable>;
-    declare errorHandler?: ((e: Error) => RenderNode | null) | undefined;
-    declare emitter?: NodeEmitter | undefined;
-    declare parentXmlNamespace?: string | undefined;
-    declare isMounted: boolean;
-    private declare needsMount?: boolean | undefined;
+export function ComponentRenderNode<TProps>(
+    Component: FunctionComponent<TProps>,
+    props: TProps | null | undefined,
+    children: JSX.Node[],
+    debugName?: string
+): RenderNode {
+    let result: undefined | Error | RenderNode;
+    let onMountCallbacks: undefined | (() => (() => void) | void)[];
+    let onUnmountCallbacks: undefined | (() => void)[];
+    let onDestroyCallbacks: undefined | (() => void)[];
+    const owned: Set<Retainable> = new Set();
+    let errorHandler: undefined | ((e: Error) => RenderNode | null);
+    let needsMount = false;
 
-    constructor(
-        Component: FunctionComponent<TProps>,
-        props: TProps | null | undefined,
-        children: JSX.Node[],
-        debugName?: string
-    ) {
-        this._type = RenderNodeType;
-        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
-        this.Component = Component;
-        this.props = props;
-        this.children = children;
-        this.owned = new Set();
-        this.isMounted = false;
-
-        this.resultAttached = false;
-
-        this.__debugName = debugName ?? `component(${Component.name})`;
-        this.__refcount = 0;
-    }
-
-    detach() {
-        log.assert(this.result, 'Invariant: missing component result');
-        if (this.result instanceof Error) {
-            return;
-        }
-        log.assert(
-            this.resultAttached,
-            'Invariant: detached unattached component result'
-        );
-        this.result.detach();
-        this.resultAttached = false;
-        this.emitter = undefined;
-    }
-
-    private ensureResult() {
-        if (!this.result) {
+    function ensureResult() {
+        if (!result) {
             let callbacksAllowed = true;
             const lifecycle: ComponentLifecycle = {
                 onMount: (handler: () => (() => void) | void) => {
@@ -1701,42 +1663,36 @@ export class ComponentRenderNode<TProps> implements RenderNode {
                         callbacksAllowed,
                         'onMount must be called in component body'
                     );
-                    if (!this.onMountCallbacks) this.onMountCallbacks = [];
-                    this.onMountCallbacks.push(handler);
+                    if (!onMountCallbacks) onMountCallbacks = [];
+                    onMountCallbacks.push(handler);
                 },
                 onUnmount: (handler: () => void) => {
                     log.assert(
                         callbacksAllowed,
                         'onUnmount must be called in component body'
                     );
-                    if (!this.onUnmountCallbacks) this.onUnmountCallbacks = [];
-                    this.onUnmountCallbacks.push(handler);
+                    if (!onUnmountCallbacks) onUnmountCallbacks = [];
+                    onUnmountCallbacks.push(handler);
                 },
                 onDestroy: (handler: () => void) => {
                     log.assert(
                         callbacksAllowed,
                         'onDestroy must be called in component body'
                     );
-                    if (!this.onDestroyCallbacks) this.onDestroyCallbacks = [];
-                    this.onDestroyCallbacks.push(handler);
+                    if (!onDestroyCallbacks) onDestroyCallbacks = [];
+                    onDestroyCallbacks.push(handler);
                 },
-                onError: (errorHandler: (e: Error) => RenderNode | null) => {
+                onError: (handler: (e: Error) => RenderNode | null) => {
                     log.assert(
                         callbacksAllowed,
                         'onError must be called in component body'
                     );
-                    log.assert(
-                        !this.errorHandler,
-                        'onError called multiple times'
-                    );
-                    this.errorHandler = errorHandler;
+                    log.assert(!errorHandler, 'onError called multiple times');
+                    errorHandler = handler;
                 },
             };
 
             let componentProps: any;
-            const Component = this.Component;
-            const children = this.children;
-            const props = this.props;
             if (children.length === 0) {
                 componentProps = props || {};
             } else if (children.length === 1) {
@@ -1749,181 +1705,133 @@ export class ComponentRenderNode<TProps> implements RenderNode {
             let jsxResult: RenderNode | Error;
             try {
                 jsxResult = trackCreates(
-                    this.owned,
+                    owned,
                     () =>
                         Component(componentProps, lifecycle) || emptyRenderNode
                 );
             } catch (e) {
                 const error = wrapError(e, 'Unknown error rendering component');
-                if (this.errorHandler) {
-                    jsxResult = this.errorHandler(error) ?? emptyRenderNode;
+                if (errorHandler) {
+                    jsxResult = errorHandler(error) ?? emptyRenderNode;
                 } else {
                     jsxResult = error;
                 }
             }
             callbacksAllowed = false;
-            for (const item of this.owned) {
+            for (const item of owned) {
                 retain(item);
             }
             if (!(jsxResult instanceof Error)) {
-                this.result = renderJSXNode(jsxResult);
-                own(this, this.result);
+                result = renderJSXNode(jsxResult);
             } else {
-                this.result = jsxResult;
+                result = jsxResult;
             }
         }
-        return this.result;
+        return result;
     }
 
-    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
-        log.assert(
-            this.__refcount > 0,
-            'Invariant: dead ComponentRenderNode called attach'
-        );
-        this.emitter = emitter;
-        this.parentXmlNamespace = parentXmlNamespace;
-        const result = this.ensureResult();
-        if (result instanceof Error) {
-            emitter(result);
-        } else {
-            result.attach(this.handleEvent, parentXmlNamespace);
-            this.resultAttached = true;
-        }
-    }
-
-    handleEvent = (event: ArrayEvent<Node> | Error) => {
-        log.assert(
-            !(this.result instanceof Error),
-            'Invariant: received event on calculation error'
-        );
-        if (event instanceof Error && this.errorHandler) {
-            if (this.result) {
-                if (this.resultAttached) {
-                    if (this.isMounted) {
-                        this.result.setMounted(false);
-                    }
-                    this.result.detach();
-                    this.resultAttached = false;
+    const customRenderNode = new CustomRenderNode(
+        {
+            onAlive: () => {
+                const result = ensureResult();
+                if (result instanceof Error) {
+                    log.warn('Unhandled exception on detached component', {
+                        error: result,
+                        renderNode: customRenderNode,
+                    });
+                } else {
+                    customRenderNode.spliceChildren(0, 1, [result]);
                 }
-                disown(this, this.result);
-                this.result = undefined;
-            }
-            const handledResult = this.errorHandler(event);
-            this.result = handledResult
-                ? renderJSXNode(handledResult)
-                : emptyRenderNode;
-            own(this, this.result);
-
-            if (this.emitter && this.parentXmlNamespace) {
-                this.result.attach(this.handleEvent, this.parentXmlNamespace);
-                this.resultAttached = true;
-            }
-
-            if (this.isMounted) {
-                this.result.setMounted(true);
-            }
-        } else {
-            this.emitter?.(event);
-        }
-    };
-
-    setMounted(isMounted: boolean) {
-        log.assert(this.result, 'Invariant: missing result');
-        this.isMounted = isMounted;
-        if (this.result instanceof Error) {
-            return;
-        }
-        if (isMounted) {
-            this.needsMount = true;
-            dirtyRenderNode(this);
-            this.result.setMounted(isMounted);
-        } else {
-            this.result.setMounted(isMounted);
-            if (this.onUnmountCallbacks) {
-                for (const callback of this.onUnmountCallbacks) {
-                    callback();
-                }
-            }
-        }
-    }
-
-    commit(phase: RenderNodeCommitPhase) {
-        if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
-            return;
-        }
-        if (this.result && !(this.result instanceof Error)) {
-            this.result.commit(phase);
-        }
-        this._commitPhase = phase;
-        if (
-            phase === RenderNodeCommitPhase.COMMIT_MOUNT &&
-            this.needsMount &&
-            this.onMountCallbacks
-        ) {
-            for (const callback of this.onMountCallbacks) {
-                const maybeOnUnmount = callback();
-                if (typeof maybeOnUnmount === 'function') {
-                    if (!this.onUnmountCallbacks) {
-                        this.onUnmountCallbacks = [];
+            },
+            onDestroy: () => {
+                if (onDestroyCallbacks) {
+                    for (const callback of onDestroyCallbacks) {
+                        callback();
                     }
-                    const onUnmount = () => {
-                        maybeOnUnmount();
-                        if (this.onUnmountCallbacks) {
-                            const index =
-                                this.onUnmountCallbacks.indexOf(onUnmount);
-                            if (index >= 0) {
-                                this.onUnmountCallbacks.splice(index, 1);
+                }
+
+                result = undefined;
+
+                for (const item of owned) {
+                    release(item);
+                }
+            },
+            onAttach: (emitter) => {
+                if (result instanceof Error) {
+                    emitter(result);
+                }
+            },
+            onError: (event: Error) => {
+                if (errorHandler) {
+                    const handledResult = errorHandler(event);
+                    result = handledResult
+                        ? renderJSXNode(handledResult)
+                        : emptyRenderNode;
+                    customRenderNode.spliceChildren(0, 1, [result]);
+                    return true;
+                }
+            },
+            onMount: () => {
+                log.assert(result, 'Invariant: missing result');
+                if (result instanceof Error) {
+                    return;
+                }
+                needsMount = true;
+                dirtyRenderNode(customRenderNode);
+            },
+            onUnmount: () => {
+                log.assert(result, 'Invariant: missing result');
+                if (result instanceof Error) {
+                    return;
+                }
+                if (onUnmountCallbacks) {
+                    for (const callback of onUnmountCallbacks) {
+                        callback();
+                    }
+                }
+            },
+            onCommit: (phase) => {
+                if (
+                    phase === RenderNodeCommitPhase.COMMIT_MOUNT &&
+                    needsMount &&
+                    onMountCallbacks
+                ) {
+                    for (const callback of onMountCallbacks) {
+                        const maybeOnUnmount = callback();
+                        if (typeof maybeOnUnmount === 'function') {
+                            if (!onUnmountCallbacks) {
+                                onUnmountCallbacks = [];
                             }
+                            const onUnmount = () => {
+                                maybeOnUnmount();
+                                if (onUnmountCallbacks) {
+                                    const index =
+                                        onUnmountCallbacks.indexOf(onUnmount);
+                                    if (index >= 0) {
+                                        onUnmountCallbacks.splice(index, 1);
+                                    }
+                                }
+                            };
+                            onUnmountCallbacks.push(onUnmount);
                         }
-                    };
-                    this.onUnmountCallbacks.push(onUnmount);
+                    }
+                    needsMount = false;
                 }
-            }
-            this.needsMount = false;
-        }
-    }
-
-    clone(props: {} = {}, children: RenderNode[] = []) {
-        return new ComponentRenderNode(
-            this.Component,
-            this.props && props
-                ? { ...this.props, ...props }
-                : ((props || this.props) as TProps),
-            children
-        );
-    }
-
-    retain() {
-        retain(this);
-    }
-
-    release() {
-        release(this);
-    }
-
-    // Retainable
-    declare __debugName: string;
-    declare __refcount: number;
-    __alive() {
-        this.ensureResult();
-    }
-    __dead() {
-        if (this.onDestroyCallbacks) {
-            for (const callback of this.onDestroyCallbacks) {
-                callback();
-            }
-        }
-
-        if (this.result && !(this.result instanceof Error)) {
-            disown(this, this.result);
-        }
-        this.result = undefined;
-        for (const item of this.owned) {
-            release(item);
-        }
-        this.emitter = undefined;
-        removeRenderNode(this);
-    }
+            },
+            clone(newProps, newChildren) {
+                return ComponentRenderNode(
+                    Component,
+                    props && newProps
+                        ? { ...props, ...newProps }
+                        : ((newProps || props) as TProps),
+                    newChildren ?? children
+                );
+            },
+        },
+        [emptyRenderNode],
+        debugName ?? `component(${Component.name})`
+    );
+    return customRenderNode;
 }
 
 const webComponentTagConstructors = {
@@ -2582,7 +2490,7 @@ export function classComponentToFunctionComponentRenderNode<TProps>(
     props: TProps,
     children: JSX.Node[]
 ) {
-    return new ComponentRenderNode(
+    return ComponentRenderNode(
         (props: TProps, lifecycle) => {
             const instance = new Component(props);
             if (!instance.render) return null;

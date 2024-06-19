@@ -23,7 +23,7 @@ export function createElement<TProps extends {} | undefined>(
     type: string | Component<TProps>,
     props: TProps,
     ...children: JSX.Node[]
-): RenderNode | ComponentRenderNode<TProps> {
+): RenderNode {
     if (typeof type === 'string') {
         return IntrinsicRenderNode(
             type,
@@ -38,7 +38,7 @@ export function createElement<TProps extends {} | undefined>(
             children
         );
     }
-    return new ComponentRenderNode<TProps>(
+    return ComponentRenderNode<TProps>(
         type as FunctionComponent<TProps>,
         props,
         children
