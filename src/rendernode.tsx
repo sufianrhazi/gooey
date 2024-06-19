@@ -485,15 +485,9 @@ export class EmptyRenderNode implements RenderNode {
     detach() {}
     attach() {}
     setMounted() {}
-    retain() {
-        retain(this);
-    }
-    release() {
-        release(this);
-    }
-    commit() {
-        // No children, no commit action
-    }
+    retain() {}
+    release() {}
+    commit() {}
     clone(): RenderNode {
         return emptyRenderNode;
     }
@@ -502,9 +496,7 @@ export class EmptyRenderNode implements RenderNode {
     declare __debugName: string;
     declare __refcount: number;
     __alive() {}
-    __dead() {
-        removeRenderNode(this);
-    }
+    __dead() {}
 }
 
 /**
