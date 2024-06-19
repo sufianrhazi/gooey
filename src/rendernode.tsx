@@ -1098,91 +1098,55 @@ export function PortalRenderNode(
 /**
  * Renders the result of a calculation
  */
-export class CalculationRenderNode implements RenderNode {
-    declare _type: typeof RenderNodeType;
-    declare _commitPhase: RenderNodeCommitPhase;
-    private declare error?: Error | undefined;
-    private declare renderNode?: RenderNode | undefined;
-    private declare calculation: Calculation<any>;
-    private declare calculationSubscription?: (() => void) | undefined;
-    private declare isMounted: boolean;
-    private declare emitter?: NodeEmitter | undefined;
-    private declare parentXmlNamespace?: string | undefined;
+export function CalculationRenderNode(
+    calculation: Calculation<any>,
+    debugName?: string
+): RenderNode {
+    let calculationError: Error | undefined;
+    let renderNode: RenderNode | undefined;
+    let calculationSubscription: (() => void) | undefined;
+    let isMounted = false;
+    let attachState:
+        | undefined
+        | {
+              emitter: NodeEmitter;
+              parentXmlNamespace: string;
+          };
 
-    constructor(calculation: Calculation<any>, debugName?: string) {
-        this._type = RenderNodeType;
-        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
-        this.calculation = calculation;
-        this.isMounted = false;
-
-        this.__debugName = debugName ?? `rendercalc:${calculation.__debugName}`;
-        this.__refcount = 0;
-
-        this.subscribe = this.subscribe.bind(this);
-    }
-
-    detach() {
-        this.renderNode?.detach();
-        this.emitter = undefined;
-    }
-
-    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
-        this.emitter = emitter;
-        this.parentXmlNamespace = parentXmlNamespace;
-        if (this.error) {
-            emitter(this.error);
-        } else {
-            this.renderNode?.attach(emitter, parentXmlNamespace);
-        }
-    }
-
-    setMounted(isMounted: boolean) {
-        this.isMounted = isMounted;
-        this.renderNode?.setMounted(isMounted);
-    }
-
-    retain() {
-        retain(this);
-    }
-
-    release() {
-        release(this);
-    }
-
-    cleanPrior() {
-        if (this.renderNode) {
-            if (this.emitter) {
-                if (this.isMounted) {
-                    this.renderNode.setMounted(false);
+    function cleanPrior() {
+        if (renderNode) {
+            if (attachState) {
+                if (isMounted) {
+                    renderNode.setMounted(false);
                 }
-                this.renderNode.detach();
+                renderNode.detach();
             }
-            disown(this, this.renderNode);
-            this.error = undefined;
-            this.renderNode = undefined;
+            disown(customRenderNode, renderNode);
+            calculationError = undefined;
+            renderNode = undefined;
         }
     }
 
-    subscribe(
+    function subscribe(
         error: Error,
         val: undefined,
         addPostAction: (postAction: () => void) => void
     ): void;
-    subscribe(
+    function subscribe(
         error: undefined,
         val: any,
         addPostAction: (postAction: () => void) => void
     ): void;
-    subscribe(
+    function subscribe(
         error: undefined | Error,
         val: undefined | any,
         addPostAction: (postAction: () => void) => void
     ): void {
-        this.cleanPrior();
+        cleanPrior();
         if (error) {
-            this.error = error;
-            if (this.emitter) {
-                this.emitter(error);
+            calculationError = error;
+            if (attachState) {
+                attachState.emitter(error);
             } else {
                 log.warn(
                     'Unhandled error on detached CalculationRenderNode',
@@ -1191,53 +1155,79 @@ export class CalculationRenderNode implements RenderNode {
             }
         } else {
             addPostAction(() => {
-                const renderNode = renderJSXNode(val);
-                own(this, renderNode);
-                this.renderNode = renderNode;
-                if (this.emitter && this.parentXmlNamespace) {
-                    renderNode.attach(this.emitter, this.parentXmlNamespace);
+                const result = renderJSXNode(val);
+                own(customRenderNode, result);
+                renderNode = result;
+                if (attachState) {
+                    renderNode.attach(
+                        attachState.emitter,
+                        attachState.parentXmlNamespace
+                    );
                 }
-                if (this.isMounted) {
+                if (isMounted) {
                     renderNode.setMounted(true);
                 }
             });
         }
     }
-    commit(phase: RenderNodeCommitPhase) {
-        if (isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
-            this.renderNode?.commit(phase);
-            this._commitPhase = phase;
-        }
-    }
 
-    clone(): RenderNode {
-        return new CalculationRenderNode(this.calculation);
-    }
-
-    // Retainable
-    declare __debugName: string;
-    declare __refcount: number;
-    __alive() {
-        try {
-            this.calculationSubscription = this.calculation[
-                CalculationSubscribeWithPostAction
-            ](this.subscribe);
-            this.subscribe(undefined, this.calculation.get(), (action) => {
-                action();
-            });
-        } catch (e) {
-            this.subscribe(wrapError(e), undefined, (action) => {
-                action();
-            });
-        }
-    }
-    __dead() {
-        this.calculationSubscription?.();
-        this.calculationSubscription = undefined;
-        this.cleanPrior();
-        removeRenderNode(this);
-        this.emitter = undefined;
-    }
+    const customRenderNode = new CustomRenderNode(
+        {
+            onDetach: () => {
+                renderNode?.detach();
+                attachState = undefined;
+            },
+            onAttach: (emitter, parentXmlNamespace) => {
+                attachState = {
+                    emitter,
+                    parentXmlNamespace,
+                };
+                if (calculationError) {
+                    emitter(calculationError);
+                } else {
+                    renderNode?.attach(emitter, parentXmlNamespace);
+                }
+            },
+            onMount: () => {
+                isMounted = true;
+                renderNode?.setMounted(true);
+            },
+            onUnmount: () => {
+                isMounted = false;
+                renderNode?.setMounted(false);
+            },
+            onCommit: (phase) => {
+                renderNode?.commit(phase);
+            },
+            clone: () => {
+                return CalculationRenderNode(calculation, debugName);
+            },
+            onAlive: () => {
+                try {
+                    calculationSubscription =
+                        calculation[CalculationSubscribeWithPostAction](
+                            subscribe
+                        );
+                    subscribe(undefined, calculation.get(), (action) => {
+                        action();
+                    });
+                } catch (e) {
+                    subscribe(wrapError(e), undefined, (action) => {
+                        action();
+                    });
+                }
+            },
+            onDestroy: () => {
+                calculationSubscription?.();
+                calculationSubscription = undefined;
+                cleanPrior();
+                attachState = undefined;
+            },
+        },
+        [],
+        debugName ?? `rendercalc:${calculation.__debugName}`
+    );
+    return customRenderNode;
 }
 
 export class CollectionRenderNode implements RenderNode {
@@ -1653,7 +1643,7 @@ export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
         return jsxNode;
     }
     if (isCalculationRenderNode(jsxNode)) {
-        return new CalculationRenderNode(jsxNode);
+        return CalculationRenderNode(jsxNode);
     }
     if (isCollectionOrViewRenderNode(jsxNode)) {
         return new CollectionRenderNode(jsxNode);

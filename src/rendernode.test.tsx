@@ -479,7 +479,7 @@ suite('CalculationRenderNode', () => {
         const greet = calc(() =>
             IntrinsicRenderNode('b', {}, TextRenderNode(state.name))
         );
-        const node = new CalculationRenderNode(greet);
+        const node = CalculationRenderNode(greet);
         node.retain();
         const events: any[] = [];
         node.attach((event) => {
@@ -502,7 +502,7 @@ suite('CalculationRenderNode', () => {
         const greet = calc(() =>
             IntrinsicRenderNode('b', {}, TextRenderNode(state.name))
         );
-        const node = new CalculationRenderNode(greet);
+        const node = CalculationRenderNode(greet);
         node.retain();
         const events: any[] = [];
         node.attach((event) => {
@@ -543,7 +543,7 @@ suite('CalculationRenderNode', () => {
         const greet = calc(() =>
             IntrinsicRenderNode('b', {}, TextRenderNode(state.name))
         );
-        const node = new CalculationRenderNode(greet);
+        const node = CalculationRenderNode(greet);
         node.retain();
         const events: any[] = [];
         node.attach((event) => {
@@ -576,7 +576,7 @@ suite('CalculationRenderNode', () => {
         const greet = calc(() =>
             IntrinsicRenderNode('b', {}, TextRenderNode(state.name))
         );
-        const node = new CalculationRenderNode(greet);
+        const node = CalculationRenderNode(greet);
         node.retain();
         const events: any[] = [];
         node.attach((event) => {
@@ -616,7 +616,7 @@ suite('CalculationRenderNode', () => {
     test('mount and unmount are passed through', () => {
         const tracer = new TracingRenderNode();
         const constantCalc = calc(() => tracer);
-        const node = new CalculationRenderNode(constantCalc);
+        const node = CalculationRenderNode(constantCalc);
         const events: any[] = [];
 
         tracer.log('0: retain');
@@ -681,7 +681,7 @@ suite('CalculationRenderNode', () => {
             if (state.isError) throw new Error('boom');
             return 'ok';
         });
-        const node = new CalculationRenderNode(constantCalc);
+        const node = CalculationRenderNode(constantCalc);
         node.retain();
         node.attach((event) => {
             events.push(event);
@@ -702,7 +702,7 @@ suite('CalculationRenderNode', () => {
             if (state.isError) throw new Error('boom');
             return 'ok';
         });
-        const node = new CalculationRenderNode(constantCalc);
+        const node = CalculationRenderNode(constantCalc);
         node.retain();
         node.attach((event) => {
             events.push(event);
@@ -1151,7 +1151,7 @@ suite('CollectionRenderNode', () => {
             if (state.isError) throw new Error('boom');
             return 'ok';
         });
-        const node = new CalculationRenderNode(constantCalc);
+        const node = CalculationRenderNode(constantCalc);
         node.retain();
         node.attach((event) => {
             events.push(event);
@@ -1172,7 +1172,7 @@ suite('CollectionRenderNode', () => {
             if (state.isError) throw new Error('boom');
             return 'ok';
         });
-        const node = new CalculationRenderNode(constantCalc);
+        const node = CalculationRenderNode(constantCalc);
         node.retain();
         node.attach((event) => {
             events.push(event);
@@ -1209,7 +1209,7 @@ suite('CollectionRenderNode', () => {
             if (state.isError) throw new Error('boom');
             return 'ok';
         });
-        const node = new CalculationRenderNode(constantCalc);
+        const node = CalculationRenderNode(constantCalc);
         node.retain();
         node.attach((event) => {
             events.push(event);
