@@ -646,7 +646,7 @@ export function IntrinsicRenderNode(
                 portalRenderNode.detach();
                 disown(customRenderNode, portalRenderNode);
             }
-            portalRenderNode = new PortalRenderNode(
+            portalRenderNode = PortalRenderNode(
                 element,
                 childRenderNode,
                 props?.ref
@@ -901,272 +901,198 @@ enum MountState {
     UNMOUNTED,
 }
 
-export class PortalRenderNode implements RenderNode {
-    declare _type: typeof RenderNodeType;
-    declare _commitPhase: RenderNodeCommitPhase;
-    private declare element: Element | ShadowRoot;
-    private declare childEvents: ArrayEvent<Node>[];
-    private declare committedNodes: Node[];
-    private declare liveNodes: Node[];
-    private declare liveNodeSet: Set<Node>;
-    private declare deadNodeSet: Set<Node>;
-    private declare refProp?:
+export function PortalRenderNode(
+    element: Element | ShadowRoot,
+    childrenRenderNode: RenderNode,
+    refProp:
         | RefObjectOrCallback<Element | ShadowRoot | undefined>
-        | undefined;
-    private declare mountState?: MountState | undefined;
-    private declare emitter?: NodeEmitter | undefined;
-    private declare childrenRenderNode: RenderNode;
-    private declare calculations?: Map<string, Calculation<any>>;
-    private declare calculationSubscriptions?: Set<() => void>;
+        | null
+        | undefined,
+    debugName?: string
+): RenderNode {
+    let childEvents: ArrayEvent<Node>[] = [];
+    let committedNodes: Node[] = [];
+    const liveNodes: Node[] = [];
+    const liveNodeSet: Set<Node> = new Set();
+    const deadNodeSet: Set<Node> = new Set();
+    let mountState: MountState | undefined;
+    let calculations: Map<string, Calculation<any>> | undefined;
+    let calculationSubscriptions: Set<() => void> | undefined;
 
-    constructor(
-        element: Element | ShadowRoot,
-        children: RenderNode,
-        refProp:
-            | RefObjectOrCallback<Element | ShadowRoot | undefined>
-            | null
-            | undefined,
-        debugName?: string
-    ) {
-        this._type = RenderNodeType;
-        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
-        this.childrenRenderNode = children;
-        this.childEvents = [];
-        this.committedNodes = [];
-        this.liveNodes = [];
-        this.liveNodeSet = new Set();
-        this.deadNodeSet = new Set();
-        this.element = element;
-        if (refProp) {
-            this.refProp = refProp;
-            this.mountState = MountState.UNMOUNTED;
-        }
-
-        this.__debugName =
-            debugName ??
-            `mount:${
-                element instanceof Element
-                    ? element.tagName
-                    : `shadow:${element.host.tagName}`
-            }`;
-        this.__refcount = 0;
+    if (refProp) {
+        mountState = MountState.UNMOUNTED;
     }
 
-    private handleEvent = (event: ArrayEvent<Node> | Error) => {
-        if (event instanceof Error) {
-            if (this.emitter) {
-                this.emitter(event);
-            } else {
-                log.warn('Unhandled error on detached PortalRenderNode');
-            }
-            return;
-        }
-        addArrayEvent(this.childEvents, event);
-        dirtyRenderNode(this);
-    };
-
-    detach() {
-        this.emitter = undefined;
-        this.childrenRenderNode.detach();
-    }
-
-    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
-        log.assert(
-            !this.emitter,
-            'Invariant: PortalRenderNode double attached'
-        );
-        this.emitter = emitter;
-        this.childrenRenderNode.attach(
-            this.handleEvent,
-            // Note: portal elements & namespaces are weird! parentXmlNamespace is not quite the right word -- it's the "child" XML namespace.
-            parentXmlNamespace
-        );
-    }
-
-    setMounted(isMounted: boolean) {
-        if (isMounted) {
-            this.childrenRenderNode.setMounted(true);
-            if (this.refProp) {
-                dirtyRenderNode(this);
-                this.mountState = MountState.NOTIFY_MOUNT;
-            }
-        } else {
-            if (this.refProp) {
-                dirtyRenderNode(this);
-                this.mountState = MountState.NOTIFY_UNMOUNT;
-            }
-            this.childrenRenderNode.setMounted(false);
-        }
-    }
-
-    commit(phase: RenderNodeCommitPhase) {
-        if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
-            return;
-        }
-        this.childrenRenderNode.commit(phase);
-        this._commitPhase = phase;
-        if (
-            phase === RenderNodeCommitPhase.COMMIT_UNMOUNT &&
-            this.childEvents.length > 0
-        ) {
-            // Prep received events
-            const childEvents = this.childEvents;
-            this.childEvents = [];
-            for (const childEvent of childEvents) {
-                const removed = applyArrayEvent(this.liveNodes, childEvent);
-                for (const toRemove of removed) {
-                    if (this.liveNodeSet.has(toRemove)) {
-                        this.deadNodeSet.add(toRemove);
-                    }
-                }
-            }
-        }
-        if (
-            phase === RenderNodeCommitPhase.COMMIT_UNMOUNT &&
-            this.refProp &&
-            this.mountState === MountState.NOTIFY_UNMOUNT
-        ) {
-            if (this.refProp instanceof Ref) {
-                this.refProp.current = undefined;
-            } else if (typeof this.refProp === 'function') {
-                this.refProp(undefined);
-            }
-            this.mountState = MountState.UNMOUNTED;
-        }
-        if (
-            phase === RenderNodeCommitPhase.COMMIT_DEL &&
-            this.deadNodeSet.size > 0
-        ) {
-            if (this.deadNodeSet.size === this.liveNodeSet.size) {
-                this.element.replaceChildren();
-                this.liveNodeSet.clear();
-                this.committedNodes = [];
-            } else {
-                for (const toRemove of this.deadNodeSet) {
-                    this.liveNodeSet.delete(toRemove);
-                    this.element.removeChild(toRemove);
-                }
-                this.committedNodes = this.committedNodes.filter(
-                    (node) => !this.deadNodeSet.has(node)
-                );
-            }
-            this.deadNodeSet.clear();
-        }
-        if (
-            phase === RenderNodeCommitPhase.COMMIT_INS &&
-            this.liveNodes.length > 0
-        ) {
-            // At this point, we've removed all the nodes from this.element and this.committedNodes
-            // And need to insert nodes in this.liveNodes in order to this.committedNodes
-            //
-            // Scan through this.liveNodes, if we hit the end corresponding missing node  and this.liveNodes
-            let liveIndex = 0;
-            while (liveIndex < this.liveNodes.length) {
-                if (liveIndex >= this.committedNodes.length) {
-                    // We're at the end of the committed set, insert the remaining liveNodes at the end
-                    this.insertBefore(
-                        this.liveNodes.slice(liveIndex),
-                        liveIndex
-                    );
-                    break;
-                }
-                if (
-                    this.liveNodes[liveIndex] !== this.committedNodes[liveIndex]
-                ) {
-                    let checkIndex = liveIndex + 1;
-                    while (
-                        checkIndex < this.liveNodes.length &&
-                        checkIndex < this.committedNodes.length &&
-                        this.liveNodes[checkIndex] !==
-                            this.committedNodes[liveIndex]
-                    ) {
-                        checkIndex++;
-                    }
-                    // [liveIndex...checkIndex] need to be inserted before this.committedNodes[liveIndex]
-                    this.insertBefore(
-                        this.liveNodes.slice(liveIndex, checkIndex),
-                        liveIndex
-                    );
-                    liveIndex = checkIndex;
-                    continue;
-                }
-                liveIndex++;
-            }
-        }
-        if (
-            phase === RenderNodeCommitPhase.COMMIT_MOUNT &&
-            this.refProp &&
-            this.mountState === MountState.NOTIFY_MOUNT
-        ) {
-            if (this.refProp instanceof Ref) {
-                this.refProp.current = this.element;
-            } else if (typeof this.refProp === 'function') {
-                this.refProp(this.element);
-            }
-            this.mountState = MountState.MOUNTED;
-        }
-    }
-
-    clone(): RenderNode {
-        return new PortalRenderNode(
-            this.element,
-            this.childrenRenderNode.clone(),
-            this.refProp
-        );
-    }
-
-    private insertBefore(nodes: Node[], targetIndex: number) {
+    function insertBefore(nodes: Node[], targetIndex: number) {
         let toInsert: Node | undefined;
         if (nodes.length === 1) {
             toInsert = nodes[0];
-            this.liveNodeSet.add(nodes[0]);
-            this.committedNodes.splice(targetIndex, 0, toInsert);
+            liveNodeSet.add(nodes[0]);
+            committedNodes.splice(targetIndex, 0, toInsert);
         } else if (nodes.length > 1) {
             for (const node of nodes) {
-                this.liveNodeSet.add(node);
+                liveNodeSet.add(node);
                 fragment.appendChild(node);
             }
-            this.committedNodes.splice(targetIndex, 0, ...nodes);
+            committedNodes.splice(targetIndex, 0, ...nodes);
             toInsert = fragment;
         }
         if (toInsert) {
-            this.element.insertBefore(
+            element.insertBefore(
                 toInsert,
-                this.element.childNodes[targetIndex] || null
+                element.childNodes[targetIndex] || null
             );
         }
     }
 
-    retain() {
-        retain(this);
-    }
-    release() {
-        release(this);
-    }
-
-    // Retainable
-    declare __debugName: string;
-    declare __refcount: number;
-    __alive() {
-        own(this, this.childrenRenderNode);
-    }
-    __dead() {
-        if (this.calculations) {
-            for (const calculation of this.calculations.values()) {
-                release(calculation);
-            }
-        }
-        if (this.calculationSubscriptions) {
-            for (const unsubscribe of this.calculationSubscriptions) {
-                unsubscribe();
-            }
-            this.calculationSubscriptions.clear();
-        }
-
-        disown(this, this.childrenRenderNode);
-        removeRenderNode(this);
-        this.emitter = undefined;
-    }
+    const customRenderNode = new CustomRenderNode(
+        {
+            onEvent: (event: ArrayEvent<Node>) => {
+                addArrayEvent(childEvents, event);
+                // TODO: how do non-gooey CustomRenderNodes participate in the commit lifecycle?
+                // Do we export dirtyRenderNode?
+                dirtyRenderNode(customRenderNode);
+                return true;
+            },
+            onMount: () => {
+                if (refProp) {
+                    dirtyRenderNode(customRenderNode);
+                    mountState = MountState.NOTIFY_MOUNT;
+                }
+            },
+            onUnmount: () => {
+                if (refProp) {
+                    dirtyRenderNode(customRenderNode);
+                    mountState = MountState.NOTIFY_UNMOUNT;
+                }
+            },
+            onCommit: (phase: RenderNodeCommitPhase) => {
+                if (
+                    phase === RenderNodeCommitPhase.COMMIT_UNMOUNT &&
+                    childEvents.length > 0
+                ) {
+                    // Prep received events
+                    const toProcess = childEvents;
+                    childEvents = [];
+                    for (const childEvent of toProcess) {
+                        const removed = applyArrayEvent(liveNodes, childEvent);
+                        for (const toRemove of removed) {
+                            if (liveNodeSet.has(toRemove)) {
+                                deadNodeSet.add(toRemove);
+                            }
+                        }
+                    }
+                }
+                if (
+                    phase === RenderNodeCommitPhase.COMMIT_UNMOUNT &&
+                    refProp &&
+                    mountState === MountState.NOTIFY_UNMOUNT
+                ) {
+                    if (refProp instanceof Ref) {
+                        refProp.current = undefined;
+                    } else if (typeof refProp === 'function') {
+                        refProp(undefined);
+                    }
+                    mountState = MountState.UNMOUNTED;
+                }
+                if (
+                    phase === RenderNodeCommitPhase.COMMIT_DEL &&
+                    deadNodeSet.size > 0
+                ) {
+                    if (deadNodeSet.size === liveNodeSet.size) {
+                        element.replaceChildren();
+                        liveNodeSet.clear();
+                        committedNodes = [];
+                    } else {
+                        for (const toRemove of deadNodeSet) {
+                            liveNodeSet.delete(toRemove);
+                            element.removeChild(toRemove);
+                        }
+                        committedNodes = committedNodes.filter(
+                            (node) => !deadNodeSet.has(node)
+                        );
+                    }
+                    deadNodeSet.clear();
+                }
+                if (
+                    phase === RenderNodeCommitPhase.COMMIT_INS &&
+                    liveNodes.length > 0
+                ) {
+                    // At this point, we've removed all the nodes from element and committedNodes
+                    // And need to insert nodes in liveNodes in order to committedNodes
+                    //
+                    // Scan through liveNodes, if we hit the end corresponding missing node  and liveNodes
+                    let liveIndex = 0;
+                    while (liveIndex < liveNodes.length) {
+                        if (liveIndex >= committedNodes.length) {
+                            // We're at the end of the committed set, insert the remaining liveNodes at the end
+                            insertBefore(liveNodes.slice(liveIndex), liveIndex);
+                            break;
+                        }
+                        if (
+                            liveNodes[liveIndex] !== committedNodes[liveIndex]
+                        ) {
+                            let checkIndex = liveIndex + 1;
+                            while (
+                                checkIndex < liveNodes.length &&
+                                checkIndex < committedNodes.length &&
+                                liveNodes[checkIndex] !==
+                                    committedNodes[liveIndex]
+                            ) {
+                                checkIndex++;
+                            }
+                            // [liveIndex...checkIndex] need to be inserted before committedNodes[liveIndex]
+                            insertBefore(
+                                liveNodes.slice(liveIndex, checkIndex),
+                                liveIndex
+                            );
+                            liveIndex = checkIndex;
+                            continue;
+                        }
+                        liveIndex++;
+                    }
+                }
+                if (
+                    phase === RenderNodeCommitPhase.COMMIT_MOUNT &&
+                    refProp &&
+                    mountState === MountState.NOTIFY_MOUNT
+                ) {
+                    if (refProp instanceof Ref) {
+                        refProp.current = element;
+                    } else if (typeof refProp === 'function') {
+                        refProp(element);
+                    }
+                    mountState = MountState.MOUNTED;
+                }
+            },
+            clone(): RenderNode {
+                log.assert(
+                    false,
+                    "Attempted to clone a PortalRenderNode -- this operation doesn't make sense"
+                );
+            },
+            onDestroy: () => {
+                if (calculations) {
+                    for (const calculation of calculations.values()) {
+                        release(calculation);
+                    }
+                }
+                if (calculationSubscriptions) {
+                    for (const unsubscribe of calculationSubscriptions) {
+                        unsubscribe();
+                    }
+                    calculationSubscriptions.clear();
+                }
+            },
+        },
+        [childrenRenderNode],
+        `mount:${
+            element instanceof Element
+                ? element.tagName
+                : `shadow:${element.host.tagName}`
+        }`
+    );
+    return customRenderNode;
 }
 
 /**
@@ -1795,7 +1721,7 @@ export function mount(
         children.push(ForeignRenderNode(target.childNodes[i]));
     }
     children.push(node);
-    const root = new PortalRenderNode(
+    const root = PortalRenderNode(
         target,
         ArrayRenderNode(children),
         null,
@@ -1846,7 +1772,7 @@ export function defineCustomElement<
         __refcount: number;
         _originalChildren: Node[] | null;
         _unmount: (() => void) | undefined;
-        _portalRenderNode: PortalRenderNode | null;
+        _portalRenderNode: RenderNode | null;
         _renderNode: WebComponentRenderNode<
             TKeys,
             TShadowMode,
@@ -1874,7 +1800,7 @@ export function defineCustomElement<
                 elementInternals,
                 options
             );
-            this._portalRenderNode = new PortalRenderNode(
+            this._portalRenderNode = PortalRenderNode(
                 shadowRoot || this,
                 this._renderNode,
                 undefined
