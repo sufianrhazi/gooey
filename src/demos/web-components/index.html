@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en-US">
+    <head>
+        <meta charset="UTF-8">
+    </head>
+    <body>
+        <h1>Custom components example</h1>
+        <hr />
+        <h2>Marquee Button</h2>
+            <marquee-button label="Gooey" angle="0.2">Hover me</marquee-button>
+            <marquee-button id="marquee-target" label="This is cool" angle="-0.3" gap-x="20">Customize me</marquee-button>
+            <label>Label: <input type="text" id="marquee-label" value="This is cool"></label>
+            <script>
+                const marqueeLabel = document.getElementById('marquee-label');
+                const marqueeTarget = document.getElementById('marquee-target');
+                marqueeLabel.addEventListener('input', () => {
+                    marqueeTarget.setAttribute('label', marqueeLabel.value);
+                });
+            </script>
+        <script type="module" src="./index.tsx"></script>
+    </body>
+</html>
