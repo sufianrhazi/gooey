@@ -1,16 +1,10 @@
-import * as log from '../log';
-import { HTML_NAMESPACE } from '../xmlnamespace';
-import { SlotSizes } from '../slotsizes';
 import type { ArrayEvent } from '../arrayevent';
-import type { Retainable} from '../engine';
-import { retain, release, removeRenderNode } from '../engine';
-
-export enum RenderNodeCommitPhase {
-    COMMIT_UNMOUNT,
-    COMMIT_DEL,
-    COMMIT_INS,
-    COMMIT_MOUNT,
-}
+import type { Retainable } from '../engine';
+import { release, removeRenderNode, retain } from '../engine';
+import * as log from '../log';
+import { SlotSizes } from '../slotsizes';
+import { HTML_NAMESPACE } from '../xmlnamespace';
+import { RenderNodeCommitPhase } from './constants';
 
 function isNextRenderNodeCommitPhase(
     commitPhase: RenderNodeCommitPhase,

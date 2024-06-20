@@ -1,19 +1,10 @@
+import type { Retainable } from '../engine';
+import { dirtyRenderNode, release, retain, trackCreates } from '../engine';
 import * as log from '../log';
-import { wrapError } from '../util';
-import {
-    RenderNode,
-    RenderNodeCommitPhase,
-    emptyRenderNode,
-} from './rendernode';
-import type {
-    Retainable} from '../engine';
-import {
-    trackCreates,
-    retain,
-    release,
-    dirtyRenderNode,
-} from '../engine';
 import { renderJSXNode } from '../renderjsx';
+import { wrapError } from '../util';
+import { RenderNodeCommitPhase } from './constants';
+import { emptyRenderNode, RenderNode } from './rendernode';
 
 export interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;

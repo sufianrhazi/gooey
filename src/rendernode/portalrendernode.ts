@@ -1,11 +1,12 @@
-import * as log from '../log';
-import { dirtyRenderNode } from '../engine';
-import type { Calculation } from '../calc';
-import type { ArrayEvent} from '../arrayevent';
+import type { ArrayEvent } from '../arrayevent';
 import { addArrayEvent, applyArrayEvent } from '../arrayevent';
-import type { RefObjectOrCallback} from '../ref';
+import type { Calculation } from '../calc';
+import { dirtyRenderNode } from '../engine';
+import * as log from '../log';
+import type { RefObjectOrCallback } from '../ref';
 import { Ref } from '../ref';
-import { RenderNode, RenderNodeCommitPhase } from './rendernode';
+import { RenderNodeCommitPhase } from './constants';
+import { RenderNode } from './rendernode';
 
 // TODO: fix this, this needs to be two flags: needs unmount notification; needs mount notification
 enum MountState {

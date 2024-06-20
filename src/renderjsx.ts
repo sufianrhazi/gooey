@@ -23,10 +23,10 @@ export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
         return jsxNode;
     }
     if (jsxNode instanceof Calculation) {
-        return CalculationRenderNode(jsxNode);
+        return CalculationRenderNode(renderJSXNode, jsxNode);
     }
     if (isCollectionOrViewRenderNode(jsxNode)) {
-        return CollectionRenderNode(jsxNode);
+        return CollectionRenderNode(renderJSXNode, jsxNode);
     }
     if (jsxNode instanceof Node) {
         return ForeignRenderNode(jsxNode);
@@ -35,7 +35,7 @@ export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
         return ArrayRenderNode(jsxNode.map((item) => renderJSXNode(item)));
     }
     if (jsxNode instanceof Field) {
-        return FieldRenderNode(jsxNode);
+        return FieldRenderNode(renderJSXNode, jsxNode);
     }
     if (
         jsxNode === null ||

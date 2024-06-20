@@ -1,14 +1,14 @@
-import { wrapError } from '../util';
-import * as log from '../log';
-import type { Calculation} from '../calc';
+import type { Calculation } from '../calc';
 import { CalculationSubscribeWithPostAction } from '../calc';
-import { RenderNode, emptyRenderNode } from './rendernode';
-import { renderJSXNode } from '../renderjsx';
+import * as log from '../log';
+import { wrapError } from '../util';
+import { emptyRenderNode, RenderNode } from './rendernode';
 
 /**
  * Renders the result of a calculation
  */
 export function CalculationRenderNode(
+    renderJSXNode: (jsxNode: JSX.Node) => RenderNode,
     calculation: Calculation<any>,
     debugName?: string
 ): RenderNode {
@@ -50,7 +50,11 @@ export function CalculationRenderNode(
                 }
             },
             clone: () => {
-                return CalculationRenderNode(calculation, debugName);
+                return CalculationRenderNode(
+                    renderJSXNode,
+                    calculation,
+                    debugName
+                );
             },
             onAlive: () => {
                 try {

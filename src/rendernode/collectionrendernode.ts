@@ -1,11 +1,11 @@
-import type { Collection, View } from '../collection';
-import { RenderNode } from './rendernode';
-import type { ArrayEvent} from '../arrayevent';
+import type { ArrayEvent } from '../arrayevent';
 import { ArrayEventType } from '../arrayevent';
-import { renderJSXNode } from '../renderjsx';
-import { retain, untrackReads, release } from '../engine';
+import type { Collection, View } from '../collection';
+import { release, retain, untrackReads } from '../engine';
+import { RenderNode } from './rendernode';
 
 export function CollectionRenderNode(
+    renderJSXNode: (jsxNode: JSX.Node) => RenderNode,
     collection: Collection<any> | View<any>,
     debugName?: string
 ): RenderNode {

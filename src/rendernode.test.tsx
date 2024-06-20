@@ -7,14 +7,13 @@ import { flush, removeRenderNode, reset, subscribe } from './engine';
 import { field } from './field';
 import { model } from './model';
 import { mount } from './mount';
+import { renderJSXNode } from './renderjsx';
 import { ArrayRenderNode } from './rendernode/arrayrendernode';
 import { CalculationRenderNode } from './rendernode/calculationrendernode';
 import { CollectionRenderNode } from './rendernode/collectionrendernode';
-import type {
-    Component} from './rendernode/componentrendernode';
-import {
-    ComponentRenderNode,
-} from './rendernode/componentrendernode';
+import type { Component } from './rendernode/componentrendernode';
+import { ComponentRenderNode } from './rendernode/componentrendernode';
+import { RenderNodeCommitPhase } from './rendernode/constants';
 import { FieldRenderNode } from './rendernode/fieldrendernode';
 import { ForeignRenderNode } from './rendernode/foreignrendernode';
 import {
@@ -22,13 +21,8 @@ import {
     IntrinsicObserverRenderNode,
 } from './rendernode/intrinsicobserverrendernode';
 import { IntrinsicRenderNode } from './rendernode/intrinsicrendernode';
-import type {
-    NodeEmitter} from './rendernode/rendernode';
-import {
-    EmptyRenderNode,
-    RenderNode,
-    RenderNodeCommitPhase,
-} from './rendernode/rendernode';
+import type { NodeEmitter } from './rendernode/rendernode';
+import { EmptyRenderNode, RenderNode } from './rendernode/rendernode';
 import { TextRenderNode } from './rendernode/textrendernode';
 
 const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
@@ -484,7 +478,7 @@ suite('CalculationRenderNode', () => {
         const greet = calc(() =>
             IntrinsicRenderNode('b', {}, TextRenderNode(state.name))
         );
-        const node = CalculationRenderNode(greet);
+        const node = CalculationRenderNode(renderJSXNode, greet);
         node.retain();
         const events: any[] = [];
         node.attach(
@@ -513,7 +507,7 @@ suite('CalculationRenderNode', () => {
         const greet = calc(() =>
             IntrinsicRenderNode('b', {}, TextRenderNode(state.name))
         );
-        const node = CalculationRenderNode(greet);
+        const node = CalculationRenderNode(renderJSXNode, greet);
         node.retain();
         const events: any[] = [];
         node.attach(
@@ -560,7 +554,7 @@ suite('CalculationRenderNode', () => {
         const greet = calc(() =>
             IntrinsicRenderNode('b', {}, TextRenderNode(state.name))
         );
-        const node = CalculationRenderNode(greet);
+        const node = CalculationRenderNode(renderJSXNode, greet);
         node.retain();
         const events: any[] = [];
         node.attach(
@@ -599,7 +593,7 @@ suite('CalculationRenderNode', () => {
         const greet = calc(() =>
             IntrinsicRenderNode('b', {}, TextRenderNode(state.name))
         );
-        const node = CalculationRenderNode(greet);
+        const node = CalculationRenderNode(renderJSXNode, greet);
         node.retain();
         const events: any[] = [];
         node.attach(
@@ -651,7 +645,7 @@ suite('CalculationRenderNode', () => {
     test('mount and unmount are passed through', () => {
         const tracer = new TracingRenderNode();
         const constantCalc = calc(() => tracer);
-        const node = CalculationRenderNode(constantCalc);
+        const node = CalculationRenderNode(renderJSXNode, constantCalc);
         const events: any[] = [];
 
         tracer.log('0: retain');
@@ -728,7 +722,7 @@ suite('CalculationRenderNode', () => {
             if (state.isError) throw new Error('boom');
             return 'ok';
         });
-        const node = CalculationRenderNode(constantCalc);
+        const node = CalculationRenderNode(renderJSXNode, constantCalc);
         node.retain();
         node.attach(
             (event) => {
@@ -755,7 +749,7 @@ suite('CalculationRenderNode', () => {
             if (state.isError) throw new Error('boom');
             return 'ok';
         });
-        const node = CalculationRenderNode(constantCalc);
+        const node = CalculationRenderNode(renderJSXNode, constantCalc);
         node.retain();
         node.attach(
             (event) => {
@@ -792,7 +786,7 @@ suite('CalculationRenderNode', () => {
 suite('FieldRenderNode', () => {
     test('emits jsx when attached', () => {
         const greeting = field('hello');
-        const node = FieldRenderNode(greeting);
+        const node = FieldRenderNode(renderJSXNode, greeting);
         node.retain();
         const events: any[] = [];
         node.attach(
@@ -817,7 +811,7 @@ suite('FieldRenderNode', () => {
 
     test('re-emits jsx when recalculated while attached', () => {
         const greeting = field('hello');
-        const node = FieldRenderNode(greeting);
+        const node = FieldRenderNode(renderJSXNode, greeting);
         node.retain();
         const events: any[] = [];
         node.attach(
@@ -859,7 +853,7 @@ suite('FieldRenderNode', () => {
 
     test('does not emit jsx when recalculated while detached', () => {
         const greeting = field('hello');
-        const node = FieldRenderNode(greeting);
+        const node = FieldRenderNode(renderJSXNode, greeting);
         node.retain();
         const events: any[] = [];
         node.attach(
@@ -894,7 +888,7 @@ suite('FieldRenderNode', () => {
 
     test('result after recalculation while detached is emitted when attached again', () => {
         const greeting = field('hello');
-        const node = FieldRenderNode(greeting);
+        const node = FieldRenderNode(renderJSXNode, greeting);
         node.retain();
         const events: any[] = [];
         node.attach(
@@ -944,7 +938,7 @@ suite('FieldRenderNode', () => {
     test('mount and unmount are passed through', () => {
         const tracer = new TracingRenderNode();
         const constantField = field(tracer);
-        const node = FieldRenderNode(constantField);
+        const node = FieldRenderNode(renderJSXNode, constantField);
         const events: any[] = [];
 
         tracer.log('0: retain');
@@ -1136,7 +1130,7 @@ suite('ArrayRenderNode', () => {
 suite('CollectionRenderNode', () => {
     test('emits jsx when attached', () => {
         const items = collection(['hello', 'goodbye']);
-        const node = CollectionRenderNode(items);
+        const node = CollectionRenderNode(renderJSXNode, items);
         node.retain();
         const events: any[] = [];
         node.attach(
@@ -1164,7 +1158,7 @@ suite('CollectionRenderNode', () => {
 
     test('emits events when modified', () => {
         const items = collection(['foo', 'bar', 'baz']);
-        const node = CollectionRenderNode(items);
+        const node = CollectionRenderNode(renderJSXNode, items);
         node.retain();
         const events: any[] = [];
         node.attach(
@@ -1211,7 +1205,7 @@ suite('CollectionRenderNode', () => {
 
     test('emits result when modified while detached', () => {
         const items = collection(['foo', 'bar', 'baz']);
-        const node = CollectionRenderNode(items);
+        const node = CollectionRenderNode(renderJSXNode, items);
         node.retain();
         const events: any[] = [];
         node.attach(
@@ -1284,7 +1278,7 @@ suite('CollectionRenderNode', () => {
             if (state.isError) throw new Error('boom');
             return 'ok';
         });
-        const node = CalculationRenderNode(constantCalc);
+        const node = CalculationRenderNode(renderJSXNode, constantCalc);
         node.retain();
         node.attach(
             (event) => {
@@ -1311,7 +1305,7 @@ suite('CollectionRenderNode', () => {
             if (state.isError) throw new Error('boom');
             return 'ok';
         });
-        const node = CalculationRenderNode(constantCalc);
+        const node = CalculationRenderNode(renderJSXNode, constantCalc);
         node.retain();
         node.attach(
             (event) => {
@@ -1354,7 +1348,7 @@ suite('CollectionRenderNode', () => {
             if (state.isError) throw new Error('boom');
             return 'ok';
         });
-        const node = CalculationRenderNode(constantCalc);
+        const node = CalculationRenderNode(renderJSXNode, constantCalc);
         node.retain();
         node.attach(
             (event) => {
@@ -1394,7 +1388,7 @@ suite('CollectionRenderNode', () => {
         const tracer1 = new TracingRenderNode();
         const tracer2 = new TracingRenderNode();
         const items = collection([tracer1]);
-        const node = CollectionRenderNode(items);
+        const node = CollectionRenderNode(renderJSXNode, items);
         const events: any[] = [];
         node.retain();
         node.attach(
@@ -1451,7 +1445,7 @@ suite('CollectionRenderNode', () => {
         const tracer1 = new TracingRenderNode();
         const tracer2 = new TracingRenderNode();
         const items = collection([tracer1]);
-        const node = CollectionRenderNode(items);
+        const node = CollectionRenderNode(renderJSXNode, items);
         const events: any[] = [];
         node.retain();
         node.attach(

@@ -1,33 +1,24 @@
-import { wrapError } from '../util';
-import * as log from '../log';
-import type {
-    webComponentTagConstructors,
-    WebComponentShadowSupportedExtends,
-    WebComponentInternalsKey,
-} from '../webcomponents';
-import type { Dyn} from '../dyn';
-import { dynSubscribe, dynGet } from '../dyn';
-import type { ComponentLifecycle } from './componentrendernode';
-import type {
-    Retainable} from '../engine';
-import {
-    trackCreates,
-    retain,
-    release,
-    dirtyRenderNode,
-} from '../engine';
+import type { Dyn } from '../dyn';
+import { dynGet, dynSubscribe } from '../dyn';
+import type { Retainable } from '../engine';
+import { dirtyRenderNode, release, retain, trackCreates } from '../engine';
 import type { Field } from '../field';
-import {
-    RenderNode,
-    emptyRenderNode,
-    RenderNodeCommitPhase,
-} from './rendernode';
-import { renderJSXNode } from '../renderjsx';
 import type { JSXNode } from '../jsx';
+import * as log from '../log';
+import { renderJSXNode } from '../renderjsx';
+import { wrapError } from '../util';
+import type {
+    WebComponentInternalsKey,
+    WebComponentShadowSupportedExtends,
+    webComponentTagConstructors,
+} from '../webcomponents';
+import type { ComponentLifecycle } from './componentrendernode';
+import { RenderNodeCommitPhase } from './constants';
+import { emptyRenderNode, RenderNode } from './rendernode';
 
 export type WebComponentProps<
     TKeys extends string,
-    TShadowMode extends 'open' | 'closed' | undefined
+    TShadowMode extends 'open' | 'closed' | undefined,
 > = TShadowMode extends undefined
     ? { [Key in TKeys]?: Dyn<string | undefined> } & { children: JSXNode }
     : { [Key in TKeys]?: Dyn<string | undefined> };
@@ -66,7 +57,7 @@ export interface WebComponentLifecycle extends ComponentLifecycle {
 
 export type WebFunctionComponent<
     TKeys extends string,
-    TShadowMode extends 'open' | 'closed' | undefined
+    TShadowMode extends 'open' | 'closed' | undefined,
 > = (
     props: WebComponentProps<TKeys, TShadowMode>,
     lifecycle: WebComponentLifecycle
@@ -74,13 +65,13 @@ export type WebFunctionComponent<
 
 export type WebComponent<
     TKeys extends string,
-    TShadowMode extends 'open' | 'closed' | undefined
+    TShadowMode extends 'open' | 'closed' | undefined,
 > = WebFunctionComponent<TKeys, TShadowMode>;
 
 export interface WebComponentOptions<
     TKeys extends string,
     TShadowMode extends 'open' | 'closed' | undefined,
-    TExtends extends keyof typeof webComponentTagConstructors | undefined
+    TExtends extends keyof typeof webComponentTagConstructors | undefined,
 > {
     tagName: `${string}-${string}`;
     Component: WebComponent<TKeys, TShadowMode>;
@@ -123,7 +114,7 @@ export type FormValue =
 export function WebComponentRenderNode<
     TKeys extends string,
     TShadowMode extends 'open' | 'closed' | undefined,
-    TExtends extends keyof typeof webComponentTagConstructors | undefined
+    TExtends extends keyof typeof webComponentTagConstructors | undefined,
 >(
     host: HTMLElement,
     shadowRoot: ShadowRoot | undefined,

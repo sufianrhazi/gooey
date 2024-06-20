@@ -1,7 +1,7 @@
 import { Graph, ProcessAction } from './graph';
 import * as log from './log';
+import { RenderNodeCommitPhase } from './rendernode/constants';
 import type { RenderNode } from './rendernode/rendernode';
-import { RenderNodeCommitPhase } from './rendernode/rendernode';
 import { noop } from './util';
 
 export interface Retainable {

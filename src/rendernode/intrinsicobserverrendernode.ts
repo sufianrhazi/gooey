@@ -1,6 +1,7 @@
+import { applyArrayEvent, ArrayEventType } from '../arrayevent';
 import { dirtyRenderNode } from '../engine';
-import { ArrayEventType, applyArrayEvent } from '../arrayevent';
-import { RenderNode, RenderNodeCommitPhase } from './rendernode';
+import { RenderNodeCommitPhase } from './constants';
+import { RenderNode } from './rendernode';
 
 export enum IntrinsicObserverEventType {
     MOUNT = 'mount',

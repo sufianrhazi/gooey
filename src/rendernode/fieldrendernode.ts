@@ -1,8 +1,8 @@
 import type { Field } from '../field';
-import { RenderNode, emptyRenderNode } from './rendernode';
-import { renderJSXNode } from '../renderjsx';
+import { emptyRenderNode, RenderNode } from './rendernode';
 
 export function FieldRenderNode(
+    renderJSXNode: (jsxNode: JSX.Node) => RenderNode,
     field: Field<any>,
     debugName?: string
 ): RenderNode {
@@ -19,7 +19,7 @@ export function FieldRenderNode(
     const renderNode = new RenderNode(
         {
             clone: () => {
-                return FieldRenderNode(field, debugName);
+                return FieldRenderNode(renderJSXNode, field, debugName);
             },
             onAlive: () => {
                 subscription = field.subscribe(subscribe);
