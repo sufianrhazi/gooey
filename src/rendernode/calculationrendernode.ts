@@ -21,7 +21,6 @@ export function CalculationRenderNode(
         val: undefined | any,
         addPostAction: (postAction: () => void) => void
     ): void {
-        renderNode.disown(childRenderNode);
         renderNode.spliceChildren(0, 1, []);
         if (error) {
             calculationError = error;
@@ -36,7 +35,6 @@ export function CalculationRenderNode(
         } else {
             addPostAction(() => {
                 childRenderNode = renderJSXNode(val);
-                renderNode.own(childRenderNode);
                 renderNode.spliceChildren(0, 0, [childRenderNode]);
             });
         }
@@ -75,7 +73,6 @@ export function CalculationRenderNode(
                 calculationError = undefined;
                 calculationSubscription?.();
                 calculationSubscription = undefined;
-                renderNode.disown(childRenderNode);
                 childRenderNode = emptyRenderNode;
             },
         },
