@@ -1,7 +1,8 @@
-import Gooey, {
+import type {
     Collection,
     Component,
-    Model,
+    Model} from '../../index';
+import Gooey, {
     calc,
     collection,
     model,

@@ -1,8 +1,8 @@
-import * as log from './log';
-import { noop } from './util';
 import { Graph, ProcessAction } from './graph';
-import type { RenderNode } from './rendernode';
-import { RenderNodeCommitPhase } from './rendernode';
+import * as log from './log';
+import type { RenderNode } from './rendernode/rendernode';
+import { RenderNodeCommitPhase } from './rendernode/rendernode';
+import { noop } from './util';
 
 export interface Retainable {
     __debugName: string;

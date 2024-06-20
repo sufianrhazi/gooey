@@ -1,18 +1,19 @@
-import {
+import type {
     Processable,
-    Retainable,
+    Retainable} from './engine';
+import {
     addHardEdge,
-    removeHardEdge,
     addSoftEdge,
-    removeSoftEdge,
-    markDirty,
     addVertex,
-    retain,
+    markDirty,
     release,
+    removeHardEdge,
+    removeSoftEdge,
     removeVertex,
+    retain
 } from './engine';
-import { Field } from './field';
-import { SubscriptionEmitter } from './subscriptionemitter';
+import type { Field } from './field';
+import type { SubscriptionEmitter } from './subscriptionemitter';
 
 type SubscriptionConsumerHandler<TData, TConsumeEvent, TEmitEvent> = {
     bivarianceHack(

@@ -1,15 +1,17 @@
-import Gooey, {
+import type {
     Model,
-    ClassComponent,
     Ref,
     Calculation,
-    Collection,
+    Collection} from '../..';
+import Gooey, {
+    ClassComponent,
     collection,
     model,
     calc,
     ref,
 } from '../..';
-import { Window, WindowPosition } from './window';
+import type { WindowPosition } from './window';
+import { Window } from './window';
 
 /* An undo/redo stack that handles reversible operations */
 class UndoStack<TAction, TResult> {

@@ -1,4 +1,5 @@
-import { suite, test, assert } from '@srhazi/gooey-test';
+import { assert, suite, test } from '@srhazi/gooey-test';
+
 import { applyArrayEvent, ArrayEventType } from './arrayevent';
 import { SlotSizes } from './slotsizes';
 

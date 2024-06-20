@@ -1,10 +1,10 @@
-import { Calculation } from './calc';
-import { Collection, View } from './collection';
-import { RenderNode } from './rendernode';
-import type { ClassComponentInterface } from './rendernode';
-import type { RefObjectOrCallback } from './ref';
-import type { Field } from './field';
+import type { Calculation } from './calc';
+import type { Collection, View } from './collection';
 import type { Dyn } from './dyn';
+import type { Field } from './field';
+import type { RefObjectOrCallback } from './ref';
+import type { ClassComponentInterface } from './rendernode/componentrendernode';
+import type { RenderNode } from './rendernode/rendernode';
 
 /**
  * The core type that can be used as a child or root of a JSX expression
@@ -1551,7 +1551,7 @@ type JSXChildrenProps<HasChildren extends boolean> = HasChildren extends true
 type WithCalculationsAndRef<
     TJSXType extends JSXElementInterface,
     TElement extends Element,
-    HasChildren extends boolean
+    HasChildren extends boolean,
 > = JSXRefProps<TElement> &
     JSXAttrProps &
     JSXEventProps<TElement> &

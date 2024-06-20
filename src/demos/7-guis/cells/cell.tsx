@@ -1,14 +1,16 @@
-import Gooey, {
+import type {
     Component,
     Calculation,
+    Ref} from '../../..';
+import Gooey, {
     field,
     calc,
     flush,
-    ref,
-    Ref,
+    ref
 } from '../../..';
-import { EvalResult } from './spreadsheet-state';
-import { Position, positionToString } from './utils';
+import type { EvalResult } from './spreadsheet-state';
+import type { Position} from './utils';
+import { positionToString } from './utils';
 import './cells.css';
 
 export interface CellApi {

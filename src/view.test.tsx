@@ -1,24 +1,25 @@
-import Gooey, {
-    ClassComponent,
-    dynGet,
-    Component,
-    calc,
-    collection,
-    flush,
-    model,
-    Model,
-    mount,
-    field,
-    reset,
-    ref,
-    Ref,
-    subscribe,
-    IntrinsicObserver,
-    defineCustomElement,
-} from './index';
-import type { Dyn } from './index';
+import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
+
 import { debugGetGraph } from './engine';
-import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
+import Gooey, {
+    calc,
+    ClassComponent,
+    collection,
+    defineCustomElement,
+    dynGet,
+    field,
+    flush,
+    IntrinsicObserver,
+    model,
+    mount,
+    ref,
+    reset,
+    subscribe,
+} from './index';
+import type { Dyn ,
+    Component,
+    Model,
+    Ref} from './index';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
 
@@ -3589,8 +3590,9 @@ if (2 < 1) {
     });
 
     suite('parent with one child', () => {
-        const ParentWithExactlyOneChild: Component<{ children: JSX.Element }> =
-            () => <div />;
+        const ParentWithExactlyOneChild: Component<{
+            children: JSX.Element;
+        }> = () => <div />;
         const ParentWithOptionallyOneChild: Component<{
             children?: JSX.Element;
         }> = () => <div />;
@@ -3633,8 +3635,9 @@ if (2 < 1) {
     });
 
     suite('parent with one child node', () => {
-        const ParentWithExactlyOneChild: Component<{ children: JSX.Node }> =
-            () => <div />;
+        const ParentWithExactlyOneChild: Component<{
+            children: JSX.Node;
+        }> = () => <div />;
         const ParentWithOptionallyOneChild: Component<{
             children?: JSX.Node;
         }> = () => <div />;

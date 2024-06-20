@@ -1,4 +1,5 @@
-import Gooey, { Component, model, Calculation, calc, mount } from '../../index';
+import type { Component, Calculation} from '../../index';
+import Gooey, { model, calc, mount } from '../../index';
 
 const ClockHand: Component<{
     cx: number;

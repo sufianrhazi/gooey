@@ -135,25 +135,26 @@
  *       does not equal the prior cached value.
  */
 
-import * as log from './log';
-import { Sentinel } from './sentinel';
-import {
+import type {
     Processable,
-    Retainable,
-    notifyCreate,
-    notifyRead,
+    Retainable} from './engine';
+import {
     addHardEdge,
     addVertex,
-    retain,
+    isProcessable,
+    markCycleInformed,
+    notifyCreate,
+    notifyRead,
     release,
     removeHardEdge,
     removeVertex,
-    markCycleInformed,
-    unmarkDirty,
+    retain,
     trackReads,
+    unmarkDirty,
     untrackReads,
-    isProcessable,
 } from './engine';
+import * as log from './log';
+import { Sentinel } from './sentinel';
 import { wrapError } from './util';
 
 enum CalculationState {
@@ -165,19 +166,23 @@ enum CalculationState {
 }
 
 const CalculationSymbol = Symbol('calculation');
-export const CalculationSubscribeWithPostAction = Symbol('calculationSubscribeWithPostAction');
+export const CalculationSubscribeWithPostAction = Symbol(
+    'calculationSubscribeWithPostAction'
+);
 
 interface CalcSubscriptionHandlerHack<T> {
     bivarianceHack(
-        ...args: [
-        errorType: undefined,
-        val: T,
-        addPostAction: (postAction: () => void) => void
-        ] | [
-        errorType: Error,
-        val: undefined,
-        addPostAction: (postAction: () => void) => void
-        ]
+        ...args:
+            | [
+                  errorType: undefined,
+                  val: T,
+                  addPostAction: (postAction: () => void) => void,
+              ]
+            | [
+                  errorType: Error,
+                  val: undefined,
+                  addPostAction: (postAction: () => void) => void,
+              ]
     ): void;
 }
 type CalcSubscriptionHandler<out T> =
@@ -188,14 +193,14 @@ type CalcUnsubscribe = () => void;
 type CalcErrorHandler<T> = (error: Error) => T;
 
 export class Calculation<out T> implements Retainable, Processable {
-    declare private _subscriptions?: Set<CalcSubscriptionHandler<T>>;
-    declare private _type: typeof CalculationSymbol;
-    declare private _errorHandler?: CalcErrorHandler<T>;
-    declare private _state: CalculationState;
-    declare private _retained?: Set<Retainable | (Processable & Retainable)>;
-    declare private _val?: T;
-    declare private _error?: any;
-    declare private _fn: () => T;
+    private declare _subscriptions?: Set<CalcSubscriptionHandler<T>>;
+    private declare _type: typeof CalculationSymbol;
+    private declare _errorHandler?: CalcErrorHandler<T>;
+    private declare _state: CalculationState;
+    private declare _retained?: Set<Retainable | (Processable & Retainable)>;
+    private declare _val?: T;
+    private declare _error?: any;
+    private declare _fn: () => T;
 
     declare __processable: true;
     declare __debugName: string;
@@ -220,7 +225,9 @@ export class Calculation<out T> implements Retainable, Processable {
                 throw this._error;
             case CalculationState.ERROR:
                 if (this._error === Sentinel) {
-                    throw new Error('Cycle reached: calculation reached itself');
+                    throw new Error(
+                        'Cycle reached: calculation reached itself'
+                    );
                 } else {
                     throw new Error(
                         'Calculation in error state: ' + this._error.message
@@ -243,8 +250,7 @@ export class Calculation<out T> implements Retainable, Processable {
                 }
 
                 if (
-                    (this._state as CalculationState) ===
-                    CalculationState.DEAD
+                    (this._state as CalculationState) === CalculationState.DEAD
                 ) {
                     // It's possible that a cycle which is recalculated releases itself entirely
                     // In this case we release all of the things retained (automatically, see note XXX:AUTO_RETAIN)
@@ -260,8 +266,7 @@ export class Calculation<out T> implements Retainable, Processable {
                 // In this case, A will mark itself in the ERROR state.
                 if (
                     // Cast due to TypeScript limitation
-                    (this._state as CalculationState) ===
-                    CalculationState.ERROR
+                    (this._state as CalculationState) === CalculationState.ERROR
                 ) {
                     exception = this._error;
                 }
@@ -277,10 +282,7 @@ export class Calculation<out T> implements Retainable, Processable {
                     const errorHandler = this._errorHandler;
                     if (errorHandler) {
                         result = untrackReads(
-                            () =>
-                            errorHandler(
-                                exception
-                            ),
+                            () => errorHandler(exception),
                             this.__debugName
                         );
                     }
@@ -370,24 +372,36 @@ export class Calculation<out T> implements Retainable, Processable {
     }
 
     subscribe(handler: (value: T) => void): CalcUnsubscribe {
-        return this[CalculationSubscribeWithPostAction]((errorType, value, hoopdoop) => {
-            if (errorType === undefined) {
-                handler(value);
+        return this[CalculationSubscribeWithPostAction](
+            (errorType, value, hoopdoop) => {
+                if (errorType === undefined) {
+                    handler(value);
+                }
             }
-        });
+        );
     }
 
-    subscribeWithError(handler: (...args: [error: undefined, value: T] | [error: Error, value: undefined]) => void): CalcUnsubscribe {
-        return this[CalculationSubscribeWithPostAction]((error, value, hoopdoop) => {
-            if (error) {
-                handler(error, value);
-            } else {
-                handler(error, value);
+    subscribeWithError(
+        handler: (
+            ...args:
+                | [error: undefined, value: T]
+                | [error: Error, value: undefined]
+        ) => void
+    ): CalcUnsubscribe {
+        return this[CalculationSubscribeWithPostAction](
+            (error, value, hoopdoop) => {
+                if (error) {
+                    handler(error, value);
+                } else {
+                    handler(error, value);
+                }
             }
-        });
+        );
     }
 
-    [CalculationSubscribeWithPostAction](handler: CalcSubscriptionHandler<T>): CalcUnsubscribe {
+    [CalculationSubscribeWithPostAction](
+        handler: CalcSubscriptionHandler<T>
+    ): CalcUnsubscribe {
         retain(this);
         try {
             this.get();
@@ -437,14 +451,15 @@ export class Calculation<out T> implements Retainable, Processable {
         switch (this._state) {
             case CalculationState.DEAD:
                 log.fail('cannot recalculate dead calculation');
-            break;
+                break;
             case CalculationState.CALLING:
                 log.fail('cannot recalculate calculation being tracked');
-            break;
+                break;
             case CalculationState.READY:
-                case CalculationState.ERROR:
-                case CalculationState.CACHED: {
-                const priorResult = '_val' in this ? (this._val as T) : Sentinel;
+            case CalculationState.ERROR:
+            case CalculationState.CACHED: {
+                const priorResult =
+                    '_val' in this ? (this._val as T) : Sentinel;
                 this._state = CalculationState.READY;
                 let newResult: T;
                 try {
@@ -453,18 +468,20 @@ export class Calculation<out T> implements Retainable, Processable {
                     this._state = CalculationState.ERROR;
                     this._error = e;
                     if (this._subscriptions) {
-                        const error = wrapError(e, 'Unknown error in calculation');
+                        const error = wrapError(
+                            e,
+                            'Unknown error in calculation'
+                        );
                         for (const subscription of this._subscriptions) {
-                            subscription(
-                                error,
-                                undefined,
-                                addPostAction
-                            );
+                            subscription(error, undefined, addPostAction);
                         }
                     }
                     return true; // Errors always propagate
                 }
-                if (priorResult !== Sentinel && this._eq(priorResult, newResult)) {
+                if (
+                    priorResult !== Sentinel &&
+                    this._eq(priorResult, newResult)
+                ) {
                     this._val = priorResult;
                     return false;
                 }
@@ -476,7 +493,10 @@ export class Calculation<out T> implements Retainable, Processable {
                 return true;
             }
             default:
-                log.assertExhausted(this._state, 'Calculation in unknown state');
+                log.assertExhausted(
+                    this._state,
+                    'Calculation in unknown state'
+                );
         }
     }
 
@@ -497,32 +517,37 @@ export class Calculation<out T> implements Retainable, Processable {
                 this._state = CalculationState.READY;
                 return true;
             default:
-                log.assertExhausted(this._state, 'Calculation in unknown state');
+                log.assertExhausted(
+                    this._state,
+                    'Calculation in unknown state'
+                );
         }
     }
 
-    __cycle(
-        addPostAction: (postAction: () => void) => void
-    ) {
+    __cycle(addPostAction: (postAction: () => void) => void) {
         switch (this._state) {
             case CalculationState.DEAD:
                 log.fail('cannot trigger cycle on dead calculation');
-            break;
+                break;
             case CalculationState.CALLING:
                 log.fail('cannot trigger cycle on calculation being tracked');
-            break;
+                break;
             case CalculationState.ERROR:
-                case CalculationState.CACHED:
-                case CalculationState.READY: {
-                const priorResult = '_val' in this ? (this._val as T) : Sentinel;
+            case CalculationState.CACHED:
+            case CalculationState.READY: {
+                const priorResult =
+                    '_val' in this ? (this._val as T) : Sentinel;
                 this._state = CalculationState.READY;
                 const errorHandler = this._errorHandler;
                 if (errorHandler) {
                     this._val = untrackReads(
                         () =>
-                        errorHandler(
-                            new CycleError('Calculation is part of a cycle', this)
-                        ),
+                            errorHandler(
+                                new CycleError(
+                                    'Calculation is part of a cycle',
+                                    this
+                                )
+                            ),
                         this.__debugName
                     );
                     this._state = CalculationState.CACHED;
@@ -533,7 +558,10 @@ export class Calculation<out T> implements Retainable, Processable {
                     if (this._subscriptions) {
                         for (const subscription of this._subscriptions) {
                             subscription(
-                                new CycleError('Calculation is part of a cycle', this),
+                                new CycleError(
+                                    'Calculation is part of a cycle',
+                                    this
+                                ),
                                 undefined,
                                 addPostAction
                             );
@@ -541,7 +569,10 @@ export class Calculation<out T> implements Retainable, Processable {
                     }
                     return true; // Errors always propagate
                 }
-                if (priorResult !== Sentinel && this._eq(priorResult, this._val)) {
+                if (
+                    priorResult !== Sentinel &&
+                    this._eq(priorResult, this._val)
+                ) {
                     this._val = priorResult;
                     return false;
                 }
@@ -553,7 +584,10 @@ export class Calculation<out T> implements Retainable, Processable {
                 return true;
             }
             default:
-                log.assertExhausted(this._state, 'Calculation in unknown state');
+                log.assertExhausted(
+                    this._state,
+                    'Calculation in unknown state'
+                );
         }
     }
 }

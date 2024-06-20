@@ -1,6 +1,7 @@
-import Gooey, {
+import type {
     Component,
-    Model,
+    Model} from '../..';
+import Gooey, {
     mount,
     model,
     collection,

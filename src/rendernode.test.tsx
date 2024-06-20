@@ -1,28 +1,35 @@
-import { flush, reset, subscribe, removeRenderNode } from './engine';
+import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
+
+import { ArrayEventType } from './arrayevent';
 import { calc } from './calc';
 import { collection } from './collection';
+import { flush, removeRenderNode, reset, subscribe } from './engine';
 import { field } from './field';
 import { model } from './model';
+import { mount } from './mount';
+import { ArrayRenderNode } from './rendernode/arrayrendernode';
+import { CalculationRenderNode } from './rendernode/calculationrendernode';
+import { CollectionRenderNode } from './rendernode/collectionrendernode';
+import type {
+    Component} from './rendernode/componentrendernode';
 import {
-    RenderNode,
-    ArrayRenderNode,
-    CalculationRenderNode,
-    CollectionRenderNode,
     ComponentRenderNode,
-    EmptyRenderNode,
-    ForeignRenderNode,
-    FieldRenderNode,
-    IntrinsicObserverRenderNode,
+} from './rendernode/componentrendernode';
+import { FieldRenderNode } from './rendernode/fieldrendernode';
+import { ForeignRenderNode } from './rendernode/foreignrendernode';
+import {
     IntrinsicObserverEventType,
-    IntrinsicRenderNode,
-    TextRenderNode,
-    NodeEmitter,
-    mount,
-    Component,
+    IntrinsicObserverRenderNode,
+} from './rendernode/intrinsicobserverrendernode';
+import { IntrinsicRenderNode } from './rendernode/intrinsicrendernode';
+import type {
+    NodeEmitter} from './rendernode/rendernode';
+import {
+    EmptyRenderNode,
+    RenderNode,
     RenderNodeCommitPhase,
-} from './rendernode';
-import { ArrayEventType } from './arrayevent';
-import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
+} from './rendernode/rendernode';
+import { TextRenderNode } from './rendernode/textrendernode';
 
 const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
 

@@ -1,5 +1,5 @@
-import { Field } from './field';
 import { Calculation } from './calc';
+import { Field } from './field';
 import { noop } from './util';
 
 export type Dyn<T> = T | Field<T> | Calculation<T>;

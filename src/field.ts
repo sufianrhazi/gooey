@@ -1,14 +1,15 @@
-import * as log from './log';
-import {
-    retain,
-    release,
+import type {
     Processable,
-    Retainable,
+    Retainable} from './engine';
+import {
     addVertex,
     markDirty,
-    removeVertex,
     notifyRead,
+    release,
+    removeVertex,
+    retain
 } from './engine';
+import * as log from './log';
 
 type FieldSubscriberBivariantHack<T> = {
     bivariantHack(val: T): void;

@@ -1,5 +1,6 @@
 import * as Parsinator from 'parsinator';
-import { Position, stringToRow, stringToCol } from './utils';
+import type { Position} from './utils';
+import { stringToRow, stringToCol } from './utils';
 
 /*
  * Formula parser combinators

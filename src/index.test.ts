@@ -1,4 +1,5 @@
-import { suite, test, beforeEach, assert } from '@srhazi/gooey-test';
+import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
+
 import * as gooey from './index';
 
 beforeEach(() => {

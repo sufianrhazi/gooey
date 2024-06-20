@@ -1,6 +1,7 @@
+import type {
+    Component} from '../../index';
 import Gooey, {
     mount,
-    Component,
     model,
     calc,
     IntrinsicObserver,

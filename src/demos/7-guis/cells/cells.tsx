@@ -1,25 +1,28 @@
-import Gooey, {
-    ClassComponent,
+import type {
     EmptyProps,
     Model,
+    Ref} from '../../..';
+import Gooey, {
+    ClassComponent,
     model,
     calc,
     flush,
-    ref,
-    Ref,
+    ref
 } from '../../..';
 import { SpreadsheetState } from './spreadsheet-state';
+import type {
+    Position} from './utils';
 import {
     COLS,
     ROWS,
     NUM_COL,
     NUM_ROW,
-    Position,
     positionToString,
     colToString,
     rowToString,
 } from './utils';
-import { CellApi, Cell } from './cell';
+import type { CellApi} from './cell';
+import { Cell } from './cell';
 import './cells.css';
 
 export class Cells extends ClassComponent {

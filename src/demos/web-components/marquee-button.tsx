@@ -1,6 +1,7 @@
+import type {
+    Dyn} from '../../index';
 import Gooey, {
     calc,
-    Dyn,
     dynGet,
     field,
     model,
@@ -163,7 +164,7 @@ defineCustomElement({
             if (lastTickMs === null) {
                 lastTickMs = ms;
             }
-            let dt = (ms - lastTickMs) / 1000;
+            const dt = (ms - lastTickMs) / 1000;
             lastTickMs = ms;
             const nodeWidth = nodeInfo.get()?.bounds.width;
             let es =

@@ -1,4 +1,5 @@
-import Gooey, { model, calc, ref, Component } from '../..';
+import type { Component } from '../..';
+import Gooey, { model, calc, ref } from '../..';
 import './window.css';
 
 export interface WindowPosition {

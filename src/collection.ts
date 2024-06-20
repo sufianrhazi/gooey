@@ -1,17 +1,20 @@
+import type {
+    ArrayEvent} from './arrayevent';
 import {
-    TrackedData,
-    TrackedDataHandle,
-    getTrackedDataHandle,
-    ProxyHandler,
-} from './trackeddata';
-import { untrackReads, retain, release, Retainable } from './engine';
-import {
-    ArrayEvent,
-    ArrayEventType,
-    arrayEventFlatMap,
     addArrayEvent,
+    arrayEventFlatMap,
+    ArrayEventType,
 } from './arrayevent';
+import type { Retainable} from './engine';
+import { release, retain, untrackReads } from './engine';
 import * as log from './log';
+import type {
+    ProxyHandler,
+    TrackedData} from './trackeddata';
+import {
+    getTrackedDataHandle,
+    TrackedDataHandle,
+} from './trackeddata';
 
 export interface CollectionImpl<T> extends Retainable {
     _type: 'collection';

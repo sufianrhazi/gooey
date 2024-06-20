@@ -1,9 +1,10 @@
-import {
+import type {
     Processable,
-    Retainable,
-    markDirty,
+    Retainable} from './engine';
+import {
     addVertex,
-    removeVertex,
+    markDirty,
+    removeVertex
 } from './engine';
 import * as log from './log';
 

@@ -1,11 +1,12 @@
-import {
+import type {
     Processable,
-    Retainable,
+    Retainable} from './engine';
+import {
     addSoftEdge,
-    removeSoftEdge,
-    retain,
-    release,
     notifyRead,
+    release,
+    removeSoftEdge,
+    retain
 } from './engine';
 import { Field } from './field';
 

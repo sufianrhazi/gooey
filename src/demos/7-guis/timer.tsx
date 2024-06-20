@@ -1,4 +1,5 @@
-import Gooey, { Component, model, calc } from '../..';
+import type { Component} from '../..';
+import Gooey, { model, calc } from '../..';
 
 const TICK_INTERVAL = 16;
 

@@ -1,11 +1,12 @@
-import Gooey, {
+import type {
     Component,
+    Model,
+    Field} from '../..';
+import Gooey, {
     calc,
     collection,
     model,
-    Model,
-    field,
-    Field,
+    field
 } from '../..';
 
 type Item = Model<{

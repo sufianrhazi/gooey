@@ -55,6 +55,7 @@ module.exports = {
         'no-unused-vars': ['error', { args: 'none' }],
         'react/jsx-uses-react': 2,
         '@typescript-eslint/ban-ts-comment': 0,
+        '@typescript-eslint/consistent-type-imports': 'error',
     },
     overrides: [
         {

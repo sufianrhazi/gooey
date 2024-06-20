@@ -1,6 +1,9 @@
-import { Dict, Calculation, dict, calc, CycleError } from '../../..';
-import { Expression, FunctionExpression, parseFormula } from './parser';
-import { Position, positionToString } from './utils';
+import type { Dict, Calculation} from '../../..';
+import { dict, calc, CycleError } from '../../..';
+import type { Expression, FunctionExpression} from './parser';
+import { parseFormula } from './parser';
+import type { Position} from './utils';
+import { positionToString } from './utils';
 
 /*
  * Expression evaluator

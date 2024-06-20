@@ -1,4 +1,5 @@
-import Gooey, { Component, calc, model, mount } from '../..';
+import type { Component} from '../..';
+import Gooey, { calc, model, mount } from '../..';
 
 const App: Component = () => {
     const state = model({ clicks: 0 });

@@ -1,4 +1,5 @@
-import Gooey, { Component, model, calc, mount } from '../..';
+import type { Component} from '../..';
+import Gooey, { model, calc, mount } from '../..';
 
 const Counter: Component<{ min: number; max: number }> = ({ min, max }) => {
     const state = model({ count: min });

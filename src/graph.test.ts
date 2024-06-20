@@ -1,5 +1,6 @@
+import { assert, suite, test } from '@srhazi/gooey-test';
+
 import { Graph, ProcessAction } from './graph';
-import { suite, test, assert } from '@srhazi/gooey-test';
 
 suite('Graph', () => {
     const a = { name: 'a' };

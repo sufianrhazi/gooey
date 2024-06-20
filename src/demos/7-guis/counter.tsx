@@ -1,4 +1,5 @@
-import Gooey, { Component, model, calc } from '../..';
+import type { Component} from '../..';
+import Gooey, { model, calc } from '../..';
 
 export const Counter: Component = () => {
     const state = model({

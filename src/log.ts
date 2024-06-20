@@ -87,8 +87,8 @@ export function assert(
             check === undefined
                 ? 'undefined'
                 : check === null
-                ? 'null'
-                : check.toString(),
+                  ? 'null'
+                  : check.toString(),
             'is not truthy',
             msg,
             ...items

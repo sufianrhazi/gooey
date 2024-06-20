@@ -1,22 +1,24 @@
-import Gooey, {
+import { afterEach, assert, beforeEach, suite, test } from '@srhazi/gooey-test';
+
+import { Graph } from './graph';
+import type {
     Calculation,
     Collection,
     Component,
     LogLevel,
-    Model,
+    Model} from './index';
+import Gooey, {
     calc,
     collection,
     flush,
     getLogLevel,
     model,
     mount,
-    setLogLevel,
     reset,
+    setLogLevel,
     subscribe,
 } from './index';
-import { Graph } from './graph';
 import { randint } from './util';
-import { suite, test, beforeEach, afterEach, assert } from '@srhazi/gooey-test';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
 const mrt = assert.medianRuntimeLessThan;

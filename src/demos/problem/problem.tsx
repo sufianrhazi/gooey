@@ -1,5 +1,6 @@
+import type {
+    Component} from '../../index';
 import Gooey, {
-    Component,
     calc,
     collection,
     model,

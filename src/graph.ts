@@ -115,8 +115,9 @@
  * or globally).
  *
  */
-import { tarjanStronglyConnected } from './tarjan';
 import * as log from './log';
+import { tarjanStronglyConnected } from './tarjan';
+import { dead } from './util';
 
 export enum EdgeColor {
     EDGE_SOFT = 0b01,
@@ -966,17 +967,21 @@ export class Graph<TVertex> {
         }
         return { vertices, edges };
     }
-}
 
-/**
- * Test-only interfaces; omitted in build
- */
-export interface Graph<TVertex> {
-    _test_getVertices(): TVertex[];
-    _test_getDependencies(vertex: TVertex): TVertex[];
+    /**
+     * Test-only interfaces; omitted in standard build
+     */
+    _test_getVertices(): TVertex[] {
+        return dead();
+    }
+    _test_getDependencies(vertex: TVertex): TVertex[] {
+        return dead();
+    }
     _test_getVertexInfo(
         vertex: TVertex
-    ): undefined | { id: number; index: number; bits: number };
+    ): undefined | { id: number; index: number; bits: number } {
+        return dead();
+    }
 }
 
 /**
@@ -989,7 +994,7 @@ if (TEST) {
         return this.vertexById.filter((vertex) => !!vertex);
     };
     Graph.prototype._test_getDependencies = function _test_getDependencies<
-        TVertex
+        TVertex,
     >(this: Graph<TVertex>, vertex: TVertex) {
         const id = this.vertexToId.get(vertex);
         log.assert(id, 'getDependencies on nonexistent vertex');

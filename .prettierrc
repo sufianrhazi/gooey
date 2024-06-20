@@ -4,5 +4,8 @@
   "useTabs": false,
   "semi": true,
   "singleQuote": true,
-  "parser": "typescript"
+  "parser": "typescript",
+  "plugins": ["@ianvs/prettier-plugin-sort-imports"],
+  "importOrder": ["^@srhazi/gooey$", "<THIRD_PARTY_MODULES>", "", "^[.]"],
+  "importOrderParserPlugins": ["typescript", "jsx", "decorators-legacy"]
 }

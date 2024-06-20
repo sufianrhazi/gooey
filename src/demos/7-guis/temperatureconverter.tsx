@@ -1,4 +1,5 @@
-import Gooey, { Component, model, calc } from '../..';
+import type { Component} from '../..';
+import Gooey, { model, calc } from '../..';
 
 const c2f = (c: number) => c * (9 / 5) + 32;
 const f2c = (f: number) => ((f - 32) * 5) / 9;

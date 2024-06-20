@@ -1,4 +1,5 @@
-import Gooey, { model, calc, Component, mount } from '../../index';
+import type { Component} from '../../index';
+import Gooey, { model, calc, mount } from '../../index';
 
 import { Counter } from './counter';
 import { TemperatureConverter } from './temperatureconverter';

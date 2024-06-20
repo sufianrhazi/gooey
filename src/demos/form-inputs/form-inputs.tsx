@@ -1,11 +1,12 @@
-import Gooey, {
-    IntrinsicObserver,
+import type {
     Component,
     Ref,
+    Collection} from '../../index';
+import Gooey, {
+    IntrinsicObserver,
     ref,
     mount,
     model,
-    Collection,
     collection,
     calc,
 } from '../../index';

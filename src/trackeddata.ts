@@ -1,14 +1,15 @@
-import { Retainable, notifyCreate, notifyRead } from './engine';
-import { FieldMap } from './fieldmap';
+import type { Retainable } from './engine';
+import { notifyCreate, notifyRead } from './engine';
 import { Field } from './field';
-import { SubscriptionEmitter } from './subscriptionemitter';
+import { FieldMap } from './fieldmap';
 import { SubscriptionConsumer } from './subscriptionconsumer';
+import { SubscriptionEmitter } from './subscriptionemitter';
 
 export class TrackedDataHandle<
     TData extends object,
     TMethods extends Retainable,
     TEmitEvent,
-    TConsumeEvent
+    TConsumeEvent,
 > {
     declare target: TData;
     declare methods: TMethods;
@@ -214,7 +215,7 @@ export type TrackedData<
     TData extends object,
     TMethods extends Retainable,
     TEmitEvent,
-    TConsumeEvent
+    TConsumeEvent,
 > = TData &
     TMethods & {
         __tdHandle: TrackedDataHandle<
@@ -229,7 +230,7 @@ export function getTrackedDataHandle<
     TData extends object,
     TMethods extends Retainable,
     TEmitEvent,
-    TConsumeEvent
+    TConsumeEvent,
 >(
     trackedData: TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>
 ): undefined | TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent> {

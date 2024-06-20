@@ -1,12 +1,15 @@
-import * as log from './log';
-import { retain, release, Retainable } from './engine';
+import type { ArrayEvent} from './arrayevent';
+import { addArrayEvent, ArrayEventType } from './arrayevent';
+import type { View, ViewImpl } from './collection';
+import { makeViewPrototype, ViewHandler } from './collection';
+import type { Retainable } from './engine';
+import { release, retain } from './engine';
+import { Field } from './field';
 import { FieldMap } from './fieldmap';
+import * as log from './log';
+import { Sentinel } from './sentinel';
 import { SubscriptionEmitter } from './subscriptionemitter';
 import { TrackedDataHandle } from './trackeddata';
-import { Field } from './field';
-import { ArrayEvent, ArrayEventType, addArrayEvent } from './arrayevent';
-import { View, ViewImpl, ViewHandler, makeViewPrototype } from './collection';
-import { Sentinel } from './sentinel';
 
 export enum DictEventType {
     ADD = 'add',

@@ -1,4 +1,5 @@
-import Gooey, { mount, Component, model, calc } from '../../index';
+import type { Component} from '../../index';
+import Gooey, { mount, model, calc } from '../../index';
 
 const appRoot = document.getElementById('app');
 if (!appRoot) {

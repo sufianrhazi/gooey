@@ -1,5 +1,7 @@
-import { suite, test, assert } from '@srhazi/gooey-test';
-import { ArrayEvent, ArrayEventType, addArrayEvent } from './arrayevent';
+import { assert, suite, test } from '@srhazi/gooey-test';
+
+import type { ArrayEvent} from './arrayevent';
+import { addArrayEvent, ArrayEventType } from './arrayevent';
 
 suite('addArrayEvent', () => {
     test('add SPLICE to empty array always adds', () => {

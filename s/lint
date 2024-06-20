@@ -10,4 +10,4 @@ s/check_requirements
 echo_info "Installing dependencies..."
 npm install
 
-find src -type f \( -name '*.ts' -o -name '*.tsx' \) -print0 | xargs -0 node_modules/.bin/eslint
+find src -type f \( -name '*.ts' -o -name '*.tsx' \) -print0 | xargs -0 npm exec eslint --

@@ -1,9 +1,11 @@
-import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
-import { model } from './model';
-import { dict } from './dict';
+import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
+
+import type { Calculation } from './calc';
+import { calc } from './calc';
 import { collection } from './collection';
-import { Calculation, calc } from './calc';
-import { flush, retain, release, reset, subscribe } from './engine';
+import { dict } from './dict';
+import { flush, release, reset, retain, subscribe } from './engine';
+import { model } from './model';
 
 beforeEach(() => {
     reset();

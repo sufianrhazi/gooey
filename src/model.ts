@@ -1,8 +1,8 @@
-import * as log from './log';
-import { retain, release } from './engine';
-import { FieldMap } from './fieldmap';
-import { SubscriptionEmitter } from './subscriptionemitter';
+import { release, retain } from './engine';
 import { Field } from './field';
+import { FieldMap } from './fieldmap';
+import * as log from './log';
+import { SubscriptionEmitter } from './subscriptionemitter';
 
 export enum ModelEventType {
     SET = 'set',

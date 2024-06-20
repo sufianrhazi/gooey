@@ -1,11 +1,12 @@
+import type {
+    Component,
+    Model,
+    Collection} from '../../index';
 import Gooey, {
     mount,
     model,
     collection,
-    calc,
-    Component,
-    Model,
-    Collection,
+    calc
 } from '../../index';
 
 function _random(max: number): number {

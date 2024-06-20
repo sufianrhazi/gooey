@@ -1,7 +1,8 @@
-import { suite, test, assert, beforeEach } from '@srhazi/gooey-test';
-import { dict, DictEventType } from './dict';
+import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
+
 import { calc } from './calc';
-import { retain, release, reset, flush, subscribe } from './engine';
+import { dict, DictEventType } from './dict';
+import { flush, release, reset, retain, subscribe } from './engine';
 
 beforeEach(() => {
     reset();

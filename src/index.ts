@@ -1,23 +1,30 @@
+import { createElement } from './createelement';
+
 export { getLogLevel, setLogLevel } from './log';
 export type { LogLevel } from './log';
-import { createElement } from './view';
-export {
-    createElement,
-    IntrinsicObserver,
-    Fragment,
-    mount,
-    defineCustomElement,
-} from './view';
+
+export { createElement } from './createelement';
+export { defineCustomElement } from './definecustomelement';
+export { mount } from './mount';
+export { ClassComponent } from './rendernode/componentrendernode';
+export type {
+    WebComponent,
+    WebComponentLifecycle,
+} from './rendernode/webcomponentrendernode';
 export type {
     Component,
     EmptyProps,
     ComponentLifecycle,
-    WebComponent,
-    WebComponentLifecycle,
+} from './rendernode/componentrendernode';
+export { IntrinsicObserverEventType } from './rendernode/intrinsicobserverrendernode';
+
+export { Fragment } from './components/fragment';
+export { IntrinsicObserver } from './components/intrinsicobserver';
+
+export type {
     IntrinsicObserverNodeCallback,
     IntrinsicObserverElementCallback,
-} from './rendernode';
-export { ClassComponent, IntrinsicObserverEventType } from './rendernode';
+} from './rendernode/intrinsicobserverrendernode';
 export type { Model, ModelEvent } from './model';
 export { model, ModelEventType } from './model';
 export type { DictEvent } from './dict';
