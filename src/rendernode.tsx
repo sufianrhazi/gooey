@@ -208,8 +208,6 @@ export class ClassComponent<TProps = EmptyProps>
 
 export type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
 
-export const RenderNodeType = Symbol('rendernode');
-
 export enum RenderNodeCommitPhase {
     COMMIT_UNMOUNT,
     COMMIT_DEL,
@@ -232,17 +230,6 @@ function isNextRenderNodeCommitPhase(
     );
 }
 
-export interface RenderNode extends Retainable {
-    _type: typeof RenderNodeType;
-    detach(): void;
-    attach(emitter: NodeEmitter, parentXmlNamespace: string): void;
-    setMounted(isMounted: boolean): void;
-    commit(phase: RenderNodeCommitPhase): void;
-    retain(): void;
-    release(): void;
-    clone(props?: {}, children?: RenderNode[]): RenderNode;
-}
-
 function own(parent: RenderNode, child: RenderNode) {
     if (child === emptyRenderNode) return;
     retain(child);
@@ -253,7 +240,7 @@ function disown(parent: RenderNode, child: RenderNode) {
     release(child);
 }
 
-interface CustomRenderNodeHandlers {
+interface RenderNodeHandlers {
     /**
      * Called when the RenderNode is created, before it is attached and mounted
      */
@@ -304,23 +291,21 @@ interface CustomRenderNodeHandlers {
 }
 
 /**
- * CustomRenderNode: a generic render node
+ * RenderNode: a virtual node in the tree
  */
-export class CustomRenderNode implements RenderNode {
-    declare _type: typeof RenderNodeType;
+export class RenderNode implements Retainable {
     declare _commitPhase: RenderNodeCommitPhase;
-    declare handlers: CustomRenderNodeHandlers;
+    declare handlers: RenderNodeHandlers;
     declare emitter?: NodeEmitter | undefined;
     declare isMounted: boolean;
     declare slotSizes: SlotSizes<RenderNode>;
     declare parentXmlNamespace: string;
 
     constructor(
-        handlers: CustomRenderNodeHandlers,
+        handlers: RenderNodeHandlers,
         children: RenderNode[],
         debugName?: string
     ) {
-        this._type = RenderNodeType;
         this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.handlers = handlers;
         this.isMounted = false;
@@ -349,7 +334,7 @@ export class CustomRenderNode implements RenderNode {
         const clonedChildren = this.slotSizes.items.map((child) =>
             child.clone()
         );
-        return new CustomRenderNode(this.handlers, clonedChildren);
+        return new RenderNode(this.handlers, clonedChildren);
     }
 
     sortChildren(from: number, indexes: number[]) {
@@ -412,19 +397,13 @@ export class CustomRenderNode implements RenderNode {
                 if (this.emitter) {
                     this.emitter(event);
                 } else {
-                    log.warn(
-                        'Unhandled error on detached CustomRenderNode',
-                        event
-                    );
+                    log.warn('Unhandled error on detached RenderNode', event);
                 }
             }
             return;
         }
         if (!this.handlers.onEvent?.(event)) {
-            log.assert(
-                this.emitter,
-                'Unexpected event on detached CustomRenderNode'
-            );
+            log.assert(this.emitter, 'Unexpected event on detached RenderNode');
             this.emitter(event);
         }
     }
@@ -492,12 +471,9 @@ export class CustomRenderNode implements RenderNode {
 /**
  * Renders nothing
  */
-export class EmptyRenderNode implements RenderNode {
-    declare _type: typeof RenderNodeType;
+export class EmptyRenderNode extends RenderNode {
     constructor() {
-        this._type = RenderNodeType;
-        this.__debugName = 'empty';
-        this.__refcount = 0;
+        super({}, []);
     }
 
     detach() {}
@@ -509,12 +485,6 @@ export class EmptyRenderNode implements RenderNode {
     clone(): RenderNode {
         return emptyRenderNode;
     }
-
-    // Retainable
-    declare __debugName: string;
-    declare __refcount: number;
-    __alive() {}
-    __dead() {}
 }
 
 /**
@@ -527,7 +497,7 @@ export const emptyRenderNode = new EmptyRenderNode();
  */
 export function TextRenderNode(str: string, debugName?: string): RenderNode {
     const textNode = document.createTextNode(str);
-    return new CustomRenderNode(
+    return new RenderNode(
         {
             onAttach: (emitter) => {
                 emitter({
@@ -557,7 +527,7 @@ export function TextRenderNode(str: string, debugName?: string): RenderNode {
  * Renders a foreign managed DOM node
  */
 export function ForeignRenderNode(node: Node, debugName?: string): RenderNode {
-    return new CustomRenderNode(
+    return new RenderNode(
         {
             onAttach: (emitter) => {
                 emitter({
@@ -590,7 +560,7 @@ export function ArrayRenderNode(
     children: RenderNode[],
     debugName?: string
 ): RenderNode {
-    return new CustomRenderNode({}, children, debugName);
+    return new RenderNode({}, children, debugName);
 }
 
 const EventProps = [
@@ -657,14 +627,14 @@ export function IntrinsicRenderNode(
                     portalRenderNode.setMounted(false);
                 }
                 portalRenderNode.detach();
-                disown(customRenderNode, portalRenderNode);
+                disown(renderNode, portalRenderNode);
             }
             portalRenderNode = PortalRenderNode(
                 element,
                 childRenderNode,
                 props?.ref
             );
-            own(customRenderNode, portalRenderNode);
+            own(renderNode, portalRenderNode);
             portalRenderNode.attach(handleEvent, childXmlNamespace);
             if (isMounted) {
                 portalRenderNode.setMounted(true);
@@ -807,7 +777,7 @@ export function IntrinsicRenderNode(
         assignProp(element, prop, val);
     }
 
-    const customRenderNode = new CustomRenderNode(
+    const renderNode = new RenderNode(
         {
             onAttach: (emitter, parentXmlNamespace) => {
                 attachedState = { emitter, parentXmlNamespace };
@@ -892,7 +862,7 @@ export function IntrinsicRenderNode(
 
                 element = undefined;
                 if (portalRenderNode) {
-                    disown(customRenderNode, portalRenderNode);
+                    disown(renderNode, portalRenderNode);
                     portalRenderNode = undefined;
                 }
             },
@@ -900,7 +870,7 @@ export function IntrinsicRenderNode(
         [],
         debugName ?? `intrinsic(${tagName})`
     );
-    return customRenderNode;
+    return renderNode;
 }
 
 // A shared document fragment; NOTE: always clear after use
@@ -958,24 +928,24 @@ export function PortalRenderNode(
         }
     }
 
-    const customRenderNode = new CustomRenderNode(
+    const renderNode = new RenderNode(
         {
             onEvent: (event: ArrayEvent<Node>) => {
                 addArrayEvent(childEvents, event);
-                // TODO: how do non-gooey CustomRenderNodes participate in the commit lifecycle?
+                // TODO: how do non-gooey RenderNodes participate in the commit lifecycle?
                 // Do we export dirtyRenderNode?
-                dirtyRenderNode(customRenderNode);
+                dirtyRenderNode(renderNode);
                 return true;
             },
             onMount: () => {
                 if (refProp) {
-                    dirtyRenderNode(customRenderNode);
+                    dirtyRenderNode(renderNode);
                     mountState = MountState.NOTIFY_MOUNT;
                 }
             },
             onUnmount: () => {
                 if (refProp) {
-                    dirtyRenderNode(customRenderNode);
+                    dirtyRenderNode(renderNode);
                     mountState = MountState.NOTIFY_UNMOUNT;
                 }
             },
@@ -1105,7 +1075,7 @@ export function PortalRenderNode(
                 : `shadow:${element.host.tagName}`
         }`
     );
-    return customRenderNode;
+    return renderNode;
 }
 
 /**
@@ -1125,8 +1095,8 @@ export function CalculationRenderNode(
         val: undefined | any,
         addPostAction: (postAction: () => void) => void
     ): void {
-        disown(customRenderNode, childRenderNode);
-        customRenderNode.spliceChildren(0, 1, []);
+        disown(renderNode, childRenderNode);
+        renderNode.spliceChildren(0, 1, []);
         if (error) {
             calculationError = error;
             if (nodeEmitter) {
@@ -1140,13 +1110,13 @@ export function CalculationRenderNode(
         } else {
             addPostAction(() => {
                 childRenderNode = renderJSXNode(val);
-                own(customRenderNode, childRenderNode);
-                customRenderNode.spliceChildren(0, 0, [childRenderNode]);
+                own(renderNode, childRenderNode);
+                renderNode.spliceChildren(0, 0, [childRenderNode]);
             });
         }
     }
 
-    const customRenderNode = new CustomRenderNode(
+    const renderNode = new RenderNode(
         {
             onDetach: () => {
                 nodeEmitter = undefined;
@@ -1179,7 +1149,7 @@ export function CalculationRenderNode(
                 calculationError = undefined;
                 calculationSubscription?.();
                 calculationSubscription = undefined;
-                disown(customRenderNode, childRenderNode);
+                disown(renderNode, childRenderNode);
                 childRenderNode = emptyRenderNode;
                 nodeEmitter = undefined;
             },
@@ -1187,7 +1157,7 @@ export function CalculationRenderNode(
         [childRenderNode],
         debugName ?? `rendercalc:${calculation.__debugName}`
     );
-    return customRenderNode;
+    return renderNode;
 }
 
 export function CollectionRenderNode(
@@ -1199,32 +1169,28 @@ export function CollectionRenderNode(
         for (const event of events) {
             switch (event.type) {
                 case ArrayEventType.SPLICE:
-                    customRenderNode.spliceChildren(
+                    renderNode.spliceChildren(
                         event.index,
                         event.count,
                         event.items?.map((item) => renderJSXNode(item)) ?? []
                     );
                     break;
                 case ArrayEventType.MOVE:
-                    customRenderNode.moveChildren(
-                        event.from,
-                        event.count,
-                        event.to
-                    );
+                    renderNode.moveChildren(event.from, event.count, event.to);
                     break;
                 case ArrayEventType.SORT:
-                    customRenderNode.sortChildren(event.from, event.indexes);
+                    renderNode.sortChildren(event.from, event.indexes);
                     break;
             }
         }
     }
-    const customRenderNode = new CustomRenderNode(
+    const renderNode = new RenderNode(
         {
             onAlive: () => {
                 retain(collection);
                 unsubscribe = collection.subscribe(handleEvent);
                 untrackReads(() => {
-                    customRenderNode.spliceChildren(
+                    renderNode.spliceChildren(
                         0,
                         0,
                         collection.map((item) => renderJSXNode(item))
@@ -1240,11 +1206,7 @@ export function CollectionRenderNode(
         debugName ?? `CollectionRenderNode(${collection.__debugName})`
     );
 
-    return customRenderNode;
-}
-
-function isCalculationRenderNode(val: any): val is Calculation<JSXNode> {
-    return val instanceof Calculation;
+    return renderNode;
 }
 
 export function FieldRenderNode(
@@ -1255,13 +1217,13 @@ export function FieldRenderNode(
     let childRenderNode: RenderNode = emptyRenderNode;
 
     function subscribe(val: undefined | any): void {
-        disown(customRenderNode, childRenderNode);
+        disown(renderNode, childRenderNode);
         childRenderNode = renderJSXNode(val);
-        own(customRenderNode, childRenderNode);
-        customRenderNode.spliceChildren(0, 1, [childRenderNode]);
+        own(renderNode, childRenderNode);
+        renderNode.spliceChildren(0, 1, [childRenderNode]);
     }
 
-    const customRenderNode = new CustomRenderNode(
+    const renderNode = new RenderNode(
         {
             clone: () => {
                 return FieldRenderNode(field, debugName);
@@ -1273,14 +1235,14 @@ export function FieldRenderNode(
             onDestroy: () => {
                 subscription?.();
                 subscription = undefined;
-                disown(customRenderNode, childRenderNode);
+                disown(renderNode, childRenderNode);
                 childRenderNode = emptyRenderNode;
             },
         },
         [childRenderNode],
         debugName ?? `FieldRenderNode(${field.__debugName})`
     );
-    return customRenderNode;
+    return renderNode;
 }
 
 function isCollectionOrViewRenderNode(
@@ -1289,15 +1251,11 @@ function isCollectionOrViewRenderNode(
     return isCollection(val) || isView(val);
 }
 
-function isRenderNode(val: any): val is RenderNode {
-    return val && val._type === RenderNodeType;
-}
-
 export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
-    if (isRenderNode(jsxNode)) {
+    if (jsxNode instanceof RenderNode) {
         return jsxNode;
     }
-    if (isCalculationRenderNode(jsxNode)) {
+    if (jsxNode instanceof Calculation) {
         return CalculationRenderNode(jsxNode);
     }
     if (isCollectionOrViewRenderNode(jsxNode)) {
@@ -1565,7 +1523,7 @@ export function IntrinsicObserverRenderNode(
             elementCallback?.(node, eventType);
         }
     }
-    const customRenderNode = new CustomRenderNode(
+    const renderNode = new RenderNode(
         {
             onEvent: (event) => {
                 for (const removedNode of applyArrayEvent(nodes, event)) {
@@ -1573,7 +1531,7 @@ export function IntrinsicObserverRenderNode(
                         removedNode,
                         IntrinsicObserverEventType.UNMOUNT
                     );
-                    dirtyRenderNode(customRenderNode);
+                    dirtyRenderNode(renderNode);
                 }
                 if (event.type === ArrayEventType.SPLICE && event.items) {
                     for (const addedNode of event.items) {
@@ -1582,7 +1540,7 @@ export function IntrinsicObserverRenderNode(
                             IntrinsicObserverEventType.MOUNT
                         );
                     }
-                    dirtyRenderNode(customRenderNode);
+                    dirtyRenderNode(renderNode);
                 }
             },
             clone: () => {
@@ -1596,13 +1554,13 @@ export function IntrinsicObserverRenderNode(
             onMount: () => {
                 for (const node of nodes) {
                     pendingEvent.set(node, IntrinsicObserverEventType.MOUNT);
-                    dirtyRenderNode(customRenderNode);
+                    dirtyRenderNode(renderNode);
                 }
             },
             onUnmount: () => {
                 for (const node of nodes) {
                     pendingEvent.set(node, IntrinsicObserverEventType.UNMOUNT);
-                    dirtyRenderNode(customRenderNode);
+                    dirtyRenderNode(renderNode);
                 }
             },
             onCommit: (phase) => {
@@ -1631,7 +1589,7 @@ export function IntrinsicObserverRenderNode(
         [child],
         debugName ?? 'IntrinsicObserverRenderNode'
     );
-    return customRenderNode;
+    return renderNode;
 }
 
 export const IntrinsicObserver: Component<{
@@ -1736,17 +1694,17 @@ export function ComponentRenderNode<TProps>(
         return result;
     }
 
-    const customRenderNode = new CustomRenderNode(
+    const renderNode = new RenderNode(
         {
             onAlive: () => {
                 const result = ensureResult();
                 if (result instanceof Error) {
                     log.warn('Unhandled exception on detached component', {
                         error: result,
-                        renderNode: customRenderNode,
+                        renderNode: renderNode,
                     });
                 } else {
-                    customRenderNode.spliceChildren(0, 1, [result]);
+                    renderNode.spliceChildren(0, 1, [result]);
                 }
             },
             onDestroy: () => {
@@ -1773,7 +1731,7 @@ export function ComponentRenderNode<TProps>(
                     result = handledResult
                         ? renderJSXNode(handledResult)
                         : emptyRenderNode;
-                    customRenderNode.spliceChildren(0, 1, [result]);
+                    renderNode.spliceChildren(0, 1, [result]);
                     return true;
                 }
             },
@@ -1783,7 +1741,7 @@ export function ComponentRenderNode<TProps>(
                     return;
                 }
                 needsMount = true;
-                dirtyRenderNode(customRenderNode);
+                dirtyRenderNode(renderNode);
             },
             onUnmount: () => {
                 log.assert(result, 'Invariant: missing result');
@@ -1837,7 +1795,7 @@ export function ComponentRenderNode<TProps>(
         [emptyRenderNode],
         debugName ?? `component(${Component.name})`
     );
-    return customRenderNode;
+    return renderNode;
 }
 
 const webComponentTagConstructors = {
@@ -2188,17 +2146,17 @@ export function WebComponentRenderNode<
         return result;
     }
 
-    const customRenderNode = new CustomRenderNode(
+    const renderNode = new RenderNode(
         {
             onAlive: () => {
                 const result = ensureResult();
                 if (result instanceof Error) {
                     log.warn('Unhandled exception on detached component', {
                         error: result,
-                        renderNode: customRenderNode,
+                        renderNode: renderNode,
                     });
                 } else {
-                    customRenderNode.spliceChildren(0, 1, [result]);
+                    renderNode.spliceChildren(0, 1, [result]);
                 }
             },
             onDestroy: () => {
@@ -2231,7 +2189,7 @@ export function WebComponentRenderNode<
                     result = handledResult
                         ? renderJSXNode(handledResult)
                         : emptyRenderNode;
-                    customRenderNode.spliceChildren(0, 1, [result]);
+                    renderNode.spliceChildren(0, 1, [result]);
                     return true;
                 }
             },
@@ -2241,7 +2199,7 @@ export function WebComponentRenderNode<
                     return;
                 }
                 needsMount = true;
-                dirtyRenderNode(customRenderNode);
+                dirtyRenderNode(renderNode);
             },
             onUnmount() {
                 log.assert(result, 'Invariant: missing result');
@@ -2292,7 +2250,7 @@ export function WebComponentRenderNode<
         [emptyRenderNode],
         debugName ?? `web-component(${options.tagName})`
     );
-    return customRenderNode;
+    return renderNode;
 }
 
 export function classComponentToFunctionComponentRenderNode<TProps>(

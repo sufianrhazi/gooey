@@ -5,7 +5,6 @@ import { field } from './field';
 import { model } from './model';
 import {
     RenderNode,
-    RenderNodeType,
     ArrayRenderNode,
     CalculationRenderNode,
     CollectionRenderNode,
@@ -35,20 +34,19 @@ beforeEach(() => {
     subscribe();
 });
 
-class TracingRenderNode implements RenderNode {
-    public _type: typeof RenderNodeType = RenderNodeType;
+class TracingRenderNode extends RenderNode {
     declare _commitPhase: RenderNodeCommitPhase;
     public events: any[];
-    public emitter: NodeEmitter | null;
+    public emitter: NodeEmitter | undefined;
     public __refcount: number;
     public __debugName: string;
 
     constructor() {
-        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
+        super({}, []);
         this.events = [];
         this.__refcount = 0;
         this.__debugName = 'TracingRenderNode';
-        this.emitter = null;
+        this.emitter = undefined;
     }
 
     log(event: any) {
