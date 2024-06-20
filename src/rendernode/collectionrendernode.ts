@@ -1,7 +1,7 @@
 import type { ArrayEvent } from '../arrayevent';
 import { ArrayEventType } from '../arrayevent';
 import type { Collection, View } from '../collection';
-import { release, retain, untrackReads } from '../engine';
+import { untrackReads } from '../engine';
 import { RenderNode } from './rendernode';
 
 export function CollectionRenderNode(
@@ -32,7 +32,6 @@ export function CollectionRenderNode(
     const renderNode = new RenderNode(
         {
             onAlive: () => {
-                retain(collection);
                 unsubscribe = collection.subscribe(handleEvent);
                 untrackReads(() => {
                     renderNode.spliceChildren(
@@ -44,7 +43,6 @@ export function CollectionRenderNode(
             },
             onDestroy: () => {
                 unsubscribe?.();
-                release(collection);
             },
         },
         [],

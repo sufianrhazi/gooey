@@ -1,20 +1,10 @@
-import type {
-    ArrayEvent} from './arrayevent';
-import {
-    addArrayEvent,
-    arrayEventFlatMap,
-    ArrayEventType,
-} from './arrayevent';
-import type { Retainable} from './engine';
+import type { ArrayEvent } from './arrayevent';
+import { addArrayEvent, arrayEventFlatMap, ArrayEventType } from './arrayevent';
+import type { Retainable } from './engine';
 import { release, retain, untrackReads } from './engine';
 import * as log from './log';
-import type {
-    ProxyHandler,
-    TrackedData} from './trackeddata';
-import {
-    getTrackedDataHandle,
-    TrackedDataHandle,
-} from './trackeddata';
+import type { ProxyHandler, TrackedData } from './trackeddata';
+import { getTrackedDataHandle, TrackedDataHandle } from './trackeddata';
 
 export interface CollectionImpl<T> extends Retainable {
     _type: 'collection';
@@ -393,6 +383,7 @@ function collectionSubscribe<T>(
         ArrayEvent<any>
     >(this);
     log.assert(tdHandle, 'subscribe missing tdHandle');
+    retain(this); // Yes, this is a bit odd -- a collection with a subscription should always be retained while the subscription is alive
     retain(tdHandle.emitter);
     const unsubscribe = tdHandle.emitter.subscribe((events) => {
         handler(events);
@@ -400,6 +391,7 @@ function collectionSubscribe<T>(
     return () => {
         unsubscribe();
         release(tdHandle.emitter);
+        release(this);
     };
 }
 
