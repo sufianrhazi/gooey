@@ -1,20 +1,15 @@
-import type {
-    Component,
-    Model} from '../..';
-import Gooey, {
-    mount,
-    model,
-    collection,
-    calc,
-    flush,
-} from '../..';
+import type { Component, Model } from '../..';
+import Gooey, { calc, collection, flush, model, mount } from '../..';
 
 const measurements = collection<string>([]);
 const byType = {
     '1:add': collection<number>([]),
     '2:update-all': collection<number>([]),
     '3:update-some': collection<number>([]),
-    '4:clear': collection<number>([]),
+    '4:replace-multiple': collection<number>([]),
+    '4:insert-multiple': collection<number>([]),
+    '4:remove-multiple': collection<number>([]),
+    '5:clear': collection<number>([]),
 };
 
 const measure = (name: keyof typeof byType, fn: () => void) => {
@@ -39,6 +34,32 @@ const Benchmark: Component = () => {
         }
     });
 
+    const replaceMultiple = measure('4:replace-multiple', () => {
+        for (let i = 0; i < 10; ++i) {
+            items.splice(
+                Math.floor(Math.random() * items.length),
+                1,
+                model({ val: itemId++ })
+            );
+        }
+    });
+
+    const insertMultiple = measure('4:insert-multiple', () => {
+        for (let i = 0; i < 10; ++i) {
+            items.splice(
+                Math.floor(Math.random() * items.length),
+                0,
+                model({ val: itemId++ })
+            );
+        }
+    });
+
+    const removeMultiple = measure('4:remove-multiple', () => {
+        for (let i = 0; i < 10; ++i) {
+            items.splice(Math.floor(Math.random() * items.length), 1);
+        }
+    });
+
     const updateAllItems = measure('2:update-all', () => {
         items.forEach((item) => (item.val *= 2));
     });
@@ -50,7 +71,7 @@ const Benchmark: Component = () => {
         }
     });
 
-    const clearItems = measure('4:clear', () => {
+    const clearItems = measure('5:clear', () => {
         items.splice(0, items.length);
     });
 
@@ -65,6 +86,15 @@ const Benchmark: Component = () => {
                 </button>
                 <button data-gooey-update-some on:click={updateSomeItems}>
                     Update 10 random items
+                </button>
+                <button data-gooey-replace-multiple on:click={replaceMultiple}>
+                    Replace 10 random items
+                </button>
+                <button data-gooey-insert-multiple on:click={insertMultiple}>
+                    Insert 10 random items
+                </button>
+                <button data-gooey-remove-multiple on:click={removeMultiple}>
+                    Remove 10 random items
                 </button>
                 <button data-gooey-clear on:click={clearItems}>
                     Clear items
@@ -178,6 +208,11 @@ if (mainEl) {
         add: document.querySelector('[data-gooey-add]'),
         updateAll: document.querySelector('[data-gooey-update-all]'),
         updateSome: document.querySelector('[data-gooey-update-some]'),
+        replaceMultiple: document.querySelector(
+            '[data-gooey-replace-multiple]'
+        ),
+        insertMultiple: document.querySelector('[data-gooey-insert-multiple]'),
+        removeMultiple: document.querySelector('[data-gooey-remove-multiple]'),
         clear: document.querySelector('[data-gooey-clear]'),
     };
 
@@ -188,6 +223,12 @@ if (mainEl) {
         impl.updateSome?.dispatchEvent(new MouseEvent('click'));
         await new Promise((resolve) => setTimeout(resolve, 0));
         impl.updateAll?.dispatchEvent(new MouseEvent('click'));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        impl.replaceMultiple?.dispatchEvent(new MouseEvent('click'));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        impl.insertMultiple?.dispatchEvent(new MouseEvent('click'));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        impl.removeMultiple?.dispatchEvent(new MouseEvent('click'));
         await new Promise((resolve) => setTimeout(resolve, 0));
         impl.clear?.dispatchEvent(new MouseEvent('click'));
         await new Promise((resolve) => setTimeout(resolve, 0));
