@@ -46,6 +46,7 @@ export function mount(
     // - For onMount lifecycles to be able to observe nodes in the DOM, onMount needs to happen __after__ commit
     // - ref={} callbacks should be equivalent to onMount
     // - refRaw={} callbacks should be equivalent to retain() (NEEDS BETTER NAME)
+    // Overall, it really sucks that we have to flush at all here.
     root.setMounted(true);
     flush();
     return () => {

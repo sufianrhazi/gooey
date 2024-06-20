@@ -5,7 +5,6 @@ import { calc } from './calc';
 import { collection } from './collection';
 import { flush, removeRenderNode, reset, subscribe } from './engine';
 import { field } from './field';
-import * as log from './log';
 import { model } from './model';
 import { mount } from './mount';
 import { renderJSXNode } from './renderjsx';

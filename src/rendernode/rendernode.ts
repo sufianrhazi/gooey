@@ -4,7 +4,7 @@ import { dirtyRenderNode, release, removeRenderNode, retain } from '../engine';
 import * as log from '../log';
 import { SlotSizes } from '../slotsizes';
 import { HTML_NAMESPACE } from '../xmlnamespace';
-import { RenderNodeCommitPhase } from './constants';
+import type { RenderNodeCommitPhase } from './constants';
 
 export type NodeEmitter = (event: ArrayEvent<Node>) => void;
 

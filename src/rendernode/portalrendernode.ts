@@ -29,9 +29,9 @@ export function PortalRenderNode(
 ): RenderNode {
     let childEvents: ArrayEvent<Node>[] = [];
     let committedNodes: Node[] = [];
-    const liveNodes: Node[] = [];
-    const liveNodeSet: Set<Node> = new Set();
-    const deadNodeSet: Set<Node> = new Set();
+    let liveNodes: Node[] = [];
+    let liveNodeSet: Set<Node> = new Set();
+    let deadNodeSet: Set<Node> = new Set();
     let mountState: MountState | undefined;
     let calculations: Map<string, Calculation<any>> | undefined;
     let calculationSubscriptions: Set<() => void> | undefined;
@@ -189,13 +189,20 @@ export function PortalRenderNode(
                     for (const calculation of calculations.values()) {
                         calculation.release();
                     }
+                    calculations = undefined;
                 }
                 if (calculationSubscriptions) {
                     for (const unsubscribe of calculationSubscriptions) {
                         unsubscribe();
                     }
                     calculationSubscriptions.clear();
+                    calculationSubscriptions = undefined;
                 }
+                childEvents = [];
+                committedNodes = [];
+                liveNodes = [];
+                liveNodeSet = new Set();
+                deadNodeSet = new Set();
             },
         },
         [childrenRenderNode],

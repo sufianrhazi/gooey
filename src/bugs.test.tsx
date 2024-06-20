@@ -1,6 +1,15 @@
 import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
 
-import Gooey, { calc, dict, flush, mount, reset, subscribe } from './index';
+import Gooey, {
+    calc,
+    dict,
+    field,
+    flush,
+    mount,
+    reset,
+    setLogLevel,
+    subscribe,
+} from './index';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
 
@@ -188,5 +197,41 @@ suite('dict / view bugs', () => {
             )
         );
         unmount();
+    });
+});
+
+suite('component bugs', () => {
+    test('re-mounting dead component triggers calculations in the right amount', () => {
+        const log: string[] = [];
+        let instance = 0;
+        const App = () => {
+            instance++;
+            const clicks = field(0);
+            return (
+                <button on:click={() => clicks.set(clicks.get() + 1)}>
+                    {calc(() => {
+                        const count = clicks.get();
+                        log.push(
+                            `instance ${instance} rendered clicks: ${count}`
+                        );
+                        return count;
+                    })}
+                </button>
+            );
+        };
+        const jsx = <App />;
+        assert.deepEqual([], log);
+        const unmount1 = mount(testRoot, jsx);
+        unmount1();
+        assert.deepEqual(['instance 1 rendered clicks: 0'], log);
+        const unmount2 = mount(testRoot, jsx);
+        unmount2();
+        // For future reference: the prior bug was that we did not clear the
+        // owned references correctly, so when the JSX was revived on second
+        // mount, it would own the calc() created in its first mount.
+        assert.deepEqual(
+            ['instance 1 rendered clicks: 0', 'instance 2 rendered clicks: 0'],
+            log
+        );
     });
 });

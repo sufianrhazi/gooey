@@ -64,7 +64,7 @@ export function ComponentRenderNode<TProps>(
     let onMountCallbacks: undefined | (() => (() => void) | void)[];
     let onUnmountCallbacks: undefined | (() => void)[];
     let onDestroyCallbacks: undefined | (() => void)[];
-    const owned: Set<Retainable> = new Set();
+    let owned: Set<Retainable> = new Set();
     let errorHandler: undefined | ((e: Error) => RenderNode | null);
     let needsMount = false;
 
@@ -147,33 +147,47 @@ export function ComponentRenderNode<TProps>(
     const renderNode = new RenderNode(
         {
             onAlive: () => {
-                const result = ensureResult();
-                if (result instanceof Error) {
+                const componentResult = ensureResult();
+                if (componentResult instanceof Error) {
                     log.warn('Unhandled exception on detached component', {
-                        error: result,
+                        error: componentResult,
                         renderNode: renderNode,
                     });
                 } else {
-                    renderNode.spliceChildren(0, 1, [result]);
+                    componentResult.retain();
                 }
             },
             onDestroy: () => {
+                if (result && !(result instanceof Error)) {
+                    result.release();
+                }
                 if (onDestroyCallbacks) {
                     for (const callback of onDestroyCallbacks) {
                         callback();
                     }
                 }
 
-                result = undefined;
-
                 for (const item of owned) {
                     release(item);
                 }
+
+                owned = new Set();
+                onMountCallbacks = undefined;
+                onUnmountCallbacks = undefined;
+                onDestroyCallbacks = undefined;
+                result = undefined;
+                errorHandler = undefined;
+                needsMount = false;
             },
             onAttach: (nodeEmitter, errorEmitter) => {
                 if (result instanceof Error) {
                     errorEmitter(result);
+                } else if (result) {
+                    renderNode.spliceChildren(0, 1, [result]);
                 }
+            },
+            onDetach: (nodeEmitter, errorEmitter) => {
+                renderNode.spliceChildren(0, 1, [emptyRenderNode]);
             },
             onError: (error: Error) => {
                 if (errorHandler) {

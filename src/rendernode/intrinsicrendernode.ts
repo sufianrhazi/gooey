@@ -1,19 +1,19 @@
+import type { ArrayEvent } from '../arrayevent';
+import { ArrayEventType } from '../arrayevent';
+import { Calculation } from '../calc';
+import { flush } from '../engine';
+import { Field } from '../field';
+import { assignProp, setAttribute } from '../jsx';
+import * as log from '../log';
 import { webComponentTagConstructors } from '../webcomponents';
 import {
-    HTML_NAMESPACE,
     ELEMENT_NAMESPACE_GUESS,
     elementNamespaceTransitionMap,
+    HTML_NAMESPACE,
 } from '../xmlnamespace';
-import { PortalRenderNode } from './portalrendernode';
 import { ArrayRenderNode } from './arrayrendernode';
-import { setAttribute, assignProp } from '../jsx';
-import { flush } from '../engine';
-import { Calculation } from '../calc';
-import { Field } from '../field';
-import type { ArrayEvent} from '../arrayevent';
-import { ArrayEventType } from '../arrayevent';
+import { PortalRenderNode } from './portalrendernode';
 import { RenderNode } from './rendernode';
-import * as log from '../log';
 
 const EventProps = [
     { prefix: 'on:', param: false },
@@ -297,19 +297,23 @@ export function IntrinsicRenderNode(
                     for (const calculation of boundAttributes.values()) {
                         calculation.release();
                     }
+                    boundAttributes = undefined;
                 }
                 if (subscriptions) {
                     for (const unsubscribe of subscriptions) {
                         unsubscribe();
                     }
-                    subscriptions.clear();
+                    subscriptions = undefined;
                 }
 
                 element = undefined;
+                elementXmlNamespace = undefined;
                 if (portalRenderNode) {
                     renderNode.disown(portalRenderNode);
                     portalRenderNode = undefined;
                 }
+
+                detachedError = undefined;
             },
         },
         [],
