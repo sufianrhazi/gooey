@@ -480,9 +480,15 @@ suite('CalculationRenderNode', () => {
         const node = CalculationRenderNode(greet);
         node.retain();
         const events: any[] = [];
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
 
         flush();
 
@@ -503,9 +509,15 @@ suite('CalculationRenderNode', () => {
         const node = CalculationRenderNode(greet);
         node.retain();
         const events: any[] = [];
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
 
         flush();
 
@@ -544,9 +556,15 @@ suite('CalculationRenderNode', () => {
         const node = CalculationRenderNode(greet);
         node.retain();
         const events: any[] = [];
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         node.detach();
 
         flush();
@@ -577,9 +595,15 @@ suite('CalculationRenderNode', () => {
         const node = CalculationRenderNode(greet);
         node.retain();
         const events: any[] = [];
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         node.detach();
 
         flush();
@@ -587,9 +611,15 @@ suite('CalculationRenderNode', () => {
         state.name = 'goodbye';
         flush();
 
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
 
         assert.is('splice', events[0].type);
         assert.is(0, events[0].index);
@@ -620,9 +650,15 @@ suite('CalculationRenderNode', () => {
         tracer.log('0: retain');
         node.retain();
         tracer.log('1: attach');
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         tracer.log('2: mount');
         node.setMounted(true);
         tracer.log('3: unmount');
@@ -634,9 +670,15 @@ suite('CalculationRenderNode', () => {
         tracer.log('6: detach');
         node.detach();
         tracer.log('7: attach');
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         tracer.log('8: attach');
         node.detach();
         tracer.log('9: release');
@@ -681,9 +723,15 @@ suite('CalculationRenderNode', () => {
         });
         const node = CalculationRenderNode(constantCalc);
         node.retain();
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         assert.is(2, events.length);
         assert.is('calc', events[0]);
         assert.isTruthy(events[1] instanceof Error);
@@ -702,9 +750,15 @@ suite('CalculationRenderNode', () => {
         });
         const node = CalculationRenderNode(constantCalc);
         node.retain();
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
 
         assert.is(2, events.length);
         assert.is('calc', events[0]);
@@ -734,9 +788,15 @@ suite('FieldRenderNode', () => {
         const node = FieldRenderNode(greeting);
         node.retain();
         const events: any[] = [];
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
 
         flush();
 
@@ -753,9 +813,15 @@ suite('FieldRenderNode', () => {
         const node = FieldRenderNode(greeting);
         node.retain();
         const events: any[] = [];
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
 
         flush();
 
@@ -789,9 +855,15 @@ suite('FieldRenderNode', () => {
         const node = FieldRenderNode(greeting);
         node.retain();
         const events: any[] = [];
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         node.detach();
 
         flush();
@@ -818,9 +890,15 @@ suite('FieldRenderNode', () => {
         const node = FieldRenderNode(greeting);
         node.retain();
         const events: any[] = [];
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         node.detach();
 
         flush();
@@ -828,9 +906,15 @@ suite('FieldRenderNode', () => {
         greeting.set('goodbye');
         flush();
 
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
 
         assert.is('splice', events[0].type);
         assert.is(0, events[0].index);
@@ -859,9 +943,15 @@ suite('FieldRenderNode', () => {
         tracer.log('0: retain');
         node.retain();
         tracer.log('1: attach');
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         tracer.log('2: mount');
         node.setMounted(true);
         tracer.log('3: unmount');
@@ -873,9 +963,15 @@ suite('FieldRenderNode', () => {
         tracer.log('6: detach');
         node.detach();
         tracer.log('7: attach');
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         tracer.log('8: attach');
         node.detach();
         tracer.log('9: release');
@@ -917,9 +1013,15 @@ suite('ArrayRenderNode', () => {
         const node = ArrayRenderNode([tracer1, tracer2, tracer3]);
         const events: any[] = [];
         node.retain();
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         const div1 = document.createElement('div');
         const div2 = document.createElement('div');
         const div3 = document.createElement('div');
@@ -982,7 +1084,8 @@ suite('ArrayRenderNode', () => {
 
     test('standard lifecycle on mount', () => {
         const tracer = new TracingRenderNode();
-        const node = ArrayRenderNode([tracer]);
+        const tracer2 = new TracingRenderNode();
+        const node = ArrayRenderNode([tracer, tracer2]);
         mount(testRoot, node)();
         assert.deepEqual(
             [
@@ -999,7 +1102,8 @@ suite('ArrayRenderNode', () => {
 
     test('can be unmounted and remounted while retained', () => {
         const tracer = new TracingRenderNode();
-        const node = ArrayRenderNode([tracer]);
+        const tracer2 = new TracingRenderNode();
+        const node = ArrayRenderNode([tracer, tracer2]);
         node.retain();
         mount(testRoot, node)();
         mount(testRoot, node)();
@@ -1028,9 +1132,15 @@ suite('CollectionRenderNode', () => {
         const node = CollectionRenderNode(items);
         node.retain();
         const events: any[] = [];
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
 
         assert.is(2, events.length);
         assert.is('splice', events[0].type);
@@ -1050,9 +1160,15 @@ suite('CollectionRenderNode', () => {
         const node = CollectionRenderNode(items);
         node.retain();
         const events: any[] = [];
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
 
         events.splice(0, events.length);
         items.unshift('first');
@@ -1091,9 +1207,15 @@ suite('CollectionRenderNode', () => {
         const node = CollectionRenderNode(items);
         node.retain();
         const events: any[] = [];
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         node.detach();
 
         events.splice(0, events.length);
@@ -1103,9 +1225,15 @@ suite('CollectionRenderNode', () => {
         flush();
 
         assert.is(0, events.length);
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
 
         assert.is(5, events.length);
         assert.is('splice', events[0].type);
@@ -1151,9 +1279,15 @@ suite('CollectionRenderNode', () => {
         });
         const node = CalculationRenderNode(constantCalc);
         node.retain();
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         assert.is(2, events.length);
         assert.is('calc', events[0]);
         assert.isTruthy(events[1] instanceof Error);
@@ -1172,9 +1306,15 @@ suite('CollectionRenderNode', () => {
         });
         const node = CalculationRenderNode(constantCalc);
         node.retain();
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
 
         assert.is(2, events.length);
         assert.is('calc', events[0]);
@@ -1209,9 +1349,15 @@ suite('CollectionRenderNode', () => {
         });
         const node = CalculationRenderNode(constantCalc);
         node.retain();
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         node.detach();
         events = [];
 
@@ -1222,9 +1368,15 @@ suite('CollectionRenderNode', () => {
         assert.is('calc', events[0]);
         events = [];
 
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
 
         assert.is(1, events.length);
         assert.isTruthy(events[0] instanceof Error);
@@ -1238,7 +1390,15 @@ suite('CollectionRenderNode', () => {
         const node = CollectionRenderNode(items);
         const events: any[] = [];
         node.retain();
-        node.attach((event) => events.push(event), HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         node.setMounted(true);
         assert.deepEqual(
             ['alive', 'attach', 'setMounted:true'],
@@ -1287,7 +1447,15 @@ suite('CollectionRenderNode', () => {
         const node = CollectionRenderNode(items);
         const events: any[] = [];
         node.retain();
-        node.attach((event) => events.push(event), HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         assert.deepEqual(['alive', 'attach'], tracer1.events);
         assert.deepEqual([], tracer2.events);
         items.push(tracer2);
@@ -1345,9 +1513,15 @@ suite('ComponentRenderNode', () => {
         events.push('0:retain');
         node.retain();
         events.push('1:attach');
-        node.attach((event) => {
-            events.push(event);
-        }, HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
         events.push('2:onMount');
         node.setMounted(true);
         flush();
@@ -1495,7 +1669,15 @@ suite('IntrinsicObserverRenderNode', () => {
             ArrayRenderNode([tracer])
         );
         node.retain();
-        node.attach((event) => tracer.log(event), HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                tracer.log(event);
+            },
+            (error) => {
+                tracer.log(error);
+            },
+            HTML_NAMESPACE
+        );
         node.setMounted(true);
         node.setMounted(false);
         node.detach();
@@ -1527,7 +1709,15 @@ suite('IntrinsicObserverRenderNode', () => {
         const div = document.createElement('div');
 
         node.retain();
-        node.attach((event) => tracer.log(event), HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                tracer.log(event);
+            },
+            (error) => {
+                tracer.log(error);
+            },
+            HTML_NAMESPACE
+        );
         tracer.emitter?.({
             type: ArrayEventType.SPLICE,
             index: 0,
@@ -1588,7 +1778,15 @@ suite('IntrinsicObserverRenderNode', () => {
         const div = document.createElement('div');
 
         node.retain();
-        node.attach((event) => tracer.log(event), HTML_NAMESPACE);
+        node.attach(
+            (event) => {
+                tracer.log(event);
+            },
+            (error) => {
+                tracer.log(error);
+            },
+            HTML_NAMESPACE
+        );
         node.setMounted(true);
 
         tracer.emitter?.({

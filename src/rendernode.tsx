@@ -206,7 +206,9 @@ export class ClassComponent<TProps = EmptyProps>
     onError?(e: Error): JSX.Element | null;
 }
 
-export type NodeEmitter = (event: ArrayEvent<Node> | Error) => void;
+export type NodeEmitter = (event: ArrayEvent<Node>) => void;
+
+export type ErrorEmitter = (error: Error) => void;
 
 export enum RenderNodeCommitPhase {
     COMMIT_UNMOUNT,
@@ -252,11 +254,15 @@ interface RenderNodeHandlers {
     /**
      * Called just after the RenderNode is attached to a parent RenderNode -- it may start emitting ArrayEvent<Node> | Error events
      */
-    onAttach?: (emitter: NodeEmitter, parentXmlNamespace: string) => void;
+    onAttach?: (
+        nodeEmitter: NodeEmitter,
+        errorEmitter: ErrorEmitter,
+        parentXmlNamespace: string
+    ) => void;
     /**
      * Called just before the RenderNode is detached from a parent RenderNode -- it may synchronously emit ArrayEvent<Node> | Error events, but cannot emit after it returns.
      */
-    onDetach?: (emitter: NodeEmitter) => void;
+    onDetach?: (nodeEmitter: NodeEmitter, errorEmitter: ErrorEmitter) => void;
     /**
      * Called just after the RenderNode is mounted to the DOM (specifically has been attached transitively to a mount() point)
      */
@@ -296,8 +302,9 @@ interface RenderNodeHandlers {
 export class RenderNode implements Retainable {
     declare _commitPhase: RenderNodeCommitPhase;
     declare handlers: RenderNodeHandlers;
-    declare emitter?: NodeEmitter | undefined;
-    declare isMounted: boolean;
+    declare nodeEmitter: NodeEmitter | undefined;
+    declare errorEmitter: ErrorEmitter | undefined;
+    declare _isMounted: boolean;
     declare slotSizes: SlotSizes<RenderNode>;
     declare parentXmlNamespace: string;
 
@@ -308,12 +315,38 @@ export class RenderNode implements Retainable {
     ) {
         this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
         this.handlers = handlers;
-        this.isMounted = false;
+        this._isMounted = false;
         this.slotSizes = new SlotSizes(children);
         this.parentXmlNamespace = HTML_NAMESPACE;
+        this.nodeEmitter = undefined;
+        this.errorEmitter = undefined;
 
         this.__debugName = debugName ?? `custom`;
         this.__refcount = 0;
+    }
+
+    isAttached() {
+        return !!(this.nodeEmitter && this.errorEmitter);
+    }
+
+    isMounted() {
+        return this._isMounted;
+    }
+
+    emitEvent(event: ArrayEvent<Node>) {
+        log.assert(
+            this.nodeEmitter,
+            'RenderNode attempted to emit event when detached'
+        );
+        this.nodeEmitter(event);
+    }
+
+    emitError(error: Error) {
+        log.assert(
+            this.errorEmitter,
+            'RenderNode attempted to emit error when detached'
+        );
+        this.errorEmitter(error);
     }
 
     commit(phase: RenderNodeCommitPhase) {
@@ -339,22 +372,22 @@ export class RenderNode implements Retainable {
 
     sortChildren(from: number, indexes: number[]) {
         const event = this.slotSizes.sort(from, indexes);
-        this.emitter?.(event);
+        this.nodeEmitter?.(event);
     }
 
     moveChildren(from: number, count: number, to: number) {
         const event = this.slotSizes.move(from, count, to);
-        this.emitter?.(event);
+        this.nodeEmitter?.(event);
     }
 
     spliceChildren(index: number, count: number, children: RenderNode[]) {
         // unmount & detach children before removing from slots (so they may emit their cleanup events)
         for (let i = index; i < index + count; ++i) {
             const child = this.slotSizes.items[i];
-            if (this.isMounted) {
+            if (this._isMounted) {
                 child.setMounted(false);
             }
-            if (this.emitter && this.parentXmlNamespace) {
+            if (this.nodeEmitter) {
                 child.detach();
             }
         }
@@ -364,25 +397,21 @@ export class RenderNode implements Retainable {
         }
         for (const child of children) {
             own(this, child);
-            if (this.emitter && this.parentXmlNamespace) {
+            if (this.nodeEmitter && this.parentXmlNamespace) {
                 child.attach(
-                    (e) => this.handleChildEvent(child, e),
+                    (event) => this.handleChildEvent(child, event),
+                    this.handleError,
                     this.parentXmlNamespace
                 );
             }
-            if (this.isMounted) {
+            if (this._isMounted) {
                 child.setMounted(true);
             }
         }
     }
 
-    private handleChildEvent(
-        child: RenderNode,
-        event: ArrayEvent<Node> | Error
-    ) {
-        if (event instanceof Error) {
-            this.handleEvent(event);
-        } else if (!this.handlers.onChildEvent?.(child, event)) {
+    private handleChildEvent(child: RenderNode, event: ArrayEvent<Node>) {
+        if (!this.handlers.onChildEvent?.(child, event)) {
             this.handleEvent(
                 event instanceof Error
                     ? event
@@ -391,47 +420,63 @@ export class RenderNode implements Retainable {
         }
     }
 
-    private handleEvent(event: ArrayEvent<Node> | Error) {
-        if (event instanceof Error) {
-            if (!this.handlers.onError?.(event)) {
-                if (this.emitter) {
-                    this.emitter(event);
-                } else {
-                    log.warn('Unhandled error on detached RenderNode', event);
-                }
-            }
-            return;
-        }
+    private handleEvent(event: ArrayEvent<Node>) {
         if (!this.handlers.onEvent?.(event)) {
-            log.assert(this.emitter, 'Unexpected event on detached RenderNode');
-            this.emitter(event);
+            log.assert(
+                this.nodeEmitter,
+                'Unexpected event on detached RenderNode'
+            );
+            this.nodeEmitter(event);
         }
     }
 
+    private handleError = (event: Error) => {
+        if (!this.handlers.onError?.(event)) {
+            if (this.errorEmitter) {
+                this.errorEmitter(event);
+            } else {
+                log.warn('Unhandled error on detached RenderNode', event);
+            }
+        }
+    };
+
     detach() {
-        log.assert(this.emitter, 'double detached');
-        this.handlers.onDetach?.(this.emitter);
+        log.assert(this.nodeEmitter && this.errorEmitter, 'double detached');
+        this.handlers.onDetach?.(this.nodeEmitter, this.errorEmitter);
         for (const child of this.slotSizes.items) {
             child.detach();
         }
-        this.emitter = undefined;
+        this.nodeEmitter = undefined;
+        this.errorEmitter = undefined;
         this.parentXmlNamespace = HTML_NAMESPACE;
     }
 
-    attach(emitter: NodeEmitter, parentXmlNamespace: string) {
-        log.assert(!this.emitter, 'Invariant: double attached');
-        this.emitter = emitter;
+    attach(
+        nodeEmitter: NodeEmitter,
+        errorEmitter: ErrorEmitter,
+        parentXmlNamespace: string
+    ) {
+        log.assert(
+            !this.nodeEmitter && !this.errorEmitter,
+            'Invariant: double attached'
+        );
+        this.nodeEmitter = nodeEmitter;
+        this.errorEmitter = errorEmitter;
         this.parentXmlNamespace = parentXmlNamespace;
         for (const child of this.slotSizes.items) {
-            child.attach((event) => {
-                this.handleChildEvent(child, event);
-            }, parentXmlNamespace);
+            child.attach(
+                (event) => {
+                    this.handleChildEvent(child, event);
+                },
+                this.handleError,
+                parentXmlNamespace
+            );
         }
-        this.handlers.onAttach?.(emitter, parentXmlNamespace);
+        this.handlers.onAttach?.(nodeEmitter, errorEmitter, parentXmlNamespace);
     }
 
     setMounted(isMounted: boolean) {
-        this.isMounted = isMounted;
+        this._isMounted = isMounted;
         for (const child of this.slotSizes.items) {
             child.setMounted(isMounted);
         }
@@ -464,7 +509,8 @@ export class RenderNode implements Retainable {
             disown(this, child);
         }
         removeRenderNode(this);
-        this.emitter = undefined;
+        this.nodeEmitter = undefined;
+        this.errorEmitter = undefined;
     }
 }
 
@@ -499,16 +545,16 @@ export function TextRenderNode(str: string, debugName?: string): RenderNode {
     const textNode = document.createTextNode(str);
     return new RenderNode(
         {
-            onAttach: (emitter) => {
-                emitter({
+            onAttach: (nodeEmitter) => {
+                nodeEmitter({
                     type: ArrayEventType.SPLICE,
                     index: 0,
                     count: 0,
                     items: [textNode],
                 });
             },
-            onDetach: (emitter) => {
-                emitter({
+            onDetach: (nodeEmitter) => {
+                nodeEmitter({
                     type: ArrayEventType.SPLICE,
                     index: 0,
                     count: 1,
@@ -529,16 +575,16 @@ export function TextRenderNode(str: string, debugName?: string): RenderNode {
 export function ForeignRenderNode(node: Node, debugName?: string): RenderNode {
     return new RenderNode(
         {
-            onAttach: (emitter) => {
-                emitter({
+            onAttach: (nodeEmitter) => {
+                nodeEmitter({
                     type: ArrayEventType.SPLICE,
                     index: 0,
                     count: 0,
                     items: [node],
                 });
             },
-            onDetach: (emitter) => {
-                emitter({
+            onDetach: (nodeEmitter) => {
+                nodeEmitter({
                     type: ArrayEventType.SPLICE,
                     index: 0,
                     count: 1,
@@ -590,36 +636,29 @@ export function IntrinsicRenderNode(
     let subscriptions: undefined | Set<() => void>;
     let element: undefined | Element;
     let elementXmlNamespace: undefined | string;
-    let isMounted = false;
     let portalRenderNode: undefined | RenderNode;
-    let attachedState:
-        | undefined
-        | {
-              emitter: NodeEmitter;
-              parentXmlNamespace: string;
-          };
     let detachedError: undefined | Error;
 
-    function handleEvent(event: ArrayEvent<Node> | Error) {
-        if (event instanceof Error) {
-            if (attachedState) {
-                // Pass up errors while attached
-                attachedState.emitter(event);
-            } else {
-                // We are capable of handling errors while detached
-                log.warn(
-                    'Unhandled error on detached IntrinsicRenderNode',
-                    debugName,
-                    event
-                );
-                detachedError = event;
-                return true;
-            }
+    function handleEvent(event: ArrayEvent<Node>) {
+        log.assert(
+            false,
+            'unexpected event in IntrinsicRenderNode from PortalRenderNode'
+        );
+    }
+
+    function handleError(error: Error) {
+        if (renderNode.isAttached()) {
+            // Pass up errors while attached
+            renderNode.emitError(error);
         } else {
-            log.assert(
-                false,
-                'unexpected event in IntrinsicRenderNode from PortalRenderNode'
+            // We are capable of handling errors while detached
+            log.warn(
+                'Unhandled error on detached IntrinsicRenderNode',
+                debugName,
+                error
             );
+            detachedError = error;
+            return true;
         }
     }
 
@@ -629,7 +668,7 @@ export function IntrinsicRenderNode(
             element = createElement(xmlNamespace);
 
             if (portalRenderNode) {
-                if (isMounted) {
+                if (renderNode.isMounted()) {
                     portalRenderNode.setMounted(false);
                 }
                 portalRenderNode.detach();
@@ -641,8 +680,12 @@ export function IntrinsicRenderNode(
                 props?.ref
             );
             own(renderNode, portalRenderNode);
-            portalRenderNode.attach(handleEvent, childXmlNamespace);
-            if (isMounted) {
+            portalRenderNode.attach(
+                handleEvent,
+                handleError,
+                childXmlNamespace
+            );
+            if (renderNode.isMounted()) {
                 portalRenderNode.setMounted(true);
             }
         }
@@ -785,10 +828,9 @@ export function IntrinsicRenderNode(
 
     const renderNode = new RenderNode(
         {
-            onAttach: (emitter, parentXmlNamespace) => {
-                attachedState = { emitter, parentXmlNamespace };
+            onAttach: (nodeEmitter, errorEmitter, parentXmlNamespace) => {
                 if (detachedError) {
-                    emitter(detachedError);
+                    errorEmitter(detachedError);
                     return;
                 }
                 const namespaceTransition =
@@ -802,27 +844,24 @@ export function IntrinsicRenderNode(
 
                 element = ensureElement(xmlNamespace, childXmlNamespace);
 
-                emitter({
+                nodeEmitter({
                     type: ArrayEventType.SPLICE,
                     index: 0,
                     count: 0,
                     items: [element],
                 });
             },
-            onDetach: (emitter) => {
-                emitter({
+            onDetach: (nodeEmitter) => {
+                nodeEmitter({
                     type: ArrayEventType.SPLICE,
                     index: 0,
                     count: 1,
                 });
-                attachedState = undefined;
             },
             onMount: () => {
-                isMounted = true;
                 portalRenderNode?.setMounted(true);
             },
             onUnmount: () => {
-                isMounted = false;
                 portalRenderNode?.setMounted(false);
             },
             onCommit: (phase) => {
@@ -1094,7 +1133,6 @@ export function CalculationRenderNode(
     let calculationError: Error | undefined;
     let calculationSubscription: (() => void) | undefined;
     let childRenderNode: RenderNode = emptyRenderNode;
-    let nodeEmitter: undefined | NodeEmitter;
 
     function subscribe(
         error: undefined | Error,
@@ -1105,8 +1143,8 @@ export function CalculationRenderNode(
         renderNode.spliceChildren(0, 1, []);
         if (error) {
             calculationError = error;
-            if (nodeEmitter) {
-                nodeEmitter(error);
+            if (renderNode.isAttached()) {
+                renderNode.emitError(error);
             } else {
                 log.warn(
                     'Unhandled error on detached CalculationRenderNode',
@@ -1124,13 +1162,9 @@ export function CalculationRenderNode(
 
     const renderNode = new RenderNode(
         {
-            onDetach: () => {
-                nodeEmitter = undefined;
-            },
-            onAttach: (emitter) => {
-                nodeEmitter = emitter;
+            onAttach: (nodeEmitter, errorEmitter) => {
                 if (calculationError) {
-                    emitter(calculationError);
+                    errorEmitter(calculationError);
                 }
             },
             clone: () => {
@@ -1157,7 +1191,6 @@ export function CalculationRenderNode(
                 calculationSubscription = undefined;
                 disown(renderNode, childRenderNode);
                 childRenderNode = emptyRenderNode;
-                nodeEmitter = undefined;
             },
         },
         [childRenderNode],
@@ -1338,13 +1371,18 @@ export function mount(
     );
     retain(root);
     let syncError: undefined | Error;
-    root.attach((event) => {
-        if (event instanceof Error) {
-            syncError = event;
-            log.error('Unhandled mount error', event);
-            return;
-        }
-    }, (target instanceof Element ? target.namespaceURI : target.host.namespaceURI) ?? HTML_NAMESPACE);
+    root.attach(
+        (event) => {
+            log.assert(false, 'Unexpected event emitted by Portal', event);
+        },
+        (error) => {
+            syncError = error;
+            log.error('Unhandled mount error', error);
+        },
+        (target instanceof Element
+            ? target.namespaceURI
+            : target.host.namespaceURI) ?? HTML_NAMESPACE
+    );
     if (syncError) {
         release(root);
         throw syncError;
@@ -1454,11 +1492,15 @@ export function defineCustomElement<
                 this._childrenField.set(children);
             }
             this._portalRenderNode?.retain();
-            this._portalRenderNode?.attach((event) => {
-                if (event instanceof Error) {
-                    log.error('Unhandled web component mount error', event);
-                }
-            }, this.namespaceURI ?? HTML_NAMESPACE);
+            this._portalRenderNode?.attach(
+                (event) => {
+                    log.assert(false, 'Unexpected event from Portal', event);
+                },
+                (error) => {
+                    log.error('Unhandled web component mount error', error);
+                },
+                this.namespaceURI ?? HTML_NAMESPACE
+            );
         }
 
         retain() {
@@ -1726,9 +1768,9 @@ export function ComponentRenderNode<TProps>(
                     release(item);
                 }
             },
-            onAttach: (emitter) => {
+            onAttach: (nodeEmitter, errorEmitter) => {
                 if (result instanceof Error) {
-                    emitter(result);
+                    errorEmitter(result);
                 }
             },
             onError: (error: Error) => {
@@ -2184,9 +2226,9 @@ export function WebComponentRenderNode<
                 }
                 owned.clear();
             },
-            onAttach: (emitter) => {
+            onAttach: (nodeEmitter, errorEmitter) => {
                 if (result instanceof Error) {
-                    emitter(result);
+                    errorEmitter(result);
                 }
             },
             onError: (error: Error) => {
