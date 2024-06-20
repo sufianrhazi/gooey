@@ -1,5 +1,4 @@
 import { applyArrayEvent, ArrayEventType } from '../arrayevent';
-import { dirtyRenderNode } from '../engine';
 import { RenderNodeCommitPhase } from './constants';
 import { RenderNode } from './rendernode';
 
@@ -41,7 +40,8 @@ export function IntrinsicObserverRenderNode(
                         removedNode,
                         IntrinsicObserverEventType.UNMOUNT
                     );
-                    dirtyRenderNode(renderNode);
+                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_MOUNT);
+                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_UNMOUNT);
                 }
                 if (event.type === ArrayEventType.SPLICE && event.items) {
                     for (const addedNode of event.items) {
@@ -50,7 +50,8 @@ export function IntrinsicObserverRenderNode(
                             IntrinsicObserverEventType.MOUNT
                         );
                     }
-                    dirtyRenderNode(renderNode);
+                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_MOUNT);
+                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_UNMOUNT);
                 }
             },
             clone: () => {
@@ -64,13 +65,15 @@ export function IntrinsicObserverRenderNode(
             onMount: () => {
                 for (const node of nodes) {
                     pendingEvent.set(node, IntrinsicObserverEventType.MOUNT);
-                    dirtyRenderNode(renderNode);
+                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_MOUNT);
+                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_UNMOUNT);
                 }
             },
             onUnmount: () => {
                 for (const node of nodes) {
                     pendingEvent.set(node, IntrinsicObserverEventType.UNMOUNT);
-                    dirtyRenderNode(renderNode);
+                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_MOUNT);
+                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_UNMOUNT);
                 }
             },
             onCommit: (phase) => {

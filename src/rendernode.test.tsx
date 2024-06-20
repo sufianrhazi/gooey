@@ -5,6 +5,7 @@ import { calc } from './calc';
 import { collection } from './collection';
 import { flush, removeRenderNode, reset, subscribe } from './engine';
 import { field } from './field';
+import * as log from './log';
 import { model } from './model';
 import { mount } from './mount';
 import { renderJSXNode } from './renderjsx';
@@ -222,18 +223,7 @@ suite('IntrinsicRenderNode', () => {
         const tracer = new TracingRenderNode();
         const intrinsic = IntrinsicRenderNode('div', {}, tracer);
         mount(testRoot, intrinsic);
-        assert.deepEqual(
-            [
-                'alive',
-                'attach',
-                'setMounted:true',
-                'commit:COMMIT_UNMOUNT',
-                'commit:COMMIT_DEL',
-                'commit:COMMIT_INS',
-                'commit:COMMIT_MOUNT',
-            ],
-            tracer.events
-        );
+        assert.deepEqual(['alive', 'attach', 'setMounted:true'], tracer.events);
     });
 
     test('child gets standard unmount lifecycle called on detach', () => {
@@ -242,17 +232,7 @@ suite('IntrinsicRenderNode', () => {
         const unmount = mount(testRoot, intrinsic);
         tracer.clear();
         unmount();
-        assert.deepEqual(
-            [
-                'setMounted:false',
-                'commit:COMMIT_UNMOUNT',
-                'commit:COMMIT_DEL',
-                'commit:COMMIT_INS',
-                'commit:COMMIT_MOUNT',
-                'dead',
-            ],
-            tracer.events
-        );
+        assert.deepEqual(['setMounted:false', 'dead'], tracer.events);
     });
 
     test('child can be repeatedly mounted / unmounted if intrinsic node retained', () => {
@@ -277,29 +257,13 @@ suite('IntrinsicRenderNode', () => {
                 'attach',
                 '1: mount',
                 'setMounted:true',
-                'commit:COMMIT_UNMOUNT',
-                'commit:COMMIT_DEL',
-                'commit:COMMIT_INS',
-                'commit:COMMIT_MOUNT',
                 '2: unmount',
                 'setMounted:false',
-                'commit:COMMIT_UNMOUNT',
-                'commit:COMMIT_DEL',
-                'commit:COMMIT_INS',
-                'commit:COMMIT_MOUNT',
                 '3: mount',
                 'setMounted:true',
-                'commit:COMMIT_UNMOUNT',
-                'commit:COMMIT_DEL',
-                'commit:COMMIT_INS',
-                'commit:COMMIT_MOUNT',
                 '4: release',
                 '5: unmount',
                 'setMounted:false',
-                'commit:COMMIT_UNMOUNT',
-                'commit:COMMIT_DEL',
-                'commit:COMMIT_INS',
-                'commit:COMMIT_MOUNT',
                 'dead',
             ],
             tracer.events
@@ -328,28 +292,12 @@ suite('IntrinsicRenderNode', () => {
                 'attach',
                 '1: mount',
                 'setMounted:true',
-                'commit:COMMIT_UNMOUNT',
-                'commit:COMMIT_DEL',
-                'commit:COMMIT_INS',
-                'commit:COMMIT_MOUNT',
                 '2: unmount',
                 'setMounted:false',
-                'commit:COMMIT_UNMOUNT',
-                'commit:COMMIT_DEL',
-                'commit:COMMIT_INS',
-                'commit:COMMIT_MOUNT',
                 '3: mount',
                 'setMounted:true',
-                'commit:COMMIT_UNMOUNT',
-                'commit:COMMIT_DEL',
-                'commit:COMMIT_INS',
-                'commit:COMMIT_MOUNT',
                 '4: unmount',
                 'setMounted:false',
-                'commit:COMMIT_UNMOUNT',
-                'commit:COMMIT_DEL',
-                'commit:COMMIT_INS',
-                'commit:COMMIT_MOUNT',
                 '5: release',
                 'dead',
             ],

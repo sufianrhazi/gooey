@@ -1,5 +1,5 @@
 import type { Retainable } from '../engine';
-import { dirtyRenderNode, release, retain, trackCreates } from '../engine';
+import { release, retain, trackCreates } from '../engine';
 import * as log from '../log';
 import { renderJSXNode } from '../renderjsx';
 import { wrapError } from '../util';
@@ -191,7 +191,7 @@ export function ComponentRenderNode<TProps>(
                     return;
                 }
                 needsMount = true;
-                dirtyRenderNode(renderNode);
+                renderNode.dirty(RenderNodeCommitPhase.COMMIT_MOUNT);
             },
             onUnmount: () => {
                 log.assert(result, 'Invariant: missing result');

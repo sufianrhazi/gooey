@@ -16,10 +16,8 @@ import Gooey, {
     reset,
     subscribe,
 } from './index';
-import type { Dyn ,
-    Component,
-    Model,
-    Ref} from './index';
+import type { Component, Dyn, Model, Ref } from './index';
+import * as log from './log';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
 
@@ -2971,11 +2969,8 @@ suite('IntrinsicObserver component', () => {
     });
 
     test('with collection children', () => {
+        log.setLogLevel('debug');
         const items = collection(['one', 'two', 'three']);
-        const nodes: {
-            node: Node;
-            event: 'mount' | 'unmount';
-        }[] = [];
         const elements: {
             text: string | null;
             event: 'mount' | 'unmount';
@@ -2984,9 +2979,6 @@ suite('IntrinsicObserver component', () => {
             testRoot,
             <div>
                 <IntrinsicObserver
-                    nodeCallback={(node: Node, event: 'mount' | 'unmount') =>
-                        nodes.push({ node, event })
-                    }
                     elementCallback={(
                         element: Element,
                         event: 'mount' | 'unmount'

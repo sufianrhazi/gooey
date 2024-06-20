@@ -1,7 +1,6 @@
 import type { ArrayEvent } from '../arrayevent';
 import { addArrayEvent, applyArrayEvent } from '../arrayevent';
 import type { Calculation } from '../calc';
-import { dirtyRenderNode } from '../engine';
 import * as log from '../log';
 import type { RefObjectOrCallback } from '../ref';
 import { Ref } from '../ref';
@@ -67,28 +66,24 @@ export function PortalRenderNode(
         {
             onEvent: (event: ArrayEvent<Node>) => {
                 addArrayEvent(childEvents, event);
-                // TODO: how do non-gooey RenderNodes participate in the commit lifecycle?
-                // Do we export dirtyRenderNode?
-                dirtyRenderNode(renderNode);
+                renderNode.dirty(RenderNodeCommitPhase.COMMIT_DEL);
+                renderNode.dirty(RenderNodeCommitPhase.COMMIT_INS);
                 return true;
             },
             onMount: () => {
                 if (refProp) {
-                    dirtyRenderNode(renderNode);
+                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_MOUNT);
                     mountState = MountState.NOTIFY_MOUNT;
                 }
             },
             onUnmount: () => {
                 if (refProp) {
-                    dirtyRenderNode(renderNode);
+                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_UNMOUNT);
                     mountState = MountState.NOTIFY_UNMOUNT;
                 }
             },
             onCommit: (phase: RenderNodeCommitPhase) => {
-                if (
-                    phase === RenderNodeCommitPhase.COMMIT_UNMOUNT &&
-                    childEvents.length > 0
-                ) {
+                if (childEvents.length > 0) {
                     // Prep received events
                     const toProcess = childEvents;
                     childEvents = [];

@@ -1,26 +1,10 @@
 import type { ArrayEvent } from '../arrayevent';
 import type { Retainable } from '../engine';
-import { release, removeRenderNode, retain } from '../engine';
+import { dirtyRenderNode, release, removeRenderNode, retain } from '../engine';
 import * as log from '../log';
 import { SlotSizes } from '../slotsizes';
 import { HTML_NAMESPACE } from '../xmlnamespace';
 import { RenderNodeCommitPhase } from './constants';
-
-function isNextRenderNodeCommitPhase(
-    commitPhase: RenderNodeCommitPhase,
-    nextPhase: RenderNodeCommitPhase
-) {
-    return (
-        (commitPhase === RenderNodeCommitPhase.COMMIT_MOUNT &&
-            nextPhase === RenderNodeCommitPhase.COMMIT_UNMOUNT) ||
-        (commitPhase === RenderNodeCommitPhase.COMMIT_UNMOUNT &&
-            nextPhase === RenderNodeCommitPhase.COMMIT_DEL) ||
-        (commitPhase === RenderNodeCommitPhase.COMMIT_DEL &&
-            nextPhase === RenderNodeCommitPhase.COMMIT_INS) ||
-        (commitPhase === RenderNodeCommitPhase.COMMIT_INS &&
-            nextPhase === RenderNodeCommitPhase.COMMIT_MOUNT)
-    );
-}
 
 export type NodeEmitter = (event: ArrayEvent<Node>) => void;
 
@@ -84,7 +68,7 @@ interface RenderNodeHandlers {
  * RenderNode: a virtual node in the tree
  */
 export class RenderNode implements Retainable {
-    declare _commitPhase: RenderNodeCommitPhase;
+    declare commitPhase: number;
     declare handlers: RenderNodeHandlers;
     declare nodeEmitter: NodeEmitter | undefined;
     declare errorEmitter: ErrorEmitter | undefined;
@@ -97,7 +81,7 @@ export class RenderNode implements Retainable {
         children: RenderNode[],
         debugName?: string
     ) {
-        this._commitPhase = RenderNodeCommitPhase.COMMIT_MOUNT;
+        this.commitPhase = 0;
         this.handlers = handlers;
         this._isMounted = false;
         this.slotSizes = new SlotSizes(children);
@@ -134,14 +118,13 @@ export class RenderNode implements Retainable {
     }
 
     commit(phase: RenderNodeCommitPhase) {
-        if (!isNextRenderNodeCommitPhase(this._commitPhase, phase)) {
-            return;
-        }
         for (const child of this.slotSizes.items) {
             child.commit(phase);
         }
-        this._commitPhase = phase;
-        this.handlers.onCommit?.(phase);
+        if (this.commitPhase & phase) {
+            this.commitPhase = this.commitPhase & ~phase;
+            this.handlers.onCommit?.(phase);
+        }
     }
 
     clone(props?: {}, children?: RenderNode[]): RenderNode {
@@ -295,6 +278,11 @@ export class RenderNode implements Retainable {
         removeRenderNode(this);
         this.nodeEmitter = undefined;
         this.errorEmitter = undefined;
+    }
+
+    dirty(phase: RenderNodeCommitPhase) {
+        this.commitPhase |= phase;
+        dirtyRenderNode(this, phase);
     }
 
     own(child: RenderNode) {

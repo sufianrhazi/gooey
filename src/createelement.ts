@@ -2,10 +2,11 @@ import { renderJSXChildren } from './renderjsx';
 import { ArrayRenderNode } from './rendernode/arrayrendernode';
 import type {
     Component,
-    FunctionComponent} from './rendernode/componentrendernode';
+    FunctionComponent,
+} from './rendernode/componentrendernode';
 import {
     ClassComponent,
-    ComponentRenderNode
+    ComponentRenderNode,
 } from './rendernode/componentrendernode';
 import { IntrinsicRenderNode } from './rendernode/intrinsicrendernode';
 import type { RenderNode } from './rendernode/rendernode';
@@ -44,8 +45,7 @@ export function classComponentToFunctionComponentRenderNode<TProps>(
             return instance.render();
         },
         props,
-        children,
-        Component.name
+        children
     );
 }
 

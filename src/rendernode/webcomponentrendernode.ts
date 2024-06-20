@@ -1,7 +1,7 @@
 import type { Dyn } from '../dyn';
 import { dynGet, dynSubscribe } from '../dyn';
 import type { Retainable } from '../engine';
-import { dirtyRenderNode, release, retain, trackCreates } from '../engine';
+import { release, retain, trackCreates } from '../engine';
 import type { Field } from '../field';
 import type { JSXNode } from '../jsx';
 import * as log from '../log';
@@ -360,7 +360,7 @@ export function WebComponentRenderNode<
                     return;
                 }
                 needsMount = true;
-                dirtyRenderNode(renderNode);
+                renderNode.dirty(RenderNodeCommitPhase.COMMIT_MOUNT);
             },
             onUnmount() {
                 log.assert(result, 'Invariant: missing result');
