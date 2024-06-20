@@ -1,6 +1,4 @@
-import type {
-    Processable,
-    Retainable} from './engine';
+import type { Processable, Retainable } from './engine';
 import {
     addHardEdge,
     addSoftEdge,
@@ -10,7 +8,7 @@ import {
     removeHardEdge,
     removeSoftEdge,
     removeVertex,
-    retain
+    retain,
 } from './engine';
 import type { Field } from './field';
 import type { SubscriptionEmitter } from './subscriptionemitter';

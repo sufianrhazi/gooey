@@ -135,9 +135,7 @@
  *       does not equal the prior cached value.
  */
 
-import type {
-    Processable,
-    Retainable} from './engine';
+import type { Processable, Retainable } from './engine';
 import {
     addHardEdge,
     addVertex,

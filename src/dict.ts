@@ -1,4 +1,4 @@
-import type { ArrayEvent} from './arrayevent';
+import type { ArrayEvent } from './arrayevent';
 import { addArrayEvent, ArrayEventType } from './arrayevent';
 import type { View, ViewImpl } from './collection';
 import { makeViewPrototype, ViewHandler } from './collection';

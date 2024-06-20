@@ -1,11 +1,5 @@
-import type {
-    Processable,
-    Retainable} from './engine';
-import {
-    addVertex,
-    markDirty,
-    removeVertex
-} from './engine';
+import type { Processable, Retainable } from './engine';
+import { addVertex, markDirty, removeVertex } from './engine';
 import * as log from './log';
 
 type SubscriptionEmitterHandler<TEmitEvent> = {

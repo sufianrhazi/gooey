@@ -1,6 +1,6 @@
 import { assert, suite, test } from '@srhazi/gooey-test';
 
-import type { ArrayEvent} from './arrayevent';
+import type { ArrayEvent } from './arrayevent';
 import { addArrayEvent, ArrayEventType } from './arrayevent';
 
 suite('addArrayEvent', () => {

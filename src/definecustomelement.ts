@@ -5,11 +5,8 @@ import { field } from './field';
 import * as log from './log';
 import { PortalRenderNode } from './rendernode/portalrendernode';
 import type { RenderNode } from './rendernode/rendernode';
-import type {
-    WebComponentOptions} from './rendernode/webcomponentrendernode';
-import {
-    WebComponentRenderNode,
-} from './rendernode/webcomponentrendernode';
+import type { WebComponentOptions } from './rendernode/webcomponentrendernode';
+import { WebComponentRenderNode } from './rendernode/webcomponentrendernode';
 import { webComponentTagConstructors } from './webcomponents';
 import { HTML_NAMESPACE } from './xmlnamespace';
 

@@ -6,7 +6,8 @@ import type {
     Collection,
     Component,
     LogLevel,
-    Model} from './index';
+    Model,
+} from './index';
 import Gooey, {
     calc,
     collection,

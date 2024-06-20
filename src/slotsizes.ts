@@ -1,12 +1,10 @@
-import {
-    applyMove,
-    applySort,
-    ArrayEventType,
-} from './arrayevent';
-import type { ArrayEvent ,
+import { applyMove, applySort, ArrayEventType } from './arrayevent';
+import type {
+    ArrayEvent,
     ArrayEventMove,
     ArrayEventSort,
-    ArrayEventSplice} from './arrayevent';
+    ArrayEventSplice,
+} from './arrayevent';
 import * as log from './log';
 
 export class SlotSizes<TEventSource> {

@@ -1,13 +1,11 @@
-import type {
-    Processable,
-    Retainable} from './engine';
+import type { Processable, Retainable } from './engine';
 import {
     addVertex,
     markDirty,
     notifyRead,
     release,
     removeVertex,
-    retain
+    retain,
 } from './engine';
 import * as log from './log';
 
