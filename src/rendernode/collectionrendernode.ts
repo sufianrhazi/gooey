@@ -2,7 +2,8 @@ import type { ArrayEvent } from '../arrayevent';
 import { ArrayEventType } from '../arrayevent';
 import type { Collection, View } from '../collection';
 import { untrackReads } from '../engine';
-import { RenderNode } from './rendernode';
+import type { RenderNode } from './rendernode';
+import { DynamicRenderNode } from './rendernode';
 
 export function CollectionRenderNode(
     renderJSXNode: (jsxNode: JSX.Node) => RenderNode,
@@ -29,7 +30,7 @@ export function CollectionRenderNode(
             }
         }
     }
-    const renderNode = new RenderNode(
+    const renderNode = new DynamicRenderNode(
         {
             onAlive: () => {
                 unsubscribe = collection.subscribe(handleEvent);

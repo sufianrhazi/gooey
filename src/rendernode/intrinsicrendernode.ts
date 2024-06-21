@@ -13,7 +13,8 @@ import {
 } from '../xmlnamespace';
 import { ArrayRenderNode } from './arrayrendernode';
 import { PortalRenderNode } from './portalrendernode';
-import { RenderNode } from './rendernode';
+import type { RenderNode } from './rendernode';
+import { emptyRenderNode, StaticRenderNode } from './rendernode';
 
 const EventProps = [
     { prefix: 'on:', param: false },
@@ -226,7 +227,7 @@ export function IntrinsicRenderNode(
         assignProp(element, prop, val);
     }
 
-    const renderNode = new RenderNode(
+    const renderNode = new StaticRenderNode(
         {
             onAttach: (nodeEmitter, errorEmitter, parentXmlNamespace) => {
                 if (detachedError) {
@@ -313,7 +314,7 @@ export function IntrinsicRenderNode(
                 detachedError = undefined;
             },
         },
-        [],
+        emptyRenderNode,
         debugName ?? `intrinsic(${tagName})`
     );
     return renderNode;

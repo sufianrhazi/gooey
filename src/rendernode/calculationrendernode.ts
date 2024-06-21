@@ -2,7 +2,8 @@ import type { Calculation } from '../calc';
 import { CalculationSubscribeWithPostAction } from '../calc';
 import * as log from '../log';
 import { wrapError } from '../util';
-import { emptyRenderNode, RenderNode } from './rendernode';
+import type { RenderNode } from './rendernode';
+import { emptyRenderNode, StaticRenderNode } from './rendernode';
 
 /**
  * Renders the result of a calculation
@@ -21,7 +22,7 @@ export function CalculationRenderNode(
         val: undefined | any,
         addPostAction: (postAction: () => void) => void
     ): void {
-        renderNode.spliceChildren(0, 1, []);
+        renderNode.setChild(emptyRenderNode);
         if (error) {
             calculationError = error;
             if (renderNode.isAttached()) {
@@ -35,12 +36,12 @@ export function CalculationRenderNode(
         } else {
             addPostAction(() => {
                 childRenderNode = renderJSXNode(val);
-                renderNode.spliceChildren(0, 0, [childRenderNode]);
+                renderNode.setChild(childRenderNode);
             });
         }
     }
 
-    const renderNode = new RenderNode(
+    const renderNode = new StaticRenderNode(
         {
             onAttach: (nodeEmitter, errorEmitter) => {
                 if (calculationError) {
@@ -76,7 +77,7 @@ export function CalculationRenderNode(
                 childRenderNode = emptyRenderNode;
             },
         },
-        [childRenderNode],
+        childRenderNode,
         debugName ?? `rendercalc:${calculation.__debugName}`
     );
     return renderNode;

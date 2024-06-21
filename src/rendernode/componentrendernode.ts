@@ -4,7 +4,8 @@ import * as log from '../log';
 import { renderJSXNode } from '../renderjsx';
 import { wrapError } from '../util';
 import { RenderNodeCommitPhase } from './constants';
-import { emptyRenderNode, RenderNode } from './rendernode';
+import type { RenderNode } from './rendernode';
+import { emptyRenderNode, StaticRenderNode } from './rendernode';
 
 export interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
@@ -144,7 +145,7 @@ export function ComponentRenderNode<TProps>(
         return result;
     }
 
-    const renderNode = new RenderNode(
+    const renderNode = new StaticRenderNode(
         {
             onAlive: () => {
                 const componentResult = ensureResult();
@@ -183,11 +184,11 @@ export function ComponentRenderNode<TProps>(
                 if (result instanceof Error) {
                     errorEmitter(result);
                 } else if (result) {
-                    renderNode.spliceChildren(0, 1, [result]);
+                    renderNode.setChild(result);
                 }
             },
             onDetach: (nodeEmitter, errorEmitter) => {
-                renderNode.spliceChildren(0, 1, [emptyRenderNode]);
+                renderNode.setChild(emptyRenderNode);
             },
             onError: (error: Error) => {
                 if (errorHandler) {
@@ -195,7 +196,7 @@ export function ComponentRenderNode<TProps>(
                     result = handledResult
                         ? renderJSXNode(handledResult)
                         : emptyRenderNode;
-                    renderNode.spliceChildren(0, 1, [result]);
+                    renderNode.setChild(result);
                     return true;
                 }
             },
@@ -256,7 +257,7 @@ export function ComponentRenderNode<TProps>(
                 );
             },
         },
-        [emptyRenderNode],
+        emptyRenderNode,
         debugName ?? `component(${Component.name})`
     );
     return renderNode;

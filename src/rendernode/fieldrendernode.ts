@@ -1,5 +1,6 @@
 import type { Field } from '../field';
-import { emptyRenderNode, RenderNode } from './rendernode';
+import type { RenderNode } from './rendernode';
+import { emptyRenderNode, StaticRenderNode } from './rendernode';
 
 export function FieldRenderNode(
     renderJSXNode: (jsxNode: JSX.Node) => RenderNode,
@@ -13,10 +14,10 @@ export function FieldRenderNode(
         renderNode.disown(childRenderNode);
         childRenderNode = renderJSXNode(val);
         renderNode.own(childRenderNode);
-        renderNode.spliceChildren(0, 1, [childRenderNode]);
+        renderNode.setChild(childRenderNode);
     }
 
-    const renderNode = new RenderNode(
+    const renderNode = new StaticRenderNode(
         {
             clone: () => {
                 return FieldRenderNode(renderJSXNode, field, debugName);
@@ -32,7 +33,7 @@ export function FieldRenderNode(
                 childRenderNode = emptyRenderNode;
             },
         },
-        [childRenderNode],
+        childRenderNode,
         debugName ?? `FieldRenderNode(${field.__debugName})`
     );
     return renderNode;

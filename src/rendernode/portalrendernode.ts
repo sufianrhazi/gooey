@@ -5,7 +5,8 @@ import * as log from '../log';
 import type { RefObjectOrCallback } from '../ref';
 import { Ref } from '../ref';
 import { RenderNodeCommitPhase } from './constants';
-import { RenderNode } from './rendernode';
+import type { RenderNode } from './rendernode';
+import { StaticRenderNode } from './rendernode';
 
 // TODO: fix this, this needs to be two flags: needs unmount notification; needs mount notification
 enum MountState {
@@ -62,7 +63,7 @@ export function PortalRenderNode(
         }
     }
 
-    const renderNode = new RenderNode(
+    const renderNode = new StaticRenderNode(
         {
             onEvent: (event: ArrayEvent<Node>) => {
                 addArrayEvent(childEvents, event);
@@ -209,7 +210,7 @@ export function PortalRenderNode(
                 deadNodeSet = new Set();
             },
         },
-        [childrenRenderNode],
+        childrenRenderNode,
         `mount(${
             element instanceof Element
                 ? element.tagName

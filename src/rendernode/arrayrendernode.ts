@@ -1,4 +1,5 @@
-import { RenderNode, emptyRenderNode } from './rendernode';
+import type { RenderNode } from './rendernode';
+import { DynamicRenderNode, emptyRenderNode } from './rendernode';
 
 /**
  * Renders an array of render nodes
@@ -13,5 +14,5 @@ export function ArrayRenderNode(
     if (children.length === 1) {
         return children[0];
     }
-    return new RenderNode({}, children, debugName);
+    return new DynamicRenderNode({}, children, debugName);
 }

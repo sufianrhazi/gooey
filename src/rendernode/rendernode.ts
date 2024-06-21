@@ -15,6 +15,33 @@ export type SubscribeCommit = (
     phase: number | null
 ) => void;
 
+export interface RenderNode extends Retainable {
+    clone(
+        props?: {} | undefined,
+        children?: JSX.Node[] | undefined
+    ): RenderNode;
+
+    setMounted(isMounted: boolean): void;
+
+    attach(
+        nodeEmitter: NodeEmitter,
+        errorEmitter: ErrorEmitter,
+        parentXmlNamespace: string
+    ): void;
+
+    commit(phase: RenderNodeCommitPhase): void;
+
+    detach(): void;
+
+    retain(): void;
+
+    release(): void;
+
+    getDepth(): number;
+
+    setDepth(depth: number): void;
+}
+
 interface RenderNodeHandlers {
     /**
      * Called when the RenderNode is created, before it is attached and mounted
@@ -70,9 +97,202 @@ interface RenderNodeHandlers {
 }
 
 /**
- * RenderNode: a virtual node in the tree
+ * StaticRenderNode: a virtual node in the tree that has exactly one child
  */
-export class RenderNode implements Retainable {
+export class StaticRenderNode implements RenderNode, Retainable {
+    private declare handlers: RenderNodeHandlers;
+    private declare nodeEmitter: NodeEmitter | undefined;
+    private declare errorEmitter: ErrorEmitter | undefined;
+    private declare _isMounted: boolean;
+    private declare child: RenderNode;
+    private declare parentXmlNamespace: string;
+    private declare depth: number;
+
+    constructor(
+        handlers: RenderNodeHandlers,
+        child: RenderNode,
+        debugName?: string
+    ) {
+        this.handlers = handlers;
+        this.child = child;
+        this._isMounted = false;
+        this.nodeEmitter = undefined;
+        this.errorEmitter = undefined;
+        this.parentXmlNamespace = HTML_NAMESPACE;
+        this.depth = 0;
+
+        this.__debugName = debugName ?? `custom`;
+        this.__refcount = 0;
+    }
+
+    isAttached() {
+        return !!(this.nodeEmitter && this.errorEmitter);
+    }
+
+    isMounted() {
+        return this._isMounted;
+    }
+
+    emitEvent(event: ArrayEvent<Node>) {
+        log.assert(
+            this.nodeEmitter,
+            'RenderNode attempted to emit event when detached'
+        );
+        this.nodeEmitter(event);
+    }
+
+    emitError(error: Error) {
+        log.assert(
+            this.errorEmitter,
+            'RenderNode attempted to emit error when detached'
+        );
+        this.errorEmitter(error);
+    }
+
+    commit(phase: RenderNodeCommitPhase) {
+        this.handlers.onCommit?.(phase);
+    }
+
+    requestCommit(phase: RenderNodeCommitPhase) {
+        requestCommit(this, phase);
+    }
+
+    clone(props?: {}, children?: RenderNode[]): RenderNode {
+        if (this.handlers.clone) {
+            return this.handlers.clone(props, children);
+        }
+        const clonedChild = this.child.clone();
+        return new StaticRenderNode(this.handlers, clonedChild);
+    }
+
+    setChild(child: RenderNode) {
+        const toRemove = this.child;
+        this.child = child;
+        if (this._isMounted) {
+            toRemove.setMounted(false);
+        }
+        if (this.nodeEmitter) {
+            toRemove.detach();
+        }
+        this.disown(toRemove);
+        this.own(this.child);
+        if (this.nodeEmitter && this.parentXmlNamespace) {
+            this.child.attach(
+                this.handleEvent,
+                this.handleError,
+                this.parentXmlNamespace
+            );
+        }
+        if (this._isMounted) {
+            this.child.setMounted(true);
+        }
+    }
+
+    private handleEvent = (event: ArrayEvent<Node>) => {
+        if (!this.handlers.onEvent?.(event)) {
+            log.assert(
+                this.nodeEmitter,
+                'Unexpected event on detached RenderNode'
+            );
+            this.nodeEmitter(event);
+        }
+    };
+
+    private handleError = (event: Error) => {
+        if (!this.handlers.onError?.(event)) {
+            if (this.errorEmitter) {
+                this.errorEmitter(event);
+            } else {
+                log.warn('Unhandled error on detached RenderNode', event);
+            }
+        }
+    };
+
+    detach() {
+        log.assert(this.nodeEmitter && this.errorEmitter, 'double detached');
+        this.handlers.onDetach?.(this.nodeEmitter, this.errorEmitter);
+        this.child.detach();
+        this.nodeEmitter = undefined;
+        this.errorEmitter = undefined;
+        this.parentXmlNamespace = HTML_NAMESPACE;
+    }
+
+    attach(
+        nodeEmitter: NodeEmitter,
+        errorEmitter: ErrorEmitter,
+        parentXmlNamespace: string
+    ) {
+        log.assert(
+            !this.nodeEmitter && !this.errorEmitter,
+            'Invariant: double attached'
+        );
+        this.nodeEmitter = nodeEmitter;
+        this.errorEmitter = errorEmitter;
+        this.parentXmlNamespace = parentXmlNamespace;
+        this.child.attach(
+            this.handleEvent,
+            this.handleError,
+            parentXmlNamespace
+        );
+        this.handlers.onAttach?.(nodeEmitter, errorEmitter, parentXmlNamespace);
+    }
+
+    setMounted(isMounted: boolean) {
+        this._isMounted = isMounted;
+        this.child.setMounted(isMounted);
+        if (isMounted) {
+            this.handlers.onMount?.();
+        } else {
+            this.handlers.onUnmount?.();
+        }
+    }
+
+    retain() {
+        retain(this);
+    }
+    release() {
+        release(this);
+    }
+
+    // Retainable
+    declare __debugName: string;
+    declare __refcount: number;
+    __alive() {
+        this.own(this.child);
+        this.handlers.onAlive?.();
+    }
+    __dead() {
+        this.handlers.onDestroy?.();
+        this.disown(this.child);
+        this.nodeEmitter = undefined;
+        this.errorEmitter = undefined;
+    }
+
+    own(child: RenderNode) {
+        if (child === emptyRenderNode) return;
+        child.setDepth(this.depth + 1);
+        child.retain();
+    }
+
+    disown(child: RenderNode) {
+        if (child === emptyRenderNode) return;
+        child.release();
+        child.setDepth(0);
+    }
+
+    getDepth() {
+        return this.depth;
+    }
+
+    setDepth(depth: number) {
+        this.depth = depth;
+    }
+}
+
+/**
+ * DynamicRenderNode: a virtual node in the tree that can have a variable number of children
+ */
+export class DynamicRenderNode implements RenderNode, Retainable {
     private declare handlers: RenderNodeHandlers;
     private declare nodeEmitter: NodeEmitter | undefined;
     private declare errorEmitter: ErrorEmitter | undefined;
@@ -137,7 +357,7 @@ export class RenderNode implements Retainable {
         const clonedChildren = this.slotSizes.items.map((child) =>
             child.clone()
         );
-        return new RenderNode(this.handlers, clonedChildren);
+        return new DynamicRenderNode(this.handlers, clonedChildren);
     }
 
     sortChildren(from: number, indexes: number[]) {
@@ -285,12 +505,12 @@ export class RenderNode implements Retainable {
     own(child: RenderNode) {
         if (child === emptyRenderNode) return;
         child.setDepth(this.depth + 1);
-        retain(child);
+        child.retain();
     }
 
     disown(child: RenderNode) {
         if (child === emptyRenderNode) return;
-        release(child);
+        child.release();
         child.setDepth(0);
     }
 
@@ -306,9 +526,12 @@ export class RenderNode implements Retainable {
 /**
  * Renders nothing
  */
-export class EmptyRenderNode extends RenderNode {
+export class EmptyRenderNode implements RenderNode {
+    __debugName: string;
+    __refcount: number;
     constructor() {
-        super({}, []);
+        this.__debugName = '<empty>';
+        this.__refcount = 1; // Intentional: always alive, never dead
     }
 
     detach() {}
@@ -317,12 +540,27 @@ export class EmptyRenderNode extends RenderNode {
     retain() {}
     release() {}
     commit() {}
+    getDepth() {
+        return 0;
+    }
+    setDepth() {}
     clone(): RenderNode {
         return emptyRenderNode;
     }
+    __alive() {}
+    __dead() {}
 }
 
 /**
  * Only need one of nothing
  */
 export const emptyRenderNode = new EmptyRenderNode();
+
+export function isRenderNode(obj: any): obj is RenderNode {
+    return (
+        obj &&
+        (obj instanceof StaticRenderNode ||
+            obj instanceof DynamicRenderNode ||
+            obj instanceof EmptyRenderNode)
+    );
+}

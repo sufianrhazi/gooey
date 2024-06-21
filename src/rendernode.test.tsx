@@ -22,7 +22,11 @@ import {
 } from './rendernode/intrinsicobserverrendernode';
 import { IntrinsicRenderNode } from './rendernode/intrinsicrendernode';
 import type { NodeEmitter } from './rendernode/rendernode';
-import { EmptyRenderNode, RenderNode } from './rendernode/rendernode';
+import {
+    emptyRenderNode,
+    EmptyRenderNode,
+    StaticRenderNode,
+} from './rendernode/rendernode';
 import { TextRenderNode } from './rendernode/textrendernode';
 
 const HTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
@@ -35,7 +39,7 @@ beforeEach(() => {
     subscribe();
 });
 
-class TracingRenderNode extends RenderNode {
+class TracingRenderNode extends StaticRenderNode {
     declare _commitPhase: RenderNodeCommitPhase;
     public events: any[];
     public emitter: NodeEmitter | undefined;
@@ -43,7 +47,7 @@ class TracingRenderNode extends RenderNode {
     public __debugName: string;
 
     constructor() {
-        super({}, []);
+        super({}, emptyRenderNode);
         this.events = [];
         this.__refcount = 0;
         this.__debugName = 'TracingRenderNode';
@@ -73,10 +77,12 @@ class TracingRenderNode extends RenderNode {
 
     retain() {
         this.events.push('retain');
+        super.retain();
     }
 
     release() {
         this.events.push('release');
+        super.release();
     }
 
     __alive() {
@@ -221,7 +227,10 @@ suite('IntrinsicRenderNode', () => {
         const tracer = new TracingRenderNode();
         const intrinsic = IntrinsicRenderNode('div', {}, tracer);
         mount(testRoot, intrinsic);
-        assert.deepEqual(['alive', 'attach', 'setMounted:true'], tracer.events);
+        assert.deepEqual(
+            ['retain', 'alive', 'attach', 'setMounted:true'],
+            tracer.events
+        );
     });
 
     test('child gets standard unmount lifecycle called on detach', () => {
@@ -230,7 +239,10 @@ suite('IntrinsicRenderNode', () => {
         const unmount = mount(testRoot, intrinsic);
         tracer.clear();
         unmount();
-        assert.deepEqual(['setMounted:false', 'dead'], tracer.events);
+        assert.deepEqual(
+            ['setMounted:false', 'release', 'dead'],
+            tracer.events
+        );
     });
 
     test('child can be repeatedly mounted / unmounted if intrinsic node retained', () => {
@@ -251,6 +263,7 @@ suite('IntrinsicRenderNode', () => {
         assert.deepEqual(
             [
                 '0: retain',
+                'retain',
                 'alive',
                 'attach',
                 '1: mount',
@@ -262,6 +275,7 @@ suite('IntrinsicRenderNode', () => {
                 '4: release',
                 '5: unmount',
                 'setMounted:false',
+                'release',
                 'dead',
             ],
             tracer.events
@@ -286,6 +300,7 @@ suite('IntrinsicRenderNode', () => {
         assert.deepEqual(
             [
                 '0: retain',
+                'retain',
                 'alive',
                 'attach',
                 '1: mount',
@@ -297,6 +312,7 @@ suite('IntrinsicRenderNode', () => {
                 '4: unmount',
                 'setMounted:false',
                 '5: release',
+                'release',
                 'dead',
             ],
             tracer.events
@@ -634,6 +650,7 @@ suite('CalculationRenderNode', () => {
         assert.deepEqual(
             [
                 '0: retain',
+                'retain',
                 'alive',
                 '1: attach',
                 'attach',
@@ -652,6 +669,7 @@ suite('CalculationRenderNode', () => {
                 '8: attach',
                 'detach',
                 '9: release',
+                'release',
                 'dead',
             ],
             tracer.events
@@ -927,7 +945,9 @@ suite('FieldRenderNode', () => {
         assert.deepEqual(
             [
                 '0: retain',
+                'retain',
                 'alive',
+                'retain',
                 '1: attach',
                 'attach',
                 '2: mount',
@@ -945,6 +965,8 @@ suite('FieldRenderNode', () => {
                 '8: attach',
                 'detach',
                 '9: release',
+                'release',
+                'release',
                 'dead',
             ],
             tracer.events
@@ -1036,11 +1058,13 @@ suite('ArrayRenderNode', () => {
         mount(testRoot, node)();
         assert.deepEqual(
             [
+                'retain',
                 'alive',
                 'attach',
                 'setMounted:true',
                 'setMounted:false',
                 'detach',
+                'release',
                 'dead',
             ],
             tracer.events
@@ -1057,6 +1081,7 @@ suite('ArrayRenderNode', () => {
         node.release();
         assert.deepEqual(
             [
+                'retain',
                 'alive',
                 'attach',
                 'setMounted:true',
@@ -1066,6 +1091,7 @@ suite('ArrayRenderNode', () => {
                 'setMounted:true',
                 'setMounted:false',
                 'detach',
+                'release',
                 'dead',
             ],
             tracer.events
@@ -1348,7 +1374,7 @@ suite('CollectionRenderNode', () => {
         );
         node.setMounted(true);
         assert.deepEqual(
-            ['alive', 'attach', 'setMounted:true'],
+            ['retain', 'alive', 'attach', 'setMounted:true'],
             tracer1.events
         );
         assert.deepEqual([], tracer2.events);
@@ -1357,11 +1383,11 @@ suite('CollectionRenderNode', () => {
         tracer2.events.push('flush 1');
         flush();
         assert.deepEqual(
-            ['alive', 'attach', 'setMounted:true', 'flush 1'],
+            ['retain', 'alive', 'attach', 'setMounted:true', 'flush 1'],
             tracer1.events
         );
         assert.deepEqual(
-            ['flush 1', 'alive', 'attach', 'setMounted:true'],
+            ['flush 1', 'retain', 'alive', 'attach', 'setMounted:true'],
             tracer2.events
         );
         items.shift();
@@ -1370,6 +1396,7 @@ suite('CollectionRenderNode', () => {
         flush();
         assert.deepEqual(
             [
+                'retain',
                 'alive',
                 'attach',
                 'setMounted:true',
@@ -1377,12 +1404,20 @@ suite('CollectionRenderNode', () => {
                 'flush 2',
                 'setMounted:false',
                 'detach',
+                'release',
                 'dead',
             ],
             tracer1.events
         );
         assert.deepEqual(
-            ['flush 1', 'alive', 'attach', 'setMounted:true', 'flush 2'],
+            [
+                'flush 1',
+                'retain',
+                'alive',
+                'attach',
+                'setMounted:true',
+                'flush 2',
+            ],
             tracer2.events
         );
     });
@@ -1403,24 +1438,39 @@ suite('CollectionRenderNode', () => {
             },
             HTML_NAMESPACE
         );
-        assert.deepEqual(['alive', 'attach'], tracer1.events);
+        assert.deepEqual(['retain', 'alive', 'attach'], tracer1.events);
         assert.deepEqual([], tracer2.events);
         items.push(tracer2);
         tracer1.events.push('flush 1');
         tracer2.events.push('flush 1');
         flush();
-        assert.deepEqual(['alive', 'attach', 'flush 1'], tracer1.events);
-        assert.deepEqual(['flush 1', 'alive', 'attach'], tracer2.events);
+        assert.deepEqual(
+            ['retain', 'alive', 'attach', 'flush 1'],
+            tracer1.events
+        );
+        assert.deepEqual(
+            ['flush 1', 'retain', 'alive', 'attach'],
+            tracer2.events
+        );
         items.shift();
         tracer1.events.push('flush 2');
         tracer2.events.push('flush 2');
         flush();
         assert.deepEqual(
-            ['alive', 'attach', 'flush 1', 'flush 2', 'detach', 'dead'],
+            [
+                'retain',
+                'alive',
+                'attach',
+                'flush 1',
+                'flush 2',
+                'detach',
+                'release',
+                'dead',
+            ],
             tracer1.events
         );
         assert.deepEqual(
-            ['flush 1', 'alive', 'attach', 'flush 2'],
+            ['flush 1', 'retain', 'alive', 'attach', 'flush 2'],
             tracer2.events
         );
     });
@@ -1499,7 +1549,6 @@ suite('ComponentRenderNode', () => {
                 type: 'splice',
                 index: 0,
                 count: 1,
-                items: undefined,
             },
             '5:release',
             'Component:onDestroy',
@@ -1631,11 +1680,13 @@ suite('IntrinsicObserverRenderNode', () => {
         node.release();
         assert.deepEqual(
             [
+                'retain',
                 'alive',
                 'attach',
                 'setMounted:true',
                 'setMounted:false',
                 'detach',
+                'release',
                 'dead',
             ],
             tracer.events

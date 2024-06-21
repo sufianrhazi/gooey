@@ -1,11 +1,12 @@
 import { ArrayEventType } from '../arrayevent';
-import { RenderNode } from './rendernode';
+import type { RenderNode } from './rendernode';
+import { emptyRenderNode, StaticRenderNode } from './rendernode';
 
 /**
  * Renders a foreign managed DOM node
  */
 export function ForeignRenderNode(node: Node, debugName?: string): RenderNode {
-    return new RenderNode(
+    return new StaticRenderNode(
         {
             onAttach: (nodeEmitter) => {
                 nodeEmitter({
@@ -26,7 +27,7 @@ export function ForeignRenderNode(node: Node, debugName?: string): RenderNode {
                 return ForeignRenderNode(node, debugName);
             },
         },
-        [],
+        emptyRenderNode,
         debugName ?? 'foreign'
     );
 }

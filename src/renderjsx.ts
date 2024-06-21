@@ -9,7 +9,8 @@ import { CalculationRenderNode } from './rendernode/calculationrendernode';
 import { CollectionRenderNode } from './rendernode/collectionrendernode';
 import { FieldRenderNode } from './rendernode/fieldrendernode';
 import { ForeignRenderNode } from './rendernode/foreignrendernode';
-import { emptyRenderNode, RenderNode } from './rendernode/rendernode';
+import type { RenderNode } from './rendernode/rendernode';
+import { emptyRenderNode, isRenderNode } from './rendernode/rendernode';
 import { TextRenderNode } from './rendernode/textrendernode';
 
 function isCollectionOrViewRenderNode(
@@ -19,7 +20,7 @@ function isCollectionOrViewRenderNode(
 }
 
 export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
-    if (jsxNode instanceof RenderNode) {
+    if (isRenderNode(jsxNode)) {
         return jsxNode;
     }
     if (jsxNode instanceof Calculation) {

@@ -1,6 +1,7 @@
 import { applyArrayEvent, ArrayEventType } from '../arrayevent';
 import { RenderNodeCommitPhase } from './constants';
-import { RenderNode } from './rendernode';
+import type { RenderNode } from './rendernode';
+import { StaticRenderNode } from './rendernode';
 
 export enum IntrinsicObserverEventType {
     MOUNT = 'mount',
@@ -32,7 +33,7 @@ export function IntrinsicObserverRenderNode(
             elementCallback?.(node, eventType);
         }
     }
-    const renderNode = new RenderNode(
+    const renderNode = new StaticRenderNode(
         {
             onEvent: (event) => {
                 for (const removedNode of applyArrayEvent(nodes, event)) {
@@ -115,7 +116,7 @@ export function IntrinsicObserverRenderNode(
                 }
             },
         },
-        [child],
+        child,
         debugName ?? 'IntrinsicObserverRenderNode'
     );
     return renderNode;

@@ -14,7 +14,8 @@ import type {
 } from '../webcomponents';
 import type { ComponentLifecycle } from './componentrendernode';
 import { RenderNodeCommitPhase } from './constants';
-import { emptyRenderNode, RenderNode } from './rendernode';
+import type { RenderNode } from './rendernode';
+import { emptyRenderNode, StaticRenderNode } from './rendernode';
 
 export type WebComponentProps<
     TKeys extends string,
@@ -307,7 +308,7 @@ export function WebComponentRenderNode<
         return result;
     }
 
-    const renderNode = new RenderNode(
+    const renderNode = new StaticRenderNode(
         {
             onAlive: () => {
                 const result = ensureResult();
@@ -317,7 +318,7 @@ export function WebComponentRenderNode<
                         renderNode: renderNode,
                     });
                 } else {
-                    renderNode.spliceChildren(0, 1, [result]);
+                    renderNode.setChild(result);
                 }
             },
             onDestroy: () => {
@@ -350,7 +351,7 @@ export function WebComponentRenderNode<
                     result = handledResult
                         ? renderJSXNode(handledResult)
                         : emptyRenderNode;
-                    renderNode.spliceChildren(0, 1, [result]);
+                    renderNode.setChild(result);
                     return true;
                 }
             },
@@ -408,7 +409,7 @@ export function WebComponentRenderNode<
                 );
             },
         },
-        [emptyRenderNode],
+        emptyRenderNode,
         debugName ?? `web-component(${options.tagName})`
     );
     return renderNode;
