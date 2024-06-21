@@ -28,6 +28,8 @@ export function TextRenderNode(str: string, debugName?: string): RenderNode {
             },
         },
         [],
-        debugName ?? 'text'
+        DEBUG
+            ? debugName ?? `text(${JSON.stringify(str)})`
+            : debugName ?? 'text'
     );
 }

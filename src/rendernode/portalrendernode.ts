@@ -66,19 +66,23 @@ export function PortalRenderNode(
         {
             onEvent: (event: ArrayEvent<Node>) => {
                 addArrayEvent(childEvents, event);
-                renderNode.dirty(RenderNodeCommitPhase.COMMIT_DEL);
-                renderNode.dirty(RenderNodeCommitPhase.COMMIT_INS);
+                renderNode.requestCommit(RenderNodeCommitPhase.COMMIT_DEL);
+                renderNode.requestCommit(RenderNodeCommitPhase.COMMIT_INS);
                 return true;
             },
             onMount: () => {
                 if (refProp) {
-                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_MOUNT);
+                    renderNode.requestCommit(
+                        RenderNodeCommitPhase.COMMIT_MOUNT
+                    );
                     mountState = MountState.NOTIFY_MOUNT;
                 }
             },
             onUnmount: () => {
                 if (refProp) {
-                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_UNMOUNT);
+                    renderNode.requestCommit(
+                        RenderNodeCommitPhase.COMMIT_UNMOUNT
+                    );
                     mountState = MountState.NOTIFY_UNMOUNT;
                 }
             },
@@ -206,11 +210,11 @@ export function PortalRenderNode(
             },
         },
         [childrenRenderNode],
-        `mount:${
+        `mount(${
             element instanceof Element
                 ? element.tagName
-                : `shadow:${element.host.tagName}`
-        }`
+                : `shadow(${element.host.tagName})`
+        })`
     );
     return renderNode;
 }

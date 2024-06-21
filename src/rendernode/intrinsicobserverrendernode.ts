@@ -40,8 +40,12 @@ export function IntrinsicObserverRenderNode(
                         removedNode,
                         IntrinsicObserverEventType.UNMOUNT
                     );
-                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_MOUNT);
-                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_UNMOUNT);
+                    renderNode.requestCommit(
+                        RenderNodeCommitPhase.COMMIT_MOUNT
+                    );
+                    renderNode.requestCommit(
+                        RenderNodeCommitPhase.COMMIT_UNMOUNT
+                    );
                 }
                 if (event.type === ArrayEventType.SPLICE && event.items) {
                     for (const addedNode of event.items) {
@@ -50,8 +54,12 @@ export function IntrinsicObserverRenderNode(
                             IntrinsicObserverEventType.MOUNT
                         );
                     }
-                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_MOUNT);
-                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_UNMOUNT);
+                    renderNode.requestCommit(
+                        RenderNodeCommitPhase.COMMIT_MOUNT
+                    );
+                    renderNode.requestCommit(
+                        RenderNodeCommitPhase.COMMIT_UNMOUNT
+                    );
                 }
             },
             clone: () => {
@@ -65,15 +73,23 @@ export function IntrinsicObserverRenderNode(
             onMount: () => {
                 for (const node of nodes) {
                     pendingEvent.set(node, IntrinsicObserverEventType.MOUNT);
-                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_MOUNT);
-                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_UNMOUNT);
+                    renderNode.requestCommit(
+                        RenderNodeCommitPhase.COMMIT_MOUNT
+                    );
+                    renderNode.requestCommit(
+                        RenderNodeCommitPhase.COMMIT_UNMOUNT
+                    );
                 }
             },
             onUnmount: () => {
                 for (const node of nodes) {
                     pendingEvent.set(node, IntrinsicObserverEventType.UNMOUNT);
-                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_MOUNT);
-                    renderNode.dirty(RenderNodeCommitPhase.COMMIT_UNMOUNT);
+                    renderNode.requestCommit(
+                        RenderNodeCommitPhase.COMMIT_MOUNT
+                    );
+                    renderNode.requestCommit(
+                        RenderNodeCommitPhase.COMMIT_UNMOUNT
+                    );
                 }
             },
             onCommit: (phase) => {

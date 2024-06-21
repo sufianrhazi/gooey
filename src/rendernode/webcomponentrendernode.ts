@@ -360,7 +360,7 @@ export function WebComponentRenderNode<
                     return;
                 }
                 needsMount = true;
-                renderNode.dirty(RenderNodeCommitPhase.COMMIT_MOUNT);
+                renderNode.requestCommit(RenderNodeCommitPhase.COMMIT_MOUNT);
             },
             onUnmount() {
                 log.assert(result, 'Invariant: missing result');

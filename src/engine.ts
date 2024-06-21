@@ -26,12 +26,9 @@ export function isProcessable(val: any): val is Processable {
 }
 
 let globalDependencyGraph = new Graph<Processable>(processHandler);
-let renderNodesToCommitByPhase = {
-    [RenderNodeCommitPhase.COMMIT_UNMOUNT]: new Set<RenderNode>(),
-    [RenderNodeCommitPhase.COMMIT_DEL]: new Set<RenderNode>(),
-    [RenderNodeCommitPhase.COMMIT_INS]: new Set<RenderNode>(),
-    [RenderNodeCommitPhase.COMMIT_MOUNT]: new Set<RenderNode>(),
-};
+let commitPhase = new Map<RenderNode, number>();
+let commitPostProcessHandle: undefined | (() => void);
+let postProcessActions = new Set<() => void>();
 let trackReadSets: (Set<Retainable> | null)[] = [];
 let trackCreateSets: (Set<Retainable> | null)[] = [];
 let isFlushing = false;
@@ -60,12 +57,9 @@ function defaultScheduler(callback: () => void) {
 
 export function reset() {
     globalDependencyGraph = new Graph<Processable>(processHandler);
-    renderNodesToCommitByPhase = {
-        [RenderNodeCommitPhase.COMMIT_UNMOUNT]: new Set<RenderNode>(),
-        [RenderNodeCommitPhase.COMMIT_DEL]: new Set<RenderNode>(),
-        [RenderNodeCommitPhase.COMMIT_INS]: new Set<RenderNode>(),
-        [RenderNodeCommitPhase.COMMIT_MOUNT]: new Set<RenderNode>(),
-    };
+    postProcessActions = new Set();
+    commitPhase = new Map<RenderNode, number>();
+    commitPostProcessHandle = undefined;
     trackReadSets = [];
     trackCreateSets = [];
     isFlushing = false;
@@ -147,48 +141,86 @@ function processHandler(
     }
 }
 
-function flushInner() {
-    // Flushing has a few phases:
-    // - 1: process the global dependency graph to get state to a stable resolution
-    // - 2: notify "onUnmount"
-    // - 2.5: record document.activeElement
-    // - 3: commit DOM deletions (notify "raw" DOM deletions)
-    // - 4: commit DOM insertions (notify "raw" DOM insertions)
-    // - 4.5: restore document.activeElement if it was moved
-    // - 5: notify "onMount"
-    isFlushing = true;
-    const toCommit = renderNodesToCommitByPhase;
-    renderNodesToCommitByPhase = {
-        [RenderNodeCommitPhase.COMMIT_UNMOUNT]: new Set<RenderNode>(),
-        [RenderNodeCommitPhase.COMMIT_DEL]: new Set<RenderNode>(),
-        [RenderNodeCommitPhase.COMMIT_INS]: new Set<RenderNode>(),
-        [RenderNodeCommitPhase.COMMIT_MOUNT]: new Set<RenderNode>(),
-    };
-    globalDependencyGraph.process();
-    for (const renderNode of toCommit[RenderNodeCommitPhase.COMMIT_UNMOUNT]) {
-        renderNode.commit?.(RenderNodeCommitPhase.COMMIT_UNMOUNT);
+// Committing has a few phases:
+// - 1: notify "onUnmount"
+// - 1.5: record document.activeElement
+// - 2: commit DOM deletions (notify "raw" DOM deletions)
+// - 3: commit DOM insertions (notify "raw" DOM insertions)
+// - 3.5: restore document.activeElement if it was moved
+// - 4: notify "onMount"
+function commit(commitPhaseMap: Map<RenderNode, number>) {
+    const toCommit = Array.from(commitPhaseMap.entries()).sort(
+        (a, b) => b[0].getDepth() - a[0].getDepth()
+    );
+
+    for (const [renderNode, phase] of toCommit) {
+        if (phase & RenderNodeCommitPhase.COMMIT_UNMOUNT) {
+            renderNode.commit(RenderNodeCommitPhase.COMMIT_UNMOUNT);
+        }
     }
-    const prevFocus = document.activeElement;
-    for (const renderNode of toCommit[RenderNodeCommitPhase.COMMIT_DEL]) {
-        renderNode.commit?.(RenderNodeCommitPhase.COMMIT_DEL);
+    const activeElement = document.activeElement;
+    for (const [renderNode, phase] of toCommit) {
+        if (phase & RenderNodeCommitPhase.COMMIT_DEL) {
+            renderNode.commit(RenderNodeCommitPhase.COMMIT_DEL);
+        }
     }
-    for (const renderNode of toCommit[RenderNodeCommitPhase.COMMIT_INS]) {
-        renderNode.commit?.(RenderNodeCommitPhase.COMMIT_INS);
+    for (const [renderNode, phase] of toCommit) {
+        if (phase & RenderNodeCommitPhase.COMMIT_INS) {
+            renderNode.commit(RenderNodeCommitPhase.COMMIT_INS);
+        }
     }
     if (
-        prevFocus &&
-        (prevFocus instanceof HTMLElement || prevFocus instanceof SVGElement) &&
-        document.documentElement.contains(prevFocus)
+        activeElement &&
+        (activeElement instanceof HTMLElement ||
+            activeElement instanceof SVGElement) &&
+        document.documentElement.contains(activeElement)
     ) {
-        prevFocus.focus();
+        activeElement.focus();
     }
-    for (const renderNode of toCommit[RenderNodeCommitPhase.COMMIT_MOUNT]) {
-        renderNode.commit?.(RenderNodeCommitPhase.COMMIT_MOUNT);
+    for (const [renderNode, phase] of toCommit) {
+        if (phase & RenderNodeCommitPhase.COMMIT_MOUNT) {
+            renderNode.commit(RenderNodeCommitPhase.COMMIT_MOUNT);
+        }
+    }
+}
+
+export function requestCommit(target: RenderNode, phase: number) {
+    if (phase === null) {
+        commitPhase.delete(target);
+    } else {
+        const currentPhase = commitPhase.get(target) ?? 0;
+        commitPhase.set(target, currentPhase | phase);
+        if (!commitPostProcessHandle) {
+            commitPostProcessHandle = addPostProcessAction(() => {
+                const toCommit = commitPhase;
+                commitPostProcessHandle = undefined;
+                commitPhase = new Map();
+                commit(toCommit);
+            });
+        }
+    }
+}
+
+function flushInner() {
+    isFlushing = true;
+    globalDependencyGraph.process();
+    const toProcess = postProcessActions;
+    postProcessActions = new Set();
+    for (const postProcessAction of toProcess) {
+        postProcessAction();
     }
     isFlushing = false;
     if (needsFlush) {
         flush();
     }
+}
+
+export function addPostProcessAction(action: () => void) {
+    postProcessActions.add(action);
+    scheduleFlush();
+    return () => {
+        postProcessActions.delete(action);
+    };
 }
 
 export function addVertex(vertex: Processable) {
@@ -199,26 +231,6 @@ export function addVertex(vertex: Processable) {
 export function removeVertex(vertex: Processable) {
     DEBUG && log.debug('removeVertex', vertex.__debugName);
     globalDependencyGraph.removeVertex(vertex);
-}
-
-export function removeRenderNode(vertex: RenderNode) {
-    renderNodesToCommitByPhase[RenderNodeCommitPhase.COMMIT_UNMOUNT].delete(
-        vertex
-    );
-    renderNodesToCommitByPhase[RenderNodeCommitPhase.COMMIT_DEL].delete(vertex);
-    renderNodesToCommitByPhase[RenderNodeCommitPhase.COMMIT_INS].delete(vertex);
-    renderNodesToCommitByPhase[RenderNodeCommitPhase.COMMIT_MOUNT].delete(
-        vertex
-    );
-}
-
-export function dirtyRenderNode(
-    renderNode: RenderNode,
-    phase: RenderNodeCommitPhase
-) {
-    DEBUG && log.debug('dirty renderNode', renderNode.__debugName);
-    renderNodesToCommitByPhase[phase].add(renderNode);
-    scheduleFlush();
 }
 
 export function addHardEdge(fromVertex: Processable, toVertex: Processable) {

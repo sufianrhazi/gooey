@@ -7,7 +7,6 @@ import Gooey, {
     flush,
     mount,
     reset,
-    setLogLevel,
     subscribe,
 } from './index';
 

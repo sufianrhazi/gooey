@@ -3,7 +3,7 @@ import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
 import { ArrayEventType } from './arrayevent';
 import { calc } from './calc';
 import { collection } from './collection';
-import { flush, removeRenderNode, reset, subscribe } from './engine';
+import { flush, reset, subscribe } from './engine';
 import { field } from './field';
 import { model } from './model';
 import { mount } from './mount';
@@ -84,7 +84,6 @@ class TracingRenderNode extends RenderNode {
     }
 
     __dead() {
-        removeRenderNode(this);
         this.events.push('dead');
     }
 

@@ -264,9 +264,6 @@ export function IntrinsicRenderNode(
             onUnmount: () => {
                 portalRenderNode?.setMounted(false);
             },
-            onCommit: (phase) => {
-                portalRenderNode?.commit(phase);
-            },
             clone: (adjustedProps?: {}, newChildren?: RenderNode[]) => {
                 return IntrinsicRenderNode(
                     tagName,
