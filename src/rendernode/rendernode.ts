@@ -21,7 +21,9 @@ export interface RenderNode extends Retainable {
         children?: JSX.Node[] | undefined
     ): RenderNode;
 
-    setMounted(isMounted: boolean): void;
+    onMount(): void;
+
+    onUnmount(): void;
 
     attach(
         nodeEmitter: NodeEmitter,
@@ -92,6 +94,8 @@ interface RenderNodeHandlers {
     ) => boolean | void;
     /**
      * Called when the RenderNode is cloned; callers should clone the provided children (if passed to the cloned node) and return a new RenderNode
+     *
+     * If omitted, an exception is thrown if the RenderNode is attempted to be cloned.
      */
     clone?: (props?: {}, children?: RenderNode[]) => RenderNode;
 }
@@ -169,7 +173,7 @@ export class StaticRenderNode implements RenderNode, Retainable {
         const toRemove = this.child;
         this.child = child;
         if (this._isMounted) {
-            toRemove.setMounted(false);
+            toRemove.onUnmount();
         }
         if (this.nodeEmitter) {
             toRemove.detach();
@@ -184,7 +188,7 @@ export class StaticRenderNode implements RenderNode, Retainable {
             );
         }
         if (this._isMounted) {
-            this.child.setMounted(true);
+            this.child.onMount();
         }
     }
 
@@ -237,14 +241,16 @@ export class StaticRenderNode implements RenderNode, Retainable {
         this.handlers.onAttach?.(nodeEmitter, errorEmitter, parentXmlNamespace);
     }
 
-    setMounted(isMounted: boolean) {
-        this._isMounted = isMounted;
-        this.child.setMounted(isMounted);
-        if (isMounted) {
-            this.handlers.onMount?.();
-        } else {
-            this.handlers.onUnmount?.();
-        }
+    onMount() {
+        this._isMounted = true;
+        this.child.onMount();
+        this.handlers.onMount?.();
+    }
+
+    onUnmount() {
+        this._isMounted = false;
+        this.child.onUnmount();
+        this.handlers.onUnmount?.();
     }
 
     retain() {
@@ -375,7 +381,7 @@ export class DynamicRenderNode implements RenderNode, Retainable {
         for (let i = index; i < index + count; ++i) {
             const child = this.slotSizes.items[i];
             if (this._isMounted) {
-                child.setMounted(false);
+                child.onUnmount();
             }
             if (this.nodeEmitter) {
                 child.detach();
@@ -395,7 +401,7 @@ export class DynamicRenderNode implements RenderNode, Retainable {
                 );
             }
             if (this._isMounted) {
-                child.setMounted(true);
+                child.onMount();
             }
         }
     }
@@ -465,16 +471,20 @@ export class DynamicRenderNode implements RenderNode, Retainable {
         this.handlers.onAttach?.(nodeEmitter, errorEmitter, parentXmlNamespace);
     }
 
-    setMounted(isMounted: boolean) {
-        this._isMounted = isMounted;
+    onMount() {
+        this._isMounted = true;
         for (const child of this.slotSizes.items) {
-            child.setMounted(isMounted);
+            child.onMount();
         }
-        if (isMounted) {
-            this.handlers.onMount?.();
-        } else {
-            this.handlers.onUnmount?.();
+        this.handlers.onMount?.();
+    }
+
+    onUnmount() {
+        this._isMounted = false;
+        for (const child of this.slotSizes.items) {
+            child.onUnmount();
         }
+        this.handlers.onUnmount?.();
     }
 
     retain() {
@@ -536,7 +546,8 @@ export class EmptyRenderNode implements RenderNode {
 
     detach() {}
     attach() {}
-    setMounted() {}
+    onMount() {}
+    onUnmount() {}
     retain() {}
     release() {}
     commit() {}

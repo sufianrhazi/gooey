@@ -70,7 +70,7 @@ export function IntrinsicRenderNode(
 
             if (portalRenderNode) {
                 if (renderNode.isMounted()) {
-                    portalRenderNode.setMounted(false);
+                    portalRenderNode.onUnmount();
                 }
                 portalRenderNode.detach();
                 renderNode.disown(portalRenderNode);
@@ -87,7 +87,7 @@ export function IntrinsicRenderNode(
                 childXmlNamespace
             );
             if (renderNode.isMounted()) {
-                portalRenderNode.setMounted(true);
+                portalRenderNode.onMount();
             }
         }
         return element;
@@ -260,10 +260,10 @@ export function IntrinsicRenderNode(
                 });
             },
             onMount: () => {
-                portalRenderNode?.setMounted(true);
+                portalRenderNode?.onMount();
             },
             onUnmount: () => {
-                portalRenderNode?.setMounted(false);
+                portalRenderNode?.onUnmount();
             },
             clone: (adjustedProps?: {}, newChildren?: RenderNode[]) => {
                 return IntrinsicRenderNode(

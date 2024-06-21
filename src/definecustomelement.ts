@@ -119,11 +119,11 @@ export function defineCustomElement<
 
         connectedCallback() {
             this.retain();
-            this._portalRenderNode?.setMounted(true);
+            this._portalRenderNode?.onMount();
         }
 
         disconnectedCallback() {
-            this._portalRenderNode?.setMounted(false);
+            this._portalRenderNode?.onUnmount();
             this.release();
         }
 

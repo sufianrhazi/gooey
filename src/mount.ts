@@ -40,17 +40,17 @@ export function mount(
         throw syncError;
     }
     // WE HAVE A CONUNDRUM!
-    // - When setMounted(true) is called _before_ flushing, IntrinsicObserver callbacks work as expected; but component onMount notifications fail
-    // - When setMounted(true) is called _after_ flushing, IntrinsicObserver callbacks fail; but component onMount notifications work as expected
+    // - When onMount() is called _before_ flushing, IntrinsicObserver callbacks work as expected; but component onMount notifications fail
+    // - When onMount() is called _after_ flushing, IntrinsicObserver callbacks fail; but component onMount notifications work as expected
     // This is probably because the interaction between mounting and commit is very awkward when dealing with DOM nodes
     // - For onMount lifecycles to be able to observe nodes in the DOM, onMount needs to happen __after__ commit
     // - ref={} callbacks should be equivalent to onMount
     // - refRaw={} callbacks should be equivalent to retain() (NEEDS BETTER NAME)
     // Overall, it really sucks that we have to flush at all here.
-    root.setMounted(true);
+    root.onMount();
     flush();
     return () => {
-        root.setMounted(false);
+        root.onUnmount();
         root.detach();
         flush();
         root.release();
