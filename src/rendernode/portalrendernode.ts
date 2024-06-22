@@ -27,7 +27,7 @@ export function PortalRenderNode(
         | null
         | undefined,
     debugName?: string
-): RenderNode {
+) {
     let childEvents: ArrayEvent<Node>[] = [];
     let committedNodes: Node[] = [];
     let liveNodes: Node[] = [];

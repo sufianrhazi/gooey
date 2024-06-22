@@ -17,13 +17,6 @@ export function TextRenderNode(str: string, debugName?: string): RenderNode {
                     items: [textNode],
                 });
             },
-            onDetach: (nodeEmitter) => {
-                nodeEmitter({
-                    type: ArrayEventType.SPLICE,
-                    index: 0,
-                    count: 1,
-                });
-            },
             clone: () => {
                 return TextRenderNode(str, debugName);
             },

@@ -252,13 +252,6 @@ export function IntrinsicRenderNode(
                     items: [element],
                 });
             },
-            onDetach: (nodeEmitter) => {
-                nodeEmitter({
-                    type: ArrayEventType.SPLICE,
-                    index: 0,
-                    count: 1,
-                });
-            },
             onMount: () => {
                 portalRenderNode?.onMount();
             },

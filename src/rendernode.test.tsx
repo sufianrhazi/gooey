@@ -533,7 +533,7 @@ suite('CalculationRenderNode', () => {
         state.name = 'goodbye';
         flush();
 
-        assert.is(2, events.length);
+        assert.is(1, events.length);
 
         assert.is('splice', events[0].type);
         assert.is(0, events[0].index);
@@ -541,11 +541,6 @@ suite('CalculationRenderNode', () => {
         assert.is(1, events[0].items.length);
         assert.is('B', events[0].items[0].tagName);
         assert.is('hello', events[0].items[0].textContent);
-
-        assert.is('splice', events[1].type);
-        assert.is(0, events[1].index);
-        assert.is(1, events[1].count);
-        assert.is(0, events[1].items?.length ?? 0);
     });
 
     test('result after recalculation while detached is emitted when attached again', () => {
@@ -555,7 +550,7 @@ suite('CalculationRenderNode', () => {
         );
         const node = CalculationRenderNode(renderJSXNode, greet);
         node.retain();
-        const events: any[] = [];
+        let events: any[] = [];
         node.attach(
             (event) => {
                 events.push(event);
@@ -565,22 +560,7 @@ suite('CalculationRenderNode', () => {
             },
             HTML_NAMESPACE
         );
-        node.detach();
-
         flush();
-
-        state.name = 'goodbye';
-        flush();
-
-        node.attach(
-            (event) => {
-                events.push(event);
-            },
-            (error) => {
-                events.push(error);
-            },
-            HTML_NAMESPACE
-        );
 
         assert.is('splice', events[0].type);
         assert.is(0, events[0].index);
@@ -588,18 +568,35 @@ suite('CalculationRenderNode', () => {
         assert.is(1, events[0].items.length);
         assert.is('B', events[0].items[0].tagName);
         assert.is('hello', events[0].items[0].textContent);
+        events = [];
 
-        assert.is('splice', events[1].type);
-        assert.is(0, events[1].index);
-        assert.is(1, events[1].count);
-        assert.is(0, events[1].items?.length ?? 0);
+        node.detach();
+        assert.deepEqual([], events);
 
-        assert.is('splice', events[2].type);
-        assert.is(0, events[2].index);
-        assert.is(0, events[2].count);
-        assert.is(1, events[2].items.length);
-        assert.is('B', events[2].items[0].tagName);
-        assert.is('goodbye', events[2].items[0].textContent);
+        flush();
+
+        state.name = 'goodbye';
+        flush();
+
+        assert.deepEqual([], events);
+
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
+
+        assert.is(1, events.length);
+        assert.is('splice', events[0].type);
+        assert.is(0, events[0].index);
+        assert.is(0, events[0].count);
+        assert.is(1, events[0].items.length);
+        assert.is('B', events[0].items[0].tagName);
+        assert.is('goodbye', events[0].items[0].textContent);
     });
 
     test('mount and unmount are passed through', () => {
@@ -817,7 +814,7 @@ suite('FieldRenderNode', () => {
         const greeting = field('hello');
         const node = FieldRenderNode(renderJSXNode, greeting);
         node.retain();
-        const events: any[] = [];
+        let events: any[] = [];
         node.attach(
             (event) => {
                 events.push(event);
@@ -827,32 +824,29 @@ suite('FieldRenderNode', () => {
             },
             HTML_NAMESPACE
         );
-        node.detach();
-
         flush();
 
-        greeting.set('goodbye');
-        flush();
-
-        assert.is(2, events.length);
+        assert.is(1, events.length);
 
         assert.is('splice', events[0].type);
         assert.is(0, events[0].index);
         assert.is(0, events[0].count);
         assert.is(1, events[0].items.length);
         assert.is('hello', events[0].items[0].data);
+        events = [];
 
-        assert.is('splice', events[1].type);
-        assert.is(0, events[1].index);
-        assert.is(1, events[1].count);
-        assert.is(0, events[1].items?.length ?? 0);
+        node.detach();
+        greeting.set('goodbye');
+        flush();
+
+        assert.is(0, events.length);
     });
 
     test('result after recalculation while detached is emitted when attached again', () => {
         const greeting = field('hello');
         const node = FieldRenderNode(renderJSXNode, greeting);
         node.retain();
-        const events: any[] = [];
+        let events: any[] = [];
         node.attach(
             (event) => {
                 events.push(event);
@@ -862,39 +856,43 @@ suite('FieldRenderNode', () => {
             },
             HTML_NAMESPACE
         );
-        node.detach();
-
         flush();
 
-        greeting.set('goodbye');
-        flush();
-
-        node.attach(
-            (event) => {
-                events.push(event);
-            },
-            (error) => {
-                events.push(error);
-            },
-            HTML_NAMESPACE
-        );
-
+        assert.is(1, events.length);
         assert.is('splice', events[0].type);
         assert.is(0, events[0].index);
         assert.is(0, events[0].count);
         assert.is(1, events[0].items.length);
         assert.is('hello', events[0].items[0].data);
+        events = [];
 
-        assert.is('splice', events[1].type);
-        assert.is(0, events[1].index);
-        assert.is(1, events[1].count);
-        assert.is(0, events[1].items?.length ?? 0);
+        node.detach();
+        flush();
 
-        assert.is('splice', events[2].type);
-        assert.is(0, events[2].index);
-        assert.is(0, events[2].count);
-        assert.is(1, events[2].items.length);
-        assert.is('goodbye', events[2].items[0].data);
+        assert.deepEqual([], events);
+
+        greeting.set('goodbye');
+        flush();
+
+        assert.deepEqual([], events);
+
+        node.attach(
+            (event) => {
+                events.push(event);
+            },
+            (error) => {
+                events.push(error);
+            },
+            HTML_NAMESPACE
+        );
+        flush();
+
+        assert.is(1, events.length);
+        assert.is('splice', events[0].type);
+        assert.is(0, events[0].index);
+        assert.is(0, events[0].count);
+        assert.is(1, events[0].items.length);
+        assert.is('goodbye', events[0].items[0].data);
     });
 
     test('mount and unmount are passed through', () => {
@@ -1113,7 +1111,7 @@ suite('CollectionRenderNode', () => {
             HTML_NAMESPACE
         );
 
-        assert.is(2, events.length);
+        assert.is(2, events.length); // TODO: these should be batched!
         assert.is('splice', events[0].type);
         assert.is(0, events[0].index);
         assert.is(0, events[0].count);
@@ -1130,7 +1128,9 @@ suite('CollectionRenderNode', () => {
         const items = collection(['foo', 'bar', 'baz']);
         const node = CollectionRenderNode(renderJSXNode, items);
         node.retain();
-        const events: any[] = [];
+        let events: any[] = [];
+
+        // attach (3 items)
         node.attach(
             (event) => {
                 events.push(event);
@@ -1140,13 +1140,33 @@ suite('CollectionRenderNode', () => {
             },
             HTML_NAMESPACE
         );
+        flush();
 
-        events.splice(0, events.length);
+        assert.is(3, events.length); // TODO: these should be batched!
+        assert.is('splice', events[0].type);
+        assert.is(0, events[0].index);
+        assert.is(0, events[0].count);
+        assert.is(1, events[0].items.length);
+        assert.is('foo', events[0].items[0].data);
+        assert.is('splice', events[1].type);
+        assert.is(1, events[1].index);
+        assert.is(0, events[1].count);
+        assert.is(1, events[1].items.length);
+        assert.is('bar', events[1].items[0].data);
+        assert.is('splice', events[2].type);
+        assert.is(2, events[2].index);
+        assert.is(0, events[2].count);
+        assert.is(1, events[2].items.length);
+        assert.is('baz', events[2].items[0].data);
+
+        // insert 3 items
+        events = [];
         items.unshift('first');
         items.push('last');
         items.splice(2, 1, 'mid');
         flush();
 
+        console.log(events);
         assert.is(4, events.length);
         assert.is('splice', events[0].type);
         assert.is(0, events[0].index);
@@ -1160,7 +1180,7 @@ suite('CollectionRenderNode', () => {
         assert.is(1, events[1].items.length);
         assert.is('last', events[1].items[0].data);
 
-        // TODO: why is this splice(2, 1, 'mid') decomposed into two events? It should be just one
+        // TODO: these should be batched!
         assert.is('splice', events[2].type);
         assert.is(2, events[2].index);
         assert.is(1, events[2].count);
@@ -1177,7 +1197,7 @@ suite('CollectionRenderNode', () => {
         const items = collection(['foo', 'bar', 'baz']);
         const node = CollectionRenderNode(renderJSXNode, items);
         node.retain();
-        const events: any[] = [];
+        let events: any[] = [];
         node.attach(
             (event) => {
                 events.push(event);
@@ -1189,10 +1209,11 @@ suite('CollectionRenderNode', () => {
         );
         node.detach();
 
-        events.splice(0, events.length);
-        items.unshift('first');
-        items.push('last');
-        items.splice(2, 1, 'mid');
+        events = [];
+
+        items.unshift('first'); // -> first, foo, bar, baz
+        items.push('last'); // -> first, foo, bar, baz, last
+        items.splice(2, 1, 'mid'); // -> first, foo, mid, baz, last
         flush();
 
         assert.is(0, events.length);
@@ -1205,6 +1226,7 @@ suite('CollectionRenderNode', () => {
             },
             HTML_NAMESPACE
         );
+        flush();
 
         assert.is(5, events.length);
         assert.is('splice', events[0].type);
@@ -1220,7 +1242,7 @@ suite('CollectionRenderNode', () => {
         assert.is('foo', events[1].items[0].data);
 
         assert.is('splice', events[2].type);
-        assert.is(2, events[2].index);
+        assert.is(2, events[2].index); // Uh...
         assert.is(0, events[2].count);
         assert.is(1, events[2].items.length);
         assert.is('mid', events[2].items[0].data);
@@ -1536,11 +1558,6 @@ suite('ComponentRenderNode', () => {
             'Component:onUnmount',
             'Component:onMount cleanup',
             '4:detach',
-            {
-                type: 'splice',
-                index: 0,
-                count: 1,
-            },
             '5:release',
             'Component:onDestroy',
         ];

@@ -1,4 +1,5 @@
 import type { ArrayEvent } from '../arrayevent';
+import { ArrayEventType } from '../arrayevent';
 import type { Retainable } from '../engine';
 import { release, requestCommit, retain } from '../engine';
 import * as log from '../log';
@@ -62,9 +63,9 @@ interface RenderNodeHandlers {
         parentXmlNamespace: string
     ) => void;
     /**
-     * Called just before the RenderNode is detached from a parent RenderNode -- it may synchronously emit ArrayEvent<Node> | Error events, but cannot emit after it returns.
+     * Called after the RenderNode has been detached from a parent RenderNode. Any nodes it has emitted have been already removed.
      */
-    onDetach?: (nodeEmitter: NodeEmitter, errorEmitter: ErrorEmitter) => void;
+    onDetach?: () => void;
     /**
      * Called just after the RenderNode is mounted to the DOM (specifically has been attached transitively to a mount() point)
      */
@@ -110,6 +111,7 @@ export class StaticRenderNode implements RenderNode, Retainable {
     private declare _isMounted: boolean;
     private declare child: RenderNode;
     private declare parentXmlNamespace: string;
+    private declare liveNodes: number;
     private declare depth: number;
 
     constructor(
@@ -123,6 +125,7 @@ export class StaticRenderNode implements RenderNode, Retainable {
         this.nodeEmitter = undefined;
         this.errorEmitter = undefined;
         this.parentXmlNamespace = HTML_NAMESPACE;
+        this.liveNodes = 0;
         this.depth = 0;
 
         this.__debugName = debugName ?? `custom`;
@@ -176,8 +179,16 @@ export class StaticRenderNode implements RenderNode, Retainable {
             toRemove.onUnmount();
         }
         if (this.nodeEmitter) {
+            if (this.liveNodes > 0) {
+                this.nodeEmitter({
+                    type: ArrayEventType.SPLICE,
+                    index: 0,
+                    count: this.liveNodes,
+                });
+            }
             toRemove.detach();
         }
+        this.liveNodes = 0;
         this.disown(toRemove);
         this.own(this.child);
         if (this.nodeEmitter && this.parentXmlNamespace) {
@@ -193,6 +204,9 @@ export class StaticRenderNode implements RenderNode, Retainable {
     }
 
     private handleEvent = (event: ArrayEvent<Node>) => {
+        if (event.type === ArrayEventType.SPLICE) {
+            this.liveNodes += (event.items?.length ?? 0) - event.count;
+        }
         if (!this.handlers.onEvent?.(event)) {
             log.assert(
                 this.nodeEmitter,
@@ -214,11 +228,11 @@ export class StaticRenderNode implements RenderNode, Retainable {
 
     detach() {
         log.assert(this.nodeEmitter && this.errorEmitter, 'double detached');
-        this.handlers.onDetach?.(this.nodeEmitter, this.errorEmitter);
         this.child.detach();
         this.nodeEmitter = undefined;
         this.errorEmitter = undefined;
         this.parentXmlNamespace = HTML_NAMESPACE;
+        this.handlers.onDetach?.();
     }
 
     attach(
@@ -383,12 +397,24 @@ export class DynamicRenderNode implements RenderNode, Retainable {
             if (this._isMounted) {
                 child.onUnmount();
             }
+        }
+        const { removed, event } = this.slotSizes.splice(
+            index,
+            count,
+            children
+        );
+        if (this.nodeEmitter && event.count > 0) {
+            this.nodeEmitter({
+                type: ArrayEventType.SPLICE,
+                index: event.index,
+                count: event.count,
+                // Note: we do *not* take the responsibility of emitting the new nodes -- the children do that on attach
+            });
+        }
+        for (const child of removed) {
             if (this.nodeEmitter) {
                 child.detach();
             }
-        }
-        const { removed } = this.slotSizes.splice(index, count, children);
-        for (const child of removed) {
             this.disown(child);
         }
         for (const child of children) {
@@ -408,11 +434,8 @@ export class DynamicRenderNode implements RenderNode, Retainable {
 
     private handleChildEvent(child: RenderNode, event: ArrayEvent<Node>) {
         if (!this.handlers.onChildEvent?.(child, event)) {
-            this.handleEvent(
-                event instanceof Error
-                    ? event
-                    : this.slotSizes.applyEvent(child, event)
-            );
+            const shifted = this.slotSizes.applyEvent(child, event);
+            this.handleEvent(shifted);
         }
     }
 
@@ -438,13 +461,14 @@ export class DynamicRenderNode implements RenderNode, Retainable {
 
     detach() {
         log.assert(this.nodeEmitter && this.errorEmitter, 'double detached');
-        this.handlers.onDetach?.(this.nodeEmitter, this.errorEmitter);
+        this.slotSizes.clearSlots();
         for (const child of this.slotSizes.items) {
             child.detach();
         }
         this.nodeEmitter = undefined;
         this.errorEmitter = undefined;
         this.parentXmlNamespace = HTML_NAMESPACE;
+        this.handlers.onDetach?.();
     }
 
     attach(

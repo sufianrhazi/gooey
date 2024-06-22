@@ -187,7 +187,7 @@ export function ComponentRenderNode<TProps>(
                     renderNode.setChild(result);
                 }
             },
-            onDetach: (nodeEmitter, errorEmitter) => {
+            onDetach: () => {
                 renderNode.setChild(emptyRenderNode);
             },
             onError: (error: Error) => {

@@ -16,13 +16,6 @@ export function ForeignRenderNode(node: Node, debugName?: string): RenderNode {
                     items: [node],
                 });
             },
-            onDetach: (nodeEmitter) => {
-                nodeEmitter({
-                    type: ArrayEventType.SPLICE,
-                    index: 0,
-                    count: 1,
-                });
-            },
             clone: () => {
                 return ForeignRenderNode(node, debugName);
             },

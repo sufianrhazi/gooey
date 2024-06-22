@@ -2315,6 +2315,7 @@ suite('mount collection mapped view', () => {
         items.unshift('>>>');
         items.push('<<<');
         flush();
+        assert.deepEqual(['>>>', 'bar', 'baz', '<<<'], Array.from(items));
         mount(testRoot, jsx);
         assert.is('>>>barbaz<<<', testRoot.textContent);
     });

@@ -10,6 +10,7 @@ export function mount(
     target: Element | ShadowRoot,
     node: RenderNode
 ): () => void {
+    const skipNodes = target.childNodes.length;
     const children: RenderNode[] = [];
     for (let i = 0; i < target.childNodes.length; ++i) {
         children.push(ForeignRenderNode(target.childNodes[i]));
@@ -50,9 +51,11 @@ export function mount(
     root.onMount();
     flush();
     return () => {
+        const nodesToKeep = Array.from(target.childNodes).slice(0, skipNodes);
         root.onUnmount();
-        root.detach();
         flush();
+        target.replaceChildren(...nodesToKeep);
+        root.detach();
         root.release();
     };
 }

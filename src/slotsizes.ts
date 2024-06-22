@@ -19,6 +19,10 @@ export class SlotSizes<TEventSource> {
         this.updateIndexes(0, items.length);
     }
 
+    clearSlots() {
+        this.slots = this.items.map(() => 0);
+    }
+
     updateIndexes(lo: number, hi: number) {
         for (let i = lo; i < hi; ++i) {
             this.indexes.set(this.items[i], i);
