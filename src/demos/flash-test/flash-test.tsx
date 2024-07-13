@@ -1,5 +1,5 @@
-import type { Component} from '../..';
-import Gooey, { model, calc, mount } from '../..';
+import type { Component } from '../..';
+import Gooey, { calc, model, mount } from '../..';
 
 const TickProcessor: Component = () => {
     let lastTask = 0;
@@ -15,6 +15,13 @@ const TickProcessor: Component = () => {
 Flash rate: ${calculateRate()}
 `
     );
+
+    const tick = () => {
+        if (!state.flashing) return;
+        ticks += 1;
+        state.toggle = !state.toggle;
+    };
+
     textCalc.subscribe(() => {
         const now = performance.now();
         if (lastTask === 0) {
@@ -28,12 +35,6 @@ Flash rate: ${calculateRate()}
             frames++;
         }
     });
-
-    const tick = () => {
-        if (!state.flashing) return;
-        ticks += 1;
-        state.toggle = !state.toggle;
-    };
 
     return (
         <fieldset>

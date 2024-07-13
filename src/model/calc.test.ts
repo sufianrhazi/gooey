@@ -54,7 +54,7 @@ suite('calc', () => {
         release(calculation);
     });
 
-    test('emits event when subscribed via subscribeWithError', () => {
+    test('emits event when subscribed via subscribe', () => {
         const calls: string[] = [];
         const dependency = model(
             {
@@ -67,21 +67,28 @@ suite('calc', () => {
             return dependency.value;
         }, 'calculation');
         const events: any[] = [];
-        const unsubscribe = calculation.subscribeWithError((err, val) => {
+        const unsubscribe = calculation.subscribe((err, val) => {
             events.push({ err, val });
         });
 
         assert.deepEqual(['call'], calls);
-        assert.deepEqual([], events);
+        assert.deepEqual([{ err: undefined, val: 1 }], events);
         dependency.value = 2;
         flush();
         assert.deepEqual(['call', 'call'], calls);
-        assert.deepEqual([{ err: undefined, val: 2 }], events);
+        assert.deepEqual(
+            [
+                { err: undefined, val: 1 },
+                { err: undefined, val: 2 },
+            ],
+            events
+        );
         dependency.value = 3;
         flush();
         assert.deepEqual(['call', 'call', 'call'], calls);
         assert.deepEqual(
             [
+                { err: undefined, val: 1 },
                 { err: undefined, val: 2 },
                 { err: undefined, val: 3 },
             ],
@@ -93,6 +100,7 @@ suite('calc', () => {
         assert.deepEqual(['call', 'call', 'call'], calls);
         assert.deepEqual(
             [
+                { err: undefined, val: 1 },
                 { err: undefined, val: 2 },
                 { err: undefined, val: 3 },
             ],
@@ -100,7 +108,7 @@ suite('calc', () => {
         );
     });
 
-    test('emits error event when subscribeWithError and no error handler', () => {
+    test('emits error event when subscribe and no error handler', () => {
         const calls: string[] = [];
         const state = model({
             crash: false,
@@ -108,9 +116,10 @@ suite('calc', () => {
         const calculation = calc(() => {
             calls.push('call');
             if (state.crash) throw new Error('ruh roh');
+            return 'result';
         });
         const events: any[] = [];
-        calculation.subscribeWithError((err, val) => {
+        calculation.subscribe((err, val) => {
             events.push({ err, val });
         });
 
@@ -118,9 +127,11 @@ suite('calc', () => {
         state.crash = true;
         flush();
         assert.deepEqual(['call', 'call'], calls);
-        assert.is(events.length, 1);
-        assert.is(events[0].err.message, 'ruh roh');
-        assert.is(events[0].val, undefined);
+        assert.is(events.length, 2);
+        assert.is(events[0].err, undefined);
+        assert.is(events[0].val, 'result');
+        assert.is(events[1].err.message, 'ruh roh');
+        assert.is(events[1].val, undefined);
     });
 
     test('ignores exception on subscription and no handler', () => {
@@ -133,12 +144,14 @@ suite('calc', () => {
             if (state.crash) throw new Error('ruh roh');
         });
         const events: any[] = [];
-        calculation.subscribeWithError((err, val) => {
+        calculation.subscribe((err, val) => {
             events.push({ err, val });
         });
 
         assert.deepEqual(['call'], calls);
-        assert.deepEqual([], events);
+        assert.deepEqual(1, events.length);
+        assert.is('ruh roh', events[0].err.message);
+        assert.is(undefined, events[0].val);
     });
 
     test('reruns when collection dependency changes', () => {
@@ -290,14 +303,14 @@ suite('calc', () => {
         const numbers = collection([1, 2, 3]);
         const sum = calc(() => numbers.reduce((acc, val) => acc + val, 0));
         const values: any[] = [];
-        sum.subscribeWithError((err, val) => values.push(val));
-        assert.deepEqual([], values);
+        sum.subscribe((err, val) => values.push(val));
+        assert.deepEqual([1 + 2 + 3], values);
         numbers.push(4);
         flush();
-        assert.deepEqual([1 + 2 + 3 + 4], values);
+        assert.deepEqual([1 + 2 + 3, 1 + 2 + 3 + 4], values);
         numbers[0] = 5;
         flush();
-        assert.deepEqual([1 + 2 + 3 + 4, 5 + 2 + 3 + 4], values);
+        assert.deepEqual([1 + 2 + 3, 1 + 2 + 3 + 4, 5 + 2 + 3 + 4], values);
     });
 
     test('retains derived collections appropriately', () => {
@@ -305,14 +318,17 @@ suite('calc', () => {
         const doubled = numbers.mapView((num) => num * 2);
         const sum = calc(() => doubled.reduce((acc, val) => acc + val, 0));
         const values: any[] = [];
-        sum.subscribeWithError((err, val) => values.push(val));
-        assert.deepEqual([], values);
+        sum.subscribe((err, val) => values.push(val));
+        assert.deepEqual([(1 + 2 + 3) * 2], values);
         numbers.push(4);
         flush();
-        assert.deepEqual([(1 + 2 + 3 + 4) * 2], values);
+        assert.deepEqual([(1 + 2 + 3) * 2, (1 + 2 + 3 + 4) * 2], values);
         numbers[0] = 5;
         flush();
-        assert.deepEqual([(1 + 2 + 3 + 4) * 2, (5 + 2 + 3 + 4) * 2], values);
+        assert.deepEqual(
+            [(1 + 2 + 3) * 2, (1 + 2 + 3 + 4) * 2, (5 + 2 + 3 + 4) * 2],
+            values
+        );
     });
 
     test('retains dict keys appropriately', () => {
@@ -320,22 +336,22 @@ suite('calc', () => {
         const keys = bag.keys();
         const size = calc(() => keys.length, 'calc length');
         const values: any[] = [];
-        size.subscribeWithError((err, val) => values.push(val));
-        assert.deepEqual([], values);
+        size.subscribe((err, val) => values.push(val));
+        assert.deepEqual([0], values);
         bag.set('foo', 'bar');
         flush();
-        assert.deepEqual([1], values);
+        assert.deepEqual([0, 1], values);
         bag.set('baz', 'bum');
         flush();
-        assert.deepEqual([1, 2], values);
+        assert.deepEqual([0, 1, 2], values);
         bag.set('foo', 'overwrite');
         bag.set('baz', 'overwrite');
         flush();
-        assert.deepEqual([1, 2], values);
+        assert.deepEqual([0, 1, 2], values);
         bag.delete('foo');
         bag.delete('unused');
         flush();
-        assert.deepEqual([1, 2, 1], values);
+        assert.deepEqual([0, 1, 2, 1], values);
     });
 });
 

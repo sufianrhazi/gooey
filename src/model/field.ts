@@ -57,6 +57,7 @@ export class Field<T> implements Processable, Retainable, DynamicMut<T> {
         this.retain();
         if (!this._subscribers) this._subscribers = new Map();
         this._subscribers.set(subscriber, this._changeClock);
+        subscriber(undefined, this._val);
         return () => {
             if (this._subscribers?.has(subscriber)) {
                 this._subscribers?.delete(subscriber);

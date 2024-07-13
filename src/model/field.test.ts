@@ -42,43 +42,43 @@ suite('field', () => {
         const log: string[] = [];
         const simple = field('init');
         simple.subscribe((err, val) => log.push(val));
-        assert.deepEqual([], log);
+        assert.deepEqual(['init'], log);
         simple.set('one');
-        assert.deepEqual([], log);
+        assert.deepEqual(['init'], log);
         flush();
-        assert.deepEqual(['one'], log);
+        assert.deepEqual(['init', 'one'], log);
         simple.set('two');
         simple.set('three');
         flush();
-        assert.deepEqual(['one', 'three'], log);
+        assert.deepEqual(['init', 'one', 'three'], log);
     });
 
     test('subscriptions stopped with unsubscribe (unsubscribe after write)', () => {
         const log: string[] = [];
         const simple = field('init');
         const unsubscribe = simple.subscribe((err, val) => log.push(val));
-        assert.deepEqual([], log);
+        assert.deepEqual(['init'], log);
         simple.set('one');
         flush();
-        assert.deepEqual(['one'], log);
+        assert.deepEqual(['init', 'one'], log);
         simple.set('two');
         unsubscribe();
         flush();
-        assert.deepEqual(['one'], log);
+        assert.deepEqual(['init', 'one'], log);
     });
 
     test('subscriptions stopped with unsubscribe (unsubscribe before write)', () => {
         const log: string[] = [];
         const simple = field('init');
         const unsubscribe = simple.subscribe((err, val) => log.push(val));
-        assert.deepEqual([], log);
+        assert.deepEqual(['init'], log);
         simple.set('one');
         flush();
-        assert.deepEqual(['one'], log);
+        assert.deepEqual(['init', 'one'], log);
         unsubscribe();
         simple.set('two');
         flush();
-        assert.deepEqual(['one'], log);
+        assert.deepEqual(['init', 'one'], log);
     });
 
     test('observed values only occur after observation', () => {
@@ -87,10 +87,11 @@ suite('field', () => {
         assert.deepEqual([], log);
         simple.set('one');
         simple.subscribe((err, val) => log.push(val));
+        assert.deepEqual(['one'], log);
         flush();
-        assert.deepEqual([], log);
+        assert.deepEqual(['one'], log);
         simple.set('two');
         flush();
-        assert.deepEqual(['two'], log);
+        assert.deepEqual(['one', 'two'], log);
     });
 });

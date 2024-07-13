@@ -58,7 +58,7 @@ suite('flushing behavior', () => {
         retain(sideCalc);
         const mainRecalcs: any[] = [];
         const sideRecalcs: any[] = [];
-        mainCalc.subscribeWithError((error, val) => {
+        mainCalc.subscribe((error, val) => {
             if (error) {
                 mainRecalcs.push({
                     error,
@@ -67,7 +67,7 @@ suite('flushing behavior', () => {
                 mainRecalcs.push({ val });
             }
         });
-        sideCalc.subscribeWithError((error, val) => {
+        sideCalc.subscribe((error, val) => {
             if (error) {
                 sideRecalcs.push({
                     error,
@@ -82,7 +82,7 @@ suite('flushing behavior', () => {
         val.set('go');
         flush();
         assert.deepEqual(['other', 'other 2'], log);
-        assert.deepEqual([{ val: 'go' }], mainRecalcs);
-        assert.deepEqual([{ val: 'other 2' }], sideRecalcs);
+        assert.deepEqual([{ val: 'ready' }, { val: 'go' }], mainRecalcs);
+        assert.deepEqual([{ val: 'other' }, { val: 'other 2' }], sideRecalcs);
     });
 });

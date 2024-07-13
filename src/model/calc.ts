@@ -165,9 +165,6 @@ enum CalculationState {
 }
 
 const CalculationSymbol = Symbol('calculation');
-export const CalculationSubscribeWithPostAction = Symbol(
-    'calculationSubscribeWithPostAction'
-);
 
 type CalcUnsubscribe = () => void;
 
@@ -352,32 +349,13 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
         return this;
     }
 
-    subscribe(handler: DynamicSubscriptionHandler<T>): () => void {
-        return this[CalculationSubscribeWithPostAction]((...args) => {
-            handler(...args);
-        });
-    }
-
-    subscribeWithError(
-        handler: DynamicSubscriptionHandler<T>
-    ): CalcUnsubscribe {
-        return this[CalculationSubscribeWithPostAction]((error, value) => {
-            if (error) {
-                handler(error, value);
-            } else {
-                handler(error, value);
-            }
-        });
-    }
-
-    [CalculationSubscribeWithPostAction](
-        handler: DynamicSubscriptionHandler<T>
-    ): CalcUnsubscribe {
+    subscribe(handler: DynamicSubscriptionHandler<T>): CalcUnsubscribe {
         retain(this);
+        let args: [Error, undefined] | [undefined, T];
         try {
-            this.get();
+            args = [undefined, this.get()];
         } catch (e) {
-            // Intentionally ignore exception
+            args = [wrapError(e), undefined];
         }
         if (!this._subscriptions) {
             this._subscriptions = new Set();
@@ -387,6 +365,7 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
             this._subscriptions?.delete(handler);
             release(this);
         };
+        handler(...args);
         return unsubscribe;
     }
 
