@@ -36,7 +36,6 @@ export function mount(
             (target instanceof Element
                 ? target.namespaceURI
                 : target.host.namespaceURI) ?? HTML_NAMESPACE,
-        userContext: {},
     });
     if (syncError) {
         root.release();

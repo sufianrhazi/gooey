@@ -84,7 +84,6 @@ export function IntrinsicRenderNode(
             );
             renderNode.own(portalRenderNode);
             portalRenderNode.attach({
-                ...parentContext,
                 nodeEmitter: handleEvent,
                 errorEmitter: handleError,
                 xmlNamespace: childXmlNamespace,
@@ -259,7 +258,6 @@ export function IntrinsicRenderNode(
                         ?.children ?? xmlNamespaceGuess;
                 element = ensureElement(
                     {
-                        userContext: {},
                         nodeEmitter: (nodeEvent) => {
                             log.fail(
                                 'IntrinsicRenderNode got unexpected node event',

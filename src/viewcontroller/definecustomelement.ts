@@ -106,7 +106,6 @@ export function defineCustomElement<
                     log.error('Unhandled web component mount error', error);
                 },
                 xmlNamespace: this.namespaceURI ?? HTML_NAMESPACE,
-                userContext: {}, // TODO: how should custom elements receive their user context?
             });
         }
 

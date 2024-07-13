@@ -12,7 +12,6 @@ export type NodeEmitter = (event: ArrayEvent<Node>) => void;
 export type ErrorEmitter = (error: Error) => void;
 
 export interface ParentContext {
-    userContext: Record<string, any>;
     nodeEmitter: NodeEmitter;
     errorEmitter: ErrorEmitter;
     xmlNamespace: string;
@@ -183,9 +182,9 @@ export class StaticRenderNode implements RenderNode, Retainable {
         this.own(this.child);
         if (this.parentContext) {
             this.child.attach({
-                ...this.parentContext,
                 nodeEmitter: this.handleEvent,
                 errorEmitter: this.handleError,
+                xmlNamespace: this.parentContext.xmlNamespace,
             });
         }
         if (this._isMounted) {
@@ -227,9 +226,9 @@ export class StaticRenderNode implements RenderNode, Retainable {
         log.assert(!this.parentContext, 'Invariant: double attached');
         this.parentContext = parentContext;
         this.child.attach({
-            ...this.parentContext,
             nodeEmitter: this.handleEvent,
             errorEmitter: this.handleError,
+            xmlNamespace: this.parentContext.xmlNamespace,
         });
         this.handlers.onAttach?.(parentContext);
     }
@@ -397,10 +396,10 @@ export class DynamicRenderNode implements RenderNode, Retainable {
             this.own(child);
             if (this.parentContext) {
                 child.attach({
-                    ...this.parentContext,
                     nodeEmitter: (event: ArrayEvent<Node>) =>
                         this.handleChildEvent(child, event),
                     errorEmitter: this.handleError,
+                    xmlNamespace: this.parentContext.xmlNamespace,
                 });
             }
             if (this._isMounted) {
@@ -451,11 +450,11 @@ export class DynamicRenderNode implements RenderNode, Retainable {
         this.parentContext = parentContext;
         for (const child of this.slotSizes.items) {
             child.attach({
-                ...this.parentContext,
                 nodeEmitter: (event) => {
                     this.handleChildEvent(child, event);
                 },
                 errorEmitter: this.handleError,
+                xmlNamespace: this.parentContext.xmlNamespace,
             });
         }
         this.handlers.onAttach?.(parentContext);

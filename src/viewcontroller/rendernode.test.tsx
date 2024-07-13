@@ -443,7 +443,6 @@ suite('DynamicRenderNode (with calculation)', () => {
         node.retain();
         const events: any[] = [];
         node.attach({
-            userContext: {},
             nodeEmitter: (event) => {
                 events.push(event);
             },
@@ -473,7 +472,6 @@ suite('DynamicRenderNode (with calculation)', () => {
         node.retain();
         const events: any[] = [];
         node.attach({
-            userContext: {},
             nodeEmitter: (event) => {
                 events.push(event);
             },
@@ -528,7 +526,6 @@ suite('DynamicRenderNode (with calculation)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         flush();
         node.detach();
@@ -563,7 +560,6 @@ suite('DynamicRenderNode (with calculation)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         flush();
 
@@ -593,7 +589,6 @@ suite('DynamicRenderNode (with calculation)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
 
         assert.is(1, events.length);
@@ -623,7 +618,6 @@ suite('DynamicRenderNode (with calculation)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         tracer.log('2: mount');
         node.onMount();
@@ -644,7 +638,6 @@ suite('DynamicRenderNode (with calculation)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         tracer.log('8: attach');
         node.detach();
@@ -700,7 +693,6 @@ suite('DynamicRenderNode (with calculation)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         assert.is(2, events.length);
         assert.is('calc', events[0]);
@@ -729,7 +721,6 @@ suite('DynamicRenderNode (with calculation)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
 
         assert.is(2, events.length);
@@ -768,7 +759,6 @@ suite('DynamicRenderNode (with field)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
 
         flush();
@@ -794,7 +784,6 @@ suite('DynamicRenderNode (with field)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
 
         flush();
@@ -837,7 +826,6 @@ suite('DynamicRenderNode (with field)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         flush();
 
@@ -870,7 +858,6 @@ suite('DynamicRenderNode (with field)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         flush();
 
@@ -900,7 +887,6 @@ suite('DynamicRenderNode (with field)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         flush();
 
@@ -930,7 +916,6 @@ suite('DynamicRenderNode (with field)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         tracer.log('2: mount');
         node.onMount();
@@ -951,7 +936,6 @@ suite('DynamicRenderNode (with field)', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         tracer.log('8: attach');
         node.detach();
@@ -1004,7 +988,6 @@ suite('ArrayRenderNode', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         const div1 = document.createElement('div');
         const div2 = document.createElement('div');
@@ -1128,7 +1111,6 @@ suite('CollectionRenderNode', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
 
         assert.is(2, events.length); // TODO: these should be batched!
@@ -1159,7 +1141,6 @@ suite('CollectionRenderNode', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         flush();
 
@@ -1226,7 +1207,6 @@ suite('CollectionRenderNode', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         node.detach();
 
@@ -1246,7 +1226,6 @@ suite('CollectionRenderNode', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         flush();
 
@@ -1302,7 +1281,6 @@ suite('CollectionRenderNode', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         assert.is(2, events.length);
         assert.is('calc', events[0]);
@@ -1331,7 +1309,6 @@ suite('CollectionRenderNode', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
 
         assert.is(2, events.length);
@@ -1376,7 +1353,6 @@ suite('CollectionRenderNode', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         node.detach();
         events = [];
@@ -1396,7 +1372,6 @@ suite('CollectionRenderNode', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
 
         assert.is(1, events.length);
@@ -1419,7 +1394,6 @@ suite('CollectionRenderNode', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         node.onMount();
         assert.deepEqual(
@@ -1479,7 +1453,6 @@ suite('CollectionRenderNode', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         assert.deepEqual(['retain', 'alive', 'attach'], tracer1.events);
         assert.deepEqual([], tracer2.events);
@@ -1561,7 +1534,6 @@ suite('ComponentRenderNode', () => {
                 events.push(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         events.push('2:onMount');
         node.onMount();
@@ -1712,7 +1684,6 @@ suite('IntrinsicObserverRenderNode', () => {
                 tracer.log(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         node.onMount();
         node.onUnmount();
@@ -1755,7 +1726,6 @@ suite('IntrinsicObserverRenderNode', () => {
                 tracer.log(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         tracer.parentCtx?.nodeEmitter({
             type: ArrayEventType.SPLICE,
@@ -1825,7 +1795,6 @@ suite('IntrinsicObserverRenderNode', () => {
                 tracer.log(error);
             },
             xmlNamespace: HTML_NAMESPACE,
-            userContext: {},
         });
         node.onMount();
 
