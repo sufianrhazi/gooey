@@ -1,11 +1,14 @@
 import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
 
+import type { Component } from './index';
 import Gooey, {
     calc,
+    collection,
     dict,
     field,
     flush,
     mount,
+    ref,
     reset,
     subscribe,
 } from './index';
@@ -232,5 +235,79 @@ suite('component bugs', () => {
             ['instance 1 rendered clicks: 0', 'instance 2 rendered clicks: 0'],
             log
         );
+    });
+
+    test('component onMount gets called when children have been rendered and mounted', () => {
+        const log: any[] = [];
+        const Inner: Component = (props, { onMount }) => {
+            const state = field('inner');
+            const divRef = ref<HTMLDivElement>();
+            onMount(() => {
+                log.push({ inner: divRef.current?.textContent });
+                state.set('inner_updated');
+            });
+            return (
+                <div ref={divRef}>
+                    <div>
+                        Inner field: {state}
+                        {'\n'}
+                    </div>
+                    <div>
+                        Inner calc: {calc(() => state.get())}
+                        {'\n'}
+                    </div>
+                </div>
+            );
+        };
+
+        const Outer: Component = (props, { onMount }) => {
+            const state = field('outer');
+            const divRef = ref<HTMLDivElement>();
+            onMount(() => {
+                log.push({ outer: divRef.current?.textContent });
+                state.set('outer_updated');
+            });
+            return (
+                <div ref={divRef}>
+                    <div>
+                        Outer field: {state}
+                        {'\n'}
+                    </div>
+                    <Inner />
+                    <div>
+                        Outer calc: {calc(() => state.get())}
+                        {'\n'}
+                    </div>
+                </div>
+            );
+        };
+
+        mount(testRoot, <Outer />);
+        assert.deepEqual(
+            [
+                {
+                    inner: 'Inner field: inner\nInner calc: inner\n',
+                },
+                {
+                    outer: 'Outer field: outer\nInner field: inner\nInner calc: inner\nOuter calc: outer\n',
+                },
+            ],
+            log
+        );
+    });
+
+    test('mapView with collection on component render', () => {
+        const App = () => {
+            const vertices = collection([<div />]);
+
+            return (
+                <div class="dge">
+                    <math>
+                        <div>{vertices}</div>
+                    </math>
+                </div>
+            );
+        };
+        mount(testRoot, <App />);
     });
 });

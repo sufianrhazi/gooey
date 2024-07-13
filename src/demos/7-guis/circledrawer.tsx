@@ -1,15 +1,5 @@
-import type {
-    Model,
-    Ref,
-    Calculation,
-    Collection} from '../..';
-import Gooey, {
-    ClassComponent,
-    collection,
-    model,
-    calc,
-    ref,
-} from '../..';
+import type { Calculation, Collection, Model, Ref } from '../..';
+import Gooey, { calc, ClassComponent, collection, model, ref } from '../..';
 import type { WindowPosition } from './window';
 import { Window } from './window';
 
@@ -158,30 +148,25 @@ export class CircleDrawer extends ClassComponent {
                     this.childWindowPosition = position;
                 }}
             >
-                {calc(() => {
-                    return (
-                        <div class="p col cross-center">
-                            <label for="circle-diameter">
-                                Adjust diameter of circle at (
-                                {calc(() => this.state.selected?.x)},{' '}
-                                {calc(() => this.state.selected?.y)})
-                            </label>
-                            <input
-                                id="circle-diameter"
-                                type="range"
-                                min="3"
-                                max="200"
-                                on:input={(e, el) => {
-                                    if (!this.state.selected) return;
-                                    this.state.dynamicR = parseInt(el.value);
-                                }}
-                                value={calc(
-                                    () => `${this.state.dynamicR ?? 3}`
-                                )}
-                            />
-                        </div>
-                    );
-                })}
+                <div class="p col cross-center">
+                    <label for="circle-diameter">
+                        Adjust diameter of circle at (
+                        {calc(() => this.state.selected?.x)},{' '}
+                        {calc(() => this.state.selected?.y)})
+                    </label>
+                    <input
+                        id="circle-diameter"
+                        class="my"
+                        type="range"
+                        min="3"
+                        max="200"
+                        on:input={(e, el) => {
+                            if (!this.state.selected) return;
+                            this.state.dynamicR = parseInt(el.value);
+                        }}
+                        value={calc(() => `${this.state.dynamicR ?? 3}`)}
+                    />
+                </div>
             </Window>
         );
     }

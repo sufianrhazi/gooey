@@ -1,13 +1,5 @@
-import type {
-    Component,
-    Model,
-    Field} from '../..';
-import Gooey, {
-    calc,
-    collection,
-    model,
-    field
-} from '../..';
+import type { Component, Field, Model } from '../..';
+import Gooey, { calc, collection, field, model } from '../..';
 
 type Item = Model<{
     id: number;
@@ -89,6 +81,7 @@ export const CRUD: Component = () => {
                         <TextInput label="Filter prefix:" field={filter} />
                     </div>
                     <select
+                        multiple
                         class="stretch grow"
                         size={calc(() => Math.min(3, items.length))}
                         on:input={(e, el) => {

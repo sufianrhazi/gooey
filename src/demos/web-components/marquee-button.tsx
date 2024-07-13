@@ -1,12 +1,11 @@
-import type {
-    Dyn} from '../../index';
+import type { Dyn } from '../../index';
 import Gooey, {
     calc,
+    defineCustomElement,
     dynGet,
     field,
     model,
     ref,
-    defineCustomElement,
 } from '../../index';
 
 const dynGetNumber = (val: Dyn<string | undefined>, def: number) => {
@@ -187,7 +186,7 @@ defineCustomElement({
             if (elRef.current) {
                 resizeObserver.observe(elRef.current);
             }
-            const unsubscribe = isActive.subscribe((val) => {
+            const unsubscribe = isActive.subscribe((err, val) => {
                 if (val) {
                     evenShift.set(0);
                     oddShift.set(50);

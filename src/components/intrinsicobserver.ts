@@ -1,12 +1,11 @@
-import type { Component } from '../rendernode/componentrendernode';
+import { renderJSXChildren } from '../viewcontroller/renderjsx';
+import { ArrayRenderNode } from '../viewcontroller/rendernode/arrayrendernode';
+import type { Component } from '../viewcontroller/rendernode/componentrendernode';
 import type {
+    IntrinsicObserverElementCallback,
     IntrinsicObserverNodeCallback,
-    IntrinsicObserverElementCallback} from '../rendernode/intrinsicobserverrendernode';
-import {
-    IntrinsicObserverRenderNode
-} from '../rendernode/intrinsicobserverrendernode';
-import { ArrayRenderNode } from '../rendernode/arrayrendernode';
-import { renderJSXChildren } from '../renderjsx';
+} from '../viewcontroller/rendernode/intrinsicobserverrendernode';
+import { IntrinsicObserverRenderNode } from '../viewcontroller/rendernode/intrinsicobserverrendernode';
 
 export const IntrinsicObserver: Component<{
     nodeCallback?: IntrinsicObserverNodeCallback;

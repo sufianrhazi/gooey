@@ -1,14 +1,5 @@
-import type {
-    Model,
-    Calculation,
-    Component,
-    Collection} from '../../index';
-import Gooey, {
-    calc,
-    model,
-    collection,
-    mount,
-} from '../../index';
+import type { Calculation, Collection, Component, Model } from '../../index';
+import Gooey, { calc, collection, model, mount } from '../../index';
 
 function lerp(from: number, to: number, pct: number) {
     return from + (to - from) * pct;

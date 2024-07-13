@@ -1,6 +1,6 @@
-import type { Component } from '../rendernode/componentrendernode';
-import { ArrayRenderNode } from '../rendernode/arrayrendernode';
-import { renderJSXChildren } from '../renderjsx';
+import { renderJSXChildren } from '../viewcontroller/renderjsx';
+import { ArrayRenderNode } from '../viewcontroller/rendernode/arrayrendernode';
+import type { Component } from '../viewcontroller/rendernode/componentrendernode';
 
 export const Fragment: Component<{ children?: JSX.Node | JSX.Node[] }> = ({
     children,

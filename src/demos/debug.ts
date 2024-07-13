@@ -1,6 +1,7 @@
 import { graphviz } from '@hpcc-js/wasm';
+
+import { noop } from '../common/util';
 import { debug, debugSubscribe, subscribe } from '../index';
-import { noop } from '../util';
 
 /**
  * Create a ref to build a debugging graphviz UI
