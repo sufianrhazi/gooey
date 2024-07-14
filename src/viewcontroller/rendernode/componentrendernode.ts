@@ -67,7 +67,6 @@ export function ComponentRenderNode<TProps>(
     let onDestroyCallbacks: undefined | (() => void)[];
     let owned: Set<Retainable> = new Set();
     let errorHandler: undefined | ((e: Error) => RenderNode | null);
-    let needsMount = false;
 
     function ensureResult() {
         if (!result) {
@@ -179,7 +178,6 @@ export function ComponentRenderNode<TProps>(
                 onDestroyCallbacks = undefined;
                 result = undefined;
                 errorHandler = undefined;
-                needsMount = false;
             },
             onAttach: (parentContext) => {
                 if (result instanceof Error) {
@@ -206,7 +204,6 @@ export function ComponentRenderNode<TProps>(
                 if (result instanceof Error) {
                     return;
                 }
-                needsMount = true;
                 renderNode.requestCommit(RenderNodeCommitPhase.COMMIT_MOUNT);
             },
             onUnmount: () => {
@@ -223,7 +220,6 @@ export function ComponentRenderNode<TProps>(
             onCommit: (phase) => {
                 if (
                     phase === RenderNodeCommitPhase.COMMIT_MOUNT &&
-                    needsMount &&
                     onMountCallbacks
                 ) {
                     for (const callback of onMountCallbacks) {
@@ -245,7 +241,6 @@ export function ComponentRenderNode<TProps>(
                             onUnmountCallbacks.push(onUnmount);
                         }
                     }
-                    needsMount = false;
                 }
             },
             clone(newProps, newChildren) {

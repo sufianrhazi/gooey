@@ -131,7 +131,6 @@ export function WebComponentRenderNode<
     let onDestroyCallbacks: undefined | (() => void)[];
     const owned: Set<Retainable> = new Set();
     let errorHandler: ((e: Error) => RenderNode | null) | undefined;
-    let needsMount: boolean | undefined;
 
     function ensureResult() {
         if (!result) {
@@ -348,7 +347,6 @@ export function WebComponentRenderNode<
                 onUnmountCallbacks = undefined;
                 onDestroyCallbacks = undefined;
                 errorHandler = undefined;
-                needsMount = false;
 
                 for (const item of owned) {
                     release(item);
@@ -375,7 +373,6 @@ export function WebComponentRenderNode<
                 if (result instanceof Error) {
                     return;
                 }
-                needsMount = true;
                 renderNode.requestCommit(RenderNodeCommitPhase.COMMIT_MOUNT);
             },
             onUnmount() {
@@ -392,7 +389,6 @@ export function WebComponentRenderNode<
             onCommit(phase: RenderNodeCommitPhase) {
                 if (
                     phase === RenderNodeCommitPhase.COMMIT_MOUNT &&
-                    needsMount &&
                     onMountCallbacks
                 ) {
                     for (const callback of onMountCallbacks) {
@@ -414,7 +410,6 @@ export function WebComponentRenderNode<
                             onUnmountCallbacks.push(onUnmount);
                         }
                     }
-                    needsMount = false;
                 }
             },
             clone() {
