@@ -84,15 +84,12 @@ function performCommit() {
         for (const renderNode of toCommit) {
             renderNode.commit(phase);
         }
-        console.groupEnd();
         if (
             phase === RenderNodeCommitPhase.COMMIT_INSERT &&
             activeElement &&
-            (activeElement instanceof HTMLElement ||
-                activeElement instanceof SVGElement) &&
             document.documentElement.contains(activeElement)
         ) {
-            activeElement.focus();
+            (activeElement as HTMLElement).focus();
         }
     }
 }
