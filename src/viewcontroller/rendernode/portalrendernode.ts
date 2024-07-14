@@ -7,14 +7,6 @@ import { RenderNodeCommitPhase } from './constants';
 import type { RenderNode } from './rendernode';
 import { SingleChildRenderNode } from './rendernode';
 
-// TODO: fix this, this needs to be two flags: needs unmount notification; needs mount notification
-enum MountState {
-    MOUNTED,
-    NOTIFY_MOUNT,
-    NOTIFY_UNMOUNT,
-    UNMOUNTED,
-}
-
 // A shared document fragment; NOTE: always clear after use
 const fragment = document.createDocumentFragment();
 
@@ -31,11 +23,6 @@ export function PortalRenderNode(
     let liveNodes: Node[] = [];
     let liveNodeSet: Set<Node> = new Set();
     let deadNodeSet: Set<Node> = new Set();
-    let mountState: MountState | undefined;
-
-    if (refProp) {
-        mountState = MountState.UNMOUNTED;
-    }
 
     function insertBefore(nodes: Node[], targetIndex: number) {
         let toInsert: Node | undefined;
@@ -89,7 +76,6 @@ export function PortalRenderNode(
                     renderNode.requestCommit(
                         RenderNodeCommitPhase.COMMIT_MOUNT
                     );
-                    mountState = MountState.NOTIFY_MOUNT;
                 }
             },
             onUnmount: () => {
@@ -97,21 +83,15 @@ export function PortalRenderNode(
                     renderNode.requestCommit(
                         RenderNodeCommitPhase.COMMIT_UNMOUNT
                     );
-                    mountState = MountState.NOTIFY_UNMOUNT;
                 }
             },
             onCommit: (phase: RenderNodeCommitPhase) => {
-                if (
-                    phase === RenderNodeCommitPhase.COMMIT_UNMOUNT &&
-                    refProp &&
-                    mountState === MountState.NOTIFY_UNMOUNT
-                ) {
+                if (phase === RenderNodeCommitPhase.COMMIT_UNMOUNT && refProp) {
                     if (refProp instanceof Ref) {
                         refProp.current = undefined;
                     } else if (typeof refProp === 'function') {
                         refProp(undefined);
                     }
-                    mountState = MountState.UNMOUNTED;
                 }
                 if (
                     phase === RenderNodeCommitPhase.COMMIT_DELETE &&
@@ -170,17 +150,12 @@ export function PortalRenderNode(
                         liveIndex++;
                     }
                 }
-                if (
-                    phase === RenderNodeCommitPhase.COMMIT_MOUNT &&
-                    refProp &&
-                    mountState === MountState.NOTIFY_MOUNT
-                ) {
+                if (phase === RenderNodeCommitPhase.COMMIT_MOUNT && refProp) {
                     if (refProp instanceof Ref) {
                         refProp.current = element;
                     } else if (typeof refProp === 'function') {
                         refProp(element);
                     }
-                    mountState = MountState.MOUNTED;
                 }
             },
             clone(): RenderNode {
