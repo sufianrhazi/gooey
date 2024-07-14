@@ -1,9 +1,5 @@
 import type { ArrayEvent } from '../../common/arrayevent';
-import {
-    addArrayEvent,
-    applyArrayEvent,
-    ArrayEventType,
-} from '../../common/arrayevent';
+import { applyArrayEvent, ArrayEventType } from '../../common/arrayevent';
 import * as log from '../../common/log';
 import type { RefObjectOrCallback } from '../ref';
 import { Ref } from '../ref';
@@ -31,7 +27,6 @@ export function PortalRenderNode(
         | undefined,
     debugName?: string
 ) {
-    let childEvents: ArrayEvent<Node>[] = [];
     let committedNodes: Node[] = [];
     let liveNodes: Node[] = [];
     let liveNodeSet: Set<Node> = new Set();
@@ -67,7 +62,12 @@ export function PortalRenderNode(
     const renderNode = new SingleChildRenderNode(
         {
             onEvent: (event: ArrayEvent<Node>) => {
-                addArrayEvent(childEvents, event);
+                const removed = applyArrayEvent(liveNodes, event);
+                for (const toRemove of removed) {
+                    if (liveNodeSet.has(toRemove)) {
+                        deadNodeSet.add(toRemove);
+                    }
+                }
                 const isDelete =
                     event.type !== ArrayEventType.SPLICE || event.count > 0;
                 const isInsert =
@@ -101,19 +101,6 @@ export function PortalRenderNode(
                 }
             },
             onCommit: (phase: RenderNodeCommitPhase) => {
-                if (childEvents.length > 0) {
-                    // Prep received events
-                    const toProcess = childEvents;
-                    childEvents = [];
-                    for (const childEvent of toProcess) {
-                        const removed = applyArrayEvent(liveNodes, childEvent);
-                        for (const toRemove of removed) {
-                            if (liveNodeSet.has(toRemove)) {
-                                deadNodeSet.add(toRemove);
-                            }
-                        }
-                    }
-                }
                 if (
                     phase === RenderNodeCommitPhase.COMMIT_UNMOUNT &&
                     refProp &&
@@ -203,7 +190,6 @@ export function PortalRenderNode(
                 );
             },
             onDestroy: () => {
-                childEvents = [];
                 committedNodes = [];
                 liveNodes = [];
                 liveNodeSet = new Set();
