@@ -25,7 +25,7 @@ import type { ParentContext } from './rendernode/rendernode';
 import {
     emptyRenderNode,
     EmptyRenderNode,
-    StaticRenderNode,
+    SingleChildRenderNode,
 } from './rendernode/rendernode';
 import { TextRenderNode } from './rendernode/textrendernode';
 
@@ -40,7 +40,7 @@ beforeEach(() => {
     subscribeCommit();
 });
 
-class TracingRenderNode extends StaticRenderNode {
+class TracingRenderNode extends SingleChildRenderNode {
     declare _commitPhase: RenderNodeCommitPhase;
     public events: any[];
     public parentCtx: ParentContext | undefined;

@@ -14,7 +14,7 @@ import {
 import { ArrayRenderNode } from './arrayrendernode';
 import { PortalRenderNode } from './portalrendernode';
 import type { ParentContext, RenderNode } from './rendernode';
-import { emptyRenderNode, StaticRenderNode } from './rendernode';
+import { emptyRenderNode, SingleChildRenderNode } from './rendernode';
 
 const EventProps = [
     { prefix: 'on:', param: false },
@@ -205,7 +205,7 @@ export function IntrinsicRenderNode(
         assignProp(element, prop, val);
     }
 
-    const renderNode = new StaticRenderNode(
+    const renderNode = new SingleChildRenderNode(
         {
             onAttach: (parentContext) => {
                 if (detachedError) {

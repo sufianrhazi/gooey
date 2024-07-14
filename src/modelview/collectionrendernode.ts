@@ -3,7 +3,7 @@ import { ArrayEventType } from '../common/arrayevent';
 import type { Collection, View } from '../model/collection';
 import { untrackReads } from '../model/engine';
 import type { RenderNode } from '../viewcontroller/rendernode/rendernode';
-import { DynamicRenderNode } from '../viewcontroller/rendernode/rendernode';
+import { MultiChildRenderNode } from '../viewcontroller/rendernode/rendernode';
 
 export function CollectionRenderNode(
     renderJSXNode: (jsxNode: JSX.Node) => RenderNode,
@@ -30,7 +30,7 @@ export function CollectionRenderNode(
             }
         }
     }
-    const renderNode = new DynamicRenderNode(
+    const renderNode = new MultiChildRenderNode(
         {
             onAlive: () => {
                 unsubscribe = collection.subscribe(handleEvent);

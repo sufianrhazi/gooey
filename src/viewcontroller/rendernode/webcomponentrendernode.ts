@@ -15,7 +15,7 @@ import type {
 import type { ComponentLifecycle } from './componentrendernode';
 import { RenderNodeCommitPhase } from './constants';
 import type { RenderNode } from './rendernode';
-import { emptyRenderNode, StaticRenderNode } from './rendernode';
+import { emptyRenderNode, SingleChildRenderNode } from './rendernode';
 
 export type WebComponentProps<
     TKeys extends string,
@@ -323,7 +323,7 @@ export function WebComponentRenderNode<
         return result;
     }
 
-    const renderNode = new StaticRenderNode(
+    const renderNode = new SingleChildRenderNode(
         {
             onAlive: () => {
                 const result = ensureResult();

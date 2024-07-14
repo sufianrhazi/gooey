@@ -12,7 +12,16 @@ export type NodeEmitter = (event: ArrayEvent<Node>) => void;
 export type ErrorEmitter = (error: Error) => void;
 
 export interface ParentContext {
+    /**
+     * RenderNode instances send a stream of ArrayEvent<Node> to their parents,
+     * which take responsibility for placing them into the DOM.
+     */
     nodeEmitter: NodeEmitter;
+    /**
+     * RenderNode instances may emit Error events to their parents in case of
+     * an unrecoverable error in the RenderNode. The parents take
+     * responsibility for handling those Errors.
+     */
     errorEmitter: ErrorEmitter;
     xmlNamespace: string;
 }
@@ -95,9 +104,9 @@ interface RenderNodeHandlers {
 }
 
 /**
- * StaticRenderNode: a virtual node in the tree that has exactly one child
+ * SingleChildRenderNode: a virtual node in the tree that has exactly one child
  */
-export class StaticRenderNode implements RenderNode, Retainable {
+export class SingleChildRenderNode implements RenderNode, Retainable {
     private declare handlers: RenderNodeHandlers;
     private declare parentContext: ParentContext | undefined;
     private declare _isMounted: boolean;
@@ -158,7 +167,7 @@ export class StaticRenderNode implements RenderNode, Retainable {
             return this.handlers.clone(props, children);
         }
         const clonedChild = this.child.clone();
-        return new StaticRenderNode(this.handlers, clonedChild);
+        return new SingleChildRenderNode(this.handlers, clonedChild);
     }
 
     setChild(child: RenderNode) {
@@ -287,9 +296,9 @@ export class StaticRenderNode implements RenderNode, Retainable {
 }
 
 /**
- * DynamicRenderNode: a virtual node in the tree that can have a variable number of children
+ * MultiChildRenderNode: a virtual node in the tree that can have a variable number of children
  */
-export class DynamicRenderNode implements RenderNode, Retainable {
+export class MultiChildRenderNode implements RenderNode, Retainable {
     private declare handlers: RenderNodeHandlers;
     private declare parentContext: ParentContext | undefined;
     private declare _isMounted: boolean;
@@ -352,7 +361,7 @@ export class DynamicRenderNode implements RenderNode, Retainable {
         const clonedChildren = this.slotSizes.items.map((child) =>
             child.clone()
         );
-        return new DynamicRenderNode(this.handlers, clonedChildren);
+        return new MultiChildRenderNode(this.handlers, clonedChildren);
     }
 
     sortChildren(from: number, indexes: number[]) {
@@ -558,8 +567,8 @@ export const emptyRenderNode = new EmptyRenderNode();
 export function isRenderNode(obj: any): obj is RenderNode {
     return (
         obj &&
-        (obj instanceof StaticRenderNode ||
-            obj instanceof DynamicRenderNode ||
+        (obj instanceof SingleChildRenderNode ||
+            obj instanceof MultiChildRenderNode ||
             obj instanceof EmptyRenderNode)
     );
 }

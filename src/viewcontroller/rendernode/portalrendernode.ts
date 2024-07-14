@@ -9,7 +9,7 @@ import type { RefObjectOrCallback } from '../ref';
 import { Ref } from '../ref';
 import { RenderNodeCommitPhase } from './constants';
 import type { RenderNode } from './rendernode';
-import { StaticRenderNode } from './rendernode';
+import { SingleChildRenderNode } from './rendernode';
 
 // TODO: fix this, this needs to be two flags: needs unmount notification; needs mount notification
 enum MountState {
@@ -64,7 +64,7 @@ export function PortalRenderNode(
         }
     }
 
-    const renderNode = new StaticRenderNode(
+    const renderNode = new SingleChildRenderNode(
         {
             onEvent: (event: ArrayEvent<Node>) => {
                 addArrayEvent(childEvents, event);

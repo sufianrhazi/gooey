@@ -1,13 +1,13 @@
 import { ArrayEventType } from '../../common/arrayevent';
 import type { RenderNode } from './rendernode';
-import { emptyRenderNode, StaticRenderNode } from './rendernode';
+import { emptyRenderNode, SingleChildRenderNode } from './rendernode';
 
 /**
  * Renders a Text DOM node
  */
 export function TextRenderNode(str: string, debugName?: string): RenderNode {
     const textNode = document.createTextNode(str);
-    return new StaticRenderNode(
+    return new SingleChildRenderNode(
         {
             onAttach: (parentContext) => {
                 parentContext.nodeEmitter({

@@ -5,7 +5,7 @@ import { release, retain, trackCreates } from '../../model/engine';
 import { renderJSXNode } from '../renderjsx';
 import { RenderNodeCommitPhase } from './constants';
 import type { RenderNode } from './rendernode';
-import { emptyRenderNode, StaticRenderNode } from './rendernode';
+import { emptyRenderNode, SingleChildRenderNode } from './rendernode';
 
 export interface ComponentLifecycle {
     onMount: (callback: () => void) => (() => void) | void;
@@ -146,7 +146,7 @@ export function ComponentRenderNode<TProps>(
         return result;
     }
 
-    const renderNode = new StaticRenderNode(
+    const renderNode = new SingleChildRenderNode(
         {
             onAlive: () => {
                 const componentResult = ensureResult();

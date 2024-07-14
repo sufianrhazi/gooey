@@ -1,12 +1,12 @@
 import { ArrayEventType } from '../../common/arrayevent';
 import type { RenderNode } from './rendernode';
-import { emptyRenderNode, StaticRenderNode } from './rendernode';
+import { emptyRenderNode, SingleChildRenderNode } from './rendernode';
 
 /**
  * Renders a foreign managed DOM node
  */
 export function ForeignRenderNode(node: Node, debugName?: string): RenderNode {
-    return new StaticRenderNode(
+    return new SingleChildRenderNode(
         {
             onAttach: (parentContext) => {
                 parentContext.nodeEmitter({

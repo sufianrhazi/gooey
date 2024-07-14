@@ -2,7 +2,7 @@ import type { Dynamic, DynamicSubscriptionHandler } from '../../common/dyn';
 import * as log from '../../common/log';
 import { RenderNodeCommitPhase } from './constants';
 import type { RenderNode } from './rendernode';
-import { emptyRenderNode, StaticRenderNode } from './rendernode';
+import { emptyRenderNode, SingleChildRenderNode } from './rendernode';
 
 /**
  * Renders the result of a dynamic value
@@ -35,7 +35,7 @@ export function DynamicRenderNode(
         }
     };
 
-    const renderNode = new StaticRenderNode(
+    const renderNode = new SingleChildRenderNode(
         {
             onAttach: (parentContext) => {
                 if (dynamicError) {
