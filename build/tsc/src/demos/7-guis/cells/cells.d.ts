@@ -1,7 +1,8 @@
-import { ClassComponent, EmptyProps, Model, Ref } from '../../..';
+import type { EmptyProps, Model, Ref } from '../../..';
+import { ClassComponent } from '../../..';
 import { SpreadsheetState } from './spreadsheet-state';
-import { Position } from './utils';
-import { CellApi } from './cell';
+import type { Position } from './utils';
+import type { CellApi } from './cell';
 import './cells.css';
 export declare class Cells extends ClassComponent {
     cellState: SpreadsheetState;
@@ -15,7 +16,7 @@ export declare class Cells extends ClassComponent {
     constructor(props: EmptyProps);
     moveFocusTo(position: Position): void;
     onKeyDown: (e: KeyboardEvent, tableEl: HTMLTableElement) => void;
-    renderCell(position: Position): import("../../../rendernode").RenderNode;
-    render(): import("../../../rendernode").RenderNode;
+    renderCell(position: Position): import("../../../viewcontroller/rendernode/rendernode").RenderNode;
+    render(): import("../../../viewcontroller/rendernode/rendernode").RenderNode;
 }
 //# sourceMappingURL=cells.d.ts.map

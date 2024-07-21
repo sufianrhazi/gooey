@@ -1,4 +1,4 @@
-import { Component } from '../..';
+import type { Component } from '../..';
 import './window.css';
 export interface WindowPosition {
     x: number;

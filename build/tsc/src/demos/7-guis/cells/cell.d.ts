@@ -1,6 +1,6 @@
-import { Component, Calculation, Ref } from '../../..';
-import { EvalResult } from './spreadsheet-state';
-import { Position } from './utils';
+import type { Component, Calculation, Ref } from '../../..';
+import type { EvalResult } from './spreadsheet-state';
+import type { Position } from './utils';
 import './cells.css';
 export interface CellApi {
     edit: () => void;

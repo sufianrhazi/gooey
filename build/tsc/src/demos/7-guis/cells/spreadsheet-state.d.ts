@@ -1,6 +1,6 @@
-import { Dict, Calculation } from '../../..';
-import { Expression, FunctionExpression } from './parser';
-import { Position } from './utils';
+import type { Dict, Calculation } from '../../..';
+import type { Expression, FunctionExpression } from './parser';
+import type { Position } from './utils';
 export type EvalResult = {
     ok: true;
     value: string | number;

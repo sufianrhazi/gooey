@@ -1,1 +1,1 @@
-{"version":3,"file":"flightbooker.d.ts","sourceRoot":"","sources":["../../../../../src/demos/7-guis/flightbooker.tsx"],"names":[],"mappings":"AAAA,OAAc,EAAE,SAAS,EAAe,MAAM,OAAO,CAAC;AA6BtD,eAAO,MAAM,YAAY,EAAE,SAwG1B,CAAC"}
+{"version":3,"file":"flightbooker.d.ts","sourceRoot":"","sources":["../../../../../src/demos/7-guis/flightbooker.tsx"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,SAAS,EAAC,MAAM,OAAO,CAAC;AA8BtC,eAAO,MAAM,YAAY,EAAE,SAwG1B,CAAC"}

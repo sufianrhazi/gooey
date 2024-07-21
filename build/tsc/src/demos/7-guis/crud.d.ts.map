@@ -1,1 +1,1 @@
-{"version":3,"file":"crud.d.ts","sourceRoot":"","sources":["../../../../../src/demos/7-guis/crud.tsx"],"names":[],"mappings":"AAAA,OAAc,EACV,SAAS,EAOZ,MAAM,OAAO,CAAC;AAgCf,eAAO,MAAM,IAAI,EAAE,SA+GlB,CAAC"}
+{"version":3,"file":"crud.d.ts","sourceRoot":"","sources":["../../../../../src/demos/7-guis/crud.tsx"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,SAAS,EAAgB,MAAM,OAAO,CAAC;AAiCrD,eAAO,MAAM,IAAI,EAAE,SAgHlB,CAAC"}
