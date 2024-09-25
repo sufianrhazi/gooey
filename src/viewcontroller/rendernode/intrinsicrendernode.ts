@@ -5,7 +5,7 @@ import { dynGet, dynSubscribe, isDynamic } from '../../common/dyn';
 import * as log from '../../common/log';
 import { flush } from '../../model/engine';
 import { assignProp, setAttribute } from '../jsx';
-import { webComponentTagConstructors } from '../webcomponents';
+import { getWebComponentTagConstructors } from '../webcomponents';
 import {
     ELEMENT_NAMESPACE_GUESS,
     elementNamespaceTransitionMap,
@@ -98,8 +98,8 @@ export function IntrinsicRenderNode(
     function createElement(xmlNamespace: string) {
         let element: Element;
         if (
-            tagName in webComponentTagConstructors &&
-            typeof props?.is === 'string'
+            typeof props?.is === 'string' &&
+            tagName in getWebComponentTagConstructors()
         ) {
             element = document.createElement(tagName, {
                 is: props.is,

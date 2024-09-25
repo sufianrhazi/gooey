@@ -7,18 +7,18 @@ import { PortalRenderNode } from './rendernode/portalrendernode';
 import type { RenderNode } from './rendernode/rendernode';
 import type { WebComponentOptions } from './rendernode/webcomponentrendernode';
 import { WebComponentRenderNode } from './rendernode/webcomponentrendernode';
-import { webComponentTagConstructors } from './webcomponents';
+import { getWebComponentTagConstructors } from './webcomponents';
 import { HTML_NAMESPACE } from './xmlnamespace';
 
 export function defineCustomElement<
     TKeys extends string,
     TShadowMode extends 'open' | 'closed' | undefined = undefined,
     TExtends extends
-        | keyof typeof webComponentTagConstructors
+        | keyof ReturnType<typeof getWebComponentTagConstructors>
         | undefined = undefined,
 >(options: WebComponentOptions<TKeys, TShadowMode, TExtends>) {
     const Superclass = options.extends
-        ? webComponentTagConstructors[options.extends]
+        ? getWebComponentTagConstructors()[options.extends]
         : HTMLElement;
     class GooeyCustomElement extends Superclass implements Retainable {
         __debugName: string;

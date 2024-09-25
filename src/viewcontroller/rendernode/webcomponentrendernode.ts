@@ -8,9 +8,9 @@ import type { Field } from '../../model/field';
 import type { JSXNode } from '../jsx';
 import { renderJSXNode } from '../renderjsx';
 import type {
+    getWebComponentTagConstructors,
     WebComponentInternalsKey,
     WebComponentShadowSupportedExtends,
-    webComponentTagConstructors,
 } from '../webcomponents';
 import type { ComponentLifecycle } from './componentrendernode';
 import { RenderNodeCommitPhase } from './constants';
@@ -72,7 +72,9 @@ export type WebComponent<
 export interface WebComponentOptions<
     TKeys extends string,
     TShadowMode extends 'open' | 'closed' | undefined,
-    TExtends extends keyof typeof webComponentTagConstructors | undefined,
+    TExtends extends
+        | keyof ReturnType<typeof getWebComponentTagConstructors>
+        | undefined,
 > {
     tagName: `${string}-${string}`;
     Component: WebComponent<TKeys, TShadowMode>;
@@ -115,7 +117,9 @@ export type FormValue =
 export function WebComponentRenderNode<
     TKeys extends string,
     TShadowMode extends 'open' | 'closed' | undefined,
-    TExtends extends keyof typeof webComponentTagConstructors | undefined,
+    TExtends extends
+        | keyof ReturnType<typeof getWebComponentTagConstructors>
+        | undefined,
 >(
     host: HTMLElement,
     shadowRoot: ShadowRoot | undefined,
