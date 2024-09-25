@@ -2773,7 +2773,13 @@ function ref(val) {
 }
 
 // src/viewcontroller/rendernode/portalrendernode.ts
-var fragment = document.createDocumentFragment();
+var sharedFragment;
+function getFragment() {
+  if (!sharedFragment) {
+    sharedFragment = document.createDocumentFragment();
+  }
+  return sharedFragment;
+}
 function PortalRenderNode(element, childrenRenderNode, refProp, debugName) {
   let committedNodes = [];
   let liveNodes = [];
@@ -2786,6 +2792,7 @@ function PortalRenderNode(element, childrenRenderNode, refProp, debugName) {
       liveNodeSet.add(nodes[0]);
       committedNodes.splice(targetIndex, 0, toInsert);
     } else if (nodes.length > 1) {
+      const fragment = getFragment();
       for (const node of nodes) {
         liveNodeSet.add(node);
         fragment.appendChild(node);
