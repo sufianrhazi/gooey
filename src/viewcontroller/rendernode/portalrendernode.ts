@@ -8,7 +8,13 @@ import type { RenderNode } from './rendernode';
 import { SingleChildRenderNode } from './rendernode';
 
 // A shared document fragment; NOTE: always clear after use
-const fragment = document.createDocumentFragment();
+let sharedFragment: DocumentFragment | undefined;
+function getFragment() {
+    if (!sharedFragment) {
+        sharedFragment = document.createDocumentFragment();
+    }
+    return sharedFragment;
+}
 
 export function PortalRenderNode(
     element: Element | ShadowRoot,
@@ -31,6 +37,7 @@ export function PortalRenderNode(
             liveNodeSet.add(nodes[0]);
             committedNodes.splice(targetIndex, 0, toInsert);
         } else if (nodes.length > 1) {
+            const fragment = getFragment();
             for (const node of nodes) {
                 liveNodeSet.add(node);
                 fragment.appendChild(node);
