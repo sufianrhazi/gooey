@@ -1,7 +1,7 @@
 import type { Dyn } from '../../common/dyn';
 import type { Field } from '../../model/field';
 import type { JSXNode } from '../jsx';
-import type { WebComponentInternalsKey, WebComponentShadowSupportedExtends, webComponentTagConstructors } from '../webcomponents';
+import type { getWebComponentTagConstructors, WebComponentInternalsKey, WebComponentShadowSupportedExtends } from '../webcomponents';
 import type { ComponentLifecycle } from './componentrendernode';
 import type { RenderNode } from './rendernode';
 export type WebComponentProps<TKeys extends string, TShadowMode extends 'open' | 'closed' | undefined> = TShadowMode extends undefined ? {
@@ -25,7 +25,7 @@ export interface WebComponentLifecycle extends ComponentLifecycle {
 }
 export type WebFunctionComponent<TKeys extends string, TShadowMode extends 'open' | 'closed' | undefined> = (props: WebComponentProps<TKeys, TShadowMode>, lifecycle: WebComponentLifecycle) => JSX.Element | null;
 export type WebComponent<TKeys extends string, TShadowMode extends 'open' | 'closed' | undefined> = WebFunctionComponent<TKeys, TShadowMode>;
-export interface WebComponentOptions<TKeys extends string, TShadowMode extends 'open' | 'closed' | undefined, TExtends extends keyof typeof webComponentTagConstructors | undefined> {
+export interface WebComponentOptions<TKeys extends string, TShadowMode extends 'open' | 'closed' | undefined, TExtends extends keyof ReturnType<typeof getWebComponentTagConstructors> | undefined> {
     tagName: `${string}-${string}`;
     Component: WebComponent<TKeys, TShadowMode>;
     hydrateTemplateChild?: boolean | undefined;
@@ -55,5 +55,5 @@ export type FormValue = string | File | FormData | {
     value: string | File | FormData;
     state?: string | File | FormData | undefined;
 };
-export declare function WebComponentRenderNode<TKeys extends string, TShadowMode extends 'open' | 'closed' | undefined, TExtends extends keyof typeof webComponentTagConstructors | undefined>(host: HTMLElement, shadowRoot: ShadowRoot | undefined, elementInternals: ElementInternals | undefined, options: WebComponentOptions<TKeys, TShadowMode, TExtends>, childrenField: Field<Node[] | undefined>, fields: Record<TKeys, Field<string | undefined>>, debugName?: string): RenderNode;
+export declare function WebComponentRenderNode<TKeys extends string, TShadowMode extends 'open' | 'closed' | undefined, TExtends extends keyof ReturnType<typeof getWebComponentTagConstructors> | undefined>(host: HTMLElement, shadowRoot: ShadowRoot | undefined, elementInternals: ElementInternals | undefined, options: WebComponentOptions<TKeys, TShadowMode, TExtends>, childrenField: Field<Node[] | undefined>, fields: Record<TKeys, Field<string | undefined>>, debugName?: string): RenderNode;
 //# sourceMappingURL=webcomponentrendernode.d.ts.map

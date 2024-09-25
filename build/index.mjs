@@ -2377,7 +2377,7 @@ function isDynamicMut(val) {
 }
 
 // src/viewcontroller/webcomponents.ts
-var webComponentTagConstructors = {
+var getWebComponentTagConstructors = () => ({
   a: HTMLAnchorElement,
   abbr: HTMLElement,
   address: HTMLElement,
@@ -2489,7 +2489,7 @@ var webComponentTagConstructors = {
   var: HTMLElement,
   video: HTMLVideoElement,
   wbr: HTMLElement
-};
+});
 
 // src/viewcontroller/xmlnamespace.ts
 var HTML_NAMESPACE = "http://www.w3.org/1999/xhtml";
@@ -2827,7 +2827,7 @@ function IntrinsicRenderNode(tagName, props, childRenderNode, debugName) {
   }
   function createElement2(xmlNamespace) {
     let element2;
-    if (tagName in webComponentTagConstructors && typeof props?.is === "string") {
+    if (typeof props?.is === "string" && tagName in getWebComponentTagConstructors()) {
       element2 = document.createElement(tagName, {
         is: props.is
       });
@@ -4940,7 +4940,7 @@ function WebComponentRenderNode(host, shadowRoot, elementInternals, options, chi
 
 // src/viewcontroller/definecustomelement.ts
 function defineCustomElement(options) {
-  const Superclass = options.extends ? webComponentTagConstructors[options.extends] : HTMLElement;
+  const Superclass = options.extends ? getWebComponentTagConstructors()[options.extends] : HTMLElement;
   class GooeyCustomElement extends Superclass {
     constructor() {
       super();

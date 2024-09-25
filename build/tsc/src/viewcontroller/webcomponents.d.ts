@@ -1,426 +1,426 @@
-export declare const webComponentTagConstructors: {
-    a: {
+export declare const getWebComponentTagConstructors: () => {
+    readonly a: {
         new (): HTMLAnchorElement;
         prototype: HTMLAnchorElement;
     };
-    abbr: {
+    readonly abbr: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    address: {
+    readonly address: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    area: {
+    readonly area: {
         new (): HTMLAreaElement;
         prototype: HTMLAreaElement;
     };
-    article: {
+    readonly article: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    aside: {
+    readonly aside: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    audio: {
+    readonly audio: {
         new (): HTMLAudioElement;
         prototype: HTMLAudioElement;
     };
-    b: {
+    readonly b: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    base: {
+    readonly base: {
         new (): HTMLBaseElement;
         prototype: HTMLBaseElement;
     };
-    bdi: {
+    readonly bdi: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    bdo: {
+    readonly bdo: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    blockquote: {
+    readonly blockquote: {
         new (): HTMLQuoteElement;
         prototype: HTMLQuoteElement;
     };
-    body: {
+    readonly body: {
         new (): HTMLBodyElement;
         prototype: HTMLBodyElement;
     };
-    br: {
+    readonly br: {
         new (): HTMLBRElement;
         prototype: HTMLBRElement;
     };
-    button: {
+    readonly button: {
         new (): HTMLButtonElement;
         prototype: HTMLButtonElement;
     };
-    canvas: {
+    readonly canvas: {
         new (): HTMLCanvasElement;
         prototype: HTMLCanvasElement;
     };
-    caption: {
+    readonly caption: {
         new (): HTMLTableCaptionElement;
         prototype: HTMLTableCaptionElement;
     };
-    cite: {
+    readonly cite: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    code: {
+    readonly code: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    col: {
+    readonly col: {
         new (): HTMLTableColElement;
         prototype: HTMLTableColElement;
     };
-    colgroup: {
+    readonly colgroup: {
         new (): HTMLTableColElement;
         prototype: HTMLTableColElement;
     };
-    data: {
+    readonly data: {
         new (): HTMLDataElement;
         prototype: HTMLDataElement;
     };
-    datalist: {
+    readonly datalist: {
         new (): HTMLDataListElement;
         prototype: HTMLDataListElement;
     };
-    dd: {
+    readonly dd: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    del: {
+    readonly del: {
         new (): HTMLModElement;
         prototype: HTMLModElement;
     };
-    details: {
+    readonly details: {
         new (): HTMLDetailsElement;
         prototype: HTMLDetailsElement;
     };
-    dfn: {
+    readonly dfn: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    dialog: {
+    readonly dialog: {
         new (): HTMLDialogElement;
         prototype: HTMLDialogElement;
     };
-    div: {
+    readonly div: {
         new (): HTMLDivElement;
         prototype: HTMLDivElement;
     };
-    dl: {
+    readonly dl: {
         new (): HTMLDListElement;
         prototype: HTMLDListElement;
     };
-    dt: {
+    readonly dt: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    em: {
+    readonly em: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    embed: {
+    readonly embed: {
         new (): HTMLEmbedElement;
         prototype: HTMLEmbedElement;
     };
-    fieldset: {
+    readonly fieldset: {
         new (): HTMLFieldSetElement;
         prototype: HTMLFieldSetElement;
     };
-    figcaption: {
+    readonly figcaption: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    figure: {
+    readonly figure: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    footer: {
+    readonly footer: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    form: {
+    readonly form: {
         new (): HTMLFormElement;
         prototype: HTMLFormElement;
     };
-    h1: {
+    readonly h1: {
         new (): HTMLHeadingElement;
         prototype: HTMLHeadingElement;
     };
-    h2: {
+    readonly h2: {
         new (): HTMLHeadingElement;
         prototype: HTMLHeadingElement;
     };
-    h3: {
+    readonly h3: {
         new (): HTMLHeadingElement;
         prototype: HTMLHeadingElement;
     };
-    h4: {
+    readonly h4: {
         new (): HTMLHeadingElement;
         prototype: HTMLHeadingElement;
     };
-    h5: {
+    readonly h5: {
         new (): HTMLHeadingElement;
         prototype: HTMLHeadingElement;
     };
-    h6: {
+    readonly h6: {
         new (): HTMLHeadingElement;
         prototype: HTMLHeadingElement;
     };
-    head: {
+    readonly head: {
         new (): HTMLHeadElement;
         prototype: HTMLHeadElement;
     };
-    header: {
+    readonly header: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    hgroup: {
+    readonly hgroup: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    hr: {
+    readonly hr: {
         new (): HTMLHRElement;
         prototype: HTMLHRElement;
     };
-    html: {
+    readonly html: {
         new (): HTMLHtmlElement;
         prototype: HTMLHtmlElement;
     };
-    i: {
+    readonly i: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    iframe: {
+    readonly iframe: {
         new (): HTMLIFrameElement;
         prototype: HTMLIFrameElement;
     };
-    img: {
+    readonly img: {
         new (): HTMLImageElement;
         prototype: HTMLImageElement;
     };
-    input: {
+    readonly input: {
         new (): HTMLInputElement;
         prototype: HTMLInputElement;
     };
-    ins: {
+    readonly ins: {
         new (): HTMLModElement;
         prototype: HTMLModElement;
     };
-    kbd: {
+    readonly kbd: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    label: {
+    readonly label: {
         new (): HTMLLabelElement;
         prototype: HTMLLabelElement;
     };
-    legend: {
+    readonly legend: {
         new (): HTMLLegendElement;
         prototype: HTMLLegendElement;
     };
-    li: {
+    readonly li: {
         new (): HTMLLIElement;
         prototype: HTMLLIElement;
     };
-    link: {
+    readonly link: {
         new (): HTMLLinkElement;
         prototype: HTMLLinkElement;
     };
-    main: {
+    readonly main: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    map: {
+    readonly map: {
         new (): HTMLMapElement;
         prototype: HTMLMapElement;
     };
-    mark: {
+    readonly mark: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    menu: {
+    readonly menu: {
         new (): HTMLMenuElement;
         prototype: HTMLMenuElement;
     };
-    meta: {
+    readonly meta: {
         new (): HTMLMetaElement;
         prototype: HTMLMetaElement;
     };
-    meter: {
+    readonly meter: {
         new (): HTMLMeterElement;
         prototype: HTMLMeterElement;
     };
-    nav: {
+    readonly nav: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    noscript: {
+    readonly noscript: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    object: {
+    readonly object: {
         new (): HTMLObjectElement;
         prototype: HTMLObjectElement;
     };
-    ol: {
+    readonly ol: {
         new (): HTMLOListElement;
         prototype: HTMLOListElement;
     };
-    optgroup: {
+    readonly optgroup: {
         new (): HTMLOptGroupElement;
         prototype: HTMLOptGroupElement;
     };
-    option: {
+    readonly option: {
         new (): HTMLOptionElement;
         prototype: HTMLOptionElement;
     };
-    output: {
+    readonly output: {
         new (): HTMLOutputElement;
         prototype: HTMLOutputElement;
     };
-    p: {
+    readonly p: {
         new (): HTMLParagraphElement;
         prototype: HTMLParagraphElement;
     };
-    picture: {
+    readonly picture: {
         new (): HTMLPictureElement;
         prototype: HTMLPictureElement;
     };
-    pre: {
+    readonly pre: {
         new (): HTMLPreElement;
         prototype: HTMLPreElement;
     };
-    progress: {
+    readonly progress: {
         new (): HTMLProgressElement;
         prototype: HTMLProgressElement;
     };
-    q: {
+    readonly q: {
         new (): HTMLQuoteElement;
         prototype: HTMLQuoteElement;
     };
-    rp: {
+    readonly rp: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    rt: {
+    readonly rt: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    ruby: {
+    readonly ruby: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    s: {
+    readonly s: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    samp: {
+    readonly samp: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    script: {
+    readonly script: {
         new (): HTMLScriptElement;
         prototype: HTMLScriptElement;
         supports(type: string): boolean;
     };
-    section: {
+    readonly section: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    select: {
+    readonly select: {
         new (): HTMLSelectElement;
         prototype: HTMLSelectElement;
     };
-    slot: {
+    readonly slot: {
         new (): HTMLSlotElement;
         prototype: HTMLSlotElement;
     };
-    small: {
+    readonly small: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    source: {
+    readonly source: {
         new (): HTMLSourceElement;
         prototype: HTMLSourceElement;
     };
-    span: {
+    readonly span: {
         new (): HTMLSpanElement;
         prototype: HTMLSpanElement;
     };
-    strong: {
+    readonly strong: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    style: {
+    readonly style: {
         new (): HTMLStyleElement;
         prototype: HTMLStyleElement;
     };
-    sub: {
+    readonly sub: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    summary: {
+    readonly summary: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    sup: {
+    readonly sup: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    table: {
+    readonly table: {
         new (): HTMLTableElement;
         prototype: HTMLTableElement;
     };
-    tbody: {
+    readonly tbody: {
         new (): HTMLTableSectionElement;
         prototype: HTMLTableSectionElement;
     };
-    td: {
+    readonly td: {
         new (): HTMLTableCellElement;
         prototype: HTMLTableCellElement;
     };
-    template: {
+    readonly template: {
         new (): HTMLTemplateElement;
         prototype: HTMLTemplateElement;
     };
-    textarea: {
+    readonly textarea: {
         new (): HTMLTextAreaElement;
         prototype: HTMLTextAreaElement;
     };
-    tfoot: {
+    readonly tfoot: {
         new (): HTMLTableSectionElement;
         prototype: HTMLTableSectionElement;
     };
-    th: {
+    readonly th: {
         new (): HTMLTableCellElement;
         prototype: HTMLTableCellElement;
     };
-    thead: {
+    readonly thead: {
         new (): HTMLTableSectionElement;
         prototype: HTMLTableSectionElement;
     };
-    time: {
+    readonly time: {
         new (): HTMLTimeElement;
         prototype: HTMLTimeElement;
     };
-    title: {
+    readonly title: {
         new (): HTMLTitleElement;
         prototype: HTMLTitleElement;
     };
-    tr: {
+    readonly tr: {
         new (): HTMLTableRowElement;
         prototype: HTMLTableRowElement;
     };
-    track: {
+    readonly track: {
         new (): HTMLTrackElement;
         prototype: HTMLTrackElement;
         readonly ERROR: number;
@@ -428,23 +428,23 @@ export declare const webComponentTagConstructors: {
         readonly LOADING: number;
         readonly NONE: number;
     };
-    u: {
+    readonly u: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    ul: {
+    readonly ul: {
         new (): HTMLUListElement;
         prototype: HTMLUListElement;
     };
-    var: {
+    readonly var: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
-    video: {
+    readonly video: {
         new (): HTMLVideoElement;
         prototype: HTMLVideoElement;
     };
-    wbr: {
+    readonly wbr: {
         new (): HTMLElement;
         prototype: HTMLElement;
     };
