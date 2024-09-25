@@ -5143,5 +5143,5 @@ function mount(target, node) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.18.0" : "development";
+var VERSION = true ? "0.18.1" : "development";
 //# sourceMappingURL=index.cjs.map
