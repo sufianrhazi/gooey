@@ -1,7 +1,7 @@
 import { createElement } from './viewcontroller/createelement';
 export type { ArrayEvent } from './common/arrayevent';
 export { ArrayEventType, applyArrayEvent } from './common/arrayevent';
-export type { Dyn } from './common/dyn';
+export type { Dyn, DynMut, Dynamic, DynamicMut } from './common/dyn';
 export { dynGet, dynSet, dynSubscribe } from './common/dyn';
 export type { LogLevel } from './common/log';
 export { getLogLevel, setLogLevel } from './common/log';

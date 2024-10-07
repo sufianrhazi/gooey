@@ -5172,7 +5172,7 @@ function mount(target, node) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.18.1" : "development";
+var VERSION = true ? "0.18.2" : "development";
 export {
   ArrayEventType,
   ClassComponent,
