@@ -5496,5 +5496,14 @@ suite('custom elements', () => {
             // @ts-expect-error
             <div is={calc(() => 'foo-bar')} />;
         });
+
+        test('the textarea element can have a value prop', () => {
+            <textarea value="yes" />;
+
+            const value = field('hi');
+            <textarea value={value} />;
+
+            <textarea>{value}</textarea>;
+        });
     }
 });

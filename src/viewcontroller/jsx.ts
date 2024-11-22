@@ -1224,6 +1224,8 @@ interface JSXTextAreaElementInterface extends JSXElementInterface {
     rows?: string | number | undefined;
     /** How the value of the form control is to be wrapped for form submission */
     wrap?: 'soft' | 'hard' | string | undefined;
+    /** The value of the textarea element */
+    value?: string | undefined;
 }
 
 interface JSXTimeElementInterface extends JSXElementInterface {
