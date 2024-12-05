@@ -233,6 +233,15 @@ var attrBehavior = {
   ping: {},
   placeholder: {},
   playsinline: { idn: "playsInline" },
+  popover: {
+    idv: (val) => {
+      if (val === true)
+        return "auto";
+      if (val === false)
+        return void 0;
+      return val;
+    }
+  },
   poster: {},
   preload: {},
   readonly: { idn: "readOnly" },
@@ -2435,6 +2444,335 @@ function ComponentRenderNode(Component, props, children, debugName) {
   return renderNode;
 }
 
+// src/common/sentinel.ts
+var Sentinel = Symbol("sentinel");
+
+// src/model/calc.ts
+var CalculationSymbol = Symbol("calculation");
+var Calculation = class {
+  get() {
+    notifyRead(this);
+    const state = this._state;
+    switch (state) {
+      case 4 /* DEAD */:
+        return this._fn();
+      case 2 /* CACHED */:
+        return this._val;
+      case 1 /* CALLING */:
+        this._state = 3 /* ERROR */;
+        this._error = new CycleError(
+          "Cycle reached: calculation reached itself",
+          this
+        );
+        throw this._error;
+      case 3 /* ERROR */:
+        if (this._error === Sentinel) {
+          throw new Error(
+            "Cycle reached: calculation reached itself"
+          );
+        } else {
+          throw new Error(
+            "Calculation in error state: " + this._error.message
+          );
+        }
+        break;
+      case 0 /* READY */: {
+        const calculationReads = /* @__PURE__ */ new Set();
+        let result = Sentinel;
+        let exception;
+        this._state = 1 /* CALLING */;
+        try {
+          result = trackReads(
+            calculationReads,
+            () => this._fn(),
+            this.__debugName
+          );
+        } catch (e) {
+          exception = e;
+        }
+        if (this._state === 4 /* DEAD */) {
+          for (const retained of calculationReads) {
+            release(retained);
+          }
+          if (result === Sentinel)
+            throw exception;
+          return result;
+        }
+        if (
+          // Cast due to TypeScript limitation
+          this._state === 3 /* ERROR */
+        ) {
+          exception = this._error;
+        }
+        let isActiveCycle = false;
+        let isActiveCycleRoot = false;
+        if (exception) {
+          if (exception instanceof CycleError) {
+            isActiveCycle = true;
+            isActiveCycleRoot = exception.sourceCalculation === this;
+          }
+          const errorHandler = this._errorHandler;
+          if (errorHandler) {
+            result = untrackReads(
+              () => errorHandler(exception),
+              this.__debugName
+            );
+          }
+          if (isActiveCycle) {
+            markCycleInformed(this);
+          }
+        }
+        if (result === Sentinel) {
+          if ("_val" in this) {
+            delete this._val;
+          }
+          this._error = exception;
+          this._state = 3 /* ERROR */;
+        } else {
+          this._val = result;
+          if ("_error" in this) {
+            delete this._error;
+          }
+          this._state = 2 /* CACHED */;
+          unmarkDirty(this);
+        }
+        if (this._retained) {
+          for (const priorDependency of this._retained) {
+            if (isProcessable(priorDependency) && !calculationReads.has(priorDependency)) {
+              removeHardEdge(priorDependency, this);
+            }
+            release(priorDependency);
+          }
+        }
+        for (const dependency of calculationReads) {
+          if (isProcessable(dependency)) {
+            if (!this._retained || !this._retained.has(dependency)) {
+              addHardEdge(dependency, this);
+            }
+          }
+        }
+        this._retained = calculationReads;
+        if (result === Sentinel) {
+          throw exception;
+        } else if (isActiveCycle && !isActiveCycleRoot) {
+          throw exception;
+        } else {
+          return result;
+        }
+      }
+      default:
+        assertExhausted(state, "Calculation in unknown state");
+    }
+  }
+  constructor(fn, debugName) {
+    this.__debugName = debugName ?? "calc";
+    this.__refcount = 0;
+    this.__processable = true;
+    this._type = CalculationSymbol;
+    this._state = 4 /* DEAD */;
+    this._fn = fn;
+  }
+  onError(handler) {
+    this._errorHandler = handler;
+    return this;
+  }
+  _eq(a, b) {
+    return a === b;
+  }
+  setCmp(eq) {
+    this._eq = eq;
+    return this;
+  }
+  subscribe(handler) {
+    retain(this);
+    let args;
+    try {
+      args = [void 0, this.get()];
+    } catch (e) {
+      args = [wrapError(e), void 0];
+    }
+    if (!this._subscriptions) {
+      this._subscriptions = /* @__PURE__ */ new Set();
+    }
+    this._subscriptions.add(handler);
+    const unsubscribe = () => {
+      this._subscriptions?.delete(handler);
+      release(this);
+    };
+    handler(...args);
+    return unsubscribe;
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  __alive() {
+    addVertex(this);
+    this._state = 0 /* READY */;
+  }
+  __dead() {
+    if (this._retained) {
+      for (const retained of this._retained) {
+        if (isProcessable(retained)) {
+          removeHardEdge(retained, this);
+        }
+        release(retained);
+      }
+    }
+    delete this._retained;
+    removeVertex(this);
+    this._state = 4 /* DEAD */;
+    delete this._val;
+  }
+  __recalculate() {
+    switch (this._state) {
+      case 4 /* DEAD */:
+        fail("cannot recalculate dead calculation");
+        break;
+      case 1 /* CALLING */:
+        fail("cannot recalculate calculation being tracked");
+        break;
+      case 0 /* READY */:
+      case 3 /* ERROR */:
+      case 2 /* CACHED */: {
+        const priorResult = "_val" in this ? this._val : Sentinel;
+        this._state = 0 /* READY */;
+        let newResult;
+        try {
+          newResult = this.get();
+        } catch (e) {
+          this._state = 3 /* ERROR */;
+          this._error = e;
+          if (this._subscriptions) {
+            const error2 = wrapError(
+              e,
+              "Unknown error in calculation"
+            );
+            for (const subscription of this._subscriptions) {
+              subscription(error2, void 0);
+            }
+          }
+          return true;
+        }
+        if (priorResult !== Sentinel && this._eq(priorResult, newResult)) {
+          this._val = priorResult;
+          return false;
+        }
+        if (this._subscriptions) {
+          for (const subscription of this._subscriptions) {
+            subscription(void 0, newResult);
+          }
+        }
+        return true;
+      }
+      default:
+        assertExhausted(
+          this._state,
+          "Calculation in unknown state"
+        );
+    }
+  }
+  __invalidate() {
+    switch (this._state) {
+      case 4 /* DEAD */:
+        fail("cannot invalidate dead calculation");
+        break;
+      case 1 /* CALLING */:
+        fail("cannot invalidate calculation being tracked");
+        break;
+      case 0 /* READY */:
+        return false;
+      case 3 /* ERROR */:
+        this._state = 0 /* READY */;
+        return false;
+      case 2 /* CACHED */:
+        this._state = 0 /* READY */;
+        return true;
+      default:
+        assertExhausted(
+          this._state,
+          "Calculation in unknown state"
+        );
+    }
+  }
+  __cycle() {
+    switch (this._state) {
+      case 4 /* DEAD */:
+        fail("cannot trigger cycle on dead calculation");
+        break;
+      case 1 /* CALLING */:
+        fail("cannot trigger cycle on calculation being tracked");
+        break;
+      case 3 /* ERROR */:
+      case 2 /* CACHED */:
+      case 0 /* READY */: {
+        const priorResult = "_val" in this ? this._val : Sentinel;
+        this._state = 0 /* READY */;
+        const errorHandler = this._errorHandler;
+        if (errorHandler) {
+          this._val = untrackReads(
+            () => errorHandler(
+              new CycleError(
+                "Calculation is part of a cycle",
+                this
+              )
+            ),
+            this.__debugName
+          );
+          this._state = 2 /* CACHED */;
+          unmarkDirty(this);
+        } else {
+          this._state = 3 /* ERROR */;
+          this._error = Sentinel;
+          if (this._subscriptions) {
+            for (const subscription of this._subscriptions) {
+              subscription(
+                new CycleError(
+                  "Calculation is part of a cycle",
+                  this
+                ),
+                void 0
+              );
+            }
+          }
+          return true;
+        }
+        if (priorResult !== Sentinel && this._eq(priorResult, this._val)) {
+          this._val = priorResult;
+          return false;
+        }
+        if (this._subscriptions) {
+          for (const subscription of this._subscriptions) {
+            subscription(void 0, this._val);
+          }
+        }
+        return true;
+      }
+      default:
+        assertExhausted(
+          this._state,
+          "Calculation in unknown state"
+        );
+    }
+  }
+  map(fn) {
+    return calc(() => fn(this.get()));
+  }
+};
+var CycleError = class extends Error {
+  constructor(msg, sourceCalculation) {
+    super(msg);
+    this.sourceCalculation = sourceCalculation;
+  }
+};
+function calc(fn, debugName) {
+  const calculation = new Calculation(fn, debugName);
+  notifyCreate(calculation);
+  return calculation;
+}
+
 // src/common/dyn.ts
 function dynGet(wrapper) {
   if (isDynamic(wrapper)) {
@@ -2457,10 +2795,10 @@ function dynSubscribe(wrapper, callback) {
   return noop;
 }
 function isDynamic(val) {
-  return val && typeof val === "object" && "subscribe" in val;
+  return !!(val && typeof val === "object" && "get" in val && "subscribe" in val && typeof val.get === "function" && typeof val.subscribe === "function");
 }
 function isDynamicMut(val) {
-  return val && typeof val === "object" && "set" in val;
+  return isDynamic(val) && "set" in val && typeof val.set === "function";
 }
 
 // src/viewcontroller/webcomponents.ts
@@ -3266,332 +3604,6 @@ var IntrinsicObserver = ({ nodeCallback, elementCallback, children }) => {
   );
 };
 
-// src/common/sentinel.ts
-var Sentinel = Symbol("sentinel");
-
-// src/model/calc.ts
-var CalculationSymbol = Symbol("calculation");
-var Calculation = class {
-  get() {
-    notifyRead(this);
-    const state = this._state;
-    switch (state) {
-      case 4 /* DEAD */:
-        return this._fn();
-      case 2 /* CACHED */:
-        return this._val;
-      case 1 /* CALLING */:
-        this._state = 3 /* ERROR */;
-        this._error = new CycleError(
-          "Cycle reached: calculation reached itself",
-          this
-        );
-        throw this._error;
-      case 3 /* ERROR */:
-        if (this._error === Sentinel) {
-          throw new Error(
-            "Cycle reached: calculation reached itself"
-          );
-        } else {
-          throw new Error(
-            "Calculation in error state: " + this._error.message
-          );
-        }
-        break;
-      case 0 /* READY */: {
-        const calculationReads = /* @__PURE__ */ new Set();
-        let result = Sentinel;
-        let exception;
-        this._state = 1 /* CALLING */;
-        try {
-          result = trackReads(
-            calculationReads,
-            () => this._fn(),
-            this.__debugName
-          );
-        } catch (e) {
-          exception = e;
-        }
-        if (this._state === 4 /* DEAD */) {
-          for (const retained of calculationReads) {
-            release(retained);
-          }
-          if (result === Sentinel)
-            throw exception;
-          return result;
-        }
-        if (
-          // Cast due to TypeScript limitation
-          this._state === 3 /* ERROR */
-        ) {
-          exception = this._error;
-        }
-        let isActiveCycle = false;
-        let isActiveCycleRoot = false;
-        if (exception) {
-          if (exception instanceof CycleError) {
-            isActiveCycle = true;
-            isActiveCycleRoot = exception.sourceCalculation === this;
-          }
-          const errorHandler = this._errorHandler;
-          if (errorHandler) {
-            result = untrackReads(
-              () => errorHandler(exception),
-              this.__debugName
-            );
-          }
-          if (isActiveCycle) {
-            markCycleInformed(this);
-          }
-        }
-        if (result === Sentinel) {
-          if ("_val" in this) {
-            delete this._val;
-          }
-          this._error = exception;
-          this._state = 3 /* ERROR */;
-        } else {
-          this._val = result;
-          if ("_error" in this) {
-            delete this._error;
-          }
-          this._state = 2 /* CACHED */;
-          unmarkDirty(this);
-        }
-        if (this._retained) {
-          for (const priorDependency of this._retained) {
-            if (isProcessable(priorDependency) && !calculationReads.has(priorDependency)) {
-              removeHardEdge(priorDependency, this);
-            }
-            release(priorDependency);
-          }
-        }
-        for (const dependency of calculationReads) {
-          if (isProcessable(dependency)) {
-            if (!this._retained || !this._retained.has(dependency)) {
-              addHardEdge(dependency, this);
-            }
-          }
-        }
-        this._retained = calculationReads;
-        if (result === Sentinel) {
-          throw exception;
-        } else if (isActiveCycle && !isActiveCycleRoot) {
-          throw exception;
-        } else {
-          return result;
-        }
-      }
-      default:
-        assertExhausted(state, "Calculation in unknown state");
-    }
-  }
-  constructor(fn, debugName) {
-    this.__debugName = debugName ?? "calc";
-    this.__refcount = 0;
-    this.__processable = true;
-    this._type = CalculationSymbol;
-    this._state = 4 /* DEAD */;
-    this._fn = fn;
-  }
-  onError(handler) {
-    this._errorHandler = handler;
-    return this;
-  }
-  _eq(a, b) {
-    return a === b;
-  }
-  setCmp(eq) {
-    this._eq = eq;
-    return this;
-  }
-  subscribe(handler) {
-    retain(this);
-    let args;
-    try {
-      args = [void 0, this.get()];
-    } catch (e) {
-      args = [wrapError(e), void 0];
-    }
-    if (!this._subscriptions) {
-      this._subscriptions = /* @__PURE__ */ new Set();
-    }
-    this._subscriptions.add(handler);
-    const unsubscribe = () => {
-      this._subscriptions?.delete(handler);
-      release(this);
-    };
-    handler(...args);
-    return unsubscribe;
-  }
-  retain() {
-    retain(this);
-  }
-  release() {
-    release(this);
-  }
-  __alive() {
-    addVertex(this);
-    this._state = 0 /* READY */;
-  }
-  __dead() {
-    if (this._retained) {
-      for (const retained of this._retained) {
-        if (isProcessable(retained)) {
-          removeHardEdge(retained, this);
-        }
-        release(retained);
-      }
-    }
-    delete this._retained;
-    removeVertex(this);
-    this._state = 4 /* DEAD */;
-    delete this._val;
-  }
-  __recalculate() {
-    switch (this._state) {
-      case 4 /* DEAD */:
-        fail("cannot recalculate dead calculation");
-        break;
-      case 1 /* CALLING */:
-        fail("cannot recalculate calculation being tracked");
-        break;
-      case 0 /* READY */:
-      case 3 /* ERROR */:
-      case 2 /* CACHED */: {
-        const priorResult = "_val" in this ? this._val : Sentinel;
-        this._state = 0 /* READY */;
-        let newResult;
-        try {
-          newResult = this.get();
-        } catch (e) {
-          this._state = 3 /* ERROR */;
-          this._error = e;
-          if (this._subscriptions) {
-            const error2 = wrapError(
-              e,
-              "Unknown error in calculation"
-            );
-            for (const subscription of this._subscriptions) {
-              subscription(error2, void 0);
-            }
-          }
-          return true;
-        }
-        if (priorResult !== Sentinel && this._eq(priorResult, newResult)) {
-          this._val = priorResult;
-          return false;
-        }
-        if (this._subscriptions) {
-          for (const subscription of this._subscriptions) {
-            subscription(void 0, newResult);
-          }
-        }
-        return true;
-      }
-      default:
-        assertExhausted(
-          this._state,
-          "Calculation in unknown state"
-        );
-    }
-  }
-  __invalidate() {
-    switch (this._state) {
-      case 4 /* DEAD */:
-        fail("cannot invalidate dead calculation");
-        break;
-      case 1 /* CALLING */:
-        fail("cannot invalidate calculation being tracked");
-        break;
-      case 0 /* READY */:
-        return false;
-      case 3 /* ERROR */:
-        this._state = 0 /* READY */;
-        return false;
-      case 2 /* CACHED */:
-        this._state = 0 /* READY */;
-        return true;
-      default:
-        assertExhausted(
-          this._state,
-          "Calculation in unknown state"
-        );
-    }
-  }
-  __cycle() {
-    switch (this._state) {
-      case 4 /* DEAD */:
-        fail("cannot trigger cycle on dead calculation");
-        break;
-      case 1 /* CALLING */:
-        fail("cannot trigger cycle on calculation being tracked");
-        break;
-      case 3 /* ERROR */:
-      case 2 /* CACHED */:
-      case 0 /* READY */: {
-        const priorResult = "_val" in this ? this._val : Sentinel;
-        this._state = 0 /* READY */;
-        const errorHandler = this._errorHandler;
-        if (errorHandler) {
-          this._val = untrackReads(
-            () => errorHandler(
-              new CycleError(
-                "Calculation is part of a cycle",
-                this
-              )
-            ),
-            this.__debugName
-          );
-          this._state = 2 /* CACHED */;
-          unmarkDirty(this);
-        } else {
-          this._state = 3 /* ERROR */;
-          this._error = Sentinel;
-          if (this._subscriptions) {
-            for (const subscription of this._subscriptions) {
-              subscription(
-                new CycleError(
-                  "Calculation is part of a cycle",
-                  this
-                ),
-                void 0
-              );
-            }
-          }
-          return true;
-        }
-        if (priorResult !== Sentinel && this._eq(priorResult, this._val)) {
-          this._val = priorResult;
-          return false;
-        }
-        if (this._subscriptions) {
-          for (const subscription of this._subscriptions) {
-            subscription(void 0, this._val);
-          }
-        }
-        return true;
-      }
-      default:
-        assertExhausted(
-          this._state,
-          "Calculation in unknown state"
-        );
-    }
-  }
-};
-var CycleError = class extends Error {
-  constructor(msg, sourceCalculation) {
-    super(msg);
-    this.sourceCalculation = sourceCalculation;
-  }
-};
-function calc(fn, debugName) {
-  const calculation = new Calculation(fn, debugName);
-  notifyCreate(calculation);
-  return calculation;
-}
-
 // src/modelview/collectionrendernode.ts
 function CollectionRenderNode(renderJSXNode2, collection2, debugName) {
   let unsubscribe;
@@ -3700,6 +3712,9 @@ var Field = class {
       this._changeClock = 0;
     }
     return true;
+  }
+  map(fn) {
+    return calc(() => fn(this.get()));
   }
 };
 function field(val, debugName) {
@@ -5172,7 +5187,7 @@ function mount(target, node) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.18.2" : "development";
+var VERSION = true ? "0.18.3" : "development";
 export {
   ArrayEventType,
   ClassComponent,
@@ -5201,6 +5216,8 @@ export {
   field,
   flush,
   getLogLevel,
+  isDynamic,
+  isDynamicMut,
   model,
   mount,
   ref,

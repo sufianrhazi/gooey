@@ -27,6 +27,7 @@ export declare class Calculation<T> implements Retainable, Processable, Dynamic<
     __recalculate(): boolean;
     __invalidate(): boolean;
     __cycle(): boolean;
+    map<V>(fn: (val: T) => V): Calculation<V>;
 }
 export declare class CycleError extends Error {
     sourceCalculation: Calculation<any>;
