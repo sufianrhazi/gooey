@@ -2,7 +2,14 @@ import { createElement } from './viewcontroller/createelement';
 
 export type { ArrayEvent } from './common/arrayevent';
 export { ArrayEventType, applyArrayEvent } from './common/arrayevent';
-export type { Dyn, DynMut, Dynamic, DynamicMut } from './common/dyn';
+export type {
+    Dyn,
+    DynMut,
+    Dynamic,
+    DynamicMut,
+    DynamicSubscriptionHandler,
+    DynamicNonErrorSubscriptionHandler,
+} from './common/dyn';
 export {
     dynGet,
     dynSet,
