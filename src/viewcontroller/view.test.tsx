@@ -5505,5 +5505,12 @@ suite('custom elements', () => {
 
             <textarea>{value}</textarea>;
         });
+
+        test('touch events infer correctly', () => {
+            <textarea on:touchstart={(e: TouchEvent) => {}} />;
+            <textarea on:touchstart={(e: Event) => {}} />;
+            // @ts-expect-error
+            <textarea on:touchstart={(e: MouseEvent) => {}} />;
+        });
     }
 });

@@ -1297,232 +1297,158 @@ interface JSXAttrProps {
     >;
 }
 
-interface JSXEventProps<TElement extends Element> {
-    'on:abort'?: EventHandler<Event, TElement>;
-    'onpassive:abort'?: EventHandler<Event, TElement>;
-    'oncapture:abort'?: EventHandler<Event, TElement>;
-    'on:auxclick'?: EventHandler<PointerEvent, TElement>;
-    'onpassive:auxclick'?: EventHandler<PointerEvent, TElement>;
-    'oncapture:auxclick'?: EventHandler<PointerEvent, TElement>;
-    'on:beforeinput'?: EventHandler<InputEvent, TElement>;
-    'onpassive:beforeinput'?: EventHandler<InputEvent, TElement>;
-    'oncapture:beforeinput'?: EventHandler<InputEvent, TElement>;
-    'on:blur'?: EventHandler<FocusEvent, TElement>;
-    'onpassive:blur'?: EventHandler<FocusEvent, TElement>;
-    'oncapture:blur'?: EventHandler<FocusEvent, TElement>;
-    'on:cancel'?: EventHandler<Event, TElement>;
-    'onpassive:cancel'?: EventHandler<Event, TElement>;
-    'oncapture:cancel'?: EventHandler<Event, TElement>;
-    'on:change'?: EventHandler<Event, TElement>;
-    'onpassive:change'?: EventHandler<Event, TElement>;
-    'oncapture:change'?: EventHandler<Event, TElement>;
-    'on:click'?: EventHandler<PointerEvent, TElement>;
-    'onpassive:click'?: EventHandler<PointerEvent, TElement>;
-    'oncapture:click'?: EventHandler<PointerEvent, TElement>;
-    'on:close'?: EventHandler<Event, TElement>;
-    'onpassive:close'?: EventHandler<Event, TElement>;
-    'oncapture:close'?: EventHandler<Event, TElement>;
-    'on:compositionend'?: EventHandler<CompositionEvent, TElement>;
-    'onpassive:compositionend'?: EventHandler<CompositionEvent, TElement>;
-    'oncapture:compositionend'?: EventHandler<CompositionEvent, TElement>;
-    'on:compositionstart'?: EventHandler<CompositionEvent, TElement>;
-    'onpassive:compositionstart'?: EventHandler<CompositionEvent, TElement>;
-    'oncapture:compositionstart'?: EventHandler<CompositionEvent, TElement>;
-    'on:compositionupdate'?: EventHandler<CompositionEvent, TElement>;
-    'onpassive:compositionupdate'?: EventHandler<CompositionEvent, TElement>;
-    'oncapture:compositionupdate'?: EventHandler<CompositionEvent, TElement>;
-    'on:connect'?: EventHandler<MessageEvent, TElement>;
-    'onpassive:connect'?: EventHandler<MessageEvent, TElement>;
-    'oncapture:connect'?: EventHandler<MessageEvent, TElement>;
-    'on:contextlost'?: EventHandler<Event, TElement>;
-    'onpassive:contextlost'?: EventHandler<Event, TElement>;
-    'oncapture:contextlost'?: EventHandler<Event, TElement>;
-    'on:contextmenu'?: EventHandler<PointerEvent, TElement>;
-    'onpassive:contextmenu'?: EventHandler<PointerEvent, TElement>;
-    'oncapture:contextmenu'?: EventHandler<PointerEvent, TElement>;
-    'on:contextrestored'?: EventHandler<Event, TElement>;
-    'onpassive:contextrestored'?: EventHandler<Event, TElement>;
-    'oncapture:contextrestored'?: EventHandler<Event, TElement>;
-    'on:copy'?: EventHandler<Event, TElement>;
-    'onpassive:copy'?: EventHandler<Event, TElement>;
-    'oncapture:copy'?: EventHandler<Event, TElement>;
-    'on:cut'?: EventHandler<Event, TElement>;
-    'onpassive:cut'?: EventHandler<Event, TElement>;
-    'oncapture:cut'?: EventHandler<Event, TElement>;
-    'on:dblclick'?: EventHandler<MouseEvent, TElement>;
-    'onpassive:dblclick'?: EventHandler<MouseEvent, TElement>;
-    'oncapture:dblclick'?: EventHandler<MouseEvent, TElement>;
-    'on:drag'?: EventHandler<DragEvent, TElement>;
-    'onpassive:drag'?: EventHandler<DragEvent, TElement>;
-    'oncapture:drag'?: EventHandler<DragEvent, TElement>;
-    'on:dragend'?: EventHandler<DragEvent, TElement>;
-    'onpassive:dragend'?: EventHandler<DragEvent, TElement>;
-    'oncapture:dragend'?: EventHandler<DragEvent, TElement>;
-    'on:dragenter'?: EventHandler<DragEvent, TElement>;
-    'onpassive:dragenter'?: EventHandler<DragEvent, TElement>;
-    'oncapture:dragenter'?: EventHandler<DragEvent, TElement>;
-    'on:dragleave'?: EventHandler<DragEvent, TElement>;
-    'onpassive:dragleave'?: EventHandler<DragEvent, TElement>;
-    'oncapture:dragleave'?: EventHandler<DragEvent, TElement>;
-    'on:dragover'?: EventHandler<DragEvent, TElement>;
-    'onpassive:dragover'?: EventHandler<DragEvent, TElement>;
-    'oncapture:dragover'?: EventHandler<DragEvent, TElement>;
-    'on:dragstart'?: EventHandler<DragEvent, TElement>;
-    'onpassive:dragstart'?: EventHandler<DragEvent, TElement>;
-    'oncapture:dragstart'?: EventHandler<DragEvent, TElement>;
-    'on:drop'?: EventHandler<DragEvent, TElement>;
-    'onpassive:drop'?: EventHandler<DragEvent, TElement>;
-    'oncapture:drop'?: EventHandler<DragEvent, TElement>;
-    'on:emptied'?: EventHandler<Event, TElement>;
-    'onpassive:emptied'?: EventHandler<Event, TElement>;
-    'oncapture:emptied'?: EventHandler<Event, TElement>;
-    'on:error'?: EventHandler<Event, TElement>;
-    'onpassive:error'?: EventHandler<Event, TElement>;
-    'oncapture:error'?: EventHandler<Event, TElement>;
-    'on:focus'?: EventHandler<FocusEvent, TElement>;
-    'onpassive:focus'?: EventHandler<FocusEvent, TElement>;
-    'oncapture:focus'?: EventHandler<FocusEvent, TElement>;
-    'on:focusin'?: EventHandler<FocusEvent, TElement>;
-    'onpassive:focusin'?: EventHandler<FocusEvent, TElement>;
-    'oncapture:focusin'?: EventHandler<FocusEvent, TElement>;
-    'on:focusout'?: EventHandler<FocusEvent, TElement>;
-    'onpassive:focusout'?: EventHandler<FocusEvent, TElement>;
-    'oncapture:focusout'?: EventHandler<FocusEvent, TElement>;
-    'on:formdata'?: EventHandler<FormDataEvent, TElement>;
-    'onpassive:formdata'?: EventHandler<FormDataEvent, TElement>;
-    'oncapture:formdata'?: EventHandler<FormDataEvent, TElement>;
-    'on:hashchange'?: EventHandler<HashChangeEvent, TElement>;
-    'onpassive:hashchange'?: EventHandler<HashChangeEvent, TElement>;
-    'oncapture:hashchange'?: EventHandler<HashChangeEvent, TElement>;
-    'on:input'?: EventHandler<InputEvent, TElement>;
-    'onpassive:input'?: EventHandler<InputEvent, TElement>;
-    'oncapture:input'?: EventHandler<InputEvent, TElement>;
-    'on:invalid'?: EventHandler<Event, TElement>;
-    'onpassive:invalid'?: EventHandler<Event, TElement>;
-    'oncapture:invalid'?: EventHandler<Event, TElement>;
-    'on:keydown'?: EventHandler<KeyboardEvent, TElement>;
-    'onpassive:keydown'?: EventHandler<KeyboardEvent, TElement>;
-    'oncapture:keydown'?: EventHandler<KeyboardEvent, TElement>;
-    'on:keyup'?: EventHandler<KeyboardEvent, TElement>;
-    'onpassive:keyup'?: EventHandler<KeyboardEvent, TElement>;
-    'oncapture:keyup'?: EventHandler<KeyboardEvent, TElement>;
-    'on:languagechange'?: EventHandler<Event, TElement>;
-    'onpassive:languagechange'?: EventHandler<Event, TElement>;
-    'oncapture:languagechange'?: EventHandler<Event, TElement>;
-    'on:load'?: EventHandler<Event, TElement>;
-    'onpassive:load'?: EventHandler<Event, TElement>;
-    'oncapture:load'?: EventHandler<Event, TElement>;
-    'on:loadstart'?: EventHandler<Event, TElement>;
-    'onpassive:loadstart'?: EventHandler<Event, TElement>;
-    'oncapture:loadstart'?: EventHandler<Event, TElement>;
-    'on:message'?: EventHandler<MessageEvent, TElement>;
-    'onpassive:message'?: EventHandler<MessageEvent, TElement>;
-    'oncapture:message'?: EventHandler<MessageEvent, TElement>;
-    'on:messageerror'?: EventHandler<MessageEvent, TElement>;
-    'onpassive:messageerror'?: EventHandler<MessageEvent, TElement>;
-    'oncapture:messageerror'?: EventHandler<MessageEvent, TElement>;
-    'on:mousedown'?: EventHandler<MouseEvent, TElement>;
-    'onpassive:mousedown'?: EventHandler<MouseEvent, TElement>;
-    'oncapture:mousedown'?: EventHandler<MouseEvent, TElement>;
-    'on:mouseenter'?: EventHandler<MouseEvent, TElement>;
-    'onpassive:mouseenter'?: EventHandler<MouseEvent, TElement>;
-    'oncapture:mouseenter'?: EventHandler<MouseEvent, TElement>;
-    'on:mouseleave'?: EventHandler<MouseEvent, TElement>;
-    'onpassive:mouseleave'?: EventHandler<MouseEvent, TElement>;
-    'oncapture:mouseleave'?: EventHandler<MouseEvent, TElement>;
-    'on:mousemove'?: EventHandler<MouseEvent, TElement>;
-    'onpassive:mousemove'?: EventHandler<MouseEvent, TElement>;
-    'oncapture:mousemove'?: EventHandler<MouseEvent, TElement>;
-    'on:mouseout'?: EventHandler<MouseEvent, TElement>;
-    'onpassive:mouseout'?: EventHandler<MouseEvent, TElement>;
-    'oncapture:mouseout'?: EventHandler<MouseEvent, TElement>;
-    'on:mouseover'?: EventHandler<MouseEvent, TElement>;
-    'onpassive:mouseover'?: EventHandler<MouseEvent, TElement>;
-    'oncapture:mouseover'?: EventHandler<MouseEvent, TElement>;
-    'on:mouseup'?: EventHandler<MouseEvent, TElement>;
-    'onpassive:mouseup'?: EventHandler<MouseEvent, TElement>;
-    'oncapture:mouseup'?: EventHandler<MouseEvent, TElement>;
-    'on:offline'?: EventHandler<Event, TElement>;
-    'onpassive:offline'?: EventHandler<Event, TElement>;
-    'oncapture:offline'?: EventHandler<Event, TElement>;
-    'on:online'?: EventHandler<Event, TElement>;
-    'onpassive:online'?: EventHandler<Event, TElement>;
-    'oncapture:online'?: EventHandler<Event, TElement>;
-    'on:open'?: EventHandler<Event, TElement>;
-    'onpassive:open'?: EventHandler<Event, TElement>;
-    'oncapture:open'?: EventHandler<Event, TElement>;
-    'on:pagehide'?: EventHandler<PageTransitionEvent, TElement>;
-    'onpassive:pagehide'?: EventHandler<PageTransitionEvent, TElement>;
-    'oncapture:pagehide'?: EventHandler<PageTransitionEvent, TElement>;
-    'on:pageshow'?: EventHandler<PageTransitionEvent, TElement>;
-    'onpassive:pageshow'?: EventHandler<PageTransitionEvent, TElement>;
-    'oncapture:pageshow'?: EventHandler<PageTransitionEvent, TElement>;
-    'on:paste'?: EventHandler<Event, TElement>;
-    'onpassive:paste'?: EventHandler<Event, TElement>;
-    'oncapture:paste'?: EventHandler<Event, TElement>;
-    'on:popstate'?: EventHandler<PopStateEvent, TElement>;
-    'onpassive:popstate'?: EventHandler<PopStateEvent, TElement>;
-    'oncapture:popstate'?: EventHandler<PopStateEvent, TElement>;
-    'on:progress'?: EventHandler<Event, TElement>;
-    'onpassive:progress'?: EventHandler<Event, TElement>;
-    'oncapture:progress'?: EventHandler<Event, TElement>;
-    'on:readystatechange'?: EventHandler<Event, TElement>;
-    'onpassive:readystatechange'?: EventHandler<Event, TElement>;
-    'oncapture:readystatechange'?: EventHandler<Event, TElement>;
-    'on:rejectionhandled'?: EventHandler<PromiseRejectionEvent, TElement>;
-    'onpassive:rejectionhandled'?: EventHandler<
-        PromiseRejectionEvent,
-        TElement
-    >;
-    'oncapture:rejectionhandled'?: EventHandler<
-        PromiseRejectionEvent,
-        TElement
-    >;
-    'on:reset'?: EventHandler<Event, TElement>;
-    'onpassive:reset'?: EventHandler<Event, TElement>;
-    'oncapture:reset'?: EventHandler<Event, TElement>;
-    'on:securitypolicyviolation'?: EventHandler<Event, TElement>;
-    'onpassive:securitypolicyviolation'?: EventHandler<Event, TElement>;
-    'oncapture:securitypolicyviolation'?: EventHandler<Event, TElement>;
-    'on:select'?: EventHandler<Event, TElement>;
-    'onpassive:select'?: EventHandler<Event, TElement>;
-    'oncapture:select'?: EventHandler<Event, TElement>;
-    'on:slotchange'?: EventHandler<Event, TElement>;
-    'onpassive:slotchange'?: EventHandler<Event, TElement>;
-    'oncapture:slotchange'?: EventHandler<Event, TElement>;
-    'on:stalled'?: EventHandler<Event, TElement>;
-    'onpassive:stalled'?: EventHandler<Event, TElement>;
-    'oncapture:stalled'?: EventHandler<Event, TElement>;
-    'on:storage'?: EventHandler<StorageEvent, TElement>;
-    'onpassive:storage'?: EventHandler<StorageEvent, TElement>;
-    'oncapture:storage'?: EventHandler<StorageEvent, TElement>;
-    'on:submit'?: EventHandler<SubmitEvent, TElement>;
-    'onpassive:submit'?: EventHandler<SubmitEvent, TElement>;
-    'oncapture:submit'?: EventHandler<SubmitEvent, TElement>;
-    'on:suspend'?: EventHandler<Event, TElement>;
-    'onpassive:suspend'?: EventHandler<Event, TElement>;
-    'oncapture:suspend'?: EventHandler<Event, TElement>;
-    'on:toggle'?: EventHandler<Event, TElement>;
-    'onpassive:toggle'?: EventHandler<Event, TElement>;
-    'oncapture:toggle'?: EventHandler<Event, TElement>;
-    'on:unhandledrejection'?: EventHandler<PromiseRejectionEvent, TElement>;
-    'onpassive:unhandledrejection'?: EventHandler<
-        PromiseRejectionEvent,
-        TElement
-    >;
-    'oncapture:unhandledrejection'?: EventHandler<
-        PromiseRejectionEvent,
-        TElement
-    >;
-    'on:unload'?: EventHandler<Event, TElement>;
-    'onpassive:unload'?: EventHandler<Event, TElement>;
-    'oncapture:unload'?: EventHandler<Event, TElement>;
-    'on:visibilitychange'?: EventHandler<Event, TElement>;
-    'onpassive:visibilitychange'?: EventHandler<Event, TElement>;
-    'oncapture:visibilitychange'?: EventHandler<Event, TElement>;
-    'on:wheel'?: EventHandler<WheelEvent, TElement>;
-    'onpassive:wheel'?: EventHandler<WheelEvent, TElement>;
-    'oncapture:wheel'?: EventHandler<WheelEvent, TElement>;
+type JSXEventPrefix = 'on' | 'onpassive' | 'oncapture';
+type JSXEventTypes = {
+    // Element events
+    animationcancel: AnimationEvent;
+    animationend: AnimationEvent;
+    animationiteration: AnimationEvent;
+    animationstart: AnimationEvent;
+    auxclick: PointerEvent;
+    beforeinput: InputEvent;
+    blur: FocusEvent;
+    click: PointerEvent;
+    compositionend: CompositionEvent;
+    compositionstart: CompositionEvent;
+    compositionupdate: CompositionEvent;
+    contextmenu: PointerEvent;
+    copy: ClipboardEvent;
+    cut: ClipboardEvent;
+    dblclick: MouseEvent;
+    focus: FocusEvent;
+    focusin: FocusEvent;
+    focusout: FocusEvent;
+    fullscreenchange: Event;
+    fullscreenerror: Event;
+    gotpointercapture: PointerEvent;
+    input: InputEvent;
+    keydown: KeyboardEvent;
+    keyup: KeyboardEvent;
+    lostpointercapture: PointerEvent;
+    mousedown: MouseEvent;
+    mouseenter: MouseEvent;
+    mouseleave: MouseEvent;
+    mousemove: MouseEvent;
+    mouseout: MouseEvent;
+    mouseover: MouseEvent;
+    mouseup: MouseEvent;
+    paste: ClipboardEvent;
+    pointercancel: PointerEvent;
+    pointerdown: PointerEvent;
+    pointerenter: PointerEvent;
+    pointerleave: PointerEvent;
+    pointermove: PointerEvent;
+    pointerout: PointerEvent;
+    pointerover: PointerEvent;
+    pointerup: PointerEvent;
+    scroll: Event;
+    scrollend: Event;
+    securitypolicyviolation: SecurityPolicyViolationEvent;
+    touchcancel: TouchEvent;
+    touchend: TouchEvent;
+    touchmove: TouchEvent;
+    touchstart: TouchEvent;
+    transitioncancel: TransitionEvent;
+    transitionend: TransitionEvent;
+    transitionrun: TransitionEvent;
+    transitionstart: TransitionEvent;
+    wheel: WheelEvent;
+
+    // Specific element events
+    beforetoggle: Event; // Incorrect: should be ToggleEvent
+    change: Event;
+    close: Event;
+    drag: DragEvent;
+    dragend: DragEvent;
+    dragenter: DragEvent;
+    dragleave: DragEvent;
+    dragover: DragEvent;
+    dragstart: DragEvent;
+    drop: DragEvent;
+    error: Event;
+    load: Event;
+    toggle: Event; // Incorrect: should be ToggleEvent
+
+    // Media elements: probably should be limited to HTMLMediaElement? (most/all don't bubble)
+    abort: Event;
+    canplay: Event;
+    canplaythrough: Event;
+    durationchange: Event;
+    emptied: Event;
+    encrypted: MediaEncryptedEvent;
+    ended: Event;
+    loadeddata: Event;
+    loadedmetadata: Event;
+    loadstart: Event;
+    pause: Event;
+    play: Event;
+    playing: Event;
+    progress: Event;
+    ratechange: Event;
+    seeked: Event;
+    seeking: Event;
+    stalled: Event;
+    suspend: Event;
+    timeupdate: Event;
+    volumechange: Event;
+    waiting: Event;
+    waitingforkey: Event;
+
+    // Dialog & Input events
+    cancel: Event;
+
+    // Canvas events
+    contextlost: Event;
+    contextrestored: Event;
+    webglcontextcreationerror: WebGLContextEvent;
+    webglcontextlost: WebGLContextEvent;
+    webglcontextrestored: WebGLContextEvent;
+
+    // Form events
+    formdata: FormDataEvent;
+    reset: Event;
+    submit: SubmitEvent;
+
+    // Input events
+    invalid: Event;
+    select: Event;
+
+    // Slot events
+    slotchange: Event;
+
+    // Window events... these probably should not be here?
+    hashchange: HashChangeEvent;
+    languagechange: Event;
+    message: MessageEvent;
+    messageerror: MessageEvent;
+    offline: Event;
+    online: Event;
+    pagehide: PageTransitionEvent;
+    pageshow: PageTransitionEvent;
+    popstate: PopStateEvent;
+    rejectionhandled: PromiseRejectionEvent;
+    storage: StorageEvent;
+    unhandledrejection: PromiseRejectionEvent;
+
+    // Document events... these probably should not be here?
+    readystatechange: Event;
+    visibilitychange: Event;
+
+    // Unknown... where did these come from?
+    connect: MessageEvent;
+    open: Event;
+};
+
+type JSXEventPropsNamed<TElement extends Element> = {
+    [TKey in `${JSXEventPrefix}:${keyof JSXEventTypes}`]?: TKey extends `${JSXEventPrefix}:${infer TValue}`
+        ? TValue extends keyof JSXEventTypes
+            ? EventHandler<JSXEventTypes[TValue], TElement>
+            : never
+        : never;
+};
+
+interface JSXEventProps<TElement extends Element>
+    extends JSXEventPropsNamed<TElement> {
     [key: `on:${string}`]: EventHandler<Event, TElement>;
     [key: `onpassive:${string}`]: EventHandler<Event, TElement>;
     [key: `oncapture:${string}`]: EventHandler<Event, TElement>;
