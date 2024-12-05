@@ -5409,6 +5409,30 @@ suite('custom elements', () => {
         );
     });
 
+    test('the popover attribute defaults to "auto"', () => {
+        const divRef = ref<HTMLDivElement>();
+        const unmount = mount(testRoot, <div ref={divRef} popover />);
+        assert.is('auto', divRef.current!.getAttribute('popover'));
+        assert.is('auto', (divRef.current as any).popover);
+        unmount();
+    });
+
+    test('the popover attribute can be set to manual', () => {
+        const divRef = ref<HTMLDivElement>();
+        const unmount = mount(testRoot, <div ref={divRef} popover="manual" />);
+        assert.is('manual', divRef.current!.getAttribute('popover'));
+        assert.is('manual', (divRef.current as any).popover);
+        unmount();
+    });
+
+    test('the popover attribute can be removed if false', () => {
+        const divRef = ref<HTMLDivElement>();
+        const unmount = mount(testRoot, <div ref={divRef} popover={false} />);
+        assert.is(false, divRef.current!.hasAttribute('popover'));
+        assert.is(null, (divRef.current as any).popover);
+        unmount();
+    });
+
     // Type-only tests
     // eslint-disable-next-line no-constant-condition
     if (2 < 1) {

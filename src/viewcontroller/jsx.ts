@@ -260,6 +260,13 @@ const attrBehavior: Record<
     ping: {},
     placeholder: {},
     playsinline: { idn: 'playsInline' },
+    popover: {
+        idv: (val) => {
+            if (val === true) return 'auto';
+            if (val === false) return undefined;
+            return val;
+        },
+    },
     poster: {},
     preload: {},
     readonly: { idn: 'readOnly' },
@@ -614,6 +621,8 @@ interface JSXElementInterface {
     itemtype?: string | undefined;
     lang?: string | undefined;
     nonce?: string | undefined;
+    // Convenience: true => 'auto'; false => undefined
+    popover?: 'auto' | 'manual' | true | false | undefined;
     role?: AriaRole | undefined;
     slot?: string | undefined;
     spellcheck?: boolean | undefined;
