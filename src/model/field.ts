@@ -3,6 +3,8 @@ import type {
     DynamicNonErrorSubscriptionHandler,
 } from '../common/dyn';
 import * as log from '../common/log';
+import type { Calculation } from './calc';
+import { calc } from './calc';
 import type { Processable, Retainable } from './engine';
 import {
     addVertex,
@@ -94,6 +96,10 @@ export class Field<T> implements Processable, Retainable, DynamicMut<T> {
             this._changeClock = 0;
         }
         return true;
+    }
+
+    map<V>(fn: (val: T) => V): Calculation<V> {
+        return calc(() => fn(this.get()));
     }
 }
 

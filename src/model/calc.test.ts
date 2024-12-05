@@ -5,6 +5,7 @@ import { calc } from './calc';
 import { collection } from './collection';
 import { dict } from './dict';
 import { flush, release, reset, retain, subscribe } from './engine';
+import { field } from './field';
 import { model } from './model';
 
 beforeEach(() => {
@@ -352,6 +353,28 @@ suite('calc', () => {
         bag.delete('unused');
         flush();
         assert.deepEqual([0, 1, 2, 1], values);
+    });
+
+    test('.map() produces a mapped calculation', () => {
+        const name = field('world');
+        const excited = name.map((str) => `${str}!`);
+        const greeted = excited.map((str) => `Hello, ${str}`);
+        const results: string[] = [];
+        const unsubscribe = greeted.subscribe((err, value) => {
+            if (!err) {
+                results.push(value);
+            }
+        });
+        assert.is('Hello, world!', greeted.get());
+        assert.deepEqual(['Hello, world!'], results);
+        name.set('there');
+        flush();
+        assert.is('Hello, there!', greeted.get());
+        assert.deepEqual(['Hello, world!', 'Hello, there!'], results);
+        unsubscribe();
+        name.set('not-flushed');
+        assert.deepEqual(['Hello, world!', 'Hello, there!'], results);
+        assert.is('Hello, not-flushed!', greeted.get());
     });
 });
 
