@@ -2,6 +2,7 @@ import { assert, suite, test } from '@srhazi/gooey-test';
 
 import { Calculation } from '../model/calc';
 import { dynGet, dynMap, dynSet, dynSubscribe } from './dyn';
+import type { Dynamic } from './dyn';
 
 type TypeIs<T, V> = T extends V ? (V extends T ? true : false) : false;
 
@@ -152,12 +153,24 @@ suite('dyn', () => {
         //
         // @ts-expect-error
         dynSet(x, 'one');
-        // @ts-expect-error
+        // This one oddly works, because y is Dynamic<string>
         dynSet(y, 'two');
         // @ts-expect-error
         dynSet(z, 'three');
 
         assert.is('unchanged', value);
+    });
+
+    test('dynSet works on Dynamic', () => {
+        const value = 'hi';
+        const x: Dynamic<string> = {
+            get: () => value,
+            subscribe: (handler: (err: undefined, value: string) => void) => {
+                handler(undefined, value);
+                return () => {};
+            },
+        };
+        dynSet(x, 'cool');
     });
 
     test('dynMap works on constants', () => {

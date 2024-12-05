@@ -31,7 +31,10 @@ export function dynGet<TVal>(wrapper: Dyn<TVal>): TVal {
     return wrapper;
 }
 
-export function dynSet<TVal>(wrapper: DynMut<TVal>, value: TVal): boolean {
+export function dynSet<TVal>(
+    wrapper: Dyn<TVal> | DynMut<TVal>,
+    value: TVal
+): boolean {
     if (isDynamicMut(wrapper)) {
         wrapper.set(value);
         return true;
