@@ -30,4 +30,4 @@ find src/demos -type f -name '*.html' | while read -r DEMO_SRC; do
     jo src="/$DEMO_SRC"
 done | jo -a > demos-manifest.json
 
-s/server
+s/server "@$"

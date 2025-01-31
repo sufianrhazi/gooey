@@ -11,4 +11,4 @@ echo_info "Installing dependencies..."
 npm install
 
 echo_info "Running dev server..."
-node_modules/.bin/vite --open
+node_modules/.bin/vite --open "$@"
