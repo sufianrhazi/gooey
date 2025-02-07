@@ -1,7 +1,7 @@
 import * as log from '../../common/log';
 import { wrapError } from '../../common/util';
 import type { Retainable } from '../../model/engine';
-import { release, retain, trackCreates } from '../../model/engine';
+import { release, retain } from '../../model/engine';
 import { renderJSXNode } from '../renderjsx';
 import { RenderNodeCommitPhase } from './constants';
 import type { RenderNode } from './rendernode';
@@ -118,12 +118,8 @@ export function ComponentRenderNode<TProps>(
             }
             let jsxResult: RenderNode | Error;
             try {
-                // TODO: I don't think this trackCreates is needed... state should only be alive while used.
-                jsxResult = trackCreates(
-                    owned,
-                    () =>
-                        Component(componentProps, lifecycle) || emptyRenderNode
-                );
+                jsxResult =
+                    Component(componentProps, lifecycle) || emptyRenderNode;
             } catch (e) {
                 const error = wrapError(e, 'Unknown error rendering component');
                 if (errorHandler) {

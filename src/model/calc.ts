@@ -145,7 +145,6 @@ import {
     addVertex,
     isProcessable,
     markCycleInformed,
-    notifyCreate,
     notifyRead,
     release,
     removeHardEdge,
@@ -555,7 +554,5 @@ export class CycleError extends Error {
 }
 
 export function calc<T>(fn: () => T, debugName?: string) {
-    const calculation = new Calculation(fn, debugName);
-    notifyCreate(calculation);
-    return calculation;
+    return new Calculation(fn, debugName);
 }

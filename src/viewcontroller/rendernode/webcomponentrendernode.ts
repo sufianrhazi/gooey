@@ -3,7 +3,7 @@ import { dynGet, dynSubscribe } from '../../common/dyn';
 import * as log from '../../common/log';
 import { wrapError } from '../../common/util';
 import type { Retainable } from '../../model/engine';
-import { release, retain, trackCreates } from '../../model/engine';
+import { release, retain } from '../../model/engine';
 import type { Field } from '../../model/field';
 import type { JSXNode } from '../jsx';
 import { renderJSXNode } from '../renderjsx';
@@ -300,11 +300,8 @@ export function WebComponentRenderNode<
             const Component = options.Component;
             let jsxResult: RenderNode | Error;
             try {
-                jsxResult = trackCreates(
-                    owned,
-                    () =>
-                        Component(componentProps, lifecycle) || emptyRenderNode
-                );
+                jsxResult =
+                    Component(componentProps, lifecycle) || emptyRenderNode;
             } catch (e) {
                 const error = wrapError(e, 'Unknown error rendering component');
                 if (errorHandler) {

@@ -1,6 +1,6 @@
 import type { JSXRenderable } from '../viewcontroller/jsx';
 import type { Retainable } from './engine';
-import { notifyCreate, notifyRead } from './engine';
+import { notifyRead } from './engine';
 import { Field } from './field';
 import { FieldMap } from './fieldmap';
 import { SubscriptionConsumer } from './subscriptionconsumer';
@@ -208,8 +208,6 @@ export class TrackedDataHandle<
                 return [...keys];
             },
         });
-
-        notifyCreate(this.revocable.proxy);
     }
 }
 

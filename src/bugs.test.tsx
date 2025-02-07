@@ -310,4 +310,118 @@ suite('component bugs', () => {
         };
         mount(testRoot, <App />);
     });
+
+    test('calculations in components are only recalculated when actively used', () => {
+        const left = field('');
+        const right = field('');
+        const log = collection<string>([]);
+
+        const App = () => {
+            const isLeftCorrect = calc(() => {
+                log.push('recalc:isLeftCorrect');
+                return left.get() === 'open';
+            });
+
+            const isRightCorrect = calc(() => {
+                log.push('recalc:isRightCorrect');
+                return right.get() === 'sesame';
+            });
+
+            const isBothCorrect = calc(() => {
+                log.push('recalc:isBothCorrect:a');
+                if (!isLeftCorrect.get()) {
+                    return false;
+                }
+                log.push('recalc:isBothCorrect:b');
+                if (!isRightCorrect.get()) {
+                    return false;
+                }
+                log.push('recalc:isBothCorrect:c');
+                return true;
+            });
+            return (
+                <>
+                    result:
+                    {calc(() => (isBothCorrect.get() ? 'true' : 'false'))}
+                </>
+            );
+        };
+
+        const unmount = mount(testRoot, <App />);
+
+        // Initial state
+        assert.is('result:false', testRoot.innerText);
+        assert.deepEqual(
+            ['recalc:isBothCorrect:a', 'recalc:isLeftCorrect'],
+            log.splice(0, log.length)
+        );
+
+        // Nothing happens on flush
+        flush();
+        assert.is('result:false', testRoot.innerText);
+        assert.deepEqual([], log.splice(0, log.length));
+
+        // When left field changes, we only recalc isLeftCorrect because the result remains false
+        left.set('incorrect');
+        flush();
+        assert.is('result:false', testRoot.innerText);
+        assert.deepEqual(['recalc:isLeftCorrect'], log.splice(0, log.length));
+
+        // When right field changes, nothing happens, as it hasn't been used yet
+        right.set('incorrect');
+        flush();
+        assert.is('result:false', testRoot.innerText);
+        assert.deepEqual([], log.splice(0, log.length));
+
+        // When left field becomes correct, both isLeftCorrect and isBothCorrect:a/isBothCorrect:b and isRightCorrect are hit
+        left.set('open');
+        flush();
+        assert.is('result:false', testRoot.innerText);
+        assert.deepEqual(
+            [
+                'recalc:isLeftCorrect',
+                'recalc:isBothCorrect:a',
+                'recalc:isBothCorrect:b',
+                'recalc:isRightCorrect',
+            ],
+            log.splice(0, log.length)
+        );
+
+        // Now, changing the right field to an incorrect value causes isRightCorrect to be recalculated
+        right.set('nope');
+        flush();
+        assert.is('result:false', testRoot.innerText);
+        assert.deepEqual(['recalc:isRightCorrect'], log.splice(0, log.length));
+
+        // Changing the right field to a correct value causes isRightCorrect and isBothCorrect to be recalculated, resulting in a correct value
+        right.set('sesame');
+        flush();
+        assert.is('result:true', testRoot.innerText);
+        assert.deepEqual(
+            [
+                'recalc:isRightCorrect',
+                'recalc:isBothCorrect:a',
+                'recalc:isBothCorrect:b',
+                'recalc:isBothCorrect:c',
+            ],
+            log.splice(0, log.length)
+        );
+
+        // Changing the left field back to an incorrect value causes isLeftCorrect to be recalculated and isRightCorrect to be freed
+        left.set('nope');
+        flush();
+        assert.is('result:false', testRoot.innerText);
+        assert.deepEqual(
+            ['recalc:isLeftCorrect', 'recalc:isBothCorrect:a'],
+            log.splice(0, log.length)
+        );
+
+        // And now, isRightCorrect will not be recalculated even if things change, as it is not used by anything
+        right.set('missing');
+        flush();
+        assert.is('result:false', testRoot.innerText);
+        assert.deepEqual([], log.splice(0, log.length));
+
+        unmount();
+    });
 });

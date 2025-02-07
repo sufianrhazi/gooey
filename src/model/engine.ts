@@ -27,7 +27,6 @@ export function isProcessable(val: any): val is Processable {
 let globalDependencyGraph = new Graph<Processable>(processHandler);
 let postProcessActions = new Set<() => void>();
 let trackReadSets: (Set<Retainable> | null)[] = [];
-let trackCreateSets: (Set<Retainable> | null)[] = [];
 let isFlushing = false;
 let needsFlush = false;
 let flushHandle: (() => void) | null = null;
@@ -56,7 +55,6 @@ export function reset() {
     globalDependencyGraph = new Graph<Processable>(processHandler);
     postProcessActions = new Set();
     trackReadSets = [];
-    trackCreateSets = [];
     isFlushing = false;
     needsFlush = false;
     if (flushHandle) flushHandle();
@@ -262,54 +260,6 @@ export function untrackReads<T>(fn: () => T, debugName?: string): T {
             null === trackReadSets.pop(),
             'Calculation tracking consistency error'
         );
-    }
-}
-
-export function trackCreates<T>(
-    set: Set<Retainable | (Retainable & Processable)>,
-    fn: () => T,
-    debugName?: string
-): T {
-    DEBUG && log.group('trackCreates', debugName ?? 'call');
-    trackCreateSets.push(set);
-    try {
-        return fn();
-    } finally {
-        DEBUG && log.groupEnd();
-        log.assert(
-            set === trackCreateSets.pop(),
-            'Calculation tracking consistency error'
-        );
-    }
-}
-
-export function untrackCreates<T>(fn: () => T, debugName?: string): T {
-    DEBUG && log.group('untrackCreates', debugName ?? 'call');
-    trackCreateSets.push(null);
-    try {
-        return fn();
-    } finally {
-        DEBUG && log.groupEnd();
-        log.assert(
-            null === trackCreateSets.pop(),
-            'Calculation tracking consistency error'
-        );
-    }
-}
-
-export function notifyCreate(retainable: Retainable) {
-    if (trackCreateSets.length === 0) return;
-    const createSet = trackCreateSets[trackCreateSets.length - 1];
-    if (createSet) {
-        DEBUG &&
-            log.debug(
-                'notifying dependency',
-                retainable.__debugName,
-                'to was created'
-            );
-        if (!createSet.has(retainable)) {
-            createSet.add(retainable);
-        }
     }
 }
 
