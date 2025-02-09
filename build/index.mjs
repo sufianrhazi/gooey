@@ -1415,7 +1415,6 @@ function isProcessable(val) {
 var globalDependencyGraph = new Graph(processHandler);
 var postProcessActions = /* @__PURE__ */ new Set();
 var trackReadSets = [];
-var trackCreateSets = [];
 var isFlushing = false;
 var needsFlush = false;
 var flushHandle = null;
@@ -1442,7 +1441,6 @@ function reset() {
   globalDependencyGraph = new Graph(processHandler);
   postProcessActions = /* @__PURE__ */ new Set();
   trackReadSets = [];
-  trackCreateSets = [];
   isFlushing = false;
   needsFlush = false;
   if (flushHandle)
@@ -1561,27 +1559,6 @@ function untrackReads(fn, debugName) {
       null === trackReadSets.pop(),
       "Calculation tracking consistency error"
     );
-  }
-}
-function trackCreates(set, fn, debugName) {
-  trackCreateSets.push(set);
-  try {
-    return fn();
-  } finally {
-    assert(
-      set === trackCreateSets.pop(),
-      "Calculation tracking consistency error"
-    );
-  }
-}
-function notifyCreate(retainable) {
-  if (trackCreateSets.length === 0)
-    return;
-  const createSet = trackCreateSets[trackCreateSets.length - 1];
-  if (createSet) {
-    if (!createSet.has(retainable)) {
-      createSet.add(retainable);
-    }
   }
 }
 function notifyRead(dependency) {
@@ -2229,10 +2206,7 @@ function ComponentRenderNode(Component, props, children, debugName) {
       }
       let jsxResult;
       try {
-        jsxResult = trackCreates(
-          owned,
-          () => Component(componentProps, lifecycle) || emptyRenderNode
-        );
+        jsxResult = Component(componentProps, lifecycle) || emptyRenderNode;
       } catch (e) {
         const error2 = wrapError(e, "Unknown error rendering component");
         if (errorHandler) {
@@ -2681,9 +2655,7 @@ var CycleError = class extends Error {
   }
 };
 function calc(fn, debugName) {
-  const calculation = new Calculation(fn, debugName);
-  notifyCreate(calculation);
-  return calculation;
+  return new Calculation(fn, debugName);
 }
 
 // src/common/dyn.ts
@@ -3990,7 +3962,6 @@ var TrackedDataHandle = class {
         return [...keys];
       }
     });
-    notifyCreate(this.revocable.proxy);
   }
 };
 function getTrackedDataHandle(trackedData) {
@@ -4841,10 +4812,7 @@ function WebComponentRenderNode(host, shadowRoot, elementInternals, options, chi
       const Component = options.Component;
       let jsxResult;
       try {
-        jsxResult = trackCreates(
-          owned,
-          () => Component(componentProps, lifecycle) || emptyRenderNode
-        );
+        jsxResult = Component(componentProps, lifecycle) || emptyRenderNode;
       } catch (e) {
         const error2 = wrapError(e, "Unknown error rendering component");
         if (errorHandler) {
@@ -5100,7 +5068,7 @@ function mount(target, node) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.18.3" : "development";
+var VERSION = true ? "0.19.0" : "development";
 export {
   ArrayEventType,
   ClassComponent,
