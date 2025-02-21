@@ -434,6 +434,8 @@ interface JSXMetaElementInterface extends JSXElementInterface {
     charset?: string | undefined;
     /** Applicable media */
     media?: string | undefined;
+    /** OpenGraph Property */
+    property?: string | undefined;
 }
 interface JSXMeterElementInterface extends JSXElementInterface {
     /** Current value of the element */
