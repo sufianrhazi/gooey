@@ -1,5 +1,5 @@
 import type { ArrayEvent } from '../../common/arrayevent';
-import { ArrayEventType } from '../../common/arrayevent';
+import { addArrayEvent, ArrayEventType } from '../../common/arrayevent';
 import * as log from '../../common/log';
 import type { RefObjectOrCallback } from '../ref';
 import { Ref } from '../ref';
@@ -41,7 +41,7 @@ export function PortalRenderNode(
     const renderNode = new SingleChildRenderNode(
         {
             onEvent: (event: ArrayEvent<Node>) => {
-                pendingEvents.push(event);
+                addArrayEvent(pendingEvents, event);
                 renderNode.requestCommit(RenderNodeCommitPhase.COMMIT_UPDATE);
                 return true;
             },
@@ -71,10 +71,18 @@ export function PortalRenderNode(
                     for (const event of pendingEvents) {
                         switch (event.type) {
                             case ArrayEventType.SPLICE: {
-                                for (let i = event.count - 1; i >= 0; --i) {
-                                    const toRemove =
-                                        element.childNodes[event.index + i];
-                                    element.removeChild(toRemove);
+                                if (
+                                    event.index === 0 &&
+                                    event.count > 0 &&
+                                    event.count === element.childNodes.length
+                                ) {
+                                    element.replaceChildren();
+                                } else {
+                                    for (let i = event.count - 1; i >= 0; --i) {
+                                        const toRemove =
+                                            element.childNodes[event.index + i];
+                                        element.removeChild(toRemove);
+                                    }
                                 }
                                 if (event.items) {
                                     const referenceNode =
