@@ -31,7 +31,7 @@ export function DynamicRenderNode(
         } else {
             renderNode.setChild(emptyRenderNode);
             renderValue = val;
-            renderNode.requestCommit(RenderNodeCommitPhase.COMMIT_RENDER);
+            renderNode.requestCommit(RenderNodeCommitPhase.COMMIT_EMIT);
         }
     };
 
@@ -43,7 +43,7 @@ export function DynamicRenderNode(
                 }
             },
             onCommit: (phase) => {
-                if (phase === RenderNodeCommitPhase.COMMIT_RENDER) {
+                if (phase === RenderNodeCommitPhase.COMMIT_EMIT) {
                     renderNode.setChild(renderJSXNode(renderValue));
                 }
             },

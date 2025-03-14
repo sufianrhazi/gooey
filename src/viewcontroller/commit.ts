@@ -7,16 +7,14 @@ import type { RenderNode } from './rendernode/rendernode';
  */
 const COMMIT_SEQUENCE = [
     RenderNodeCommitPhase.COMMIT_UNMOUNT,
-    RenderNodeCommitPhase.COMMIT_DELETE,
-    RenderNodeCommitPhase.COMMIT_RENDER,
-    RenderNodeCommitPhase.COMMIT_INSERT,
+    RenderNodeCommitPhase.COMMIT_EMIT,
+    RenderNodeCommitPhase.COMMIT_UPDATE,
     RenderNodeCommitPhase.COMMIT_MOUNT,
 ];
 let commitPhases = {
     [RenderNodeCommitPhase.COMMIT_UNMOUNT]: new Set<RenderNode>(),
-    [RenderNodeCommitPhase.COMMIT_DELETE]: new Set<RenderNode>(),
-    [RenderNodeCommitPhase.COMMIT_RENDER]: new Set<RenderNode>(),
-    [RenderNodeCommitPhase.COMMIT_INSERT]: new Set<RenderNode>(),
+    [RenderNodeCommitPhase.COMMIT_EMIT]: new Set<RenderNode>(),
+    [RenderNodeCommitPhase.COMMIT_UPDATE]: new Set<RenderNode>(),
     [RenderNodeCommitPhase.COMMIT_MOUNT]: new Set<RenderNode>(),
 };
 let commitHandle: undefined | (() => void);
@@ -44,9 +42,8 @@ function noopScheduler(callback: () => void) {
 export function reset() {
     commitPhases = {
         [RenderNodeCommitPhase.COMMIT_UNMOUNT]: new Set<RenderNode>(),
-        [RenderNodeCommitPhase.COMMIT_DELETE]: new Set<RenderNode>(),
-        [RenderNodeCommitPhase.COMMIT_RENDER]: new Set<RenderNode>(),
-        [RenderNodeCommitPhase.COMMIT_INSERT]: new Set<RenderNode>(),
+        [RenderNodeCommitPhase.COMMIT_EMIT]: new Set<RenderNode>(),
+        [RenderNodeCommitPhase.COMMIT_UPDATE]: new Set<RenderNode>(),
         [RenderNodeCommitPhase.COMMIT_MOUNT]: new Set<RenderNode>(),
     };
     commitHandle = undefined;
@@ -66,15 +63,15 @@ export function subscribe(scheduler?: (callback: () => void) => () => void) {
 
 // Committing has a few phases:
 // - 1: notify "onUnmount"
-// - 1.5: record document.activeElement
-// - 2: commit DOM deletions (notify "raw" DOM deletions)
-// - 3: commit DOM insertions (notify "raw" DOM insertions)
+// - 2: emit ArrayEvent<Node> elements
+// - 2.5: record document.activeElement
+// - 3: commit emitted elements to the DOM
 // - 3.5: restore document.activeElement if it was moved
 // - 4: notify "onMount"
 function performCommit() {
     let activeElement: Element | null = null;
     for (const phase of COMMIT_SEQUENCE) {
-        if (phase === RenderNodeCommitPhase.COMMIT_DELETE) {
+        if (phase === RenderNodeCommitPhase.COMMIT_UPDATE) {
             activeElement = document.activeElement;
         }
         const toCommit = Array.from(commitPhases[phase]).sort(
@@ -85,7 +82,7 @@ function performCommit() {
             renderNode.commit(phase);
         }
         if (
-            phase === RenderNodeCommitPhase.COMMIT_INSERT &&
+            phase === RenderNodeCommitPhase.COMMIT_UPDATE &&
             activeElement &&
             document.documentElement.contains(activeElement)
         ) {

@@ -1,5 +1,5 @@
 import type { ArrayEvent } from '../../common/arrayevent';
-import { applyArrayEvent, ArrayEventType } from '../../common/arrayevent';
+import { ArrayEventType } from '../../common/arrayevent';
 import * as log from '../../common/log';
 import type { RefObjectOrCallback } from '../ref';
 import { Ref } from '../ref';
@@ -7,13 +7,24 @@ import { RenderNodeCommitPhase } from './constants';
 import type { RenderNode } from './rendernode';
 import { SingleChildRenderNode } from './rendernode';
 
-// A shared document fragment; NOTE: always clear after use
-let sharedFragment: DocumentFragment | undefined;
-function getFragment() {
-    if (!sharedFragment) {
-        sharedFragment = document.createDocumentFragment();
+const moveOrInsertBeforeFunction =
+    'moveBefore' in Element.prototype
+        ? (Element.prototype
+              .moveBefore as typeof Element.prototype.insertBefore)
+        : Element.prototype.insertBefore;
+
+function moveOrInsertBefore(
+    element: Element | ShadowRoot,
+    node: Node,
+    target: Node | null
+) {
+    const destRoot = element.getRootNode();
+    const srcRoot = node.getRootNode();
+    if (destRoot === srcRoot) {
+        moveOrInsertBeforeFunction.call(element, node, target);
+    } else {
+        element.insertBefore(node, target);
     }
-    return sharedFragment;
 }
 
 export function PortalRenderNode(
@@ -25,57 +36,13 @@ export function PortalRenderNode(
         | undefined,
     debugName?: string
 ) {
-    let committedNodes: Node[] = [];
-    let liveNodes: Node[] = [];
-    let liveNodeSet: Set<Node> = new Set();
-    let deadNodeSet: Set<Node> = new Set();
-
-    function insertBefore(nodes: Node[], targetIndex: number) {
-        let toInsert: Node | undefined;
-        if (nodes.length === 1) {
-            toInsert = nodes[0];
-            liveNodeSet.add(nodes[0]);
-            committedNodes.splice(targetIndex, 0, toInsert);
-        } else if (nodes.length > 1) {
-            const fragment = getFragment();
-            for (const node of nodes) {
-                liveNodeSet.add(node);
-                fragment.appendChild(node);
-            }
-            committedNodes.splice(targetIndex, 0, ...nodes);
-            toInsert = fragment;
-        }
-        if (toInsert) {
-            element.insertBefore(
-                toInsert,
-                element.childNodes[targetIndex] || null
-            );
-        }
-    }
+    let pendingEvents: ArrayEvent<Node>[] = [];
 
     const renderNode = new SingleChildRenderNode(
         {
             onEvent: (event: ArrayEvent<Node>) => {
-                const removed = applyArrayEvent(liveNodes, event);
-                for (const toRemove of removed) {
-                    if (liveNodeSet.has(toRemove)) {
-                        deadNodeSet.add(toRemove);
-                    }
-                }
-                const isDelete =
-                    event.type !== ArrayEventType.SPLICE || event.count > 0;
-                const isInsert =
-                    event.type !== ArrayEventType.SPLICE || event.items?.length;
-                if (isDelete) {
-                    renderNode.requestCommit(
-                        RenderNodeCommitPhase.COMMIT_DELETE
-                    );
-                }
-                if (isInsert) {
-                    renderNode.requestCommit(
-                        RenderNodeCommitPhase.COMMIT_INSERT
-                    );
-                }
+                pendingEvents.push(event);
+                renderNode.requestCommit(RenderNodeCommitPhase.COMMIT_UPDATE);
                 return true;
             },
             onMount: () => {
@@ -100,62 +67,73 @@ export function PortalRenderNode(
                         refProp(undefined);
                     }
                 }
-                if (
-                    phase === RenderNodeCommitPhase.COMMIT_DELETE &&
-                    deadNodeSet.size > 0
-                ) {
-                    if (deadNodeSet.size === liveNodeSet.size) {
-                        element.replaceChildren();
-                        liveNodeSet.clear();
-                        committedNodes = [];
-                    } else {
-                        for (const toRemove of deadNodeSet) {
-                            liveNodeSet.delete(toRemove);
-                            element.removeChild(toRemove);
-                        }
-                        committedNodes = committedNodes.filter(
-                            (node) => !deadNodeSet.has(node)
-                        );
-                    }
-                    deadNodeSet.clear();
-                }
-                if (
-                    phase === RenderNodeCommitPhase.COMMIT_INSERT &&
-                    liveNodes.length > 0
-                ) {
-                    // At this point, we've removed all the nodes from element and committedNodes
-                    // And need to insert nodes in liveNodes in order to committedNodes
-                    //
-                    // Scan through liveNodes, if we hit the end corresponding missing node  and liveNodes
-                    let liveIndex = 0;
-                    while (liveIndex < liveNodes.length) {
-                        if (liveIndex >= committedNodes.length) {
-                            // We're at the end of the committed set, insert the remaining liveNodes at the end
-                            insertBefore(liveNodes.slice(liveIndex), liveIndex);
-                            break;
-                        }
-                        if (
-                            liveNodes[liveIndex] !== committedNodes[liveIndex]
-                        ) {
-                            let checkIndex = liveIndex + 1;
-                            while (
-                                checkIndex < liveNodes.length &&
-                                checkIndex < committedNodes.length &&
-                                liveNodes[checkIndex] !==
-                                    committedNodes[liveIndex]
-                            ) {
-                                checkIndex++;
+                if (phase === RenderNodeCommitPhase.COMMIT_UPDATE) {
+                    for (const event of pendingEvents) {
+                        switch (event.type) {
+                            case ArrayEventType.SPLICE: {
+                                for (let i = event.count - 1; i >= 0; --i) {
+                                    const toRemove =
+                                        element.childNodes[event.index + i];
+                                    element.removeChild(toRemove);
+                                }
+                                if (event.items) {
+                                    const referenceNode =
+                                        element.childNodes[event.index] || null;
+                                    for (const node of event.items) {
+                                        moveOrInsertBefore(
+                                            element,
+                                            node,
+                                            referenceNode
+                                        );
+                                    }
+                                }
+                                break;
                             }
-                            // [liveIndex...checkIndex] need to be inserted before committedNodes[liveIndex]
-                            insertBefore(
-                                liveNodes.slice(liveIndex, checkIndex),
-                                liveIndex
-                            );
-                            liveIndex = checkIndex;
-                            continue;
+                            case ArrayEventType.SORT: {
+                                const toInsert: Node[] = [];
+                                for (let i = 0; i < event.indexes.length; ++i) {
+                                    toInsert.push(
+                                        element.childNodes[event.indexes[i]]
+                                    );
+                                }
+                                const referenceNode =
+                                    element.childNodes[
+                                        event.from + event.indexes.length
+                                    ] || null;
+                                for (const node of toInsert) {
+                                    moveOrInsertBefore(
+                                        element,
+                                        node,
+                                        referenceNode
+                                    );
+                                }
+                                break;
+                            }
+                            case ArrayEventType.MOVE: {
+                                const toMove: Node[] = [];
+                                for (let i = 0; i < event.count; ++i) {
+                                    toMove.push(
+                                        element.childNodes[event.from + i]
+                                    );
+                                }
+                                const referenceIndex =
+                                    event.to > event.from
+                                        ? event.to + event.count
+                                        : event.to;
+                                const referenceNode =
+                                    element.childNodes[referenceIndex] || null;
+                                for (const node of toMove) {
+                                    moveOrInsertBefore(
+                                        element,
+                                        node,
+                                        referenceNode
+                                    );
+                                }
+                                break;
+                            }
                         }
-                        liveIndex++;
                     }
+                    pendingEvents = [];
                 }
                 if (phase === RenderNodeCommitPhase.COMMIT_MOUNT && refProp) {
                     if (refProp instanceof Ref) {
@@ -172,10 +150,7 @@ export function PortalRenderNode(
                 );
             },
             onDestroy: () => {
-                committedNodes = [];
-                liveNodes = [];
-                liveNodeSet = new Set();
-                deadNodeSet = new Set();
+                pendingEvents = [];
             },
         },
         childrenRenderNode,
