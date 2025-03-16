@@ -4475,7 +4475,6 @@ suite('custom elements', () => {
             tagName,
             observedAttributes: [],
             Component: ({ children }) => {
-                console.log('CUSTOM COMPONENT RENDER');
                 return (
                     <>
                         <h1>Before</h1>
@@ -5431,6 +5430,105 @@ suite('custom elements', () => {
         assert.is(false, divRef.current!.hasAttribute('popover'));
         assert.is(null, (divRef.current as any).popover);
         unmount();
+    });
+
+    test('jsx relocation can occur in complex situations', () => {
+        const jsx = [
+            <div id="a">a</div>,
+            <div id="b">b</div>,
+            <div id="c">c</div>,
+            <div id="d">d</div>,
+            <div id="e">e</div>,
+            <div id="f">f</div>,
+        ];
+        for (const rn of jsx) {
+            rn.retain();
+        }
+
+        const indexOffset = field(0);
+        const calculations = jsx.map((_, index) =>
+            calc(() => {
+                return jsx[(index + indexOffset.get()) % jsx.length];
+            })
+        );
+
+        const unmount = mount(
+            testRoot,
+            <>
+                {calculations[0]}
+                {calculations[1]}
+                <section>
+                    {calculations[2]}
+                    {calculations[3]}
+                </section>
+                {calculations[4]}
+                {calculations[5]}
+            </>
+        );
+
+        assert.is(
+            [
+                '<div id="a">a</div>',
+                '<div id="b">b</div>',
+                '<section>',
+                '<div id="c">c</div>',
+                '<div id="d">d</div>',
+                '</section>',
+                '<div id="e">e</div>',
+                '<div id="f">f</div>',
+            ].join(''),
+            testRoot.innerHTML
+        );
+        indexOffset.set(1);
+        flush();
+        assert.is(
+            [
+                '<div id="b">b</div>',
+                '<div id="c">c</div>',
+                '<section>',
+                '<div id="d">d</div>',
+                '<div id="e">e</div>',
+                '</section>',
+                '<div id="f">f</div>',
+                '<div id="a">a</div>',
+            ].join(''),
+            testRoot.innerHTML
+        );
+        indexOffset.set(2);
+        flush();
+        assert.is(
+            [
+                '<div id="c">c</div>',
+                '<div id="d">d</div>',
+                '<section>',
+                '<div id="e">e</div>',
+                '<div id="f">f</div>',
+                '</section>',
+                '<div id="a">a</div>',
+                '<div id="b">b</div>',
+            ].join(''),
+            testRoot.innerHTML
+        );
+        indexOffset.set(4);
+        flush();
+        assert.is(
+            [
+                '<div id="e">e</div>',
+                '<div id="f">f</div>',
+                '<section>',
+                '<div id="a">a</div>',
+                '<div id="b">b</div>',
+                '</section>',
+                '<div id="c">c</div>',
+                '<div id="d">d</div>',
+            ].join(''),
+            testRoot.innerHTML
+        );
+
+        unmount();
+        for (const rn of jsx) {
+            rn.release();
+        }
     });
 
     // Type-only tests

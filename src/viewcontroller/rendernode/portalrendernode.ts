@@ -1,5 +1,9 @@
 import type { ArrayEvent } from '../../common/arrayevent';
-import { addArrayEvent, ArrayEventType } from '../../common/arrayevent';
+import {
+    addArrayEvent,
+    applyArrayEvent,
+    ArrayEventType,
+} from '../../common/arrayevent';
 import * as log from '../../common/log';
 import type { RefObjectOrCallback } from '../ref';
 import { Ref } from '../ref';
@@ -37,6 +41,17 @@ export function PortalRenderNode(
     debugName?: string
 ) {
     let pendingEvents: ArrayEvent<Node>[] = [];
+    let committedNodes: (Node | undefined)[] = [];
+
+    function getReferenceNode(index: number): Node | null {
+        for (let i = index; i < committedNodes.length; ++i) {
+            const node = committedNodes[i];
+            if (node) {
+                return node;
+            }
+        }
+        return null;
+    }
 
     const renderNode = new SingleChildRenderNode(
         {
@@ -68,25 +83,59 @@ export function PortalRenderNode(
                     }
                 }
                 if (phase === RenderNodeCommitPhase.COMMIT_UPDATE) {
+                    // It's possible that another RenderNode has committed first and inserted a Node which was a direct
+                    // child of this node. See the test case "jsx relocation can occur in complex situations"
+                    //
+                    // This will cause the inserted node to be removed from this RenderNode's element and placed as the
+                    // other RenderNode's child.
+                    //
+                    // We can detect if this stolen node has occurred if the actual sequence of children does not match
+                    // what is in our committedNodes array.
+                    //
+                    // In this case, we can assume the stolen node will be removed by this commit, and "skip" over it
+                    // when picking the reference node for insertions.
+                    for (
+                        let i = 0, childIndex = 0;
+                        i < committedNodes.length;
+                        ++i
+                    ) {
+                        const expectedNode = committedNodes[i];
+                        const realNode = element.childNodes[childIndex];
+                        if (expectedNode && expectedNode === realNode) {
+                            childIndex += 1;
+                        } else {
+                            // Assume the child was stolen, work around its absence
+                            committedNodes[i] = undefined;
+                        }
+                    }
+
                     for (const event of pendingEvents) {
                         switch (event.type) {
                             case ArrayEventType.SPLICE: {
                                 if (
                                     event.index === 0 &&
                                     event.count > 0 &&
-                                    event.count === element.childNodes.length
+                                    event.count === committedNodes.length
                                 ) {
                                     element.replaceChildren();
+                                    committedNodes = [];
                                 } else {
                                     for (let i = event.count - 1; i >= 0; --i) {
                                         const toRemove =
-                                            element.childNodes[event.index + i];
-                                        element.removeChild(toRemove);
+                                            committedNodes[event.index + i];
+                                        if (toRemove) {
+                                            element.removeChild(toRemove);
+                                        }
                                     }
+                                    committedNodes.splice(
+                                        event.index,
+                                        event.count
+                                    );
                                 }
                                 if (event.items) {
-                                    const referenceNode =
-                                        element.childNodes[event.index] || null;
+                                    const referenceNode = getReferenceNode(
+                                        event.index
+                                    );
                                     for (const node of event.items) {
                                         moveOrInsertBefore(
                                             element,
@@ -94,20 +143,26 @@ export function PortalRenderNode(
                                             referenceNode
                                         );
                                     }
+                                    committedNodes.splice(
+                                        event.index,
+                                        0,
+                                        ...event.items
+                                    );
                                 }
                                 break;
                             }
                             case ArrayEventType.SORT: {
                                 const toInsert: Node[] = [];
                                 for (let i = 0; i < event.indexes.length; ++i) {
-                                    toInsert.push(
-                                        element.childNodes[event.indexes[i]]
-                                    );
+                                    const node =
+                                        committedNodes[event.indexes[i]];
+                                    if (node) {
+                                        toInsert.push(node);
+                                    }
                                 }
-                                const referenceNode =
-                                    element.childNodes[
-                                        event.from + event.indexes.length
-                                    ] || null;
+                                const referenceNode = getReferenceNode(
+                                    event.from + event.indexes.length
+                                );
                                 for (const node of toInsert) {
                                     moveOrInsertBefore(
                                         element,
@@ -115,21 +170,23 @@ export function PortalRenderNode(
                                         referenceNode
                                     );
                                 }
+                                applyArrayEvent(committedNodes, event);
                                 break;
                             }
                             case ArrayEventType.MOVE: {
                                 const toMove: Node[] = [];
                                 for (let i = 0; i < event.count; ++i) {
-                                    toMove.push(
-                                        element.childNodes[event.from + i]
-                                    );
+                                    const node = committedNodes[event.from + i];
+                                    if (node) {
+                                        toMove.push(node);
+                                    }
                                 }
                                 const referenceIndex =
                                     event.to > event.from
                                         ? event.to + event.count
                                         : event.to;
                                 const referenceNode =
-                                    element.childNodes[referenceIndex] || null;
+                                    getReferenceNode(referenceIndex);
                                 for (const node of toMove) {
                                     moveOrInsertBefore(
                                         element,
@@ -137,6 +194,7 @@ export function PortalRenderNode(
                                         referenceNode
                                     );
                                 }
+                                applyArrayEvent(committedNodes, event);
                                 break;
                             }
                         }
@@ -159,6 +217,7 @@ export function PortalRenderNode(
             },
             onDestroy: () => {
                 pendingEvents = [];
+                committedNodes = [];
             },
         },
         childrenRenderNode,
