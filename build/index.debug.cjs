@@ -705,17 +705,15 @@ function wrapError(e, msg) {
 // src/viewcontroller/commit.ts
 var COMMIT_SEQUENCE = [
   0 /* COMMIT_UNMOUNT */,
-  1 /* COMMIT_DELETE */,
-  2 /* COMMIT_RENDER */,
-  3 /* COMMIT_INSERT */,
-  4 /* COMMIT_MOUNT */
+  1 /* COMMIT_EMIT */,
+  2 /* COMMIT_UPDATE */,
+  3 /* COMMIT_MOUNT */
 ];
 var commitPhases = {
   [0 /* COMMIT_UNMOUNT */]: /* @__PURE__ */ new Set(),
-  [1 /* COMMIT_DELETE */]: /* @__PURE__ */ new Set(),
-  [2 /* COMMIT_RENDER */]: /* @__PURE__ */ new Set(),
-  [3 /* COMMIT_INSERT */]: /* @__PURE__ */ new Set(),
-  [4 /* COMMIT_MOUNT */]: /* @__PURE__ */ new Set()
+  [1 /* COMMIT_EMIT */]: /* @__PURE__ */ new Set(),
+  [2 /* COMMIT_UPDATE */]: /* @__PURE__ */ new Set(),
+  [3 /* COMMIT_MOUNT */]: /* @__PURE__ */ new Set()
 };
 var commitHandle;
 var commitScheduler = defaultScheduler;
@@ -743,7 +741,7 @@ function commit() {
 function performCommit() {
   let activeElement = null;
   for (const phase of COMMIT_SEQUENCE) {
-    if (phase === 1 /* COMMIT_DELETE */) {
+    if (phase === 2 /* COMMIT_UPDATE */) {
       activeElement = document.activeElement;
     }
     const toCommit = Array.from(commitPhases[phase]).sort(
@@ -753,7 +751,7 @@ function performCommit() {
     for (const renderNode of toCommit) {
       renderNode.commit(phase);
     }
-    if (phase === 3 /* COMMIT_INSERT */ && activeElement && document.documentElement.contains(activeElement)) {
+    if (phase === 2 /* COMMIT_UPDATE */ && activeElement && document.documentElement.contains(activeElement)) {
       activeElement.focus();
     }
   }
@@ -2154,7 +2152,7 @@ function DynamicRenderNode(renderJSXNode2, dynamic, debugName) {
     } else {
       renderNode.setChild(emptyRenderNode);
       renderValue = val;
-      renderNode.requestCommit(2 /* COMMIT_RENDER */);
+      renderNode.requestCommit(1 /* COMMIT_EMIT */);
     }
   };
   const renderNode = new SingleChildRenderNode(
@@ -2165,7 +2163,7 @@ function DynamicRenderNode(renderJSXNode2, dynamic, debugName) {
         }
       },
       onCommit: (phase) => {
-        if (phase === 2 /* COMMIT_RENDER */) {
+        if (phase === 1 /* COMMIT_EMIT */) {
           renderNode.setChild(renderJSXNode2(renderValue));
         }
       },
@@ -2422,7 +2420,7 @@ function ComponentRenderNode(Component, props, children, debugName) {
         if (result instanceof Error) {
           return;
         }
-        renderNode.requestCommit(4 /* COMMIT_MOUNT */);
+        renderNode.requestCommit(3 /* COMMIT_MOUNT */);
       },
       onUnmount: () => {
         assert(result, "Invariant: missing result");
@@ -2436,7 +2434,7 @@ function ComponentRenderNode(Component, props, children, debugName) {
         }
       },
       onCommit: (phase) => {
-        if (phase === 4 /* COMMIT_MOUNT */ && onMountCallbacks) {
+        if (phase === 3 /* COMMIT_MOUNT */ && onMountCallbacks) {
           for (const callback of onMountCallbacks) {
             const maybeOnUnmount = callback();
             if (typeof maybeOnUnmount === "function") {
@@ -3078,67 +3076,39 @@ function ref(val) {
 }
 
 // src/viewcontroller/rendernode/portalrendernode.ts
-var sharedFragment;
-function getFragment() {
-  if (!sharedFragment) {
-    sharedFragment = document.createDocumentFragment();
+var moveOrInsertBeforeFunction = "moveBefore" in Element.prototype ? Element.prototype.moveBefore : Element.prototype.insertBefore;
+function moveOrInsertBefore(element, node, target) {
+  const destRoot = element.getRootNode();
+  const srcRoot = node.getRootNode();
+  if (destRoot === srcRoot) {
+    moveOrInsertBeforeFunction.call(element, node, target);
+  } else {
+    element.insertBefore(node, target);
   }
-  return sharedFragment;
 }
 function PortalRenderNode(element, childrenRenderNode, refProp, debugName) {
+  let pendingEvents = [];
   let committedNodes = [];
-  let liveNodes = [];
-  let liveNodeSet = /* @__PURE__ */ new Set();
-  let deadNodeSet = /* @__PURE__ */ new Set();
-  function insertBefore(nodes, targetIndex) {
-    let toInsert;
-    if (nodes.length === 1) {
-      toInsert = nodes[0];
-      liveNodeSet.add(nodes[0]);
-      committedNodes.splice(targetIndex, 0, toInsert);
-    } else if (nodes.length > 1) {
-      const fragment = getFragment();
-      for (const node of nodes) {
-        liveNodeSet.add(node);
-        fragment.appendChild(node);
+  function getReferenceNode(index) {
+    for (let i = index; i < committedNodes.length; ++i) {
+      const node = committedNodes[i];
+      if (node) {
+        return node;
       }
-      committedNodes.splice(targetIndex, 0, ...nodes);
-      toInsert = fragment;
     }
-    if (toInsert) {
-      element.insertBefore(
-        toInsert,
-        element.childNodes[targetIndex] || null
-      );
-    }
+    return null;
   }
   const renderNode = new SingleChildRenderNode(
     {
       onEvent: (event) => {
-        const removed = applyArrayEvent(liveNodes, event);
-        for (const toRemove of removed) {
-          if (liveNodeSet.has(toRemove)) {
-            deadNodeSet.add(toRemove);
-          }
-        }
-        const isDelete = event.type !== "splice" /* SPLICE */ || event.count > 0;
-        const isInsert = event.type !== "splice" /* SPLICE */ || event.items?.length;
-        if (isDelete) {
-          renderNode.requestCommit(
-            1 /* COMMIT_DELETE */
-          );
-        }
-        if (isInsert) {
-          renderNode.requestCommit(
-            3 /* COMMIT_INSERT */
-          );
-        }
+        addArrayEvent(pendingEvents, event);
+        renderNode.requestCommit(2 /* COMMIT_UPDATE */);
         return true;
       },
       onMount: () => {
         if (refProp) {
           renderNode.requestCommit(
-            4 /* COMMIT_MOUNT */
+            3 /* COMMIT_MOUNT */
           );
         }
       },
@@ -3157,45 +3127,99 @@ function PortalRenderNode(element, childrenRenderNode, refProp, debugName) {
             refProp(void 0);
           }
         }
-        if (phase === 1 /* COMMIT_DELETE */ && deadNodeSet.size > 0) {
-          if (deadNodeSet.size === liveNodeSet.size) {
-            element.replaceChildren();
-            liveNodeSet.clear();
-            committedNodes = [];
-          } else {
-            for (const toRemove of deadNodeSet) {
-              liveNodeSet.delete(toRemove);
-              element.removeChild(toRemove);
+        if (phase === 2 /* COMMIT_UPDATE */) {
+          for (let i = 0, childIndex = 0; i < committedNodes.length; ++i) {
+            const expectedNode = committedNodes[i];
+            const realNode = element.childNodes[childIndex];
+            if (expectedNode && expectedNode === realNode) {
+              childIndex += 1;
+            } else {
+              committedNodes[i] = void 0;
             }
-            committedNodes = committedNodes.filter(
-              (node) => !deadNodeSet.has(node)
-            );
           }
-          deadNodeSet.clear();
-        }
-        if (phase === 3 /* COMMIT_INSERT */ && liveNodes.length > 0) {
-          let liveIndex = 0;
-          while (liveIndex < liveNodes.length) {
-            if (liveIndex >= committedNodes.length) {
-              insertBefore(liveNodes.slice(liveIndex), liveIndex);
-              break;
-            }
-            if (liveNodes[liveIndex] !== committedNodes[liveIndex]) {
-              let checkIndex = liveIndex + 1;
-              while (checkIndex < liveNodes.length && checkIndex < committedNodes.length && liveNodes[checkIndex] !== committedNodes[liveIndex]) {
-                checkIndex++;
+          for (const event of pendingEvents) {
+            switch (event.type) {
+              case "splice" /* SPLICE */: {
+                if (event.index === 0 && event.count > 0 && event.count === committedNodes.length) {
+                  element.replaceChildren();
+                  committedNodes = [];
+                } else {
+                  for (let i = event.count - 1; i >= 0; --i) {
+                    const toRemove = committedNodes[event.index + i];
+                    if (toRemove) {
+                      element.removeChild(toRemove);
+                    }
+                  }
+                  committedNodes.splice(
+                    event.index,
+                    event.count
+                  );
+                }
+                if (event.items) {
+                  const referenceNode = getReferenceNode(
+                    event.index
+                  );
+                  for (const node of event.items) {
+                    moveOrInsertBefore(
+                      element,
+                      node,
+                      referenceNode
+                    );
+                  }
+                  committedNodes.splice(
+                    event.index,
+                    0,
+                    ...event.items
+                  );
+                }
+                break;
               }
-              insertBefore(
-                liveNodes.slice(liveIndex, checkIndex),
-                liveIndex
-              );
-              liveIndex = checkIndex;
-              continue;
+              case "sort" /* SORT */: {
+                const toInsert = [];
+                for (let i = 0; i < event.indexes.length; ++i) {
+                  const node = committedNodes[event.indexes[i]];
+                  if (node) {
+                    toInsert.push(node);
+                  }
+                }
+                const referenceNode = getReferenceNode(
+                  event.from + event.indexes.length
+                );
+                for (const node of toInsert) {
+                  moveOrInsertBefore(
+                    element,
+                    node,
+                    referenceNode
+                  );
+                }
+                applyArrayEvent(committedNodes, event);
+                break;
+              }
+              case "move" /* MOVE */: {
+                const toMove = [];
+                for (let i = 0; i < event.count; ++i) {
+                  const node = committedNodes[event.from + i];
+                  if (node) {
+                    toMove.push(node);
+                  }
+                }
+                const referenceIndex = event.to > event.from ? event.to + event.count : event.to;
+                const referenceNode = getReferenceNode(referenceIndex);
+                for (const node of toMove) {
+                  moveOrInsertBefore(
+                    element,
+                    node,
+                    referenceNode
+                  );
+                }
+                applyArrayEvent(committedNodes, event);
+                break;
+              }
             }
-            liveIndex++;
           }
+          pendingEvents = [];
         }
-        if (phase === 4 /* COMMIT_MOUNT */ && refProp) {
+        if (phase === 3 /* COMMIT_MOUNT */ && refProp) {
           if (refProp instanceof Ref) {
             refProp.current = element;
           } else if (typeof refProp === "function") {
@@ -3210,10 +3234,8 @@ function PortalRenderNode(element, childrenRenderNode, refProp, debugName) {
         );
       },
       onDestroy: () => {
+        pendingEvents = [];
         committedNodes = [];
-        liveNodes = [];
-        liveNodeSet = /* @__PURE__ */ new Set();
-        deadNodeSet = /* @__PURE__ */ new Set();
       }
     },
     childrenRenderNode,
@@ -3540,7 +3562,7 @@ function IntrinsicObserverRenderNode(nodeCallback, elementCallback, child, debug
             "unmount" /* UNMOUNT */
           );
           renderNode.requestCommit(
-            4 /* COMMIT_MOUNT */
+            3 /* COMMIT_MOUNT */
           );
           renderNode.requestCommit(
             0 /* COMMIT_UNMOUNT */
@@ -3554,7 +3576,7 @@ function IntrinsicObserverRenderNode(nodeCallback, elementCallback, child, debug
             );
           }
           renderNode.requestCommit(
-            4 /* COMMIT_MOUNT */
+            3 /* COMMIT_MOUNT */
           );
           renderNode.requestCommit(
             0 /* COMMIT_UNMOUNT */
@@ -3573,7 +3595,7 @@ function IntrinsicObserverRenderNode(nodeCallback, elementCallback, child, debug
         for (const node of nodes) {
           pendingEvent.set(node, "mount" /* MOUNT */);
           renderNode.requestCommit(
-            4 /* COMMIT_MOUNT */
+            3 /* COMMIT_MOUNT */
           );
           renderNode.requestCommit(
             0 /* COMMIT_UNMOUNT */
@@ -3584,7 +3606,7 @@ function IntrinsicObserverRenderNode(nodeCallback, elementCallback, child, debug
         for (const node of nodes) {
           pendingEvent.set(node, "unmount" /* UNMOUNT */);
           renderNode.requestCommit(
-            4 /* COMMIT_MOUNT */
+            3 /* COMMIT_MOUNT */
           );
           renderNode.requestCommit(
             0 /* COMMIT_UNMOUNT */
@@ -3603,7 +3625,7 @@ function IntrinsicObserverRenderNode(nodeCallback, elementCallback, child, debug
               }
             }
             break;
-          case 4 /* COMMIT_MOUNT */:
+          case 3 /* COMMIT_MOUNT */:
             for (const [node, event] of pendingEvent.entries()) {
               if (event === "mount" /* MOUNT */) {
                 notify(node, "mount" /* MOUNT */);
@@ -5020,7 +5042,7 @@ function WebComponentRenderNode(host, shadowRoot, elementInternals, options, chi
         if (result instanceof Error) {
           return;
         }
-        renderNode.requestCommit(4 /* COMMIT_MOUNT */);
+        renderNode.requestCommit(3 /* COMMIT_MOUNT */);
       },
       onUnmount() {
         assert(result, "Invariant: missing result");
@@ -5034,7 +5056,7 @@ function WebComponentRenderNode(host, shadowRoot, elementInternals, options, chi
         }
       },
       onCommit(phase) {
-        if (phase === 4 /* COMMIT_MOUNT */ && onMountCallbacks) {
+        if (phase === 3 /* COMMIT_MOUNT */ && onMountCallbacks) {
           for (const callback of onMountCallbacks) {
             const maybeOnUnmount = callback();
             if (typeof maybeOnUnmount === "function") {
@@ -5208,5 +5230,5 @@ function mount(target, node) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.19.1" : "development";
+var VERSION = true ? "0.20.0" : "development";
 //# sourceMappingURL=index.debug.cjs.map
