@@ -34,13 +34,6 @@ export function CollectionRenderNode(
         {
             onAlive: () => {
                 unsubscribe = collection.subscribe(handleEvent);
-                untrackReads(() => {
-                    renderNode.spliceChildren(
-                        0,
-                        0,
-                        collection.map((item) => renderJSXNode(item))
-                    );
-                });
             },
             onDestroy: () => {
                 unsubscribe?.();

@@ -1,5 +1,6 @@
 import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
 
+import { setLogLevel } from '../common/log';
 import type { Calculation } from './calc';
 import { calc } from './calc';
 import { collection } from './collection';
@@ -236,6 +237,7 @@ suite('calc', () => {
     });
 
     test('dependencies are path-dependent', () => {
+        setLogLevel('debug');
         const dependency = model(
             {
                 a: 1,
@@ -244,7 +246,7 @@ suite('calc', () => {
             },
             'model'
         );
-        const calls: string[] = [];
+        let calls: string[] = [];
         const calculation = calc(() => {
             if (dependency.which === 'a') {
                 calls.push('call a');
@@ -260,29 +262,34 @@ suite('calc', () => {
         assert.deepEqual(['call a'], calls);
 
         // No dependency on b yet, no effect
+        calls = [];
         dependency.b = 3;
+        flush();
+        assert.deepEqual([], calls);
+
+        // Dependency on a, recalc
+        calls = [];
+        dependency.a = 4;
         flush();
         assert.deepEqual(['call a'], calls);
 
-        // Dependency on a, recalc
-        dependency.a = 4;
-        flush();
-        assert.deepEqual(['call a', 'call a'], calls);
-
         // Dependency on which, recalc
+        calls = [];
         dependency.which = 'b';
         flush();
-        assert.deepEqual(['call a', 'call a', 'call b'], calls);
+        assert.deepEqual(['call b'], calls);
 
         // No longer dependency on a
+        calls = [];
         dependency.a = 5;
         flush();
-        assert.deepEqual(['call a', 'call a', 'call b'], calls);
+        assert.deepEqual([], calls);
 
         // Dependency on b, recalc
+        calls = [];
         dependency.b = 6;
         flush();
-        assert.deepEqual(['call a', 'call a', 'call b', 'call b'], calls);
+        assert.deepEqual(['call b'], calls);
 
         release(calculation);
     });
@@ -334,25 +341,33 @@ suite('calc', () => {
 
     test('retains dict keys appropriately', () => {
         const bag = dict();
-        const keys = bag.keys();
+        const keys = bag.keysView();
         const size = calc(() => keys.length, 'calc length');
-        const values: any[] = [];
+        let values: any[] = [];
         size.subscribe((err, val) => values.push(val));
         assert.deepEqual([0], values);
+
+        values = [];
         bag.set('foo', 'bar');
         flush();
-        assert.deepEqual([0, 1], values);
+        assert.deepEqual([1], values);
+
+        values = [];
         bag.set('baz', 'bum');
         flush();
-        assert.deepEqual([0, 1, 2], values);
+        assert.deepEqual([2], values);
+
+        values = [];
         bag.set('foo', 'overwrite');
         bag.set('baz', 'overwrite');
         flush();
-        assert.deepEqual([0, 1, 2], values);
+        assert.deepEqual([], values);
+
+        values = [];
         bag.delete('foo');
         bag.delete('unused');
         flush();
-        assert.deepEqual([0, 1, 2, 1], values);
+        assert.deepEqual([1], values);
     });
 
     test('.map() produces a mapped calculation', () => {
@@ -429,6 +444,176 @@ suite('cycles', () => {
         assert.throwsMatching(/cycle reached/i, () => calculations.a.get());
         assert.throwsMatching(/cycle reached/i, () => calculations.b.get());
         assert.throwsMatching(/cycle reached/i, () => calculations.c.get());
+    });
+
+    test('calculations can become cycles and break cycles', () => {
+        const calculations: Record<string, Calculation<string>> = {};
+        const data = model({
+            isCycle: false,
+        });
+        calculations.a = calc(() => {
+            if (data.isCycle) {
+                return calculations.b.get() + 'x';
+            } else {
+                return 'a';
+            }
+        }, 'a').onError(() => '<err:a>');
+        calculations.b = calc(() => {
+            return calculations.a.get() + 'b';
+        }, 'b').onError(() => '<err:b>');
+
+        calculations.d = calc(() => {
+            return `final:${calculations.b.get()}`;
+        }, 'd').onError(() => '<final:error>');
+
+        // When isCycle is true:
+        //
+        // isCycle
+        //   |
+        //   v
+        //   a <-> b
+        //         |
+        //         v
+        //         d
+        //
+        // When isCycle is false:
+        //
+        // isCycle
+        //   |
+        //   v
+        //   a --> b
+        //         |
+        //         v
+        //         d
+
+        retain(calculations.a);
+        retain(calculations.b);
+        retain(calculations.d);
+
+        data.isCycle = true;
+        flush();
+
+        assert.is('final:<err:b>', calculations.d.get());
+
+        data.isCycle = false;
+        flush();
+
+        assert.is('final:ab', calculations.d.get());
+
+        data.isCycle = true;
+        flush();
+
+        assert.is('final:<err:b>', calculations.d.get());
+
+        data.isCycle = false;
+        flush();
+
+        assert.is('final:ab', calculations.d.get());
+
+        data.isCycle = true;
+        flush();
+    });
+
+    test('calculations may switch from cycle A to B', () => {
+        const calculations: Record<string, Calculation<string>> = {};
+        const which = field('one');
+        calculations.a = calc(() => {
+            switch (which.get()) {
+                case 'one':
+                    return calculations.b.get() + 'a';
+                case 'two':
+                    return calculations.c.get() + 'a';
+                case 'three':
+                default:
+                    return 'a';
+            }
+        }, 'a').onError(() => '<err:a>');
+        calculations.b = calc(() => {
+            return calculations.a.get() + 'b';
+        }, 'b').onError(() => '<err:b>');
+        calculations.c = calc(() => {
+            return calculations.a.get() + 'c';
+        }, 'c').onError(() => '<err:c>');
+
+        calculations.d = calc(() => {
+            return `(${calculations.b.get()}):(${calculations.c.get()})`;
+        }, 'd').onError(() => '<err:d>');
+
+        retain(calculations.a);
+        retain(calculations.b);
+        retain(calculations.c);
+        retain(calculations.d);
+
+        // Initial graph:
+        //
+        // which
+        //   |
+        //   v
+        //   a <-> b
+        //   |     |
+        //   v     |
+        //   c     |
+        //   |     |
+        //   +-----+
+        //   |
+        //   v
+        //   d
+
+        assert.is('<err:a>', calculations.a.get());
+        assert.is('<err:b>', calculations.b.get());
+        assert.is('<err:a>c', calculations.c.get());
+        assert.is('(<err:b>):(<err:a>c)', calculations.d.get());
+
+        flush();
+        assert.is('(<err:b>):(<err:a>c)', calculations.d.get());
+
+        which.set('two');
+        flush();
+
+        // Now graph is:
+        //
+        // which
+        //   |
+        //   v
+        //   a <-- b
+        //   ^     |
+        //   |     |
+        //   v     |
+        //   c     |
+        //   |     |
+        //   +-----+
+        //   |
+        //   v
+        //   d
+        //
+        assert.is('<err:a>', calculations.a.get());
+        assert.is('<err:a>b', calculations.b.get());
+        assert.is('<err:c>', calculations.c.get());
+        assert.is('(<err:a>b):(<err:c>)', calculations.d.get());
+
+        which.set('three');
+        flush();
+
+        // Nothing is in error state
+        assert.is('(ab):(ac)', calculations.d.get());
+
+        which.set('two');
+        flush();
+
+        // Revisit: B and C are in error state due to the cycle, A is not
+        assert.is('(<err:a>b):(<err:c>)', calculations.d.get());
+
+        which.set('one');
+        flush();
+
+        // Revisit: A and B are in error state due to the cycle, C is not
+        assert.is('(<err:b>):(<err:a>c)', calculations.d.get());
+
+        which.set('three');
+        flush();
+
+        // Nothing is in error state
+        assert.is('(ab):(ac)', calculations.d.get());
     });
 
     test('dirtying cycle-unaware calculations that are part of cycles does not throw an error if flushed', () => {
@@ -774,7 +959,7 @@ suite('cycles', () => {
             // Once a is recalculated with hasCycle=1, edge:  a <------ c is added
             //
             // This closes the cycle, so b and c are not needed to be recalculated.
-            assert.arrayEqualsUnsorted(['a', 'd'], calls);
+            assert.deepEqual(['a', 'd'], calls);
 
             calls.splice(0, calls.length);
             flush();
@@ -1020,6 +1205,120 @@ suite('cycles', () => {
         assert.throwsMatching(/cycle/i, () => calculations.b.get());
         assert.throwsMatching(/cycle/i, () => calculations.c.get());
         assert.throwsMatching(/cycle/i, () => calculations.d.get());
+    });
+});
+
+suite('cycles with partial recovery', () => {
+    // Note: I'm not certain that the behavior encoded in this test is intuitive.
+    // Cycles with **partial** error handling is weird.
+    //
+    // If there is a cycle a <-> b, and only "b" has an error handler, what happens when "a" is called?
+    //
+    // It depends on how the cycle is accessed.
+    //
+    // If some calculation X calls "b", then b's error handler response is returned, so there is no error
+    // If some calculation X calls "a", then a throws an error when called, and X needs to handle the error
+    //
+    const setup = () => {
+        const calculations: Record<string, Calculation<string>> = {};
+
+        const data = model({ hasCycle: false }, 'model');
+
+        calculations.a = calc(() => {
+            if (!data.hasCycle) return 'a no cycle';
+            return 'a cycle' + calculations.b.get();
+        }, 'a');
+        calculations.b = calc(() => {
+            if (!data.hasCycle) return 'b no cycle';
+            return 'b cycle' + calculations.a.get();
+        }, 'b').onError(() => {
+            return 'B CAUGHT';
+        });
+
+        const catcher = calc(() => {
+            return calculations.a.get();
+        }, 'catcher').onError(() => {
+            return 'catcher caught';
+        });
+
+        // With hasCycle=false:
+        //     hasCycle ----+
+        //            |     |
+        //            v     v
+        //            b     a
+        //                  |
+        //                  v
+        //           [catcher]
+        //
+        // With hasCycle=true:
+        //     hasCycle ----+
+        //            |     |
+        //            v     v
+        //            b <-> a
+        //                  |
+        //                  v
+        //           [catcher]
+
+        return { catcher, calculations, data };
+    };
+
+    test('non-retained behavior, with cycle', () => {
+        const { catcher, calculations, data } = setup();
+
+        data.hasCycle = true;
+        assert.is('catcher caught', catcher.get());
+        assert.throwsMatching(
+            /Cycle error: calculation cycle reached itself/,
+            () => calculations.a.get()
+        );
+        assert.is('B CAUGHT', calculations.b.get());
+    });
+
+    test('non-retained behavior, with no cycle', () => {
+        const { catcher, calculations, data } = setup();
+
+        data.hasCycle = false;
+        assert.is('a no cycle', catcher.get());
+        assert.is('a no cycle', calculations.a.get());
+        assert.is('b no cycle', calculations.b.get());
+    });
+
+    test('retained behavior, cycle -> no cycle', () => {
+        const { catcher, calculations, data } = setup();
+
+        catcher.retain();
+
+        data.hasCycle = true;
+        assert.is('catcher caught', catcher.get());
+        assert.throwsMatching(
+            /Cycle error: calculation cycle reached itself/,
+            () => calculations.a.get()
+        );
+        assert.is('B CAUGHT', calculations.b.get());
+
+        data.hasCycle = false;
+        flush();
+        assert.deepEqual('a no cycle', catcher.get());
+        assert.is('a no cycle', calculations.a.get());
+        assert.is('b no cycle', calculations.b.get());
+    });
+
+    test('retained behavior, no cycle -> cycle', () => {
+        const { catcher, calculations, data } = setup();
+
+        data.hasCycle = false;
+        assert.is('a no cycle', catcher.get());
+        assert.is('a no cycle', calculations.a.get());
+        assert.is('b no cycle', calculations.b.get());
+
+        data.hasCycle = true;
+        flush();
+        assert.is('catcher caught', catcher.get());
+        assert.throwsMatching(
+            /Cycle error: calculation cycle reached itself/,
+            () => calculations.a.get()
+        );
+        assert.is('B CAUGHT', calculations.b.get());
     });
 });
 

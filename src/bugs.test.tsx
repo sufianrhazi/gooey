@@ -31,7 +31,7 @@ suite('dict / view bugs', () => {
             'bag'
         );
 
-        const keys = bag.keys('bagKeys');
+        const keys = bag.keysView('bagKeys');
 
         const App = () => {
             return (
@@ -85,7 +85,7 @@ suite('dict / view bugs', () => {
             'bag'
         );
 
-        const keys = bag.keys('bagKeys');
+        const keys = bag.keysView('bagKeys');
 
         const App = () => {
             return (
@@ -152,7 +152,7 @@ suite('dict / view bugs', () => {
             'bag'
         );
 
-        const keys = bag.keys('bagKeys');
+        const keys = bag.keysView('bagKeys');
 
         const App = () => {
             return (

@@ -1,4 +1,4 @@
-import Gooey, { mount, dict, model, calc, setLogLevel } from '../../index';
+import Gooey, { calc, dict, model, mount, setLogLevel } from '../../index';
 import { makeGraphvizDebuggerRef } from '../debug';
 
 const graphvizRef = makeGraphvizDebuggerRef();
@@ -20,7 +20,7 @@ const App = () => {
         },
         'state'
     );
-    const keys = bag.keys('bagKeys');
+    const keys = bag.keysView('bagKeys');
 
     const onClickSet = () => {
         bag.set(state.key, state.value);

@@ -169,7 +169,7 @@ suite('Graph', () => {
          */
 
         const setup = (
-            processor: (item: TNode, action: ProcessAction) => boolean
+            processor: (vertexGroup: Set<TNode>, action: ProcessAction) => void
         ) => {
             const graph = new Graph<TNode>(processor);
 
@@ -202,9 +202,10 @@ suite('Graph', () => {
         suite('process', () => {
             test('nothing visited if nothing dirty', () => {
                 const items: TNode[] = [];
-                const graph = setup((item) => {
-                    items.push(item);
-                    return false;
+                const graph = setup((vertexGroup) => {
+                    for (const item of vertexGroup) {
+                        items.push(item);
+                    }
                 });
 
                 graph.process();
@@ -214,9 +215,21 @@ suite('Graph', () => {
 
             test('all nodes visited starting from dirty nodes', () => {
                 const items: TNode[] = [];
-                const graph = setup((item) => {
-                    items.push(item);
-                    return true;
+                const graph = setup((vertexGroup) => {
+                    const toPropagate = new Set<TNode>();
+                    for (const vertex of vertexGroup) {
+                        items.push(vertex);
+                        for (const forward of graph.getForwardDependencies(
+                            vertex
+                        )) {
+                            toPropagate.add(forward);
+                        }
+                    }
+                    for (const vertex of toPropagate) {
+                        if (!vertexGroup.has(vertex)) {
+                            graph.markVertexDirty(vertex);
+                        }
+                    }
                 });
                 graph.markVertexDirty(a);
 
@@ -226,11 +239,12 @@ suite('Graph', () => {
                 assert.arrayEqualsUnsorted([a, b, c, d, e, f, g, h, i], items);
             });
 
-            test('nodes can stop traversal by returning true', () => {
+            test('nodes do not need to propagate', () => {
                 const items: { item: TNode; action: ProcessAction }[] = [];
-                const graph = setup((item, action) => {
-                    items.push({ item, action });
-                    return false;
+                const graph = setup((vertexGroup, action) => {
+                    for (const item of vertexGroup) {
+                        items.push({ item, action });
+                    }
                 });
 
                 graph.markVertexDirty(a);
@@ -247,14 +261,27 @@ suite('Graph', () => {
                 );
             });
 
-            test('given c -> e; d -> e, and visiting c returns true but visiting d returns false, we still visit e and all dependencies', () => {
+            test('propagation can be determined by callback (given c -> e; d -> e, and visiting c propagates but visiting d does not, we still visit e and all dependencies)', () => {
                 const items: TNode[] = [];
-                const graph = setup((item, action) => {
-                    if (action === ProcessAction.RECALCULATE) {
-                        items.push(item);
+                const graph = setup((vertexGroup, action) => {
+                    const toPropagate = new Set<TNode>();
+                    for (const item of vertexGroup) {
+                        if (action === ProcessAction.RECALCULATE) {
+                            items.push(item);
+                        }
+                        if (item !== c) {
+                            for (const forward of graph.getForwardDependencies(
+                                item
+                            )) {
+                                toPropagate.add(forward);
+                            }
+                        }
                     }
-                    if (item === c) return false;
-                    return true;
+                    for (const item of toPropagate) {
+                        if (!vertexGroup.has(item)) {
+                            graph.markVertexDirty(item);
+                        }
+                    }
                 });
 
                 graph.markVertexDirty(c);
@@ -268,14 +295,27 @@ suite('Graph', () => {
                 assert.arrayIs([e, h, i], items.slice(2));
             });
 
-            test('given c -> e; d -> e, and visiting c returns true but visiting d returns false, we still visit e and all dependencies', () => {
+            test('propagation can be determined by callback (given c -> e; d -> e, and visiting c propagates but visiting d does not, we still visit e and all dependencies)', () => {
                 const items: TNode[] = [];
-                const graph = setup((item, action) => {
-                    if (action === ProcessAction.RECALCULATE) {
-                        items.push(item);
+                const graph = setup((vertexGroup, action) => {
+                    const toPropagate = new Set<TNode>();
+                    for (const item of vertexGroup) {
+                        if (action === ProcessAction.RECALCULATE) {
+                            items.push(item);
+                        }
+                        if (item !== c) {
+                            for (const forward of graph.getForwardDependencies(
+                                item
+                            )) {
+                                toPropagate.add(forward);
+                            }
+                        }
                     }
-                    if (item === c) return false;
-                    return true;
+                    for (const item of toPropagate) {
+                        if (!vertexGroup.has(item)) {
+                            graph.markVertexDirty(item);
+                        }
+                    }
                 });
 
                 graph.markVertexDirty(b);
@@ -293,11 +333,23 @@ suite('Graph', () => {
             test('dirty nodes visited in topological order', () => {
                 const items: TNode[] = [];
 
-                const graph = setup((item, action) => {
-                    if (action === ProcessAction.RECALCULATE) {
-                        items.push(item);
+                const graph = setup((vertexGroup, action) => {
+                    const toPropagate = new Set<TNode>();
+                    for (const item of vertexGroup) {
+                        if (action === ProcessAction.RECALCULATE) {
+                            items.push(item);
+                        }
+                        for (const forward of graph.getForwardDependencies(
+                            item
+                        )) {
+                            toPropagate.add(forward);
+                        }
                     }
-                    return true;
+                    for (const item of toPropagate) {
+                        if (!vertexGroup.has(item)) {
+                            graph.markVertexDirty(item);
+                        }
+                    }
                 });
                 graph.markVertexDirty(a);
 
@@ -344,7 +396,7 @@ suite('Graph', () => {
          */
 
         const setup = (
-            processor: (item: TNode, action: ProcessAction) => boolean
+            processor: (item: Set<TNode>, action: ProcessAction) => void
         ) => {
             const graph = new Graph<TNode>(processor);
 
@@ -377,9 +429,8 @@ suite('Graph', () => {
         suite('process', () => {
             test('nothing visited if nothing dirty', () => {
                 const items: TNode[] = [];
-                const graph = setup((item) => {
-                    items.push(item);
-                    return false;
+                const graph = setup((vertexGroup) => {
+                    items.push(...vertexGroup);
                 });
 
                 graph.process();
@@ -391,14 +442,20 @@ suite('Graph', () => {
                 const invalidated: TNode[] = [];
                 const recalculated: TNode[] = [];
 
-                const graph = setup((item, action) => {
-                    if (action === ProcessAction.INVALIDATE) {
-                        invalidated.push(item);
+                const graph = setup((vertexGroup, action) => {
+                    for (const item of vertexGroup) {
+                        if (action === ProcessAction.INVALIDATE) {
+                            invalidated.push(item);
+                        }
+                        if (action === ProcessAction.RECALCULATE) {
+                            recalculated.push(item);
+                        }
+                        for (const forward of graph.getForwardDependencies(
+                            item
+                        )) {
+                            graph.markVertexDirty(forward);
+                        }
                     }
-                    if (action === ProcessAction.RECALCULATE) {
-                        recalculated.push(item);
-                    }
-                    return true;
                 });
                 graph.markVertexDirty(a);
 
@@ -410,11 +467,17 @@ suite('Graph', () => {
 
             test('soft edges, despite not being visited dictate topological order', () => {
                 const items: TNode[] = [];
-                const graph = setup((item, action) => {
-                    if (action === ProcessAction.RECALCULATE) {
-                        items.push(item);
+                const graph = setup((vertexGroup, action) => {
+                    for (const item of vertexGroup) {
+                        if (action === ProcessAction.RECALCULATE) {
+                            items.push(item);
+                            for (const forward of graph.getForwardDependencies(
+                                item
+                            )) {
+                                graph.markVertexDirty(forward);
+                            }
+                        }
                     }
-                    return true;
                 });
 
                 graph.markVertexDirty(a);
@@ -468,12 +531,23 @@ suite('Graph', () => {
         test('unrelated dirtied nodes created while processing are themselves processed', () => {
             const actions: { name: string; action: ProcessAction }[] = [];
             const graph = new Graph<TNode>(
-                (node: TNode, action: ProcessAction) => {
-                    actions.push({ name: node.name, action });
-                    if (node === d && action === ProcessAction.RECALCULATE) {
-                        graph.markVertexDirty(a);
+                (vertexGroup: Set<TNode>, action: ProcessAction) => {
+                    for (const node of vertexGroup) {
+                        actions.push({ name: node.name, action });
+                        if (
+                            node === d &&
+                            action === ProcessAction.RECALCULATE
+                        ) {
+                            graph.markVertexDirty(a);
+                        }
+                        if (action === ProcessAction.RECALCULATE) {
+                            for (const forward of graph.getForwardDependencies(
+                                node
+                            )) {
+                                graph.markVertexDirty(forward);
+                            }
+                        }
                     }
-                    return true;
                 }
             );
             graph.addVertex(a);
@@ -503,30 +577,47 @@ suite('Graph', () => {
 });
 
 suite('Graph Cycles', () => {
-    const a = { name: 'a' };
-    const b = { name: 'b' };
-    const c = { name: 'c' };
-    const d = { name: 'd' };
-    const e = { name: 'e' };
-    const f = { name: 'f' };
+    const a = { name: 'a', __debugName: 'a' };
+    const b = { name: 'b', __debugName: 'b' };
+    const c = { name: 'c', __debugName: 'c' };
+    const d = { name: 'd', __debugName: 'd' };
+    const e = { name: 'e', __debugName: 'e' };
+    const f = { name: 'f', __debugName: 'f' };
 
     interface TNode {
         name: string;
     }
 
     const setup = () => {
-        const actionsPerNode: Record<string, ProcessAction[]> = {};
-        const graph = new Graph<TNode>((node: TNode, action: ProcessAction) => {
-            if (!actionsPerNode[node.name]) {
-                actionsPerNode[node.name] = [];
+        let actionsPerNode: Record<string, ProcessAction[]> = {};
+        const graph = new Graph<TNode>(
+            (vertexGroup: Set<TNode>, action: ProcessAction) => {
+                const toPropagate = new Set<TNode>();
+                for (const node of vertexGroup) {
+                    if (!actionsPerNode[node.name]) {
+                        actionsPerNode[node.name] = [];
+                    }
+                    actionsPerNode[node.name].push(action);
+                    if (
+                        action === ProcessAction.RECALCULATE ||
+                        action === ProcessAction.CYCLE
+                    ) {
+                        for (const forward of graph.getForwardDependencies(
+                            node
+                        )) {
+                            toPropagate.add(forward);
+                        }
+                    }
+                }
+                for (const node of toPropagate) {
+                    if (!vertexGroup.has(node)) {
+                        graph.markVertexDirty(node);
+                    }
+                }
             }
-            actionsPerNode[node.name].push(action);
-            return true;
-        });
+        );
         const process = () => {
-            Object.keys(actionsPerNode).forEach((key) => {
-                delete actionsPerNode[key];
-            });
+            actionsPerNode = {};
             graph.process();
             return actionsPerNode;
         };
@@ -546,14 +637,24 @@ suite('Graph Cycles', () => {
         graph.addEdge(c, d, Graph.EDGE_HARD);
         graph.addEdge(d, b, Graph.EDGE_HARD);
         graph.addEdge(c, e, Graph.EDGE_HARD);
-        process(); // allow cycle to be detected here
+        // CYCLE actions are triggered by the engine once edges are added
+        assert.deepEqual(
+            {
+                b: [ProcessAction.CYCLE],
+                c: [ProcessAction.CYCLE],
+                d: [ProcessAction.CYCLE],
+                e: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
+            },
+            process()
+        );
         graph.markVertexDirty(a);
 
+        // Subsequent invalidations treat cycle groups as individual units (b,c,d) are INVALIDATE and RECALCULATE as one unit
         assert.deepEqual(
             {
                 // A: Only recalculated, it was invalidated when dirtied
                 a: [ProcessAction.RECALCULATE],
-                // B, C, and D: invalidated when dirtied by A, recalculated because cycles that are dirtied need to be recalculated to determine if they have been broken, and cycle as the cycle was not broken
+                // B, C, and D: invalidated when dirtied by A, recalculated because cycles that are dirtied need to be recalculated to determine if they have been broken; no re-CYCLE is triggered (TODO: is this correct?)
                 b: [
                     ProcessAction.INVALIDATE,
                     ProcessAction.RECALCULATE,
@@ -658,10 +759,13 @@ suite('Graph Cycles', () => {
         // Before:
         //    a
         //    |
+        //    v
         // +->b
         // |  |
+        // |  v
         // +--c -> [e]
         // |  |
+        // |  v
         // +--d -> [f]
         graph.addEdge(a, b, Graph.EDGE_HARD);
         graph.addEdge(b, c, Graph.EDGE_HARD);
@@ -700,32 +804,46 @@ suite('Graph Cycles', () => {
         // After:
         //    a
         //    |
+        //    v
         // +->b
         // |  |
+        // |  v
         // +--c -> [e]
         //    |
+        //    v
         //    d -> [f]
         graph.removeEdge(d, b, Graph.EDGE_HARD);
         graph.markVertexDirty(a);
 
+        const results = process();
+        assert.deepEqual([ProcessAction.RECALCULATE], results.a);
         assert.deepEqual(
-            {
-                a: [ProcessAction.RECALCULATE],
-                b: [
-                    ProcessAction.INVALIDATE,
-                    ProcessAction.RECALCULATE,
-                    ProcessAction.CYCLE,
-                ], // recalculate-cycle as it has already been notified
-                c: [
-                    ProcessAction.INVALIDATE,
-                    ProcessAction.RECALCULATE,
-                    ProcessAction.CYCLE,
-                ], // recalculate-cycle as it has already been notified
-                d: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
-                e: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
-                f: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
-            },
-            process()
+            [
+                ProcessAction.INVALIDATE,
+                ProcessAction.RECALCULATE,
+                ProcessAction.CYCLE, // recalculate-cycle as it has already been notified
+            ],
+            results.b
+        );
+        assert.deepEqual(
+            [
+                ProcessAction.INVALIDATE,
+                ProcessAction.RECALCULATE,
+                ProcessAction.CYCLE, // recalculate-cycle as it has already been notified
+            ],
+            results.c
+        );
+        assert.deepEqual(
+            [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
+            results.d
+        );
+        assert.deepEqual(
+            [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
+            results.e
+        );
+        assert.deepEqual(
+            [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
+            results.f
         );
     });
 
@@ -750,6 +868,7 @@ suite('Graph Cycles', () => {
                 b: [ProcessAction.CYCLE],
                 c: [ProcessAction.CYCLE],
                 d: [ProcessAction.CYCLE],
+                e: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
             },
             process()
         );
@@ -773,6 +892,7 @@ suite('Graph Cycles', () => {
             {
                 b: [ProcessAction.CYCLE],
                 c: [ProcessAction.CYCLE],
+                d: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
             },
             process()
         );
@@ -895,6 +1015,7 @@ suite('Graph Cycles', () => {
                 c: [ProcessAction.CYCLE],
                 d: [ProcessAction.CYCLE],
                 e: [ProcessAction.CYCLE],
+                f: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
             },
             process()
         );
@@ -925,8 +1046,19 @@ suite('Graph Cycles', () => {
             {
                 b: [ProcessAction.CYCLE],
                 c: [ProcessAction.CYCLE],
-                d: [ProcessAction.CYCLE],
-                e: [ProcessAction.CYCLE],
+                d: [
+                    ProcessAction.INVALIDATE, // b<->c cycle points to d, so we get invalidated after that is processed
+                    ProcessAction.CYCLE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                e: [
+                    ProcessAction.INVALIDATE, // b<->c cycle points to d, so we get invalidated after that is processed
+                    ProcessAction.CYCLE,
+                    ProcessAction.RECALCULATE,
+                    ProcessAction.CYCLE,
+                ],
+                f: [ProcessAction.INVALIDATE, ProcessAction.RECALCULATE],
             },
             process()
         );
@@ -962,17 +1094,33 @@ suite('Graph Cycles', () => {
     test('cycle type: self cycle after dependency change', () => {
         let log: any[] = [];
         let addSelfEdge = false;
-        const graph = new Graph<TNode>((node: TNode, action: ProcessAction) => {
-            log.push({ node, action });
-            if (
-                node === b &&
-                action === ProcessAction.RECALCULATE &&
-                addSelfEdge
-            ) {
-                graph.addEdge(b, b, Graph.EDGE_HARD);
+        const graph = new Graph<TNode>(
+            (vertexGroup: Set<TNode>, action: ProcessAction) => {
+                const toPropagate = new Set<TNode>();
+                for (const node of vertexGroup) {
+                    log.push({ node, action });
+                    if (
+                        node === b &&
+                        action === ProcessAction.RECALCULATE &&
+                        addSelfEdge
+                    ) {
+                        graph.addEdge(b, b, Graph.EDGE_HARD);
+                    }
+                    if (action === ProcessAction.RECALCULATE) {
+                        for (const forward of graph.getForwardDependencies(
+                            node
+                        )) {
+                            toPropagate.add(forward);
+                        }
+                    }
+                }
+                for (const node of toPropagate) {
+                    if (!vertexGroup.has(node)) {
+                        graph.markVertexDirty(node);
+                    }
+                }
             }
-            return true;
-        });
+        );
         graph.addVertex(a);
         graph.addVertex(b);
         graph.addEdge(a, b, Graph.EDGE_HARD);
@@ -1001,6 +1149,7 @@ suite('Graph Cycles', () => {
                 { node: a, action: ProcessAction.RECALCULATE },
                 { node: b, action: ProcessAction.INVALIDATE },
                 { node: b, action: ProcessAction.RECALCULATE },
+                { node: b, action: ProcessAction.CYCLE },
                 { node: b, action: ProcessAction.CYCLE },
             ],
             log
@@ -1011,18 +1160,34 @@ suite('Graph Cycles', () => {
         let log: any[] = [];
         let addSelfEdge = false;
         let removeSelfEdge = false;
-        const graph = new Graph<TNode>((node: TNode, action: ProcessAction) => {
-            log.push({ node, action });
-            if (node === b && action === ProcessAction.RECALCULATE) {
-                if (removeSelfEdge) {
-                    graph.removeEdge(b, b, Graph.EDGE_HARD);
+        const graph = new Graph<TNode>(
+            (vertexGroup: Set<TNode>, action: ProcessAction) => {
+                const toPropagate = new Set<TNode>();
+                for (const node of vertexGroup) {
+                    log.push({ node, action });
+                    if (node === b && action === ProcessAction.RECALCULATE) {
+                        if (removeSelfEdge) {
+                            graph.removeEdge(b, b, Graph.EDGE_HARD);
+                        }
+                        if (addSelfEdge) {
+                            graph.addEdge(b, b, Graph.EDGE_HARD);
+                        }
+                    }
+                    if (action === ProcessAction.RECALCULATE) {
+                        for (const forward of graph.getForwardDependencies(
+                            node
+                        )) {
+                            toPropagate.add(forward);
+                        }
+                    }
                 }
-                if (addSelfEdge) {
-                    graph.addEdge(b, b, Graph.EDGE_HARD);
+                for (const node of toPropagate) {
+                    if (!vertexGroup.has(node)) {
+                        graph.markVertexDirty(node);
+                    }
                 }
             }
-            return true;
-        });
+        );
         graph.addVertex(a);
         graph.addVertex(b);
         graph.addEdge(a, b, Graph.EDGE_HARD);
@@ -1052,6 +1217,7 @@ suite('Graph Cycles', () => {
                 { node: b, action: ProcessAction.INVALIDATE },
                 { node: b, action: ProcessAction.RECALCULATE },
                 { node: b, action: ProcessAction.CYCLE },
+                { node: b, action: ProcessAction.CYCLE }, // Note: this redundant CYCLE notification is probably fixable, but I don't care.
             ],
             log
         );

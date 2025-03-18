@@ -2,7 +2,7 @@ import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
 
 import { calc } from './calc';
 import { dict, DictEventType } from './dict';
-import { flush, release, reset, retain, subscribe } from './engine';
+import { flush, reset, subscribe } from './engine';
 
 beforeEach(() => {
     reset();
@@ -16,7 +16,7 @@ suite('dict', () => {
         const c = calc(() => {
             log.push(bag.get('key'));
         });
-        retain(c);
+        c.retain();
         c.get();
         flush();
 
@@ -32,13 +32,35 @@ suite('dict', () => {
         assert.deepEqual([undefined, 'one', 'two', undefined], log);
     });
 
+    test('get set delete (has tracking)', () => {
+        const log: any[] = [];
+        const bag = dict<string, any>();
+        const c = calc(() => {
+            log.push(bag.has('key'));
+        });
+        c.retain();
+        c.get();
+        flush();
+
+        assert.deepEqual([false], log);
+        bag.set('key', 'one');
+        flush();
+        assert.deepEqual([false, true], log);
+        bag.set('key', 'two');
+        flush();
+        assert.deepEqual([false, true, true], log);
+        bag.delete('key');
+        flush();
+        assert.deepEqual([false, true, true, false], log);
+    });
+
     test('can start with values', () => {
         const log: any[] = [];
         const bag = dict<string, any>([['key', 'init']]);
         const c = calc(() => {
             log.push(bag.get('key'));
         });
-        retain(c);
+        c.retain();
         c.get();
         flush();
 
@@ -54,7 +76,7 @@ suite('dict', () => {
         const c = calc(() => {
             log.push(bag.get('key'));
         });
-        retain(c);
+        c.retain();
         c.get();
         flush();
 
@@ -76,7 +98,7 @@ suite('dict', () => {
             });
             log.push({ keySum, valSum });
         });
-        retain(c);
+        c.retain();
         c.get();
         flush();
 
@@ -90,7 +112,7 @@ suite('dict', () => {
     });
 
     test('can subscribe to events', () => {
-        const log: any[] = [];
+        let log: any[] = [];
         const bag = dict([
             ['foo', 'bar'],
             ['baz', 'bum'],
@@ -98,7 +120,22 @@ suite('dict', () => {
         const unsubscribe = bag.subscribe((events) => {
             log.push(...events);
         });
-        assert.deepEqual([], log);
+        assert.deepEqual(
+            [
+                {
+                    type: DictEventType.ADD,
+                    prop: 'foo',
+                    value: 'bar',
+                },
+                {
+                    type: DictEventType.ADD,
+                    prop: 'baz',
+                    value: 'bum',
+                },
+            ],
+            log
+        );
+        log = [];
         bag.set('foo', 'BAR');
         bag.set('bum', 'BUT');
         bag.delete('baz');
@@ -147,10 +184,10 @@ suite('dict', () => {
         );
     });
 
-    test('.keys produces view of keys', () => {
+    test('.keysView produces view of keys', () => {
         const simple = dict<string, any>([], 'model');
-        const keys = simple.keys();
-        retain(keys);
+        const keys = simple.keysView();
+        keys.retain();
         assert.arrayEqualsUnsorted([], keys);
         simple.set('foo', 'a');
         flush();
@@ -164,17 +201,17 @@ suite('dict', () => {
         simple.delete('bar');
         flush();
         assert.arrayEqualsUnsorted(['foo'], keys);
-        release(keys);
+        keys.release();
     });
 
-    test('.keys mapped view handles delete', () => {
+    test('.keysView mapped view handles delete', () => {
         const simple = dict<string, any>([], 'model');
-        const keys = simple.keys();
+        const keys = simple.keysView();
         const caps = keys
             .filterView((key) => key.startsWith('b'))
             .mapView((key) => key.toUpperCase());
-        retain(keys);
-        retain(caps);
+        keys.retain();
+        caps.retain();
         assert.arrayEqualsUnsorted([], keys);
         assert.arrayEqualsUnsorted([], caps);
         simple.set('foo', 'a');
@@ -193,13 +230,13 @@ suite('dict', () => {
         flush();
         assert.arrayEqualsUnsorted(['foo'], keys);
         assert.arrayEqualsUnsorted([], caps);
-        release(keys);
+        keys.release();
     });
 
-    test('.keys waits for flush', () => {
+    test('.keysView waits for flush', () => {
         const simple = dict<string, any>();
-        const keys = simple.keys();
-        retain(keys);
+        const keys = simple.keysView();
+        keys.retain();
         assert.arrayEqualsUnsorted([], keys);
         simple.set('foo', 'a');
         assert.arrayEqualsUnsorted([], keys);
@@ -211,13 +248,13 @@ suite('dict', () => {
         assert.arrayEqualsUnsorted([], keys);
         flush();
         assert.arrayEqualsUnsorted(['foo'], keys);
-        release(keys);
+        keys.release();
     });
 
-    test('.keys does nothing after release', () => {
+    test('.keysView does nothing after release', () => {
         const simple = dict<string, any>();
-        const keys = simple.keys();
-        retain(keys);
+        const keys = simple.keysView();
+        keys.retain();
         assert.arrayEqualsUnsorted([], keys);
         simple.set('foo', 'a');
         flush();
@@ -225,7 +262,7 @@ suite('dict', () => {
         simple.set('bar', 'a');
         flush();
         assert.arrayEqualsUnsorted(['foo', 'bar'], keys);
-        release(keys);
+        keys.release();
 
         simple.set('baz', 'new');
         simple.delete('foo');
@@ -234,11 +271,11 @@ suite('dict', () => {
         assert.arrayEqualsUnsorted(['foo', 'bar'], keys);
     });
 
-    test('.keys obeys subscription logic/notification', () => {
+    test('.keysView obeys subscription logic/notification', () => {
         const simple = dict<string, any>();
         simple.set('before', 'before');
-        const keys = simple.keys();
-        retain(keys);
+        const keys = simple.keysView();
+        keys.retain();
         simple.set('after', 'after');
 
         assert.arrayEqualsUnsorted(['before'], keys);
@@ -251,6 +288,6 @@ suite('dict', () => {
         flush();
 
         assert.arrayEqualsUnsorted(['before', 'after', 'afterFlush'], keys);
-        release(keys);
+        keys.release();
     });
 });

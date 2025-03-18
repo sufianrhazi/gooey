@@ -11,8 +11,6 @@ suite('behavior', () => {
         gooey.reset();
     });
     function setUp() {
-        type Renderer = () => string;
-
         interface TodoItem {
             task: string;
             done: boolean;
@@ -61,7 +59,7 @@ suite('behavior', () => {
         const todoList = gooey.model<TodoList>(
             {
                 name: 'Shopping',
-                items: gooey.collection<TodoItem>([model0, model1]),
+                items: gooey.collection<TodoItem>([model0, model1], 'todoList'),
             },
             'todoList'
         );
@@ -82,29 +80,32 @@ suite('behavior', () => {
             }, 'itemRenderer:' + item.task);
         };
 
-        const itemRenderers = new WeakMap<any, gooey.Calculation<any>>();
-        const getItemRenderer = (todoItem: TodoItem): Renderer => {
-            let renderer = itemRenderers.get(todoItem);
+        const itemRenderers = new Map<TodoItem, gooey.Calculation<string>>();
+        itemRenderers.set(model0, makeItemRenderer(model0));
+        itemRenderers.set(model1, makeItemRenderer(model1));
+        itemRenderers.set(model2, makeItemRenderer(model2));
+        itemRenderers.set(model3, makeItemRenderer(model3));
+        itemRenderers.set(model4, makeItemRenderer(model4));
+
+        const getItemRenderer = (
+            todoItem: TodoItem
+        ): gooey.Calculation<string> => {
+            const renderer = itemRenderers.get(todoItem);
             if (!renderer) {
-                renderer = makeItemRenderer(todoItem);
-                itemRenderers.set(todoItem, renderer);
+                throw new Error('nerp');
             }
-            const r = renderer;
-            return () => r.get();
+            return renderer;
         };
 
-        const makeTodoListRenderer = (todoList: TodoList) => {
-            return gooey.calc(() => {
-                renders.push('list');
-                const lines = [`${todoList.name}:`];
-                todoList.items.forEach((item) => {
-                    lines.push(getItemRenderer(item)());
-                });
-                return lines.join('\n');
-            }, 'list');
-        };
+        const app = gooey.calc(() => {
+            renders.push('list');
+            const lines = [`${todoList.name}:`];
+            todoList.items.forEach((item) => {
+                lines.push(getItemRenderer(item).get());
+            });
+            return lines.join('\n');
+        }, 'list');
 
-        const app = makeTodoListRenderer(todoList);
         app.retain();
 
         return {
@@ -230,7 +231,14 @@ suite('behavior', () => {
         todoList.items.push(model2);
         todoList.items.unshift(model3);
         gooey.flush();
-        assert.deepEqual(['list', 'item:model3', 'item:model2'], renders);
+        assert.deepEqual(
+            [
+                'list', // Rendered because todoList.items.length, todoList.items[0], and todoList.items[1] has changed
+                'item:model3', // Rendered as it is new
+                'item:model2', // Rendered as it is new
+            ],
+            renders
+        ); // The second 'list' at the end is weird!
         assert.is(
             app.get(),
             'Shopping:\n[ ] cookies\n[ ] apples\n[ ] bananas\n[ ] milk'

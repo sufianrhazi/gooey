@@ -20,6 +20,10 @@ export function setLogLevel(logLevel: LogLevel) {
     currentLevel = levels[logLevel];
 }
 
+export function isAtLogLevel(logLevel: LogLevel) {
+    return currentLevel >= levels[logLevel];
+}
+
 export function debug(...items: any[]) {
     if (currentLevel >= levels.debug) {
         console.log(...items);

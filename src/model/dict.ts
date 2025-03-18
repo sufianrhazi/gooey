@@ -1,15 +1,9 @@
-import type { ArrayEvent } from '../common/arrayevent';
-import { addArrayEvent, ArrayEventType } from '../common/arrayevent';
-import * as log from '../common/log';
-import { Sentinel } from '../common/sentinel';
-import type { View, ViewImpl } from './collection';
-import { makeViewPrototype, ViewHandler } from './collection';
-import type { Retainable } from './engine';
+import { ArraySub } from './arraysub';
+import { view } from './collection';
+import type { View } from './collection';
 import { release, retain } from './engine';
-import { Field } from './field';
-import { FieldMap } from './fieldmap';
-import { SubscriptionEmitter } from './subscriptionemitter';
-import { TrackedDataHandle } from './trackeddata';
+import type { Retainable } from './engine';
+import { TrackedData } from './trackeddata';
 
 export enum DictEventType {
     ADD = 'add',
@@ -24,235 +18,249 @@ export type DictEvent<K, V> =
 export type Model<T extends {}> = T;
 
 function addDictEvent<K, V>(events: DictEvent<K, V>[], event: DictEvent<K, V>) {
-    // TODO: make smarter
+    if (events.length === 0) {
+        events.push(event);
+        return;
+    }
+    const lastEvent = events[events.length - 1];
+    if (lastEvent.prop === event.prop) {
+        switch (lastEvent.type) {
+            case DictEventType.ADD:
+            case DictEventType.SET:
+                if (event.type === DictEventType.SET) {
+                    events[events.length] = {
+                        type: lastEvent.type, // ADD/SET followed by SET overwrites with the new value
+                        prop: event.prop,
+                        value: event.value, // Use overridden value
+                    };
+                    return;
+                }
+                if (event.type === DictEventType.DEL) {
+                    events.pop(); // ADD/SET followed by DEL is a no-op
+                    return;
+                }
+                break;
+            case DictEventType.DEL:
+                if (event.type === DictEventType.ADD) {
+                    events[events.length] = {
+                        type: DictEventType.SET, // DEL followed by ADD is a SET
+                        prop: event.prop,
+                        value: event.value,
+                    };
+                }
+                break;
+        }
+    }
     events.push(event);
 }
 
+const sizeSymbol = Symbol('dictSize');
+const keysSymbol = Symbol('dictKeys');
+
 export class Dict<K, V> implements Retainable {
-    private declare keysField: Field<number>;
-    private declare emitter: SubscriptionEmitter<DictEvent<K, V>>;
-    private declare fieldMap: FieldMap;
-    private declare ownKeys: Set<K>;
+    private declare items: Map<K, V>;
+    private declare trackedData: TrackedData<
+        K | typeof sizeSymbol | typeof keysSymbol,
+        DictEvent<K, V>
+    >;
+
     declare __refcount: number;
     declare __debugName: string;
 
-    constructor(entries: [K, V][] = [], debugName?: string) {
-        this.ownKeys = new Set();
-        this.keysField = new Field<number>(entries.length);
-        this.emitter = new SubscriptionEmitter<DictEvent<K, V>>(
-            addDictEvent,
-            debugName ?? 'map'
-        );
-        this.fieldMap = new FieldMap(
-            this.keysField,
-            null,
-            this.emitter,
-            debugName
-        );
-        for (const [key, value] of entries) {
-            this.ownKeys.add(key);
-            this.fieldMap.getOrMake(key, value);
-        }
+    constructor(init?: [key: K, value: V][] | undefined, debugName?: string) {
+        this.items = new Map(init ?? []);
+        this.trackedData = new TrackedData(addDictEvent, {}, debugName);
+
         this.__refcount = 0;
-        this.__debugName = debugName || 'map';
+        this.__debugName = debugName ?? 'arraysub';
     }
 
-    // Map interface
-    clear() {
-        this.fieldMap.clear();
-        this.ownKeys.forEach((key) => {
-            this.emitter.addEvent({
-                type: DictEventType.DEL,
-                prop: key,
-            });
-        });
-        this.ownKeys.clear();
-        this.keysField.set(this.ownKeys.size);
-    }
-
-    delete(key: K) {
-        this.fieldMap.delete(key);
-        if (this.ownKeys.has(key)) {
-            this.ownKeys.delete(key);
-            this.emitter.addEvent({
-                type: DictEventType.DEL,
-                prop: key,
-            });
-            this.keysField.set(this.ownKeys.size);
-        }
-    }
-
-    forEach(fn: (value: V, key: K) => void) {
-        for (const [key, value] of this.fieldMap.entries()) {
-            fn(value.get(), key);
-        }
+    getItemsUnsafe() {
+        return this.items;
     }
 
     get(key: K): V | undefined {
-        const field = this.fieldMap.getOrMake(key, Sentinel);
-        const value = field.get();
-        if (value === Sentinel) return undefined;
-        return value;
+        this.trackedData.notifyRead(key);
+        return this.items.get(key);
     }
 
-    has(key: K) {
-        const field = this.fieldMap.getOrMake(key, Sentinel);
-        const value = field.get();
-        if (value === Sentinel) return false;
-        return true;
+    has(key: K): boolean {
+        this.trackedData.notifyRead(key);
+        return this.items.has(key);
     }
 
-    set(key: K, value: V): this {
-        this.fieldMap.set(key, value);
-        if (this.ownKeys.has(key)) {
-            this.emitter.addEvent({
-                type: DictEventType.SET,
+    set(key: K, value: V) {
+        if (this.items.get(key) === value) {
+            // Avoid doing anything if the write is a noop
+            return;
+        }
+        const hasKey = this.items.has(key);
+        this.items.set(key, value);
+        this.trackedData.markDirty(key);
+
+        if (!hasKey) {
+            this.trackedData.markDirty(sizeSymbol);
+            this.trackedData.markDirty(keysSymbol);
+        }
+
+        this.trackedData.addEvent({
+            type: hasKey ? DictEventType.SET : DictEventType.ADD,
+            prop: key,
+            value,
+        });
+
+        this.trackedData.tickClock();
+    }
+
+    delete(key: K) {
+        if (!this.items.has(key)) {
+            // Avoid doing anything if the delete is a noop
+            return;
+        }
+        this.items.delete(key);
+        this.trackedData.markDirty(key);
+        this.trackedData.markDirty(sizeSymbol);
+        this.trackedData.markDirty(keysSymbol);
+
+        this.trackedData.addEvent({
+            type: DictEventType.DEL,
+            prop: key,
+        });
+
+        this.trackedData.tickClock();
+    }
+
+    clear() {
+        if (this.items.size === 0) {
+            // Avoid doing anything if clear is noop
+            return;
+        }
+        const keys = Array.from(this.items.keys());
+        this.items.clear();
+        for (const key of keys) {
+            this.trackedData.markDirty(key);
+            this.trackedData.addEvent({
+                type: DictEventType.DEL,
                 prop: key,
-                value,
             });
-        } else {
-            this.ownKeys.add(key);
-            this.emitter.addEvent({
+        }
+        this.trackedData.markDirty(sizeSymbol);
+
+        this.trackedData.tickClock();
+    }
+
+    forEach(fn: (value: V, key: K) => void) {
+        for (const [key, value] of this.entries()) {
+            fn(value, key);
+        }
+    }
+
+    keysView(debugName?: string): View<K> {
+        let subscription: undefined | (() => void);
+        const arrSub = new ArraySub<K>([], debugName, {
+            onAlive: () => {
+                subscription = this.subscribe((events) => {
+                    for (const event of events) {
+                        switch (event.type) {
+                            case DictEventType.ADD:
+                                arrSub.splice(Infinity, 0, [event.prop]);
+                                break;
+                            case DictEventType.SET:
+                                break;
+                            case DictEventType.DEL: {
+                                const items = arrSub.getItemsUnsafe();
+                                const index = items.indexOf(event.prop);
+                                if (index !== -1) {
+                                    arrSub.splice(index, 1, []);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                });
+            },
+            onDead: () => {
+                subscription?.();
+                subscription = undefined;
+            },
+        });
+        const keysView = view(arrSub, debugName);
+        return keysView;
+    }
+
+    *keys() {
+        this.trackedData.notifyRead(keysSymbol);
+        const keys = Array.from(this.items.keys());
+        for (const key of keys) {
+            yield key;
+        }
+    }
+
+    *values() {
+        this.trackedData.notifyRead(keysSymbol);
+        const keys = Array.from(this.items.keys());
+        const values: V[] = [];
+        for (const key of keys) {
+            this.trackedData.notifyRead(key);
+            values.push(this.items.get(key)!);
+        }
+        for (const value of values) {
+            yield value;
+        }
+    }
+
+    *entries() {
+        this.trackedData.notifyRead(keysSymbol);
+        const keys = Array.from(this.items.keys());
+        const entries: [K, V][] = [];
+        for (const key of keys) {
+            this.trackedData.notifyRead(key);
+            entries.push([key, this.items.get(key)!]);
+        }
+        for (const entry of entries) {
+            yield entry;
+        }
+    }
+
+    get size() {
+        this.trackedData.notifyRead(sizeSymbol);
+        return this.items.size;
+    }
+
+    subscribe(handler: (event: DictEvent<K, V>[]) => void) {
+        this.retain();
+
+        const initialEvents: DictEvent<K, V>[] = [];
+        for (const [key, value] of this.items.entries()) {
+            addDictEvent(initialEvents, {
                 type: DictEventType.ADD,
                 prop: key,
                 value,
             });
-            this.keysField.set(this.ownKeys.size);
         }
-        return this;
-    }
+        handler(initialEvents);
 
-    entries(debugName?: string): View<[K, V]> {
-        const initialEntries: [K, V][] = [...this.fieldMap.entries()] as any;
-        const derivedCollection = new TrackedDataHandle<
-            [K, V][],
-            ViewImpl<[K, V]>,
-            ArrayEvent<[K, V]>,
-            DictEvent<K, V>
-        >(
-            initialEntries,
-            ViewHandler,
-            makeViewPrototype(this),
-            this.emitter,
-            function* keysHandler(
-                target: [K, V][],
-                events: DictEvent<K, V>[]
-            ): IterableIterator<ArrayEvent<[K, V]>> {
-                const addEvent = (prop: K, value: V): ArrayEvent<[K, V]> => {
-                    const length = target.length;
-                    target.push([prop, value]);
-
-                    // Invalidate ranges
-                    derivedCollection.fieldMap.set(length.toString(), prop);
-                    derivedCollection.fieldMap.set('length', target.length);
-
-                    return {
-                        type: ArrayEventType.SPLICE,
-                        index: length,
-                        count: 0,
-                        items: [[prop, value]],
-                    };
-                };
-
-                for (const event of events) {
-                    switch (event.type) {
-                        case DictEventType.DEL: {
-                            const index = target.findIndex(
-                                (item) => item[0] === event.prop
-                            );
-                            if (index !== -1) {
-                                const prevLength = target.length;
-                                target.splice(index, 1);
-                                const newLength = target.length;
-
-                                // Invalidate ranges
-                                for (let i = index; i < target.length; ++i) {
-                                    derivedCollection.fieldMap.set(
-                                        i.toString(),
-                                        target[i]
-                                    );
-                                }
-                                for (let i = newLength; i < prevLength; ++i) {
-                                    derivedCollection.fieldMap.delete(
-                                        i.toString()
-                                    );
-                                }
-                                derivedCollection.fieldMap.set(
-                                    'length',
-                                    target.length
-                                );
-
-                                yield {
-                                    type: ArrayEventType.SPLICE,
-                                    index,
-                                    count: 1,
-                                    items: [],
-                                };
-                            }
-                            break;
-                        }
-                        case DictEventType.ADD: {
-                            yield addEvent(event.prop, event.value);
-                            break;
-                        }
-                        case DictEventType.SET: {
-                            const index = target.findIndex(
-                                (item) => item[0] === event.prop
-                            );
-                            if (index === -1) {
-                                yield addEvent(event.prop, event.value);
-                            } else {
-                                const entry: [K, V] = [event.prop, event.value];
-                                target.splice(index, 1, entry);
-                                yield {
-                                    type: ArrayEventType.SPLICE,
-                                    index,
-                                    count: 1,
-                                    items: [entry],
-                                };
-                            }
-                            break;
-                        }
-                        default:
-                            log.assertExhausted(event);
-                    }
-                }
-            },
-            addArrayEvent,
-            addDictEvent,
-            debugName
-        );
-        return derivedCollection.revocable.proxy;
-    }
-
-    keys(debugName?: string): View<K> {
-        return this.entries(debugName).mapView(([key, value]) => key);
-    }
-
-    values(debugName?: string): View<V> {
-        return this.entries(debugName).mapView(([key, value]) => value);
-    }
-
-    subscribe(handler: (events: DictEvent<K, V>[]) => void) {
-        retain(this.fieldMap);
-        const unsubscribe = this.emitter.subscribe((events) => {
-            handler(events);
-        });
+        const unsubscribe = this.trackedData.subscribe(handler);
         return () => {
             unsubscribe();
-            release(this.fieldMap);
+            this.release();
         };
     }
 
-    field(key: K): Field<V | undefined> {
-        return this.fieldMap.getOrMake(key, undefined);
+    retain() {
+        retain(this);
+    }
+
+    release() {
+        release(this);
     }
 
     __alive() {
-        retain(this.fieldMap);
+        this.trackedData.retain();
     }
+
     __dead() {
-        retain(this.emitter);
+        this.trackedData.release();
     }
 }
 

@@ -1,272 +1,170 @@
-import type { JSXRenderable } from '../viewcontroller/jsx';
-import type { Retainable } from './engine';
-import { notifyRead } from './engine';
-import { Field } from './field';
-import { FieldMap } from './fieldmap';
-import { SubscriptionConsumer } from './subscriptionconsumer';
-import { SubscriptionEmitter } from './subscriptionemitter';
+import * as log from '../common/log';
+import {
+    addVertex,
+    markDirty,
+    notifyRead,
+    release,
+    removeVertex,
+    retain,
+} from './engine';
+import type { Processable, Retainable } from './engine';
 
-export class TrackedDataHandle<
-    TData extends object,
-    TMethods extends Retainable & JSXRenderable,
-    TEmitEvent,
-    TConsumeEvent,
-> {
-    declare target: TData;
-    declare methods: TMethods;
+type TrackedDataSubscriptions<TEvent> = {
+    handler: (events: TEvent[]) => void;
+    clock: number;
+};
 
-    declare fieldMap: FieldMap;
-    declare keys: Set<string>;
-    declare keysField: Field<number>;
-    declare dataAccessor: DataAccessor;
-    declare emitter: SubscriptionEmitter<TEmitEvent>;
-    declare consumer: null | SubscriptionConsumer<
-        TData,
-        TConsumeEvent,
-        TEmitEvent
+export class TrackedData<TKey, TEvent> implements Processable, Retainable {
+    private declare itemSubscriptions: Map<
+        Retainable & Processable,
+        Map<TKey, number>
     >;
-    declare revocable: {
-        proxy: TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>;
-        revoke: () => void;
-    };
+    private declare eventSubscriptions: Set<TrackedDataSubscriptions<TEvent>>;
+    private declare events: { event: TEvent; clock: number }[];
+    private declare dirtyKeys: Map<TKey, number>;
+    private declare clock: number;
+    private declare onAlive?: (() => void) | undefined;
+    private declare onDead?: (() => void) | undefined;
+    private declare appendEvent: (events: TEvent[], event: TEvent) => void;
+
+    declare __processable: true;
+    declare __refcount: number;
+    declare __debugName: string;
 
     constructor(
-        target: TData,
-        proxyHandler: ProxyHandler<TEmitEvent>,
-        methods: TMethods,
-        derivedEmitter: null | SubscriptionEmitter<TConsumeEvent>,
-        handleEvents:
-            | null
-            | ((
-                  target: TData,
-                  events: TConsumeEvent[]
-              ) => IterableIterator<TEmitEvent>),
-        appendEmitEvent: (events: TEmitEvent[], event: TEmitEvent) => void,
-        appendConsumeEvent: (
-            events: TConsumeEvent[],
-            event: TConsumeEvent
-        ) => void,
-        debugName = 'trackeddata'
+        appendEvent: (events: TEvent[], event: TEvent) => void,
+        lifecycle?: { onAlive?: () => void; onDead?: () => void },
+        debugName?: string
     ) {
-        this.target = target;
-        this.methods = methods;
+        this.appendEvent = appendEvent;
+        this.itemSubscriptions = new Map();
+        this.eventSubscriptions = new Set();
+        this.dirtyKeys = new Map();
+        this.clock = 0;
+        this.events = [];
+        this.onAlive = lifecycle?.onAlive;
+        this.onDead = lifecycle?.onDead;
 
-        this.emitter = new SubscriptionEmitter<TEmitEvent>(
-            appendEmitEvent,
-            debugName
-        );
+        this.__processable = true;
+        this.__refcount = 0;
+        this.__debugName = debugName ?? 'arraysub';
+    }
 
-        if (derivedEmitter && handleEvents) {
-            this.consumer = new SubscriptionConsumer(
-                target,
-                derivedEmitter,
-                this.emitter,
-                handleEvents,
-                appendConsumeEvent,
-                debugName
-            );
-        } else {
-            this.consumer = null;
+    tickClock() {
+        this.clock += 1;
+    }
+
+    notifyRead(key: TKey) {
+        const reader = notifyRead(this);
+        if (reader && reader.__refcount > 0) {
+            let subscriptions = this.itemSubscriptions.get(reader);
+            if (!subscriptions) {
+                subscriptions = new Map();
+                this.itemSubscriptions.set(reader, subscriptions);
+            }
+            if (!subscriptions.has(key)) {
+                subscriptions.set(key, this.clock);
+            }
+        }
+    }
+
+    markDirty(key: TKey) {
+        if (this.__refcount === 0) {
+            return;
+        }
+        if (!this.dirtyKeys.has(key)) {
+            this.dirtyKeys.set(key, this.clock);
+        }
+        markDirty(this);
+    }
+
+    addEvent(event: TEvent) {
+        if (this.__refcount === 0) {
+            return;
+        }
+        if (this.eventSubscriptions.size > 0) {
+            this.events.push({ event, clock: this.clock });
+            markDirty(this);
+        }
+    }
+
+    subscribe(handler: (event: TEvent[]) => void) {
+        this.retain(); // yes, by virtue of subscribing to this, it is retained
+        const subscription = {
+            handler,
+            clock: this.clock,
+        };
+        this.eventSubscriptions.add(subscription);
+
+        return () => {
+            this.eventSubscriptions.delete(subscription);
+            this.release();
+        };
+    }
+
+    retain() {
+        retain(this);
+    }
+
+    release() {
+        release(this);
+    }
+
+    __alive() {
+        addVertex(this);
+        this.onAlive?.();
+    }
+
+    __dead() {
+        this.onDead?.();
+        removeVertex(this);
+
+        this.itemSubscriptions.clear();
+        this.eventSubscriptions.clear();
+        this.events = [];
+        this.dirtyKeys.clear();
+        this.clock = 0;
+    }
+
+    __recalculate(): Processable[] {
+        log.assert(this.__refcount > 0, 'cannot flush dead trackeddata');
+
+        const toPropagate = new Set<Retainable & Processable>();
+
+        // First propagate dirtiness for keys
+        for (const [
+            reader,
+            subscriptions,
+        ] of this.itemSubscriptions.entries()) {
+            for (const [key, whenRead] of subscriptions.entries()) {
+                const whenChanged = this.dirtyKeys.get(key);
+                if (whenChanged !== undefined && whenRead <= whenChanged) {
+                    toPropagate.add(reader);
+                }
+            }
         }
 
-        this.keys = new Set<string>(Object.keys(target));
-        this.keysField = new Field(this.keys.size, `${debugName}:@keys`);
-        this.fieldMap = new FieldMap(
-            this.keysField,
-            this.consumer,
-            this.emitter,
-            debugName
-        );
+        // For all the readers that have been dirtied, clear their subscriptions since they will re-evaluate
+        for (const reader of toPropagate) {
+            this.itemSubscriptions.delete(reader);
+        }
 
-        const emitEvent = (event: TEmitEvent) => {
-            this.emitter.addEvent(event);
-        };
-
-        this.dataAccessor = {
-            get: (prop, receiver) => {
-                if (prop === '__tdHandle') {
-                    return this;
+        this.eventSubscriptions.forEach((subscription) => {
+            const events: TEvent[] = [];
+            this.events.forEach(({ event, clock }) => {
+                if (subscription.clock <= clock) {
+                    this.appendEvent(events, event);
                 }
-                if (prop === '__debugName') {
-                    return debugName;
-                }
-                if (prop === '__processable') {
-                    return false;
-                }
-                if (
-                    prop === '__refcount' ||
-                    prop === '__alive' ||
-                    prop === '__dead' ||
-                    prop === '__renderNode'
-                ) {
-                    return methods[prop];
-                }
-                if (typeof prop === 'symbol') {
-                    return Reflect.get(this.target, prop, receiver);
-                }
-                if (prop in methods) {
-                    return (methods as any)[prop];
-                }
-                const value = Reflect.get(this.target, prop, receiver);
-                const field = this.fieldMap.getOrMake(prop, value);
-                notifyRead(this.revocable.proxy);
-                notifyRead(field);
-                return value;
-            },
-            peekHas: (prop) => {
-                return Reflect.has(target, prop);
-            },
-            has: (prop) => {
-                if (
-                    prop === '__refcount' ||
-                    prop === '__alive' ||
-                    prop === '__dead'
-                ) {
-                    return prop in methods;
-                }
-                if (prop === '__processable') {
-                    return true;
-                }
-                if (prop in methods) {
-                    return true;
-                }
-                if (typeof prop === 'symbol') {
-                    return Reflect.has(this.target, prop);
-                }
-                const value = Reflect.has(target, prop);
-                const field = this.fieldMap.getOrMake(prop, value);
-                notifyRead(this.revocable.proxy);
-                notifyRead(field);
-                return value;
-            },
-            set: (prop, value, receiver) => {
-                if (prop === '__refcount') {
-                    methods[prop] = value;
-                    return true;
-                }
-                if (prop in methods) {
-                    return false; // Prevent writes to owned methods
-                }
-                if (typeof prop === 'symbol') {
-                    return Reflect.set(this.target, prop, value, receiver);
-                }
-                const hadProp = Reflect.has(target, prop);
-                const field = this.fieldMap.getOrMake(prop, value);
-                field.set(value);
-                if (!hadProp) {
-                    this.keys.add(prop);
-                    this.keysField.set(this.keys.size);
-                }
-                return Reflect.set(target, prop, value, this.revocable.proxy);
-            },
-            delete: (prop) => {
-                if (
-                    prop === '__refcount' ||
-                    prop === '__alive' ||
-                    prop === '__dead' ||
-                    prop === '__processable'
-                ) {
-                    return false; // Prevent deletes of internal symbols
-                }
-                if (prop in methods) {
-                    return false; // Prevent deletes of owned methods
-                }
-                if (typeof prop === 'symbol') {
-                    return Reflect.deleteProperty(this.target, prop);
-                }
-                const hadProp = Reflect.has(target, prop);
-                const result = Reflect.deleteProperty(target, prop);
-                if (hadProp) {
-                    this.keys.delete(prop);
-                    this.keysField.set(this.keys.size);
-                    this.fieldMap.delete(prop);
-                }
-                return result;
-            },
-        };
-
-        this.revocable = Proxy.revocable<
-            TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>
-        >(target as TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>, {
-            get: (target, prop, receiver) =>
-                proxyHandler.get(this.dataAccessor, emitEvent, prop, receiver),
-            has: (target, prop) =>
-                proxyHandler.has(this.dataAccessor, emitEvent, prop),
-            set: (target, prop, value, receiver) =>
-                proxyHandler.set(
-                    this.dataAccessor,
-                    emitEvent,
-                    prop,
-                    value,
-                    receiver
-                ),
-            deleteProperty: (target, prop) =>
-                proxyHandler.delete(this.dataAccessor, emitEvent, prop),
-            ownKeys: () => {
-                const keys = this.keys;
-                this.keysField.get(); // force a read to add a dependency on keys
-                return [...keys];
-            },
+            });
+            if (events.length) {
+                subscription.handler(events);
+            }
         });
+
+        this.events = [];
+        this.dirtyKeys.clear();
+
+        // Propagate dirtiness
+        return [...toPropagate];
     }
-}
-
-export type TrackedData<
-    TData extends object,
-    TMethods extends Retainable & JSXRenderable,
-    TEmitEvent,
-    TConsumeEvent,
-> = TData &
-    TMethods & {
-        __tdHandle: TrackedDataHandle<
-            TData,
-            TMethods,
-            TEmitEvent,
-            TConsumeEvent
-        >;
-    };
-
-export function getTrackedDataHandle<
-    TData extends object,
-    TMethods extends Retainable & JSXRenderable,
-    TEmitEvent,
-    TConsumeEvent,
->(
-    trackedData: TrackedData<TData, TMethods, TEmitEvent, TConsumeEvent>
-): undefined | TrackedDataHandle<TData, TMethods, TEmitEvent, TConsumeEvent> {
-    return trackedData.__tdHandle;
-}
-
-export interface DataAccessor {
-    get: (prop: string | symbol, receiver: any) => any;
-    has: (prop: string | symbol) => any;
-    peekHas: (prop: string | symbol) => any;
-    set: (prop: string | symbol, value: any, receiver: any) => any;
-    delete: (prop: string | symbol) => boolean;
-}
-
-export interface ProxyHandler<TEmitEvent> {
-    get: (
-        dataAccessor: DataAccessor,
-        emitter: (event: TEmitEvent) => void,
-        prop: string | symbol,
-        receiver: any
-    ) => any;
-    has: (
-        dataAccessor: DataAccessor,
-        emitter: (event: TEmitEvent) => void,
-        prop: string | symbol
-    ) => any;
-    set: (
-        dataAccessor: DataAccessor,
-        emitter: (event: TEmitEvent) => void,
-        prop: string | symbol,
-        value: any,
-        receiver: any
-    ) => any;
-    delete: (
-        dataAccessor: DataAccessor,
-        emitter: (event: TEmitEvent) => void,
-        prop: string | symbol
-    ) => boolean;
 }

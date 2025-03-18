@@ -13,20 +13,28 @@ export interface Retainable {
 export interface Processable {
     __processable: true;
     __debugName: string;
-    __recalculate?: (
-        addPostAction: (postAction: () => void) => void
-    ) => boolean;
-    __cycle?: (addPostAction: (postAction: () => void) => void) => boolean;
-    __invalidate?: () => boolean;
+    __recalculate?: (vertexSet: Set<Processable>) => Processable[];
+    __cycle?: () => void;
+    __invalidate?: () => void;
 }
 
 export function isProcessable(val: any): val is Processable {
     return val && val.__processable === true;
 }
 
+/**
+ * When reader R reads data D, data D calls `const reader = notifyRead(data)`
+ *
+ *   An edge is added between data D -> reader R
+ *   Data D should be retained if it is a new dependency (by reader R, responsibility to do this is on the reader R)
+ *   Data D gets a reference back to Reader R so it may markDirty(reader) when D is processed and needs to propagate change
+ */
+type OnReadCallback = (
+    vertex: Retainable & Processable
+) => Retainable & Processable;
+
 let globalDependencyGraph = new Graph<Processable>(processHandler);
-let postProcessActions = new Set<() => void>();
-let trackReadSets: (Set<Retainable> | null)[] = [];
+let trackReadCallbackStack: (OnReadCallback | null)[] = [];
 let isFlushing = false;
 let needsFlush = false;
 let flushHandle: (() => void) | null = null;
@@ -53,8 +61,7 @@ function defaultScheduler(callback: () => void) {
 
 export function reset() {
     globalDependencyGraph = new Graph<Processable>(processHandler);
-    postProcessActions = new Set();
-    trackReadSets = [];
+    trackReadCallbackStack = [];
     isFlushing = false;
     needsFlush = false;
     if (flushHandle) flushHandle();
@@ -117,33 +124,52 @@ export function release(retainable: Retainable) {
     retainable.__refcount -= 1;
 }
 
-function processHandler(
-    vertex: Processable,
-    action: ProcessAction,
-    addPostAction: (postAction: () => void) => void
-) {
-    DEBUG &&
-        log.debug('process', ProcessAction[action], vertex.__debugName, vertex);
-    switch (action) {
-        case ProcessAction.INVALIDATE:
-            return vertex.__invalidate?.() ?? false;
-        case ProcessAction.RECALCULATE:
-            return vertex.__recalculate?.(addPostAction) ?? false;
-        case ProcessAction.CYCLE:
-            return vertex.__cycle?.(addPostAction) ?? false;
-        default:
-            log.assertExhausted(action, 'unknown action');
+function processHandler(vertexGroup: Set<Processable>, action: ProcessAction) {
+    const toInvalidate = new Set<Processable>();
+    for (const vertex of vertexGroup) {
+        DEBUG &&
+            log.debug(
+                'process',
+                ProcessAction[action],
+                vertex.__debugName,
+                vertex
+            );
+        switch (action) {
+            case ProcessAction.INVALIDATE:
+                vertex.__invalidate?.();
+                break;
+            case ProcessAction.RECALCULATE:
+                vertex
+                    .__recalculate?.(vertexGroup)
+                    .forEach((v) => toInvalidate.add(v));
+                break;
+            case ProcessAction.CYCLE:
+                vertex.__cycle?.();
+                // TODO: This is awkward! We need to propagate when a cycle _first occurs_
+                for (const toVertex of getForwardDependencies(
+                    vertex as Processable & Retainable
+                )) {
+                    toInvalidate.add(toVertex);
+                }
+                break;
+            default:
+                log.assertExhausted(action, 'unknown action');
+        }
     }
+    for (const vertex of vertexGroup) {
+        toInvalidate.delete(vertex);
+    }
+    for (const vertex of toInvalidate) {
+        DEBUG &&
+            log.debug('post-process invalidate', vertex.__debugName, vertex);
+        markDirty(vertex);
+    }
+    return false;
 }
 
 function flushInner() {
     isFlushing = true;
     globalDependencyGraph.process();
-    const toProcess = postProcessActions;
-    postProcessActions = new Set();
-    for (const postProcessAction of toProcess) {
-        postProcessAction();
-    }
     commit();
     isFlushing = false;
     if (needsFlush) {
@@ -151,14 +177,6 @@ function flushInner() {
         // Ideally this shouldn't happen in a normal application, probably should measure if that's true in an idiomatic one
         flush();
     }
-}
-
-export function addPostProcessAction(action: () => void) {
-    postProcessActions.add(action);
-    scheduleFlush();
-    return () => {
-        postProcessActions.delete(action);
-    };
 }
 
 export function addVertex(vertex: Processable) {
@@ -216,34 +234,38 @@ export function removeSoftEdge(fromVertex: Processable, toVertex: Processable) {
 }
 
 export function markDirty(vertex: Processable) {
-    DEBUG && log.debug('dirty', vertex.__debugName);
+    DEBUG && log.debug('Vertex manually marked dirty', vertex.__debugName);
     globalDependencyGraph.markVertexDirty(vertex);
     scheduleFlush();
 }
 
 export function unmarkDirty(vertex: Processable) {
-    DEBUG && log.debug('clean', vertex.__debugName);
+    DEBUG && log.debug('Vertex manually unmarked dirty', vertex.__debugName);
     globalDependencyGraph.clearVertexDirty(vertex);
 }
 
 export function markCycleInformed(vertex: Processable) {
-    DEBUG && log.debug('cycle informed', vertex.__debugName);
+    DEBUG &&
+        log.debug(
+            'Vertex manually marked as cycle informed',
+            vertex.__debugName
+        );
     globalDependencyGraph.markVertexCycleInformed(vertex);
 }
 
 export function trackReads<T>(
-    set: Set<Retainable>,
+    onRead: OnReadCallback,
     fn: () => T,
     debugName?: string
 ): T {
     DEBUG && log.group('trackReads', debugName ?? 'call');
-    trackReadSets.push(set);
+    trackReadCallbackStack.push(onRead);
     try {
         return fn();
     } finally {
         DEBUG && log.groupEnd();
         log.assert(
-            set === trackReadSets.pop(),
+            onRead === trackReadCallbackStack.pop(),
             'Calculation tracking consistency error'
         );
     }
@@ -251,33 +273,37 @@ export function trackReads<T>(
 
 export function untrackReads<T>(fn: () => T, debugName?: string): T {
     DEBUG && log.group('untrackReads', debugName ?? 'call');
-    trackReadSets.push(null);
+    trackReadCallbackStack.push(null);
     try {
         return fn();
     } finally {
         DEBUG && log.groupEnd();
         log.assert(
-            null === trackReadSets.pop(),
+            null === trackReadCallbackStack.pop(),
             'Calculation tracking consistency error'
         );
     }
 }
 
-export function notifyRead(dependency: Retainable) {
-    if (trackReadSets.length === 0) return;
-    const calculationReads = trackReadSets[trackReadSets.length - 1];
-    if (calculationReads) {
+export function notifyRead(
+    dependency: Retainable & Processable
+): undefined | (Retainable & Processable) {
+    if (trackReadCallbackStack.length === 0) return undefined;
+    const onRead = trackReadCallbackStack[trackReadCallbackStack.length - 1];
+    if (onRead) {
         DEBUG &&
             log.debug(
                 'adding dependency',
                 dependency.__debugName,
                 'to active calculation'
             );
-        if (!calculationReads.has(dependency)) {
-            retain(dependency);
-            calculationReads.add(dependency);
-        }
+        return onRead(dependency);
     }
+    return undefined;
+}
+
+export function* getForwardDependencies(dependency: Retainable & Processable) {
+    yield* globalDependencyGraph.getForwardDependencies(dependency);
 }
 
 export function debug(activeVertex?: Processable, label?: string) {

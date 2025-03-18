@@ -137,12 +137,11 @@
 
 import type { Dynamic, DynamicSubscriptionHandler } from '../common/dyn';
 import * as log from '../common/log';
-import { Sentinel } from '../common/sentinel';
 import { wrapError } from '../common/util';
-import type { Processable, Retainable } from './engine';
 import {
     addHardEdge,
     addVertex,
+    getForwardDependencies,
     isProcessable,
     markCycleInformed,
     notifyRead,
@@ -151,196 +150,247 @@ import {
     removeVertex,
     retain,
     trackReads,
-    unmarkDirty,
-    untrackReads,
 } from './engine';
-
-enum CalculationState {
-    READY,
-    CALLING,
-    CACHED,
-    ERROR,
-    DEAD,
-}
-
-const CalculationSymbol = Symbol('calculation');
+import type { Processable, Retainable } from './engine';
 
 type CalcUnsubscribe = () => void;
 
 type CalcErrorHandler<T> = (error: Error) => T;
 
-export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
-    private declare _subscriptions?: Set<DynamicSubscriptionHandler<T>>;
-    private declare _type: typeof CalculationSymbol;
-    private declare _errorHandler?: CalcErrorHandler<T>;
-    private declare _state: CalculationState;
-    private declare _retained?: Set<Retainable | (Processable & Retainable)>;
-    private declare _val?: T;
-    private declare _error?: any;
-    private declare _fn: () => T;
+type CalculationResult<T> =
+    | { ok: false; error: Error }
+    | { ok: true; stale: boolean; value: T };
 
+function strictEqual<T>(a: T, b: T) {
+    return a === b;
+}
+
+export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
     declare __processable: true;
-    declare __debugName: string;
     declare __refcount: number;
+    declare __debugName: string;
+
+    private declare _fn: () => T;
+    private declare _errorHandler: undefined | ((err: Error) => T);
+    private declare _result: CalculationResult<T> | undefined;
+    private declare _calculating: boolean;
+    private declare _eq: (a: T, b: T) => boolean;
+    private declare _dependencies: Set<Processable & Retainable>;
+    private declare _subscriptions: Set<DynamicSubscriptionHandler<T>>;
+
+    private ensureResult(): {
+        propagate: boolean;
+        result: CalculationResult<T>;
+    } {
+        const result = this._result;
+        if (result && !result.ok) {
+            return { propagate: false, result };
+        }
+        if (result?.ok && !result.stale) {
+            DEBUG && log.debug(`Reuse calc ${this.__debugName}`);
+            return { propagate: false, result };
+        }
+        if (result?.ok && result.stale) {
+            DEBUG &&
+                log.debug(`Recalculating calc (stale) ${this.__debugName}`);
+            const lastValue = result.value;
+            const newResult = this.recalc();
+            if (newResult.ok && this._eq(lastValue, newResult.value)) {
+                DEBUG &&
+                    log.debug(`Stale recalculation reused ${this.__debugName}`);
+                return {
+                    propagate: false,
+                    result: {
+                        ok: true,
+                        stale: false,
+                        value: lastValue,
+                    },
+                };
+            }
+            return { propagate: true, result: newResult };
+        }
+        DEBUG && log.debug(`Recalculating calc ${this.__debugName}`);
+        return { propagate: true, result: this.recalc() };
+    }
 
     get(): T {
         notifyRead(this);
+        const { result } = this.ensureResult();
+        if (!result.ok) {
+            throw result.error;
+        }
+        return result.value;
+    }
 
-        const state = this._state;
-        switch (state) {
-            case CalculationState.DEAD:
-                // Note: dead calculations are just plain old functions
-                return this._fn();
-            case CalculationState.CACHED:
-                return this._val as T;
-            case CalculationState.CALLING:
-                this._state = CalculationState.ERROR;
-                this._error = new CycleError(
-                    'Cycle reached: calculation reached itself',
-                    this
+    recalc() {
+        if (this._calculating) {
+            throw new SynchronousCycleError(
+                'Cycle error: calculation cycle reached itself',
+                this
+            );
+        }
+
+        // Call the calc implementation
+        this._calculating = true;
+        let result: CalculationResult<T>;
+        const newDependencies = new Set<Processable & Retainable>();
+        try {
+            result = {
+                ok: true,
+                stale: false,
+                value: trackReads(
+                    (dependency) => {
+                        if (!newDependencies.has(dependency)) {
+                            newDependencies.add(dependency);
+                            retain(dependency);
+                            if (
+                                !this._dependencies.has(dependency) &&
+                                isProcessable(dependency) &&
+                                this.__refcount > 0
+                            ) {
+                                addHardEdge(dependency, this);
+                            }
+                        }
+                        return this;
+                    },
+                    () => this._fn(),
+                    this.__debugName
+                ),
+            };
+        } catch (e) {
+            result = {
+                ok: false,
+                error: wrapError(e),
+            };
+        }
+        this._calculating = false;
+
+        // Inform the graph of new dependencies
+        for (const prevDependency of this._dependencies) {
+            if (
+                !newDependencies.has(prevDependency) &&
+                isProcessable(prevDependency)
+            ) {
+                // We lost a dependency
+                removeHardEdge(prevDependency, this);
+            }
+            release(prevDependency); // We **always** release previous dependencies, since we **always** retain new ones
+        }
+        this._dependencies = newDependencies;
+
+        const synchronousError =
+            !result.ok && result.error instanceof SynchronousCycleError
+                ? result.error
+                : null;
+
+        if (synchronousError) {
+            // This calculation has learned it is part of a cycle, let the engine know so we are not informed by it of
+            // the cycle.
+            if (this.__refcount > 0) {
+                markCycleInformed(this);
+            }
+
+            if (synchronousError.sourceCalculation !== this) {
+                // The discovery of the cycle is passing upward, synchronously
+                synchronousError.passthruCalculations.add(this);
+            } else {
+                // We're at the source of the cycle, so all of the nodes in the cycle (aside from this one) should be in
+                //   result.error.passthruCalculations
+                //
+                // So we do the same thing that the engine does:
+
+                // 1. Tell the nodes to discard their cache
+                for (const calculation of synchronousError.passthruCalculations) {
+                    calculation.__invalidate();
+                }
+
+                // 2. Tell the nodes they're part of a cycle
+                const cycleDependencies = new Set<Processable>(
+                    this._dependencies
                 );
-                throw this._error;
-            case CalculationState.ERROR:
-                if (this._error === Sentinel) {
-                    throw new Error(
-                        'Cycle reached: calculation reached itself'
-                    );
-                } else {
-                    throw new Error(
-                        'Calculation in error state: ' + this._error.message
-                    );
+                for (const calculation of synchronousError.passthruCalculations) {
+                    for (const dependency of calculation.__cycle()) {
+                        cycleDependencies.add(dependency);
+                    }
                 }
-                break;
-            case CalculationState.READY: {
-                const calculationReads: Set<Retainable> = new Set();
-                let result: T | Sentinel = Sentinel;
-                let exception: any;
-                this._state = CalculationState.CALLING;
-                try {
-                    result = trackReads(
-                        calculationReads,
-                        () => this._fn(),
-                        this.__debugName
-                    );
-                } catch (e) {
-                    exception = e;
+                for (const calculation of synchronousError.passthruCalculations) {
+                    cycleDependencies.delete(calculation);
                 }
+                cycleDependencies.delete(this);
 
-                if (
-                    (this._state as CalculationState) === CalculationState.DEAD
-                ) {
-                    // It's possible that a cycle which is recalculated releases itself entirely
-                    // In this case we release all of the things retained (automatically, see note XXX:AUTO_RETAIN)
-                    for (const retained of calculationReads) {
-                        release(retained);
-                    }
-                    if (result === Sentinel) throw exception;
-                    return result;
-                }
-
-                // If A calls B, which calls A, and B has an error handler:
-                // B will catch and return the self-cycle error.
-                // In this case, A will mark itself in the ERROR state.
-                if (
-                    // Cast due to TypeScript limitation
-                    (this._state as CalculationState) === CalculationState.ERROR
-                ) {
-                    exception = this._error;
-                }
-
-                let isActiveCycle = false;
-                let isActiveCycleRoot = false;
-                if (exception) {
-                    if (exception instanceof CycleError) {
-                        isActiveCycle = true;
-                        isActiveCycleRoot =
-                            exception.sourceCalculation === this;
-                    }
-                    const errorHandler = this._errorHandler;
-                    if (errorHandler) {
-                        result = untrackReads(
-                            () => errorHandler(exception),
-                            this.__debugName
-                        );
-                    }
-
-                    if (isActiveCycle) {
-                        markCycleInformed(this);
-                    }
-                }
-
-                if (result === Sentinel) {
-                    if ('_val' in this) {
-                        delete this._val;
-                    }
-                    this._error = exception;
-                    this._state = CalculationState.ERROR;
-                } else {
-                    this._val = result;
-                    if ('_error' in this) {
-                        delete this._error;
-                    }
-                    this._state = CalculationState.CACHED;
-                    unmarkDirty(this);
-                }
-
-                if (this._retained) {
-                    for (const priorDependency of this._retained) {
-                        if (
-                            isProcessable(priorDependency) &&
-                            !calculationReads.has(priorDependency)
-                        ) {
-                            removeHardEdge(priorDependency, this);
-                        }
-                        // XXX:AUTO_RETAIN: THIS IS SURPRISING
-                        // We retain all dependencies read when they are first added to a tracked calculation
-                        // So we need to release prior dependencies to keep the refcount stable
-                        // This is a bit gross...
-                        release(priorDependency);
-                    }
-                }
-                for (const dependency of calculationReads) {
-                    if (isProcessable(dependency)) {
-                        if (
-                            !this._retained ||
-                            !this._retained.has(dependency)
-                        ) {
-                            addHardEdge(dependency, this);
-                        }
-                    }
-                }
-                this._retained = calculationReads;
-
-                if (result === Sentinel) {
-                    throw exception;
-                } else if (isActiveCycle && !isActiveCycleRoot) {
-                    throw exception;
-                } else {
-                    return result;
+                // 3. Propagate dirtiness to dependencies
+                for (const dependency of cycleDependencies) {
+                    console.log('WOULD MARK', dependency.__debugName, 'dirty');
+                    // TODO: is this needed?
+                    // markDirty(dependency);
                 }
             }
-            default:
-                log.assertExhausted(state, 'Calculation in unknown state');
         }
+
+        if (!result.ok) {
+            let error: Error;
+            if (
+                result.error instanceof SynchronousCycleError &&
+                result.error.sourceCalculation === this
+            ) {
+                // TODO: fragile error message & tests. Rewrite tests that fail when this error message is reworded
+                // TODO: also check to see if passthruCalculations is needed at all
+                error = new CycleError(
+                    'Cycle error: calculation cycle reached itself'
+                );
+            } else {
+                error = result.error;
+            }
+            if (this._errorHandler) {
+                try {
+                    result = {
+                        ok: true,
+                        stale: false,
+                        value: this._errorHandler(error),
+                    };
+                } catch (innerError) {
+                    // The error handler threw, nothing we can do but have the calculation error
+                    result = {
+                        ok: false,
+                        error: wrapError(innerError),
+                    };
+                }
+            } else {
+                result = {
+                    ok: false,
+                    error,
+                };
+            }
+        }
+
+        if (this.__refcount > 0) {
+            this._result = result;
+        }
+
+        if (synchronousError && synchronousError.sourceCalculation !== this) {
+            // Instead of returning, we throw the error until we've reached sourceCalculation again
+            throw synchronousError;
+        }
+
+        return result;
     }
 
     constructor(fn: () => T, debugName?: string) {
-        this.__debugName = debugName ?? 'calc';
         this.__refcount = 0;
+        this.__debugName = debugName ?? `calc:(${fn.name})`;
         this.__processable = true;
-
-        this._type = CalculationSymbol;
-        this._state = CalculationState.DEAD;
+        this._result = undefined;
         this._fn = fn;
+        this._errorHandler = undefined;
+        this._calculating = false;
+        this._eq = strictEqual;
+        this._dependencies = new Set();
+        this._subscriptions = new Set();
     }
 
     onError(handler: CalcErrorHandler<T>): this {
         this._errorHandler = handler;
         return this;
-    }
-
-    _eq(a: T, b: T): boolean {
-        return a === b;
     }
 
     setCmp(eq: (a: T, b: T) => boolean): this {
@@ -378,164 +428,82 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
 
     __alive() {
         addVertex(this);
-        this._state = CalculationState.READY;
     }
 
     __dead() {
-        if (this._retained) {
-            for (const retained of this._retained) {
-                if (isProcessable(retained)) {
-                    removeHardEdge(retained, this);
-                }
-                release(retained);
+        this._result = undefined;
+
+        for (const dependency of this._dependencies) {
+            if (isProcessable(dependency)) {
+                removeHardEdge(dependency, this);
             }
+            release(dependency);
         }
-        delete this._retained;
+        this._dependencies.clear();
         removeVertex(this);
-        this._state = CalculationState.DEAD;
-        delete this._val;
     }
 
-    __recalculate() {
-        switch (this._state) {
-            case CalculationState.DEAD:
-                log.fail('cannot recalculate dead calculation');
-                break;
-            case CalculationState.CALLING:
-                log.fail('cannot recalculate calculation being tracked');
-                break;
-            case CalculationState.READY:
-            case CalculationState.ERROR:
-            case CalculationState.CACHED: {
-                const priorResult =
-                    '_val' in this ? (this._val as T) : Sentinel;
-                this._state = CalculationState.READY;
-                let newResult: T;
-                try {
-                    newResult = this.get();
-                } catch (e) {
-                    this._state = CalculationState.ERROR;
-                    this._error = e;
-                    if (this._subscriptions) {
-                        const error = wrapError(
-                            e,
-                            'Unknown error in calculation'
-                        );
-                        for (const subscription of this._subscriptions) {
-                            subscription(error, undefined);
-                        }
-                    }
-                    return true; // Errors always propagate
-                }
-                if (
-                    priorResult !== Sentinel &&
-                    this._eq(priorResult, newResult)
-                ) {
-                    this._val = priorResult;
-                    return false;
-                }
-                if (this._subscriptions) {
-                    for (const subscription of this._subscriptions) {
-                        subscription(undefined, newResult);
-                    }
-                }
-                return true;
+    __recalculate(vertexGroup: Set<Processable>): Processable[] {
+        const { propagate, result } = this.ensureResult();
+        DEBUG &&
+            log.debug(
+                `Recalculated ${this.__debugName} (propagate=${propagate}) {result=${JSON.stringify(result)}}`
+            );
+        this.notifySubscriptions(result);
+        // Since each vertex is responsible for its own propagation, we need to
+        // take downstream dependencies that are _not_ part of the
+        // vertexGroup.
+        // The vertexGroup can be greater than one if an entire cycle is being
+        // recalculated. This is how we can avoid having a cycle propagate to
+        // itself.
+        const toPropagate: Processable[] = [];
+        if (propagate) {
+            for (const dependency of getForwardDependencies(this)) {
+                toPropagate.push(dependency);
             }
-            default:
-                log.assertExhausted(
-                    this._state,
-                    'Calculation in unknown state'
-                );
+        }
+        return toPropagate;
+    }
+
+    __invalidate(): void {
+        if (this._result?.ok) {
+            this._result = { ...this._result, stale: true };
+        } else {
+            this._result = undefined;
         }
     }
 
-    __invalidate() {
-        switch (this._state) {
-            case CalculationState.DEAD:
-                log.fail('cannot invalidate dead calculation');
-                break;
-            case CalculationState.CALLING:
-                log.fail('cannot invalidate calculation being tracked');
-                break;
-            case CalculationState.READY:
-                return false;
-            case CalculationState.ERROR:
-                this._state = CalculationState.READY;
-                return false;
-            case CalculationState.CACHED:
-                this._state = CalculationState.READY;
-                return true;
-            default:
-                log.assertExhausted(
-                    this._state,
-                    'Calculation in unknown state'
-                );
+    __cycle(): Processable[] {
+        const error = new MarkedCycleError(
+            'Cycle error: calculation cycle reached itself'
+        );
+        if (this._errorHandler) {
+            try {
+                this._result = {
+                    ok: true,
+                    stale: false,
+                    value: this._errorHandler(error),
+                };
+            } catch (e) {
+                this._result = { ok: false, error: wrapError(e) };
+            }
+        } else {
+            this._result = {
+                ok: false,
+                error,
+            };
         }
+        this.notifySubscriptions(this._result);
+        return [...getForwardDependencies(this)];
     }
 
-    __cycle() {
-        switch (this._state) {
-            case CalculationState.DEAD:
-                log.fail('cannot trigger cycle on dead calculation');
-                break;
-            case CalculationState.CALLING:
-                log.fail('cannot trigger cycle on calculation being tracked');
-                break;
-            case CalculationState.ERROR:
-            case CalculationState.CACHED:
-            case CalculationState.READY: {
-                const priorResult =
-                    '_val' in this ? (this._val as T) : Sentinel;
-                this._state = CalculationState.READY;
-                const errorHandler = this._errorHandler;
-                if (errorHandler) {
-                    this._val = untrackReads(
-                        () =>
-                            errorHandler(
-                                new CycleError(
-                                    'Calculation is part of a cycle',
-                                    this
-                                )
-                            ),
-                        this.__debugName
-                    );
-                    this._state = CalculationState.CACHED;
-                    unmarkDirty(this);
-                } else {
-                    this._state = CalculationState.ERROR;
-                    this._error = Sentinel;
-                    if (this._subscriptions) {
-                        for (const subscription of this._subscriptions) {
-                            subscription(
-                                new CycleError(
-                                    'Calculation is part of a cycle',
-                                    this
-                                ),
-                                undefined
-                            );
-                        }
-                    }
-                    return true; // Errors always propagate
-                }
-                if (
-                    priorResult !== Sentinel &&
-                    this._eq(priorResult, this._val)
-                ) {
-                    this._val = priorResult;
-                    return false;
-                }
-                if (this._subscriptions) {
-                    for (const subscription of this._subscriptions) {
-                        subscription(undefined, this._val);
-                    }
-                }
-                return true;
+    private notifySubscriptions(result: CalculationResult<T>) {
+        for (const subscription of this._subscriptions) {
+            if (result.ok) {
+                subscription(undefined, result.value);
+            } else {
+                subscription(result.error, undefined);
             }
-            default:
-                log.assertExhausted(
-                    this._state,
-                    'Calculation in unknown state'
-                );
         }
     }
 
@@ -544,12 +512,18 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
     }
 }
 
-export class CycleError extends Error {
+export class CycleError extends Error {}
+
+class MarkedCycleError extends CycleError {}
+
+export class SynchronousCycleError extends CycleError {
     declare sourceCalculation: Calculation<any>;
+    passthruCalculations: Set<Calculation<any>>;
 
     constructor(msg: string, sourceCalculation: Calculation<any>) {
         super(msg);
         this.sourceCalculation = sourceCalculation;
+        this.passthruCalculations = new Set();
     }
 }
 

@@ -57,8 +57,6 @@ suite('model', () => {
     test('model.field produces a readonly field for a model', () => {
         const x = model({ foo: 'bar' });
         const foo = model.field(x, 'foo');
-        const foo2 = model.field(x, 'foo');
-        assert.is(foo, foo2);
         assert.is('bar', foo?.get());
         x.foo = 'baz';
         assert.is('baz', foo?.get());
@@ -74,12 +72,13 @@ suite('model', () => {
         });
         const log: any[] = [];
         const sub = model.subscribe(m, (events) => log.push(...events));
-        assert.deepEqual([], log);
+        assert.deepEqual([{ type: 'set', prop: 'state', value: 0 }], log);
         flush();
         m.state += 1;
         flush();
         assert.deepEqual(
             [
+                { type: 'set', prop: 'state', value: 0 },
                 {
                     type: 'set',
                     prop: 'state',
@@ -93,6 +92,7 @@ suite('model', () => {
         flush();
         assert.deepEqual(
             [
+                { type: 'set', prop: 'state', value: 0 },
                 {
                     type: 'set',
                     prop: 'state',

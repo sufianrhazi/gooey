@@ -1,91 +1,88 @@
+import type { DynamicMut } from '../common/dyn';
 import * as log from '../common/log';
-import { release, retain } from './engine';
-import { Field } from './field';
-import { FieldMap } from './fieldmap';
-import { SubscriptionEmitter } from './subscriptionemitter';
+import { dict, DictEventType } from './dict';
+import type { Dict } from './dict';
 
 export enum ModelEventType {
     SET = 'set',
 }
 
-interface ModelHandle<T> {
-    target: T;
-    emitter: SubscriptionEmitter<ModelEvent>;
-    fieldMap: FieldMap;
-}
+export type ModelEvent<T extends {}, K extends keyof T> = {
+    type: ModelEventType;
+    prop: K;
+    value: T[K];
+};
 
-export type ModelEvent = { type: ModelEventType.SET; prop: string; value: any };
+const modelDictSymbol = Symbol('modelDict');
 
 export type Model<T extends {}> = T;
 
-export function addModelEvent(events: ModelEvent[], event: ModelEvent) {
-    // TODO: make smarter
-    events.push(event);
-}
-
-function getModelHandle<T extends {}>(model: Model<T>) {
-    return (model as any).__handle as ModelHandle<T> | undefined;
+function getModelDict<T extends {}>(model: Model<T>): Dict<keyof T, any> {
+    const dict = (model as any)[modelDictSymbol];
+    log.assert(dict, 'Unable to retrieve internal model dict');
+    return dict;
 }
 
 export function model<T extends {}>(target: T, debugName?: string): Model<T> {
-    const keysField = new Field<number>(Object.keys(target).length);
-    const emitter = new SubscriptionEmitter<ModelEvent>(
-        addModelEvent,
-        debugName ?? 'model'
-    );
-    const fieldMap = new FieldMap(keysField, null, emitter, debugName);
-    const modelHandle: ModelHandle<T> = {
-        target,
-        emitter,
-        fieldMap,
-    };
+    const modelDict = dict(Object.entries(target));
     const modelObj: Model<T> = { ...target };
     Object.keys(target).forEach((key) => {
         Object.defineProperty(modelObj, key, {
             get: () => {
-                return fieldMap.getOrMake(key, target[key as keyof T]).get();
+                return modelDict.get(key);
             },
             set: (newValue) => {
-                fieldMap.getOrMake(key, newValue).set(newValue);
-                emitter.addEvent({
-                    type: ModelEventType.SET,
-                    prop: key,
-                    value: newValue,
-                });
+                modelDict.set(key, newValue);
             },
         });
     });
-    Object.defineProperty(modelObj, '__handle', { get: () => modelHandle });
+    Object.defineProperty(modelObj, modelDictSymbol, { get: () => modelDict });
     return modelObj;
 }
 
-model.subscribe = function modelSubscribe<T extends {}>(
+model.subscribe = function modelSubscribe<T extends {}, K extends keyof T>(
     sourceModel: Model<T>,
-    handler: (event: ModelEvent[]) => void,
+    handler: (event: ModelEvent<T, K>[]) => void,
     debugName?: string
 ): () => void {
-    const modelHandle = getModelHandle(sourceModel);
-    log.assert(modelHandle, 'missing model __handle');
-    retain(modelHandle.emitter);
-    retain(modelHandle.fieldMap);
-    const unsubscribe = modelHandle.emitter.subscribe((events) => {
-        handler(events);
+    const modelDict = getModelDict(sourceModel);
+    return modelDict.subscribe((events) => {
+        const transformed: ModelEvent<T, K>[] = [];
+        for (const event of events) {
+            if (
+                event.type === DictEventType.SET ||
+                event.type === DictEventType.ADD
+            ) {
+                transformed.push({
+                    type: ModelEventType.SET,
+                    prop: event.prop as K,
+                    value: event.value,
+                });
+            }
+        }
+        if (transformed.length) {
+            handler(transformed);
+        }
     });
-    return () => {
-        unsubscribe();
-        release(modelHandle.emitter);
-        release(modelHandle.fieldMap);
-    };
 };
 
 model.field = function modelField<T extends {}, K extends keyof T>(
     sourceModel: Model<T>,
     field: K
-): Field<T[K]> {
-    const modelHandle = getModelHandle(sourceModel);
-    log.assert(modelHandle, 'missing model __handle');
-    return modelHandle.fieldMap.getOrMake(
-        field as string,
-        modelHandle.target[field]
-    );
+): DynamicMut<T[K]> {
+    return {
+        get: () => sourceModel[field],
+        set: (newValue: T[K]) => {
+            sourceModel[field] = newValue;
+        },
+        subscribe: (handler) => {
+            return model.subscribe(sourceModel, (events) => {
+                for (const event of events) {
+                    if (event.prop === field) {
+                        handler(undefined, event.value as T[K]);
+                    }
+                }
+            });
+        },
+    };
 };

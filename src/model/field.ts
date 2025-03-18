@@ -8,6 +8,7 @@ import { calc } from './calc';
 import type { Processable, Retainable } from './engine';
 import {
     addVertex,
+    getForwardDependencies,
     markDirty,
     notifyRead,
     release,
@@ -84,7 +85,7 @@ export class Field<T> implements Processable, Retainable, DynamicMut<T> {
         removeVertex(this);
     }
 
-    __recalculate() {
+    __recalculate(): Processable[] {
         log.assert(this.__refcount > 0, 'cannot flush dead field');
         if (this._subscribers) {
             for (const [subscriber, observeClock] of this._subscribers) {
@@ -95,7 +96,7 @@ export class Field<T> implements Processable, Retainable, DynamicMut<T> {
             }
             this._changeClock = 0;
         }
-        return true;
+        return [...getForwardDependencies(this)];
     }
 
     map<V>(fn: (val: T) => V): Calculation<V> {
