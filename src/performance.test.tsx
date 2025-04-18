@@ -573,11 +573,7 @@ suite('perf tests', () => {
             }
             measure(() => {
                 edges.forEach(([fromIndex, toIndex]) => {
-                    graph.addEdge(
-                        objects[fromIndex],
-                        objects[toIndex],
-                        Graph.EDGE_HARD
-                    );
+                    graph.addEdge(objects[fromIndex], objects[toIndex]);
                 });
             });
         });
@@ -601,7 +597,7 @@ suite('perf tests', () => {
             }
             for (let i = 0; i < COUNT - 1; ++i) {
                 const candidate = randint(i + 1, COUNT);
-                graph.addEdge(objects[i], objects[candidate], Graph.EDGE_HARD);
+                graph.addEdge(objects[i], objects[candidate]);
             }
             measure(() => {
                 graph.process();
@@ -623,7 +619,7 @@ suite('perf tests', () => {
             }
             for (let i = 0; i < COUNT - 1; ++i) {
                 const candidate = randint(i + 1, COUNT);
-                graph.addEdge(objects[i], objects[candidate], Graph.EDGE_HARD);
+                graph.addEdge(objects[i], objects[candidate]);
             }
             graph.process();
 
