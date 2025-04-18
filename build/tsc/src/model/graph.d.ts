@@ -1,7 +1,3 @@
-export declare enum EdgeColor {
-    EDGE_SOFT = 1,
-    EDGE_HARD = 2
-}
 interface CycleInfo {
     lowerBound: number;
     upperBound: number;
@@ -18,8 +14,6 @@ interface DebugAttributes {
 }
 type DebugFormatter<TVertex> = (vertex: TVertex) => DebugAttributes;
 export declare class Graph<TVertex> {
-    static EDGE_SOFT: EdgeColor;
-    static EDGE_HARD: EdgeColor;
     /** identifiers available for reuse */
     protected availableIds: number[];
     protected availableIndices: number[];
@@ -31,12 +25,10 @@ export declare class Graph<TVertex> {
     protected vertexBitsById: number[];
     /** Mapping of id -> CycleInfo */
     protected cycleInfoById: Record<number, CycleInfo | undefined>;
-    /** Mapping of id -> hard edges in the forward direction */
-    protected forwardAdjacencyHard: number[][];
-    /** Mapping of id -> hard|soft edges in the forward direction */
-    protected forwardAdjacencyEither: number[][];
-    /** Mapping of id -> hard|soft edges in the reverse direction */
-    protected reverseAdjacencyEither: number[][];
+    /** Mapping of id -> edges in the forward direction */
+    protected forwardAdjacency: number[][];
+    /** Mapping of id -> edges in the reverse direction */
+    protected reverseAdjacency: number[][];
     /** Mapping of id -> index into topologicalOrdering */
     protected topologicalIndexById: (number | undefined)[];
     /** Ordered list of vertex ids */
@@ -46,9 +38,8 @@ export declare class Graph<TVertex> {
     /** Set of vertex ids that need reordering */
     protected toReorderIds: Set<number>;
     private debugSubscriptions;
-    private postActions;
     private _processHandler;
-    constructor(processHandler: (vertex: TVertex, action: ProcessAction, addPostAction: (postAction: () => void) => void) => boolean);
+    constructor(processHandler: (vertexGroup: Set<TVertex>, action: ProcessAction) => void);
     /**
      * Vertex ids can be reused.
      *
@@ -65,18 +56,19 @@ export declare class Graph<TVertex> {
     private clearVertexDirtyInner;
     markVertexCycleInformed(vertex: TVertex): void;
     private cycleAwareAdjacency;
-    addEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor): void;
-    hasEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor): boolean;
-    removeEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor): void;
+    addEdge(fromVertex: TVertex, toVertex: TVertex): void;
+    hasEdge(fromVertex: TVertex, toVertex: TVertex): boolean;
+    removeEdge(fromVertex: TVertex, toVertex: TVertex): void;
     private visitDfsForwardRecurse;
     private visitDfsForward;
     private resort;
-    private addPostAction;
+    private debugLogTopology;
     private processHandler;
-    private processVertex;
+    private processVertexIdAction;
     process(): void;
     getOrderedDirty(): TVertex[];
     private propagateDirty;
+    getForwardDependencies(vertex: TVertex): Generator<TVertex & ({} | null), void, unknown>;
     debug(getAttrs: DebugFormatter<TVertex>, label?: string): string;
     debugSubscribe(formatter: DebugFormatter<TVertex>, subscription: (graphviz: string, label: string) => void): () => void;
     debugGetGraph(): {

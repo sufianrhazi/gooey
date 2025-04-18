@@ -1,49 +1,33 @@
 import type { ArrayEvent } from '../common/arrayevent';
-import type { JSXNode, JSXRenderable } from '../viewcontroller/jsx';
+import type { JSXNode } from '../viewcontroller/jsx';
 import type { RenderNode } from '../viewcontroller/rendernode/rendernode';
-import type { Retainable } from './engine';
-import type { ProxyHandler, TrackedData } from './trackeddata';
-export interface CollectionImpl<T> extends Retainable, JSXRenderable {
-    _type: 'collection';
-    splice(start: number, deleteCount?: number | undefined): T[];
-    splice(start: number, deleteCount: number, ...items: T[]): T[];
-    push(...items: T[]): number;
-    pop(): T | undefined;
-    shift(): T | undefined;
-    unshift(...items: T[]): number;
-    sort(cmp?: ((a: T, b: T) => number) | undefined): this;
-    reverse(): this;
-    reject: (pred: (val: T) => boolean) => T[];
-    moveSlice: (fromIndex: number, count: number, toIndex: number) => void;
-    mapView: <V>(fn: (val: T) => V, debugName?: string | undefined) => View<V, ArrayEvent<T>>;
-    filterView: (fn: (val: T) => boolean, debugName?: string | undefined) => View<T, ArrayEvent<T>>;
-    flatMapView: <V>(fn: (val: T) => V[], debugName?: string | undefined) => View<V, ArrayEvent<T>>;
-    subscribe: (handler: (event: ArrayEvent<T>[]) => void) => () => void;
-    __renderNode: (renderJSXNode: (jsxNode: JSXNode) => RenderNode) => RenderNode;
+import type { DerivedArraySub } from './arraysub';
+import { ArraySub } from './arraysub';
+interface CollectionViewSharedInterface<T> {
+    /** Destroy the collection */
+    dispose(): void;
+    /** Retain the collection */
+    retain(): void;
+    /** Release the collection */
+    release(): void;
+    __debugName: string;
+    mapView<V>(mapFn: (value: T) => V, debugName?: string): View<V>;
+    filterView(filterFn: (value: T) => boolean, debugName?: string): View<T>;
+    flatMapView<V>(flatMapFn: (value: T) => V[], debugName?: string): View<V>;
+    subscribe: (handler: (events: Iterable<ArrayEvent<T>>) => void) => () => void;
 }
-export declare function makeCollectionPrototype<T>(): CollectionImpl<T>;
-export interface ViewImpl<T> extends Retainable {
-    _type: 'view';
-    splice(start: number, deleteCount?: number | undefined): never;
-    splice(start: number, deleteCount: number, ...items: T[]): never;
-    push(...items: T[]): never;
-    pop(): never;
-    shift(): never;
-    unshift(...items: T[]): never;
-    sort(cmp?: ((a: T, b: T) => number) | undefined): never;
-    reverse(): never;
-    mapView: <V>(fn: (val: T) => V, debugName?: string | undefined) => View<V, ArrayEvent<T>>;
-    filterView: (fn: (val: T) => boolean, debugName?: string | undefined) => View<T, ArrayEvent<T>>;
-    flatMapView: <V>(fn: (val: T) => V[], debugName?: string | undefined) => View<V, ArrayEvent<T>>;
-    subscribe: (handler: (event: ArrayEvent<T>[]) => void) => () => void;
-    __renderNode: (renderJSXNode: (jsxNode: JSXNode) => RenderNode) => RenderNode;
+export interface Collection<T> extends Array<T>, CollectionViewSharedInterface<T> {
+    /** Mutate the collection, rejecting items that pass the predicate fn */
+    reject(predicate: (value: T) => boolean): T[];
+    /** Move portion of the collection to another index */
+    moveSlice(from: number, count: number, to: number): void;
+    asView(): View<T>;
+    __renderNode(renderJsxNode: (jsxNode: JSXNode) => RenderNode): RenderNode;
 }
-export declare function makeViewPrototype<T>(sourceCollection: TrackedData<any, any, unknown, unknown>): ViewImpl<T>;
-export type Collection<T> = TrackedData<T[], CollectionImpl<T>, ArrayEvent<T>, ArrayEvent<T>>;
-export type View<T, TConsumeEvent = any> = TrackedData<readonly T[], ViewImpl<T>, ArrayEvent<T>, TConsumeEvent>;
-export declare function isCollection(val: any): val is Collection<any>;
-export declare function isView(val: any): val is View<any>;
-export declare const CollectionHandler: ProxyHandler<ArrayEvent<any>>;
-export declare const ViewHandler: ProxyHandler<ArrayEvent<any>>;
-export declare function collection<T>(items: T[], debugName?: string): Collection<T>;
+export interface View<T> extends ReadonlyArray<T>, CollectionViewSharedInterface<T> {
+    __renderNode(renderJsxNode: (jsxNode: JSXNode) => RenderNode): RenderNode;
+}
+export declare function collection<T>(values?: T[], debugName?: string): Collection<T>;
+export declare function view<T>(arraySub: ArraySub<T> | DerivedArraySub<T, any>, debugName?: string): View<T>;
+export {};
 //# sourceMappingURL=collection.d.ts.map

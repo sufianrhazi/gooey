@@ -16,7 +16,7 @@ export declare class Field<T> implements Processable, Retainable, DynamicMut<T> 
     release(): void;
     __alive(): void;
     __dead(): void;
-    __recalculate(): boolean;
+    __recalculate(): Processable[];
     map<V>(fn: (val: T) => V): Calculation<V>;
 }
 export declare function field<T>(val: T, debugName?: string): Field<T>;

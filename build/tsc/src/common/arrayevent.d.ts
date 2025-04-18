@@ -21,11 +21,13 @@ export interface ArrayEventSort {
     indexes: number[];
 }
 export type ArrayEvent<T> = ArrayEventSplice<T> | ArrayEventMove | ArrayEventSort;
-export declare function shiftEventBy<T>(shiftAmount: number, event: ArrayEvent<T>): void;
-export declare function shiftEvent<T>(slotSizes: number[], slotIndex: number, event: ArrayEvent<T>): void;
 export declare function applySort<T>(target: T[], from: number, indexes: number[]): void;
 export declare function applyMove<T>(target: T[], from: number, count: number, to: number): void;
 export declare function applyArrayEvent<T>(target: T[], event: ArrayEvent<T>): readonly T[];
-export declare function arrayEventFlatMap<T, V>(slotSizes: number[], flatMap: (item: T) => readonly V[], target: V[], event: ArrayEvent<T>): IterableIterator<ArrayEvent<V>>;
-export declare function addArrayEvent<T>(events: ArrayEvent<T>[], event: ArrayEvent<T>): void;
+/**
+ * Merge array events into a stream of more optimized events.
+ *
+ * i.e. join splice events that can be joined
+ */
+export declare function mergeArrayEvents<T>(events: ArrayEvent<T>[]): Generator<ArrayEvent<T>, void, unknown>;
 //# sourceMappingURL=arrayevent.d.ts.map

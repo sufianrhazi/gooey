@@ -1,6 +1,5 @@
 import type { View } from './collection';
 import type { Retainable } from './engine';
-import { Field } from './field';
 export declare enum DictEventType {
     ADD = "add",
     SET = "set",
@@ -21,24 +20,26 @@ export type DictEvent<K, V> = {
 };
 export type Model<T extends {}> = T;
 export declare class Dict<K, V> implements Retainable {
-    private keysField;
-    private emitter;
-    private fieldMap;
-    private ownKeys;
+    private items;
+    private trackedData;
     __refcount: number;
     __debugName: string;
-    constructor(entries?: [K, V][], debugName?: string);
-    clear(): void;
-    delete(key: K): void;
-    forEach(fn: (value: V, key: K) => void): void;
+    constructor(init?: [key: K, value: V][] | undefined, debugName?: string);
+    getItemsUnsafe(): Map<K, V>;
     get(key: K): V | undefined;
     has(key: K): boolean;
-    set(key: K, value: V): this;
-    entries(debugName?: string): View<[K, V]>;
-    keys(debugName?: string): View<K>;
-    values(debugName?: string): View<V>;
-    subscribe(handler: (events: DictEvent<K, V>[]) => void): () => void;
-    field(key: K): Field<V | undefined>;
+    set(key: K, value: V): void;
+    delete(key: K): void;
+    clear(): void;
+    forEach(fn: (value: V, key: K) => void): void;
+    keysView(debugName?: string): View<K>;
+    keys(): Generator<K, void, unknown>;
+    values(): Generator<V, void, unknown>;
+    entries(): Generator<[K, V], void, unknown>;
+    get size(): number;
+    subscribe(handler: (events: Iterable<DictEvent<K, V>>) => void): () => void;
+    retain(): void;
+    release(): void;
     __alive(): void;
     __dead(): void;
 }

@@ -1,6 +1,7 @@
 export type LogLevel = 'error' | 'warn' | 'info' | 'debug';
 export declare function getLogLevel(): LogLevel;
 export declare function setLogLevel(logLevel: LogLevel): void;
+export declare function isAtLogLevel(logLevel: LogLevel): boolean;
 export declare function debug(...items: any[]): void;
 export declare function info(...items: any[]): void;
 export declare function warn(...items: any[]): void;
