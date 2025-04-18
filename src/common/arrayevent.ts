@@ -74,36 +74,74 @@ export function applyArrayEvent<T>(
     return EMPTY_ARRAY;
 }
 
-export function addArrayEvent<T>(
-    events: ArrayEvent<T>[],
-    event: ArrayEvent<T>
-) {
-    const lastEvent = events.length > 0 ? events[events.length - 1] : null;
-    if (
-        lastEvent &&
-        event.type === ArrayEventType.SPLICE &&
-        lastEvent.type === ArrayEventType.SPLICE
-    ) {
-        // Case 1: The insertion point of the next event is at the splice end of the last event
-        // - In this case, we add to the event's count and append items
-        const lastEventSpliceEnd =
-            lastEvent.index + (lastEvent.items?.length ?? 0);
-        if (lastEventSpliceEnd === event.index) {
-            const mergedEvent: ArrayEvent<T> = {
-                type: ArrayEventType.SPLICE,
-                index: lastEvent.index,
-                count: lastEvent.count + event.count,
-            };
-            if (lastEvent.items || event.items) {
-                mergedEvent.items = [
-                    ...(lastEvent.items || []),
-                    ...(event.items || []),
-                ];
-            }
-            events[events.length - 1] = mergedEvent;
-            return;
-        }
-        // TODO: add additional merge cases
+/**
+ * Merge array events into a stream of more optimized events.
+ *
+ * i.e. join splice events that can be joined
+ */
+export function* mergeArrayEvents<T>(events: ArrayEvent<T>[]) {
+    if (events.length === 0) {
+        return;
     }
-    events.push(event);
+    let lastEvent: ArrayEvent<T> = events[0];
+    let mergedItems: T[] | undefined;
+    for (let i = 1; i < events.length; ++i) {
+        const event = events[i];
+
+        // Case 1: the insertion point of a splice is at the end of the change of the prior splice
+        // These can be merged by using the 1st event's index, summing the count, and concatenating the items
+        if (
+            event.type === ArrayEventType.SPLICE &&
+            lastEvent.type === ArrayEventType.SPLICE &&
+            lastEvent.index + (lastEvent.items?.length ?? 0) === event.index
+        ) {
+            // Start:
+            //     0123456789
+            //
+            // Splice index 1, count 3, items [a,b]
+            //      v         <- insertion point
+            //     0123456789
+            //      ^^^       <- removal
+            //     0ab456789  <- result
+            //
+            // Splice index 3, count 4, items [c,d]
+            //        v       <- insertion point
+            //     0ab456789
+            //        ^^^^    <- removal
+            //     0abcd89    <- result
+            //
+            // Equivalent to:
+            // Splice index 1, count 3+4, items [a,b,c,d]
+            //      v         <- insertion point
+            //     0123456789
+            //      ^^^^^^^   <- removal
+            //     0abcd89    <- result
+
+            if (!mergedItems) {
+                mergedItems = lastEvent.items?.slice() ?? [];
+            }
+            if (event.items) {
+                mergedItems.push(...event.items);
+            }
+            if (mergedItems.length) {
+                lastEvent = {
+                    type: ArrayEventType.SPLICE,
+                    index: lastEvent.index,
+                    count: lastEvent.count + event.count,
+                    items: mergedItems,
+                };
+            } else {
+                lastEvent = {
+                    type: ArrayEventType.SPLICE,
+                    index: lastEvent.index,
+                    count: lastEvent.count + event.count,
+                };
+            }
+        } else {
+            yield lastEvent;
+            lastEvent = event;
+            mergedItems = undefined;
+        }
+    }
+    yield lastEvent;
 }

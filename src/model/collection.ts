@@ -33,7 +33,9 @@ interface CollectionViewSharedInterface<T> {
     //
     // Subscription
     //
-    subscribe: (handler: (event: ArrayEvent<T>[]) => void) => () => void;
+    subscribe: (
+        handler: (events: Iterable<ArrayEvent<T>>) => void
+    ) => () => void;
 }
 
 export interface Collection<T>
@@ -91,7 +93,7 @@ function makeCollectionOrView<T, I extends { __debugName: string }>(
         flatMapView: <V>(fn: (val: T) => V[], debugName?: string) =>
             view(flatMapView(dynamicArray, fn), debugName),
 
-        subscribe: (handler: (event: ArrayEvent<T>[]) => void) =>
+        subscribe: (handler: (event: Iterable<ArrayEvent<T>>) => void) =>
             dynamicArray.subscribe(handler),
 
         ...additionalPrototypeProps,

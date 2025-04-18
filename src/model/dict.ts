@@ -17,41 +17,50 @@ export type DictEvent<K, V> =
 
 export type Model<T extends {}> = T;
 
-function addDictEvent<K, V>(events: DictEvent<K, V>[], event: DictEvent<K, V>) {
+function* mergeDictEvents<K, V>(events: DictEvent<K, V>[]) {
     if (events.length === 0) {
-        events.push(event);
         return;
     }
-    const lastEvent = events[events.length - 1];
-    if (lastEvent.prop === event.prop) {
-        switch (lastEvent.type) {
-            case DictEventType.ADD:
-            case DictEventType.SET:
-                if (event.type === DictEventType.SET) {
-                    events[events.length] = {
-                        type: lastEvent.type, // ADD/SET followed by SET overwrites with the new value
-                        prop: event.prop,
-                        value: event.value, // Use overridden value
-                    };
-                    return;
-                }
-                if (event.type === DictEventType.DEL) {
-                    events.pop(); // ADD/SET followed by DEL is a no-op
-                    return;
-                }
-                break;
-            case DictEventType.DEL:
-                if (event.type === DictEventType.ADD) {
-                    events[events.length] = {
-                        type: DictEventType.SET, // DEL followed by ADD is a SET
-                        prop: event.prop,
-                        value: event.value,
-                    };
-                }
-                break;
+    let lastEvent: DictEvent<K, V> | undefined = events[0];
+    for (let i = 1; i < events.length; ++i) {
+        const event = events[i];
+        if (lastEvent?.prop === event.prop) {
+            switch (lastEvent.type) {
+                case DictEventType.ADD:
+                case DictEventType.SET:
+                    if (event.type === DictEventType.SET) {
+                        lastEvent = {
+                            type: lastEvent.type, // ADD/SET followed by SET overwrites with the new value
+                            prop: event.prop,
+                            value: event.value, // Use overridden value
+                        };
+                        return;
+                    }
+                    if (event.type === DictEventType.DEL) {
+                        lastEvent = undefined; // ADD/SET followed by DEL is a no-op, so *both* can be omitted
+                        return;
+                    }
+                    break;
+                case DictEventType.DEL:
+                    if (event.type === DictEventType.ADD) {
+                        lastEvent = {
+                            type: DictEventType.SET, // DEL followed by ADD is a SET
+                            prop: event.prop,
+                            value: event.value,
+                        };
+                    }
+                    break;
+            }
+        } else {
+            if (lastEvent) {
+                yield lastEvent;
+            }
+            lastEvent = event;
         }
     }
-    events.push(event);
+    if (lastEvent) {
+        yield lastEvent;
+    }
 }
 
 const sizeSymbol = Symbol('dictSize');
@@ -69,7 +78,7 @@ export class Dict<K, V> implements Retainable {
 
     constructor(init?: [key: K, value: V][] | undefined, debugName?: string) {
         this.items = new Map(init ?? []);
-        this.trackedData = new TrackedData(addDictEvent, {}, debugName);
+        this.trackedData = new TrackedData(mergeDictEvents, {}, debugName);
 
         this.__refcount = 0;
         this.__debugName = debugName ?? 'arraysub';
@@ -227,17 +236,16 @@ export class Dict<K, V> implements Retainable {
         return this.items.size;
     }
 
-    subscribe(handler: (event: DictEvent<K, V>[]) => void) {
+    subscribe(handler: (events: Iterable<DictEvent<K, V>>) => void) {
         this.retain();
 
-        const initialEvents: DictEvent<K, V>[] = [];
-        for (const [key, value] of this.items.entries()) {
-            addDictEvent(initialEvents, {
+        const initialEvents: Iterable<DictEvent<K, V>> = mergeDictEvents(
+            Array.from(this.items.entries()).map(([key, value]) => ({
                 type: DictEventType.ADD,
                 prop: key,
                 value,
-            });
-        }
+            }))
+        );
         handler(initialEvents);
 
         const unsubscribe = this.trackedData.subscribe(handler);

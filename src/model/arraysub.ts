@@ -1,7 +1,7 @@
 import {
-    addArrayEvent,
     applyArrayEvent,
     ArrayEventType,
+    mergeArrayEvents,
 } from '../common/arrayevent';
 import type { ArrayEvent } from '../common/arrayevent';
 import * as log from '../common/log';
@@ -26,7 +26,7 @@ export interface DynamicArray<T> {
     get(key: number): T;
     getLength(): number;
     getItemsUnsafe(): T[];
-    subscribe(handler: (event: ArrayEvent<T>[]) => void): () => void;
+    subscribe(handler: (event: Iterable<ArrayEvent<T>>) => void): () => void;
     retain(): void;
     release(): void;
 }
@@ -46,7 +46,11 @@ export class ArraySub<T> implements DynamicArray<T> {
         lifecycle?: { onAlive?: () => void; onDead?: () => void }
     ) {
         this.items = init ?? [];
-        this.trackedData = new TrackedData(addArrayEvent, lifecycle, debugName);
+        this.trackedData = new TrackedData(
+            mergeArrayEvents,
+            lifecycle,
+            debugName
+        );
 
         this.__debugName = debugName ?? 'arraysub';
     }
@@ -249,7 +253,7 @@ export class ArraySub<T> implements DynamicArray<T> {
         this.trackedData.tickClock();
     }
 
-    subscribe(handler: (event: ArrayEvent<T>[]) => void) {
+    subscribe(handler: (events: Iterable<ArrayEvent<T>>) => void) {
         this.retain();
         const unsubscribe = this.trackedData.subscribe(handler);
         handler([
@@ -298,7 +302,7 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
         this.eventTransform = eventTransform;
         this.items = [];
         this.trackedData = new TrackedData(
-            addArrayEvent,
+            mergeArrayEvents,
             {
                 onAlive: () => {
                     this.source.retain();
@@ -343,7 +347,7 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
         return this.items.length;
     }
 
-    subscribe(handler: (event: ArrayEvent<T>[]) => void) {
+    subscribe(handler: (events: Iterable<ArrayEvent<T>>) => void) {
         this.retain();
         const unsubscribe = this.trackedData.subscribe(handler);
         handler([

@@ -11,7 +11,7 @@ export function CollectionRenderNode(
     debugName?: string
 ): RenderNode {
     let unsubscribe: undefined | (() => void);
-    function handleEvent(events: ArrayEvent<any>[]) {
+    function handleEvent(events: Iterable<ArrayEvent<any>>) {
         for (const event of events) {
             switch (event.type) {
                 case ArrayEventType.SPLICE:

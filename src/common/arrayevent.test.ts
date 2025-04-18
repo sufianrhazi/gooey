@@ -1,44 +1,40 @@
 import { assert, suite, test } from '@srhazi/gooey-test';
 
 import type { ArrayEvent } from './arrayevent';
-import { addArrayEvent, ArrayEventType } from './arrayevent';
+import { ArrayEventType, mergeArrayEvents } from './arrayevent';
 
-suite('addArrayEvent', () => {
-    test('add SPLICE to empty array always adds', () => {
-        const events: ArrayEvent<string>[] = [];
+suite('mergeArrayEvents', () => {
+    test('merge single event SPLICE', () => {
         const event: ArrayEvent<string> = {
             type: ArrayEventType.SPLICE,
             index: 0,
             count: 0,
             items: ['a'],
         };
-        addArrayEvent(events, event);
+        const events = Array.from(mergeArrayEvents([event]));
         assert.deepEqual([event], events);
     });
-    test('add MOVE to empty array always adds', () => {
-        const events: ArrayEvent<string>[] = [];
+    test('merge single event MOVE', () => {
         const event: ArrayEvent<string> = {
             type: ArrayEventType.MOVE,
             from: 0,
             count: 1,
             to: 1,
         };
-        addArrayEvent(events, event);
+        const events = Array.from(mergeArrayEvents([event]));
         assert.deepEqual([event], events);
     });
-    test('add SORT to empty array always adds', () => {
-        const events: ArrayEvent<string>[] = [];
+    test('merge single event SORT', () => {
         const event: ArrayEvent<string> = {
             type: ArrayEventType.SORT,
             from: 0,
             indexes: [2, 1, 0],
         };
-        addArrayEvent(events, event);
+        const events = Array.from(mergeArrayEvents([event]));
         assert.deepEqual([event], events);
     });
 
-    test('add two joining splice events merges (concat)', () => {
-        const events: ArrayEvent<string>[] = [];
+    test('merge two joining splice events merges (concat)', () => {
         const event1: ArrayEvent<string> = {
             type: ArrayEventType.SPLICE,
             index: 0,
@@ -51,8 +47,7 @@ suite('addArrayEvent', () => {
             count: 0,
             items: ['b'],
         };
-        addArrayEvent(events, event1);
-        addArrayEvent(events, event2);
+        const events = Array.from(mergeArrayEvents([event1, event2]));
         assert.deepEqual(
             [
                 {
@@ -66,8 +61,7 @@ suite('addArrayEvent', () => {
         );
     });
 
-    test('add two joining splice events merges (delete)', () => {
-        const events: ArrayEvent<string>[] = [];
+    test('merge two joining splice events merges (delete)', () => {
         const event1: ArrayEvent<string> = {
             type: ArrayEventType.SPLICE,
             index: 0,
@@ -78,8 +72,7 @@ suite('addArrayEvent', () => {
             index: 0,
             count: 2,
         };
-        addArrayEvent(events, event1);
-        addArrayEvent(events, event2);
+        const events = Array.from(mergeArrayEvents([event1, event2]));
         assert.deepEqual(
             [
                 {
@@ -92,8 +85,7 @@ suite('addArrayEvent', () => {
         );
     });
 
-    test('add two joining splice events merges (concat and delete, partial)', () => {
-        const events: ArrayEvent<string>[] = [];
+    test('merge two joining splice events merges (concat and delete, partial)', () => {
         const event1: ArrayEvent<string> = {
             type: ArrayEventType.SPLICE,
             index: 0,
@@ -106,8 +98,7 @@ suite('addArrayEvent', () => {
             count: 1,
             items: ['d', 'e'],
         };
-        addArrayEvent(events, event1);
-        addArrayEvent(events, event2);
+        const events = Array.from(mergeArrayEvents([event1, event2]));
         assert.deepEqual(
             [
                 {
@@ -122,7 +113,6 @@ suite('addArrayEvent', () => {
     });
 
     test('replace items with multiple operations (pop, shift, push, unshift, splice)', () => {
-        const events: ArrayEvent<string>[] = [];
         const event1: ArrayEvent<string> = {
             type: ArrayEventType.SPLICE,
             index: 2,
@@ -151,11 +141,9 @@ suite('addArrayEvent', () => {
             count: 1,
             items: ['new middle'],
         };
-        addArrayEvent(events, event1);
-        addArrayEvent(events, event2);
-        addArrayEvent(events, event3);
-        addArrayEvent(events, event4);
-        addArrayEvent(events, event5);
+        const events = Array.from(
+            mergeArrayEvents([event1, event2, event3, event4, event5])
+        );
         assert.deepEqual(
             [
                 {

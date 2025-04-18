@@ -1,8 +1,8 @@
 import type { ArrayEvent } from '../../common/arrayevent';
 import {
-    addArrayEvent,
     applyArrayEvent,
     ArrayEventType,
+    mergeArrayEvents,
 } from '../../common/arrayevent';
 import * as log from '../../common/log';
 import type { RefObjectOrCallback } from '../ref';
@@ -56,7 +56,7 @@ export function PortalRenderNode(
     const renderNode = new SingleChildRenderNode(
         {
             onEvent: (event: ArrayEvent<Node>) => {
-                addArrayEvent(pendingEvents, event);
+                pendingEvents.push(event);
                 renderNode.requestCommit(RenderNodeCommitPhase.COMMIT_UPDATE);
                 return true;
             },
@@ -109,7 +109,7 @@ export function PortalRenderNode(
                         }
                     }
 
-                    for (const event of pendingEvents) {
+                    for (const event of mergeArrayEvents(pendingEvents)) {
                         switch (event.type) {
                             case ArrayEventType.SPLICE: {
                                 if (

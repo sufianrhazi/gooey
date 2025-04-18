@@ -117,14 +117,14 @@ suite('ArraySub', () => {
         let events: ArrayEvent<string>[] = [];
 
         arraySub.subscribe((arrayEvents) => {
-            beforeEvents = arrayEvents;
+            beforeEvents = [...arrayEvents];
         });
 
         arraySub.set(0, 'before0');
         arraySub.set(1, 'before1');
 
         arraySub.subscribe((arrayEvents) => {
-            events = arrayEvents;
+            events = [...arrayEvents];
         });
 
         arraySub.set(1, 'after1');
@@ -132,7 +132,7 @@ suite('ArraySub', () => {
 
         flush();
 
-        // Note: events are combined via addArrayEvent
+        // Note: events are merged via mergeArrayEvent
         assert.deepEqual(
             [
                 {
@@ -185,7 +185,7 @@ suite('ArraySub', () => {
         clen.get();
 
         arraySub.subscribe((arrayEvents) => {
-            events = arrayEvents;
+            events = [...arrayEvents];
         });
 
         flush();
@@ -232,7 +232,7 @@ suite('ArraySub', () => {
         clen.get();
 
         arraySub.subscribe((arrayEvents) => {
-            events = arrayEvents;
+            events = [...arrayEvents];
         });
 
         flush();
@@ -279,7 +279,7 @@ suite('ArraySub', () => {
         clen.get();
 
         arraySub.subscribe((arrayEvents) => {
-            events = arrayEvents;
+            events = [...arrayEvents];
         });
 
         flush();
@@ -326,7 +326,7 @@ suite('ArraySub', () => {
         clen.get();
 
         arraySub.subscribe((arrayEvents) => {
-            events = arrayEvents;
+            events = [...arrayEvents];
         });
 
         flush();
@@ -403,7 +403,7 @@ suite('ArraySub', () => {
         clen.get();
 
         arraySub.subscribe((arrayEvents) => {
-            events = arrayEvents;
+            events = [...arrayEvents];
         });
 
         flush();

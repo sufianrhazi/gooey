@@ -9,9 +9,9 @@ import {
 } from './engine';
 import type { Processable, Retainable } from './engine';
 
-type TrackedDataSubscriptions<TEvent> = {
-    handler: (events: TEvent[]) => void;
-    clock: number;
+type TrackedDataSubscription<TEvent> = {
+    handler: (events: Iterable<TEvent>) => void;
+    events: TEvent[];
 };
 
 export class TrackedData<TKey, TEvent> implements Processable, Retainable {
@@ -19,29 +19,27 @@ export class TrackedData<TKey, TEvent> implements Processable, Retainable {
         Retainable & Processable,
         Map<TKey, number>
     >;
-    private declare eventSubscriptions: Set<TrackedDataSubscriptions<TEvent>>;
-    private declare events: { event: TEvent; clock: number }[];
+    private declare eventSubscriptions: TrackedDataSubscription<TEvent>[];
     private declare dirtyKeys: Map<TKey, number>;
     private declare clock: number;
     private declare onAlive?: (() => void) | undefined;
     private declare onDead?: (() => void) | undefined;
-    private declare appendEvent: (events: TEvent[], event: TEvent) => void;
+    private declare mergeEvents: (events: TEvent[]) => Iterable<TEvent>;
 
     declare __processable: true;
     declare __refcount: number;
     declare __debugName: string;
 
     constructor(
-        appendEvent: (events: TEvent[], event: TEvent) => void,
+        mergeEvents: (events: TEvent[]) => Iterable<TEvent>,
         lifecycle?: { onAlive?: () => void; onDead?: () => void },
         debugName?: string
     ) {
-        this.appendEvent = appendEvent;
+        this.mergeEvents = mergeEvents;
         this.itemSubscriptions = new Map();
-        this.eventSubscriptions = new Set();
+        this.eventSubscriptions = [];
         this.dirtyKeys = new Map();
         this.clock = 0;
-        this.events = [];
         this.onAlive = lifecycle?.onAlive;
         this.onDead = lifecycle?.onDead;
 
@@ -82,23 +80,28 @@ export class TrackedData<TKey, TEvent> implements Processable, Retainable {
         if (this.__refcount === 0) {
             return;
         }
-        if (this.eventSubscriptions.size > 0) {
-            this.events.push({ event, clock: this.clock });
+        if (this.eventSubscriptions.length > 0) {
+            for (const subscription of this.eventSubscriptions) {
+                subscription.events.push(event);
+            }
             markDirty(this);
         }
     }
 
-    subscribe(handler: (event: TEvent[]) => void) {
+    subscribe(handler: (events: Iterable<TEvent>) => void) {
         this.retain(); // yes, by virtue of subscribing to this, it is retained
         const subscription = {
             handler,
-            clock: this.clock,
+            events: [],
         };
-        this.eventSubscriptions.add(subscription);
+        this.eventSubscriptions.push(subscription);
 
         return () => {
-            this.eventSubscriptions.delete(subscription);
-            this.release();
+            const index = this.eventSubscriptions.indexOf(subscription);
+            if (index >= 0) {
+                this.eventSubscriptions.splice(index, 1);
+                this.release();
+            }
         };
     }
 
@@ -120,8 +123,7 @@ export class TrackedData<TKey, TEvent> implements Processable, Retainable {
         removeVertex(this);
 
         this.itemSubscriptions.clear();
-        this.eventSubscriptions.clear();
-        this.events = [];
+        this.eventSubscriptions = [];
         this.dirtyKeys.clear();
         this.clock = 0;
     }
@@ -150,18 +152,12 @@ export class TrackedData<TKey, TEvent> implements Processable, Retainable {
         }
 
         this.eventSubscriptions.forEach((subscription) => {
-            const events: TEvent[] = [];
-            this.events.forEach(({ event, clock }) => {
-                if (subscription.clock <= clock) {
-                    this.appendEvent(events, event);
-                }
-            });
-            if (events.length) {
-                subscription.handler(events);
+            if (subscription.events.length) {
+                subscription.handler(this.mergeEvents(subscription.events));
+                subscription.events = [];
             }
         });
 
-        this.events = [];
         this.dirtyKeys.clear();
 
         // Propagate dirtiness
