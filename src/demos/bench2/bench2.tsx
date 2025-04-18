@@ -1,5 +1,7 @@
 import type { Component, Model } from '../..';
-import Gooey, { calc, collection, flush, model, mount } from '../..';
+import Gooey, { calc, collection, field, flush, model, mount } from '../..';
+
+const isRunning = field(false);
 
 const measurements = collection<string>([]);
 const byType = {
@@ -77,33 +79,66 @@ const Benchmark: Component = () => {
 
     return (
         <div>
+            <style>
+                {`
+.item-container {
+    height: 100px;
+    overflow: auto;
+    contain: strict;
+}
+            `}
+            </style>
             <p>
-                <button data-gooey-add on:click={addItems}>
+                <button disabled={isRunning} data-gooey-add on:click={addItems}>
                     Add items
                 </button>
-                <button data-gooey-update-all on:click={updateAllItems}>
+                <button
+                    disabled={isRunning}
+                    data-gooey-update-all
+                    on:click={updateAllItems}
+                >
                     Update all items
                 </button>
-                <button data-gooey-update-some on:click={updateSomeItems}>
+                <button
+                    disabled={isRunning}
+                    data-gooey-update-some
+                    on:click={updateSomeItems}
+                >
                     Update 10 random items
                 </button>
-                <button data-gooey-replace-multiple on:click={replaceMultiple}>
+                <button
+                    disabled={isRunning}
+                    data-gooey-replace-multiple
+                    on:click={replaceMultiple}
+                >
                     Replace 10 random items
                 </button>
-                <button data-gooey-insert-multiple on:click={insertMultiple}>
+                <button
+                    disabled={isRunning}
+                    data-gooey-insert-multiple
+                    on:click={insertMultiple}
+                >
                     Insert 10 random items
                 </button>
-                <button data-gooey-remove-multiple on:click={removeMultiple}>
+                <button
+                    disabled={isRunning}
+                    data-gooey-remove-multiple
+                    on:click={removeMultiple}
+                >
                     Remove 10 random items
                 </button>
-                <button data-gooey-clear on:click={clearItems}>
+                <button
+                    disabled={isRunning}
+                    data-gooey-clear
+                    on:click={clearItems}
+                >
                     Clear items
                 </button>
+                <button disabled={isRunning} on:click={run}>
+                    Run all 100 times
+                </button>
             </p>
-            <ul
-                class="bx by"
-                style="height: 100px; overflow: auto; contain: strict"
-            >
+            <ul class="item-container">
                 {items.mapView((item) => (
                     <li>{calc(() => item.val)}</li>
                 ))}
@@ -203,7 +238,8 @@ if (mainEl) {
     mount(mainEl, <Benchmark />);
 }
 
-(window as any).run = async function run() {
+async function run() {
+    isRunning.set(true);
     const impl = {
         add: document.querySelector('[data-gooey-add]'),
         updateAll: document.querySelector('[data-gooey-update-all]'),
@@ -233,4 +269,6 @@ if (mainEl) {
         impl.clear?.dispatchEvent(new MouseEvent('click'));
         await new Promise((resolve) => setTimeout(resolve, 0));
     }
-};
+    isRunning.set(false);
+}
+(window as any).run = run;
