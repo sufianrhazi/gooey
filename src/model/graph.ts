@@ -12,10 +12,6 @@
  * - "self cycle": set when the vertex has an edge pointing to itself (completely separate from "cycle")
  * - "cycle informed": set when the vertex has been processed as a cycle
  *
- * Edges in the graph have two colors:
- * - “hard”: represent data dependencies that propagate
- * - “soft”: exist solely to maintain topological ordering
- *
  * When a dirty vertex is processed, its dirtiness is cleared. Depending on the result of processing the vertex,
  * dirtiness may be propagated to destination vertices, which have their dirty bit set.
  *
@@ -119,11 +115,6 @@ import * as log from '../common/log';
 import { dead } from '../common/util';
 import { tarjanStronglyConnected } from './tarjan';
 
-export enum EdgeColor {
-    EDGE_SOFT = 0b01,
-    EDGE_HARD = 0b10,
-}
-
 interface CycleInfo {
     lowerBound: number;
     upperBound: number;
@@ -150,9 +141,6 @@ type DebugFormatter<TVertex> = (vertex: TVertex) => DebugAttributes;
 type DebugSubscription = (graphviz: string, label: string) => void;
 
 export class Graph<TVertex> {
-    static EDGE_SOFT = EdgeColor.EDGE_SOFT;
-    static EDGE_HARD = EdgeColor.EDGE_HARD;
-
     /** identifiers available for reuse */
     protected declare availableIds: number[];
     protected declare availableIndices: number[];
@@ -168,14 +156,11 @@ export class Graph<TVertex> {
     /** Mapping of id -> CycleInfo */
     protected declare cycleInfoById: Record<number, CycleInfo | undefined>;
 
-    /** Mapping of id -> hard edges in the forward direction */
-    protected declare forwardAdjacencyHard: number[][];
+    /** Mapping of id -> edges in the forward direction */
+    protected declare forwardAdjacency: number[][];
 
-    /** Mapping of id -> hard|soft edges in the forward direction */
-    protected declare forwardAdjacencyEither: number[][];
-
-    /** Mapping of id -> hard|soft edges in the reverse direction */
-    protected declare reverseAdjacencyEither: number[][];
+    /** Mapping of id -> edges in the reverse direction */
+    protected declare reverseAdjacency: number[][];
 
     /** Mapping of id -> index into topologicalOrdering */
     protected declare topologicalIndexById: (number | undefined)[];
@@ -219,9 +204,8 @@ export class Graph<TVertex> {
         this.topologicalIndexById = [];
         this.topologicalOrdering = [];
 
-        this.forwardAdjacencyHard = [];
-        this.forwardAdjacencyEither = [];
-        this.reverseAdjacencyEither = [];
+        this.forwardAdjacency = [];
+        this.reverseAdjacency = [];
 
         this.startVertexIndex = 0;
         this.toReorderIds = new Set();
@@ -261,9 +245,8 @@ export class Graph<TVertex> {
         this.topologicalIndexById[id] = index;
         this.topologicalOrdering[index] = id;
 
-        this.forwardAdjacencyHard[id] = [];
-        this.forwardAdjacencyEither[id] = [];
-        this.reverseAdjacencyEither[id] = [];
+        this.forwardAdjacency[id] = [];
+        this.reverseAdjacency[id] = [];
     }
 
     removeVertex(vertex: TVertex) {
@@ -274,11 +257,11 @@ export class Graph<TVertex> {
 
         // Note: no need to clear edges as you can only remove vertices with no edges
         log.assert(
-            this.forwardAdjacencyEither[id].length === 0,
+            this.forwardAdjacency[id].length === 0,
             'cannot remove vertex with forward edges'
         );
         log.assert(
-            this.reverseAdjacencyEither[id].length === 0,
+            this.reverseAdjacency[id].length === 0,
             'cannot remove vertex with reverse edges'
         );
 
@@ -361,7 +344,7 @@ export class Graph<TVertex> {
         }
     }
 
-    addEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor) {
+    addEdge(fromVertex: TVertex, toVertex: TVertex) {
         const fromId = this.vertexToId.get(fromVertex);
         const toId = this.vertexToId.get(toVertex);
         log.assert(fromId, 'addEdge from vertex not found', { fromVertex });
@@ -369,14 +352,11 @@ export class Graph<TVertex> {
 
         DEBUG &&
             log.assert(
-                !this.forwardAdjacencyEither[fromId].includes(toId),
+                !this.forwardAdjacency[fromId].includes(toId),
                 'addEdge duplicate'
             );
-        this.forwardAdjacencyEither[fromId].push(toId);
-        this.reverseAdjacencyEither[toId].push(fromId);
-        if (kind === EdgeColor.EDGE_HARD) {
-            this.forwardAdjacencyHard[fromId].push(toId);
-        }
+        this.forwardAdjacency[fromId].push(toId);
+        this.reverseAdjacency[toId].push(fromId);
 
         if (
             fromId === toId &&
@@ -416,16 +396,16 @@ export class Graph<TVertex> {
         }
     }
 
-    hasEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor) {
+    hasEdge(fromVertex: TVertex, toVertex: TVertex) {
         const fromId = this.vertexToId.get(fromVertex);
         const toId = this.vertexToId.get(toVertex);
         log.assert(fromId, 'addEdge from vertex not found');
         log.assert(toId, 'addEdge to vertex not found');
 
-        return this.forwardAdjacencyEither[fromId].includes(toId);
+        return this.forwardAdjacency[fromId].includes(toId);
     }
 
-    removeEdge(fromVertex: TVertex, toVertex: TVertex, kind: EdgeColor) {
+    removeEdge(fromVertex: TVertex, toVertex: TVertex) {
         const fromId = this.vertexToId.get(fromVertex);
         const toId = this.vertexToId.get(toVertex);
         log.assert(fromId, 'removeEdge from vertex not found');
@@ -433,15 +413,12 @@ export class Graph<TVertex> {
 
         DEBUG &&
             log.assert(
-                this.forwardAdjacencyEither[fromId].includes(toId),
+                this.forwardAdjacency[fromId].includes(toId),
                 'removeEdge on edge that does not exist'
             );
 
-        removeUnordered(this.forwardAdjacencyEither[fromId], toId);
-        removeUnordered(this.reverseAdjacencyEither[toId], fromId);
-        if (kind === EdgeColor.EDGE_HARD) {
-            removeUnordered(this.forwardAdjacencyHard[fromId], toId);
-        }
+        removeUnordered(this.forwardAdjacency[fromId], toId);
+        removeUnordered(this.reverseAdjacency[toId], fromId);
 
         // If we are removing a self-cycle, clear the self cycle bit
         if (fromId === toId) {
@@ -471,7 +448,7 @@ export class Graph<TVertex> {
     ) {
         if (visited.has(vertexId)) return;
         visited.add(vertexId);
-        for (const toId of this.forwardAdjacencyEither[vertexId]) {
+        for (const toId of this.forwardAdjacency[vertexId]) {
             const toIndex = this.topologicalIndexById[toId];
             log.assert(toIndex !== undefined, 'malformed graph');
             if (lowerBound <= toIndex && toIndex <= upperBound) {
@@ -543,7 +520,7 @@ export class Graph<TVertex> {
         // Use Tarjan's strongly connected algorithm (limited by the bound subgraph, sourced solely from the nodes we
         // want to reorder) to get topological order & strongly connected components
         const components = tarjanStronglyConnected(
-            this.reverseAdjacencyEither,
+            this.reverseAdjacency,
             this.topologicalIndexById,
             lowerBound,
             upperBound,
@@ -666,11 +643,11 @@ export class Graph<TVertex> {
                         const cycleInfo = this.cycleInfoById[vId];
                         if (cycleInfo) {
                             log.info(
-                                `${prefix} [idx=${i}] id=${vId} ${(v as any).__debugName}; out=${this.forwardAdjacencyEither[vId]?.join(',')}; cycle=${[...cycleInfo.vertexIds].join(',')}; cycleRange=[${cycleInfo.lowerBound}, ${cycleInfo.upperBound}] ${isDirty ? 'dirty' : 'clean'}`
+                                `${prefix} [idx=${i}] id=${vId} ${(v as any).__debugName}; out=${this.forwardAdjacency[vId]?.join(',')}; cycle=${[...cycleInfo.vertexIds].join(',')}; cycleRange=[${cycleInfo.lowerBound}, ${cycleInfo.upperBound}] ${isDirty ? 'dirty' : 'clean'}`
                             );
                         } else {
                             log.info(
-                                `${prefix} [idx=${i}] id=${vId} ${(v as any).__debugName}; out=${this.forwardAdjacencyEither[vId]?.join(',')} ${isDirty ? 'dirty' : 'clean'}`
+                                `${prefix} [idx=${i}] id=${vId} ${(v as any).__debugName}; out=${this.forwardAdjacency[vId]?.join(',')} ${isDirty ? 'dirty' : 'clean'}`
                             );
                         }
                     }
@@ -880,7 +857,7 @@ export class Graph<TVertex> {
         cycleVertexIds: null | Set<number>
     ) {
         this.clearVertexDirtyInner(vertexId);
-        for (const toId of this.forwardAdjacencyHard[vertexId]) {
+        for (const toId of this.forwardAdjacency[vertexId]) {
             const toCycleInfo = this.cycleInfoById[toId];
             if (toCycleInfo) {
                 for (const toCycleId of toCycleInfo.vertexIds) {
@@ -905,7 +882,7 @@ export class Graph<TVertex> {
             { vertex }
         );
         const cycleInfo = this.cycleInfoById[vertexId];
-        for (const toId of this.forwardAdjacencyHard[vertexId]) {
+        for (const toId of this.forwardAdjacency[vertexId]) {
             const toVertex = this.vertexById[toId];
             log.assert(toVertex !== undefined, 'malformed graph');
             if (!cycleInfo || !cycleInfo.vertexIds.has(toId)) {
@@ -987,14 +964,9 @@ export class Graph<TVertex> {
         }
 
         for (let id = 0; id < this.vertexById.length; ++id) {
-            const hard = new Set(this.forwardAdjacencyHard[id] || []);
-            if (this.forwardAdjacencyEither[id]) {
-                for (const toId of this.forwardAdjacencyEither[id]) {
-                    if (hard.has(toId)) {
-                        lines.push(`  v_${id} -> v_${toId};`);
-                    } else {
-                        lines.push(`  v_${id} -> v_${toId} [style="dotted"];`);
-                    }
+            if (this.forwardAdjacency[id]) {
+                for (const toId of this.forwardAdjacency[id]) {
+                    lines.push(`  v_${id} -> v_${toId};`);
                 }
             }
         }
@@ -1026,8 +998,8 @@ export class Graph<TVertex> {
         }
         const edges: [TVertex, TVertex][] = [];
         for (let id = 0; id < this.vertexById.length; ++id) {
-            if (this.forwardAdjacencyEither[id]) {
-                for (const toId of this.forwardAdjacencyEither[id]) {
+            if (this.forwardAdjacency[id]) {
+                for (const toId of this.forwardAdjacency[id]) {
                     const source = this.vertexById[id];
                     const target = this.vertexById[toId];
                     if (source && target) {
@@ -1069,9 +1041,7 @@ if (TEST) {
     >(this: Graph<TVertex>, vertex: TVertex) {
         const id = this.vertexToId.get(vertex);
         log.assert(id, 'getDependencies on nonexistent vertex');
-        return this.forwardAdjacencyEither[id].map(
-            (toId) => this.vertexById[toId]
-        );
+        return this.forwardAdjacency[id].map((toId) => this.vertexById[toId]);
     };
 
     Graph.prototype._test_getVertexInfo = function _test_getVertexInfo<TVertex>(

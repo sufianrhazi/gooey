@@ -28,7 +28,7 @@ suite('Graph', () => {
     test('addEdge fails if nodes not added', () => {
         const graph = new Graph<TNode>(() => false);
         assert.throwsMatching(/vertex not found/, () => {
-            graph.addEdge(a, b, Graph.EDGE_HARD);
+            graph.addEdge(a, b);
         });
     });
 
@@ -83,8 +83,8 @@ suite('Graph', () => {
         assert.is(1, graph._test_getVertexInfo(b)?.index);
         assert.is(2, graph._test_getVertexInfo(a)?.index);
 
-        graph.addEdge(a, b, Graph.EDGE_HARD);
-        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(a, b);
+        graph.addEdge(b, c);
         graph.process(); // trigger reorder
 
         // reordered: [a, b, c]
@@ -92,7 +92,7 @@ suite('Graph', () => {
         assert.is(1, graph._test_getVertexInfo(b)?.index);
         assert.is(0, graph._test_getVertexInfo(a)?.index);
 
-        graph.removeEdge(a, b, Graph.EDGE_HARD);
+        graph.removeEdge(a, b);
         graph.process(); // trigger reorder
 
         // no changes, despite a->b edge removal: [a, b, c]
@@ -114,8 +114,8 @@ suite('Graph', () => {
         assert.is(3, graph._test_getVertexInfo(e)?.index);
 
         // reordering can work as expected after reissuance
-        graph.addEdge(d, c, Graph.EDGE_HARD);
-        graph.addEdge(e, d, Graph.EDGE_HARD);
+        graph.addEdge(d, c);
+        graph.addEdge(e, d);
         graph.process(); // trigger reorder
 
         assert.lessThan(
@@ -135,10 +135,10 @@ suite('Graph', () => {
         graph.addVertex(c);
         graph.addVertex(d);
 
-        graph.addEdge(a, b, Graph.EDGE_HARD);
-        graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.addEdge(b, d, Graph.EDGE_HARD);
-        graph.addEdge(c, d, Graph.EDGE_HARD);
+        graph.addEdge(a, b);
+        graph.addEdge(b, c);
+        graph.addEdge(b, d);
+        graph.addEdge(c, d);
 
         assert.arrayIs([b], graph._test_getDependencies(a));
         assert.arrayIs([c, d], graph._test_getDependencies(b));
@@ -183,18 +183,18 @@ suite('Graph', () => {
             graph.addVertex(h);
             graph.addVertex(i);
 
-            graph.addEdge(a, b, Graph.EDGE_HARD);
-            graph.addEdge(b, c, Graph.EDGE_HARD);
-            graph.addEdge(b, d, Graph.EDGE_HARD);
-            graph.addEdge(c, e, Graph.EDGE_HARD);
-            graph.addEdge(d, e, Graph.EDGE_HARD);
-            graph.addEdge(a, e, Graph.EDGE_HARD);
-            graph.addEdge(a, f, Graph.EDGE_HARD);
-            graph.addEdge(f, g, Graph.EDGE_HARD);
-            graph.addEdge(e, h, Graph.EDGE_HARD);
-            graph.addEdge(h, i, Graph.EDGE_HARD);
-            graph.addEdge(f, h, Graph.EDGE_HARD);
-            graph.addEdge(g, i, Graph.EDGE_HARD);
+            graph.addEdge(a, b);
+            graph.addEdge(b, c);
+            graph.addEdge(b, d);
+            graph.addEdge(c, e);
+            graph.addEdge(d, e);
+            graph.addEdge(a, e);
+            graph.addEdge(a, f);
+            graph.addEdge(f, g);
+            graph.addEdge(e, h);
+            graph.addEdge(h, i);
+            graph.addEdge(f, h);
+            graph.addEdge(g, i);
 
             return graph;
         };
@@ -376,147 +376,6 @@ suite('Graph', () => {
         });
     });
 
-    suite('complex graph with soft edges', () => {
-        /*
-         * Graph for reference: (soft edges are ..>)
-         *
-         *             ┌─┐
-         *        ┌───►│c├────┐
-         *        │    └─┘    │
-         *        │           ▼
-         * ┌─┐   ┌┴┐   ┌─┐   ┌─┐   ┌─┐   ┌─┐
-         * │a├──►│b├──►│d├──►│e├..>│h├──►│i│
-         * └┬┘   └─┘   └─┘   └─┘   └─┘   └─┘
-         *  │                 ▲     ▲     ▲
-         *  ├─────────────────┘     │     │
-         *  .           ┌───────────┘     │
-         *  .          ┌┴┐   ┌─┐          │
-         *  ..........>│f├..>│g├──────────┘
-         *             └─┘   └─┘
-         */
-
-        const setup = (
-            processor: (item: Set<TNode>, action: ProcessAction) => void
-        ) => {
-            const graph = new Graph<TNode>(processor);
-
-            graph.addVertex(a);
-            graph.addVertex(b);
-            graph.addVertex(c);
-            graph.addVertex(d);
-            graph.addVertex(e);
-            graph.addVertex(f);
-            graph.addVertex(g);
-            graph.addVertex(h);
-            graph.addVertex(i);
-
-            graph.addEdge(a, b, Graph.EDGE_HARD);
-            graph.addEdge(b, c, Graph.EDGE_HARD);
-            graph.addEdge(b, d, Graph.EDGE_HARD);
-            graph.addEdge(c, e, Graph.EDGE_HARD);
-            graph.addEdge(d, e, Graph.EDGE_HARD);
-            graph.addEdge(a, e, Graph.EDGE_HARD);
-            graph.addEdge(a, f, Graph.EDGE_SOFT);
-            graph.addEdge(f, g, Graph.EDGE_SOFT);
-            graph.addEdge(e, h, Graph.EDGE_SOFT);
-            graph.addEdge(h, i, Graph.EDGE_HARD);
-            graph.addEdge(f, h, Graph.EDGE_HARD);
-            graph.addEdge(g, i, Graph.EDGE_HARD);
-
-            return graph;
-        };
-
-        suite('process', () => {
-            test('nothing visited if nothing dirty', () => {
-                const items: TNode[] = [];
-                const graph = setup((vertexGroup) => {
-                    items.push(...vertexGroup);
-                });
-
-                graph.process();
-
-                assert.arrayIs([], items);
-            });
-
-            test('all nodes reachable from hard edges visited', () => {
-                const invalidated: TNode[] = [];
-                const recalculated: TNode[] = [];
-
-                const graph = setup((vertexGroup, action) => {
-                    for (const item of vertexGroup) {
-                        if (action === ProcessAction.INVALIDATE) {
-                            invalidated.push(item);
-                        }
-                        if (action === ProcessAction.RECALCULATE) {
-                            recalculated.push(item);
-                        }
-                        for (const forward of graph.getForwardDependencies(
-                            item
-                        )) {
-                            graph.markVertexDirty(forward);
-                        }
-                    }
-                });
-                graph.markVertexDirty(a);
-
-                graph.process();
-
-                assert.arrayEqualsUnsorted([a, b, c, d, e], invalidated);
-                assert.arrayEqualsUnsorted([a, b, c, d, e], recalculated);
-            });
-
-            test('soft edges, despite not being visited dictate topological order', () => {
-                const items: TNode[] = [];
-                const graph = setup((vertexGroup, action) => {
-                    for (const item of vertexGroup) {
-                        if (action === ProcessAction.RECALCULATE) {
-                            items.push(item);
-                            for (const forward of graph.getForwardDependencies(
-                                item
-                            )) {
-                                graph.markVertexDirty(forward);
-                            }
-                        }
-                    }
-                });
-
-                graph.markVertexDirty(a);
-                graph.markVertexDirty(f);
-
-                graph.process();
-
-                function assertBefore(fromNode: TNode, toNode: TNode) {
-                    const fromIndex = items.indexOf(fromNode);
-                    const toIndex = items.indexOf(toNode);
-                    assert.isNot(
-                        -1,
-                        fromIndex,
-                        `fromNode not found (${fromNode.name})`
-                    );
-                    assert.isNot(
-                        -1,
-                        toIndex,
-                        `toNode not found (${toNode.name})`
-                    );
-                    assert.lessThan(fromIndex, toIndex);
-                }
-
-                function visit(root: TNode) {
-                    graph._test_getDependencies(root).forEach((dependency) => {
-                        // Note: 'g' is not visited
-                        if (dependency.name !== 'g') {
-                            assertBefore(root, dependency);
-                            visit(dependency);
-                        }
-                    });
-                }
-
-                // Starting from the root, given a -> b, ensure a is before b
-                visit(a);
-            });
-        });
-    });
-
     suite('Processing behavior', () => {
         const a = { name: 'a' };
         const b = { name: 'b' };
@@ -552,11 +411,11 @@ suite('Graph', () => {
             );
             graph.addVertex(a);
             graph.addVertex(b);
-            graph.addEdge(a, b, Graph.EDGE_HARD);
+            graph.addEdge(a, b);
             graph.addVertex(c);
             graph.addVertex(d);
             graph.addVertex(e);
-            graph.addEdge(c, d, Graph.EDGE_HARD);
+            graph.addEdge(c, d);
             graph.markVertexDirty(c);
             actions.splice(0, actions.length);
             graph.process();
@@ -632,11 +491,11 @@ suite('Graph Cycles', () => {
         graph.addVertex(d);
         graph.addVertex(e);
 
-        graph.addEdge(a, b, Graph.EDGE_HARD);
-        graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.addEdge(c, d, Graph.EDGE_HARD);
-        graph.addEdge(d, b, Graph.EDGE_HARD);
-        graph.addEdge(c, e, Graph.EDGE_HARD);
+        graph.addEdge(a, b);
+        graph.addEdge(b, c);
+        graph.addEdge(c, d);
+        graph.addEdge(d, b);
+        graph.addEdge(c, e);
         // CYCLE actions are triggered by the engine once edges are added
         assert.deepEqual(
             {
@@ -693,11 +552,11 @@ suite('Graph Cycles', () => {
         // |  c -> [e]
         // |  |
         // +--d
-        graph.addEdge(a, b, Graph.EDGE_HARD);
-        graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.addEdge(c, d, Graph.EDGE_HARD);
-        graph.addEdge(d, b, Graph.EDGE_HARD);
-        graph.addEdge(c, e, Graph.EDGE_HARD);
+        graph.addEdge(a, b);
+        graph.addEdge(b, c);
+        graph.addEdge(c, d);
+        graph.addEdge(d, b);
+        graph.addEdge(c, e);
         process(); // allow cycle to be detected
         graph.markVertexDirty(a);
 
@@ -732,7 +591,7 @@ suite('Graph Cycles', () => {
         //    c -> [e]
         //    |
         //    d
-        graph.removeEdge(d, b, Graph.EDGE_HARD);
+        graph.removeEdge(d, b);
         graph.markVertexDirty(a);
 
         assert.deepEqual(
@@ -767,13 +626,13 @@ suite('Graph Cycles', () => {
         // |  |
         // |  v
         // +--d -> [f]
-        graph.addEdge(a, b, Graph.EDGE_HARD);
-        graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.addEdge(c, b, Graph.EDGE_HARD);
-        graph.addEdge(c, d, Graph.EDGE_HARD);
-        graph.addEdge(c, e, Graph.EDGE_HARD);
-        graph.addEdge(d, b, Graph.EDGE_HARD);
-        graph.addEdge(d, f, Graph.EDGE_HARD);
+        graph.addEdge(a, b);
+        graph.addEdge(b, c);
+        graph.addEdge(c, b);
+        graph.addEdge(c, d);
+        graph.addEdge(c, e);
+        graph.addEdge(d, b);
+        graph.addEdge(d, f);
         process();
         graph.markVertexDirty(a);
 
@@ -812,7 +671,7 @@ suite('Graph Cycles', () => {
         //    |
         //    v
         //    d -> [f]
-        graph.removeEdge(d, b, Graph.EDGE_HARD);
+        graph.removeEdge(d, b);
         graph.markVertexDirty(a);
 
         const results = process();
@@ -855,13 +714,13 @@ suite('Graph Cycles', () => {
         graph.addVertex(d);
         graph.addVertex(e);
 
-        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(a, b);
 
-        graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.addEdge(c, d, Graph.EDGE_HARD);
-        graph.addEdge(d, b, Graph.EDGE_HARD);
+        graph.addEdge(b, c);
+        graph.addEdge(c, d);
+        graph.addEdge(d, b);
 
-        graph.addEdge(c, e, Graph.EDGE_HARD);
+        graph.addEdge(c, e);
 
         assert.deepEqual(
             {
@@ -881,12 +740,12 @@ suite('Graph Cycles', () => {
         graph.addVertex(c);
         graph.addVertex(d);
 
-        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(a, b);
 
-        graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.addEdge(c, b, Graph.EDGE_HARD);
+        graph.addEdge(b, c);
+        graph.addEdge(c, b);
 
-        graph.addEdge(c, d, Graph.EDGE_HARD);
+        graph.addEdge(c, d);
 
         assert.deepEqual(
             {
@@ -914,15 +773,15 @@ suite('Graph Cycles', () => {
         // - b -> c -> d
         // - b -> e -> d
         // - d -> f
-        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(a, b);
 
-        graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.addEdge(c, d, Graph.EDGE_HARD);
+        graph.addEdge(b, c);
+        graph.addEdge(c, d);
 
-        graph.addEdge(b, e, Graph.EDGE_HARD);
-        graph.addEdge(e, d, Graph.EDGE_HARD);
+        graph.addEdge(b, e);
+        graph.addEdge(e, d);
 
-        graph.addEdge(d, f, Graph.EDGE_HARD);
+        graph.addEdge(d, f);
 
         graph.markVertexDirty(a);
 
@@ -945,7 +804,7 @@ suite('Graph Cycles', () => {
         // - b -> e -> d (-> b)
         // Strongly connected component:
         // - { b,c,d,e }
-        graph.addEdge(d, b, Graph.EDGE_HARD);
+        graph.addEdge(d, b);
         graph.markVertexDirty(a);
 
         assert.deepEqual(
@@ -1001,13 +860,13 @@ suite('Graph Cycles', () => {
         //      |
         //      f
 
-        graph.addEdge(a, b, Graph.EDGE_HARD);
-        graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.addEdge(b, e, Graph.EDGE_HARD);
-        graph.addEdge(c, d, Graph.EDGE_HARD);
-        graph.addEdge(d, b, Graph.EDGE_HARD);
-        graph.addEdge(d, f, Graph.EDGE_HARD);
-        graph.addEdge(e, d, Graph.EDGE_HARD);
+        graph.addEdge(a, b);
+        graph.addEdge(b, c);
+        graph.addEdge(b, e);
+        graph.addEdge(c, d);
+        graph.addEdge(d, b);
+        graph.addEdge(d, f);
+        graph.addEdge(e, d);
 
         assert.deepEqual(
             {
@@ -1030,17 +889,17 @@ suite('Graph Cycles', () => {
         graph.addVertex(e);
         graph.addVertex(f);
 
-        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(a, b);
 
-        graph.addEdge(b, c, Graph.EDGE_HARD);
-        graph.addEdge(c, b, Graph.EDGE_HARD);
+        graph.addEdge(b, c);
+        graph.addEdge(c, b);
 
-        graph.addEdge(c, d, Graph.EDGE_HARD);
+        graph.addEdge(c, d);
 
-        graph.addEdge(d, e, Graph.EDGE_HARD);
-        graph.addEdge(e, d, Graph.EDGE_HARD);
+        graph.addEdge(d, e);
+        graph.addEdge(e, d);
 
-        graph.addEdge(e, f, Graph.EDGE_HARD);
+        graph.addEdge(e, f);
 
         assert.deepEqual(
             {
@@ -1070,9 +929,9 @@ suite('Graph Cycles', () => {
         graph.addVertex(b);
         graph.addVertex(c);
 
-        graph.addEdge(a, b, Graph.EDGE_HARD);
-        graph.addEdge(b, b, Graph.EDGE_HARD);
-        graph.addEdge(b, c, Graph.EDGE_HARD);
+        graph.addEdge(a, b);
+        graph.addEdge(b, b);
+        graph.addEdge(b, c);
 
         graph.markVertexDirty(a);
         graph.markVertexDirty(a);
@@ -1104,7 +963,7 @@ suite('Graph Cycles', () => {
                         action === ProcessAction.RECALCULATE &&
                         addSelfEdge
                     ) {
-                        graph.addEdge(b, b, Graph.EDGE_HARD);
+                        graph.addEdge(b, b);
                     }
                     if (action === ProcessAction.RECALCULATE) {
                         for (const forward of graph.getForwardDependencies(
@@ -1123,7 +982,7 @@ suite('Graph Cycles', () => {
         );
         graph.addVertex(a);
         graph.addVertex(b);
-        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(a, b);
 
         graph.markVertexDirty(a);
         graph.process();
@@ -1167,10 +1026,10 @@ suite('Graph Cycles', () => {
                     log.push({ node, action });
                     if (node === b && action === ProcessAction.RECALCULATE) {
                         if (removeSelfEdge) {
-                            graph.removeEdge(b, b, Graph.EDGE_HARD);
+                            graph.removeEdge(b, b);
                         }
                         if (addSelfEdge) {
-                            graph.addEdge(b, b, Graph.EDGE_HARD);
+                            graph.addEdge(b, b);
                         }
                     }
                     if (action === ProcessAction.RECALCULATE) {
@@ -1190,7 +1049,7 @@ suite('Graph Cycles', () => {
         );
         graph.addVertex(a);
         graph.addVertex(b);
-        graph.addEdge(a, b, Graph.EDGE_HARD);
+        graph.addEdge(a, b);
 
         graph.markVertexDirty(a);
         graph.process();

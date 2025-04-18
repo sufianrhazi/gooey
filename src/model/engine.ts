@@ -189,48 +189,26 @@ export function removeVertex(vertex: Processable) {
     globalDependencyGraph.removeVertex(vertex);
 }
 
-export function addHardEdge(fromVertex: Processable, toVertex: Processable) {
+export function addEdge(fromVertex: Processable, toVertex: Processable) {
     DEBUG &&
         log.debug(
-            'add edge:hard',
+            'add edge',
             fromVertex.__debugName,
             '->',
             toVertex.__debugName
         );
-    globalDependencyGraph.addEdge(fromVertex, toVertex, Graph.EDGE_HARD);
+    globalDependencyGraph.addEdge(fromVertex, toVertex);
 }
 
-export function addSoftEdge(fromVertex: Processable, toVertex: Processable) {
+export function removeEdge(fromVertex: Processable, toVertex: Processable) {
     DEBUG &&
         log.debug(
-            'add edge:soft',
+            'del edge',
             fromVertex.__debugName,
             '->',
             toVertex.__debugName
         );
-    globalDependencyGraph.addEdge(fromVertex, toVertex, Graph.EDGE_SOFT);
-}
-
-export function removeHardEdge(fromVertex: Processable, toVertex: Processable) {
-    DEBUG &&
-        log.debug(
-            'del edge:hard',
-            fromVertex.__debugName,
-            '->',
-            toVertex.__debugName
-        );
-    globalDependencyGraph.removeEdge(fromVertex, toVertex, Graph.EDGE_HARD);
-}
-
-export function removeSoftEdge(fromVertex: Processable, toVertex: Processable) {
-    DEBUG &&
-        log.debug(
-            'del edge:soft',
-            fromVertex.__debugName,
-            '->',
-            toVertex.__debugName
-        );
-    globalDependencyGraph.removeEdge(fromVertex, toVertex, Graph.EDGE_SOFT);
+    globalDependencyGraph.removeEdge(fromVertex, toVertex);
 }
 
 export function markDirty(vertex: Processable) {

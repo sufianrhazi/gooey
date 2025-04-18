@@ -60,9 +60,9 @@
  * #### Calculation Execution
  *
  * When a calculation’s function is being executed, all calls to other calculations (cached or uncached) or fields are
- * tracked. These tracked accesses are added to the directed graph as inbound, “hard” edges: from the item being
+ * tracked. These tracked accesses are added to the directed graph as inbound edges: from the item being
  * accessed (either a calculation or a field) and to the calculation performing the access. Each execution replaces all
- * inbound “hard” edges.
+ * inbound edges.
  *
  * This tracking of access is shallow. That is to say:
  * * There is a stack of active calculations
@@ -71,7 +71,7 @@
  * * Tracking only impacts the calculation on the top of the stack
  *
  * For example, if a calculation’s function (A) is called, which calls another calculation’s function (B), which accesses a
- * field (C), the resulting hard edges added are:
+ * field (C), the resulting edges added are:
  * * C -> B
  * * B -> A
  *
@@ -139,14 +139,14 @@ import type { Dynamic, DynamicSubscriptionHandler } from '../common/dyn';
 import * as log from '../common/log';
 import { wrapError } from '../common/util';
 import {
-    addHardEdge,
+    addEdge,
     addVertex,
     getForwardDependencies,
     isProcessable,
     markCycleInformed,
     notifyRead,
     release,
-    removeHardEdge,
+    removeEdge,
     removeVertex,
     retain,
     trackReads,
@@ -248,7 +248,7 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
                                 isProcessable(dependency) &&
                                 this.__refcount > 0
                             ) {
-                                addHardEdge(dependency, this);
+                                addEdge(dependency, this);
                             }
                         }
                         return this;
@@ -272,7 +272,7 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
                 isProcessable(prevDependency)
             ) {
                 // We lost a dependency
-                removeHardEdge(prevDependency, this);
+                removeEdge(prevDependency, this);
             }
             release(prevDependency); // We **always** release previous dependencies, since we **always** retain new ones
         }
@@ -435,7 +435,7 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
 
         for (const dependency of this._dependencies) {
             if (isProcessable(dependency)) {
-                removeHardEdge(dependency, this);
+                removeEdge(dependency, this);
             }
             release(dependency);
         }
