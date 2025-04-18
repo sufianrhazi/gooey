@@ -24,7 +24,7 @@ function getModelDict<T extends {}>(model: Model<T>): Dict<keyof T, any> {
 }
 
 export function model<T extends {}>(target: T, debugName?: string): Model<T> {
-    const modelDict = dict(Object.entries(target));
+    const modelDict = dict(Object.entries(target), debugName);
     const modelObj: Model<T> = { ...target };
     Object.keys(target).forEach((key) => {
         Object.defineProperty(modelObj, key, {
