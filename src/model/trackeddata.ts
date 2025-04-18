@@ -138,10 +138,12 @@ export class TrackedData<TKey, TEvent> implements Processable, Retainable {
             reader,
             subscriptions,
         ] of this.itemSubscriptions.entries()) {
-            for (const [key, whenRead] of subscriptions.entries()) {
-                const whenChanged = this.dirtyKeys.get(key);
-                if (whenChanged !== undefined && whenRead <= whenChanged) {
-                    toPropagate.add(reader);
+            if (reader.__refcount > 0) {
+                for (const [key, whenRead] of subscriptions.entries()) {
+                    const whenChanged = this.dirtyKeys.get(key);
+                    if (whenChanged !== undefined && whenRead <= whenChanged) {
+                        toPropagate.add(reader);
+                    }
                 }
             }
         }

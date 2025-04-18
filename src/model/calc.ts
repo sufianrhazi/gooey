@@ -317,13 +317,6 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
                     cycleDependencies.delete(calculation);
                 }
                 cycleDependencies.delete(this);
-
-                // 3. Propagate dirtiness to dependencies
-                for (const dependency of cycleDependencies) {
-                    console.log('WOULD MARK', dependency.__debugName, 'dirty');
-                    // TODO: is this needed?
-                    // markDirty(dependency);
-                }
             }
         }
 
