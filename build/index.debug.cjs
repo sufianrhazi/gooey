@@ -2559,9 +2559,6 @@ var Calculation = class {
           cycleDependencies.delete(calculation);
         }
         cycleDependencies.delete(this);
-        for (const dependency of cycleDependencies) {
-          console.log("WOULD MARK", dependency.__debugName, "dirty");
-        }
       }
     }
     if (!result.ok) {
@@ -3731,10 +3728,12 @@ var TrackedData = class {
       reader,
       subscriptions
     ] of this.itemSubscriptions.entries()) {
-      for (const [key, whenRead] of subscriptions.entries()) {
-        const whenChanged = this.dirtyKeys.get(key);
-        if (whenChanged !== void 0 && whenRead <= whenChanged) {
-          toPropagate.add(reader);
+      if (reader.__refcount > 0) {
+        for (const [key, whenRead] of subscriptions.entries()) {
+          const whenChanged = this.dirtyKeys.get(key);
+          if (whenChanged !== void 0 && whenRead <= whenChanged) {
+            toPropagate.add(reader);
+          }
         }
       }
     }
@@ -4634,7 +4633,7 @@ function getModelDict(model2) {
   return dict2;
 }
 function model(target, debugName) {
-  const modelDict = dict(Object.entries(target));
+  const modelDict = dict(Object.entries(target), debugName);
   const modelObj = { ...target };
   Object.keys(target).forEach((key) => {
     Object.defineProperty(modelObj, key, {
@@ -5099,5 +5098,5 @@ function mount(target, node) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.21.0" : "development";
+var VERSION = true ? "0.21.1" : "development";
 //# sourceMappingURL=index.debug.cjs.map
