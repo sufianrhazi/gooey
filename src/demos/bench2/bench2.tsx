@@ -255,19 +255,19 @@ async function run() {
     const RUNS = 100;
     for (let i = 0; i < RUNS; ++i) {
         impl.add?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         impl.updateSome?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         impl.updateAll?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         impl.replaceMultiple?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         impl.insertMultiple?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         impl.removeMultiple?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         impl.clear?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 0));
+        await new Promise((resolve) => setTimeout(resolve, 500));
     }
     isRunning.set(false);
 }
