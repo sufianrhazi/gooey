@@ -136,12 +136,35 @@ export function PortalRenderNode(
                                     const referenceNode = getReferenceNode(
                                         event.index
                                     );
-                                    for (const node of event.items) {
+                                    if (
+                                        event.items.length > 1 &&
+                                        event.items.every(
+                                            (node) => node.parentNode === null
+                                        )
+                                    ) {
+                                        // Performance optimization:
+                                        // If we're adding new nodes (not
+                                        // *moving* them), we can quickly batch
+                                        // add in one swoop via a document
+                                        // fragment
+                                        const fragment =
+                                            document.createDocumentFragment();
+                                        fragment.replaceChildren(
+                                            ...event.items
+                                        );
                                         moveOrInsertBefore(
                                             element,
-                                            node,
+                                            fragment,
                                             referenceNode
                                         );
+                                    } else {
+                                        for (const node of event.items) {
+                                            moveOrInsertBefore(
+                                                element,
+                                                node,
+                                                referenceNode
+                                            );
+                                        }
                                     }
                                     committedNodes.splice(
                                         event.index,
