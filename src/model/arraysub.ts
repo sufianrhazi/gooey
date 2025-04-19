@@ -6,9 +6,7 @@ import {
 import type { ArrayEvent } from '../common/arrayevent';
 import * as log from '../common/log';
 import { SlotSizes } from '../common/slotsizes';
-import { TrackedData } from './trackeddata';
-
-const lengthSymbol = Symbol('ArraySubLength');
+import { TrackedArray } from './trackedarray';
 
 // https://tc39.es/ecma262/multipage/indexed-collections.html#sec-sortcompare
 function defaultSort(x: any, y: any) {
@@ -33,10 +31,7 @@ export interface DynamicArray<T> {
 
 export class ArraySub<T> implements DynamicArray<T> {
     private declare items: T[];
-    private declare trackedData: TrackedData<
-        number | typeof lengthSymbol,
-        ArrayEvent<T>
-    >;
+    private declare trackedArray: TrackedArray<ArrayEvent<T>>;
 
     declare __debugName: string;
 
@@ -46,7 +41,7 @@ export class ArraySub<T> implements DynamicArray<T> {
         lifecycle?: { onAlive?: () => void; onDead?: () => void }
     ) {
         this.items = init ?? [];
-        this.trackedData = new TrackedData(
+        this.trackedArray = new TrackedArray(
             mergeArrayEvents,
             lifecycle,
             debugName
@@ -60,7 +55,7 @@ export class ArraySub<T> implements DynamicArray<T> {
     }
 
     get(index: number) {
-        this.trackedData.notifyRead(index);
+        this.trackedArray.notifyRead(index);
         return this.items[index];
     }
 
@@ -80,16 +75,16 @@ export class ArraySub<T> implements DynamicArray<T> {
             return;
         }
         this.items[index] = value;
-        this.trackedData.markDirty(index);
+        this.trackedArray.markDirty({ start: index, end: index + 1 });
 
-        this.trackedData.addEvent({
+        this.trackedArray.addEvent({
             type: ArrayEventType.SPLICE,
             index,
             count: 1,
             items: [value],
         });
 
-        this.trackedData.tickClock();
+        this.trackedArray.tickClock();
     }
 
     setLength(newLength: number) {
@@ -105,7 +100,7 @@ export class ArraySub<T> implements DynamicArray<T> {
     }
 
     getLength() {
-        this.trackedData.notifyRead(lengthSymbol);
+        this.trackedArray.notifyRead('length');
         return this.items.length;
     }
 
@@ -125,19 +120,17 @@ export class ArraySub<T> implements DynamicArray<T> {
 
         if (startLength === endLength) {
             // invalidate fields affected by splice
-            for (let i = index; i < index + items.length; ++i) {
-                this.trackedData.markDirty(i);
-            }
+            this.trackedArray.markDirty({
+                start: index,
+                end: index + items.length,
+            });
         } else {
             // invalidate fields affected by splice
-            for (let i = index; i < endLength; ++i) {
-                this.trackedData.markDirty(i);
-            }
+            this.trackedArray.markDirty({ start: index, end: endLength });
+
             // destroy any dead fields
-            for (let i = endLength; i < startLength; ++i) {
-                this.trackedData.markDirty(i);
-            }
-            this.trackedData.markDirty(lengthSymbol);
+            this.trackedArray.markDirty({ start: endLength, end: startLength });
+            this.trackedArray.markDirty('length');
         }
 
         return removed;
@@ -161,14 +154,14 @@ export class ArraySub<T> implements DynamicArray<T> {
 
         const removed = this.spliceInner(fixedIndex, count, items);
 
-        this.trackedData.addEvent({
+        this.trackedArray.addEvent({
             type: ArrayEventType.SPLICE,
             index: fixedIndex,
             count,
             items,
         });
 
-        this.trackedData.tickClock();
+        this.trackedArray.tickClock();
         return removed;
     }
 
@@ -178,18 +171,16 @@ export class ArraySub<T> implements DynamicArray<T> {
             .sort((a, b) => sortFn(this.items[a], this.items[b]));
         this.items.sort(sortFn);
 
-        this.trackedData.addEvent({
+        this.trackedArray.addEvent({
             type: ArrayEventType.SORT,
             from: 0,
             indexes,
         });
 
         // Invalidate sorted fields
-        for (let i = 0; i < this.items.length; ++i) {
-            this.trackedData.markDirty(i);
-        }
+        this.trackedArray.markDirty({ start: 0, end: this.items.length });
 
-        this.trackedData.tickClock();
+        this.trackedArray.tickClock();
 
         return this;
     }
@@ -204,18 +195,16 @@ export class ArraySub<T> implements DynamicArray<T> {
         this.items.reverse();
 
         // Notify of the (reversed) sort
-        this.trackedData.addEvent({
+        this.trackedArray.addEvent({
             type: ArrayEventType.SORT,
             from: 0,
             indexes,
         });
 
         // Invalidate all fields
-        for (let i = 0; i < this.items.length; ++i) {
-            this.trackedData.markDirty(i);
-        }
+        this.trackedArray.markDirty({ start: 0, end: this.items.length });
 
-        this.trackedData.tickClock();
+        this.trackedArray.tickClock();
 
         return this;
     }
@@ -239,23 +228,21 @@ export class ArraySub<T> implements DynamicArray<T> {
         // So everything between the lower & upper bounds of the move is dirty
         const lowerBound = Math.min(fromIndex, toIndex);
         const upperBound = Math.max(fromIndex, toIndex) + count;
-        for (let i = lowerBound; i < upperBound; ++i) {
-            this.trackedData.markDirty(i);
-        }
+        this.trackedArray.markDirty({ start: lowerBound, end: upperBound });
 
-        this.trackedData.addEvent({
+        this.trackedArray.addEvent({
             type: ArrayEventType.MOVE,
             from: fromIndex,
             count,
             to: toIndex,
         });
 
-        this.trackedData.tickClock();
+        this.trackedArray.tickClock();
     }
 
     subscribe(handler: (events: Iterable<ArrayEvent<T>>) => void) {
         this.retain();
-        const unsubscribe = this.trackedData.subscribe(handler);
+        const unsubscribe = this.trackedArray.subscribe(handler);
         handler([
             {
                 type: ArrayEventType.SPLICE,
@@ -271,11 +258,11 @@ export class ArraySub<T> implements DynamicArray<T> {
     }
 
     retain() {
-        this.trackedData.retain();
+        this.trackedArray.retain();
     }
 
     release() {
-        this.trackedData.release();
+        this.trackedArray.release();
     }
 }
 
@@ -286,10 +273,7 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
         events: Iterable<ArrayEvent<TSource>>
     ) => Iterable<ArrayEvent<T>>;
     private declare items: T[];
-    private declare trackedData: TrackedData<
-        number | typeof lengthSymbol,
-        ArrayEvent<T>
-    >;
+    private declare trackedArray: TrackedArray<ArrayEvent<T>>;
 
     declare __debugName: string;
 
@@ -303,7 +287,7 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
         this.source = source;
         this.eventTransform = eventTransform;
         this.items = [];
-        this.trackedData = new TrackedData(
+        this.trackedArray = new TrackedArray(
             mergeArrayEvents,
             {
                 onAlive: () => {
@@ -330,7 +314,7 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
             'Out-of-bounds ArraySub read'
         );
 
-        this.trackedData.notifyRead(index);
+        this.trackedArray.notifyRead(index);
         return this.items[index];
     }
 
@@ -343,13 +327,13 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
     }
 
     getLength() {
-        this.trackedData.notifyRead(lengthSymbol);
+        this.trackedArray.notifyRead('length');
         return this.items.length;
     }
 
     subscribe(handler: (events: Iterable<ArrayEvent<T>>) => void) {
         this.retain();
-        const unsubscribe = this.trackedData.subscribe(handler);
+        const unsubscribe = this.trackedArray.subscribe(handler);
         handler([
             {
                 type: ArrayEventType.SPLICE,
@@ -372,23 +356,17 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
             const lengthAfter = this.items.length;
             switch (transformed.type) {
                 case ArrayEventType.SPLICE: {
-                    for (
-                        let i = transformed.index;
-                        i < transformed.index + transformed.count;
-                        ++i
-                    ) {
-                        this.trackedData.markDirty(i);
-                    }
+                    this.trackedArray.markDirty({
+                        start: transformed.index,
+                        end: transformed.index + transformed.count,
+                    });
                     if (lengthBefore !== lengthAfter) {
                         const dirtyEnd = Math.max(lengthBefore, lengthAfter);
-                        for (
-                            let i = transformed.index + transformed.count;
-                            i < dirtyEnd;
-                            ++i
-                        ) {
-                            this.trackedData.markDirty(i);
-                        }
-                        this.trackedData.markDirty(lengthSymbol);
+                        this.trackedArray.markDirty({
+                            start: transformed.index + transformed.count,
+                            end: dirtyEnd,
+                        });
+                        this.trackedArray.markDirty('length');
                     }
                     break;
                 }
@@ -400,29 +378,31 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
                     const endIndex =
                         Math.max(transformed.from, transformed.to) +
                         transformed.count;
-                    for (let i = startIndex; i < endIndex; ++i) {
-                        this.trackedData.markDirty(i);
-                    }
+                    this.trackedArray.markDirty({
+                        start: startIndex,
+                        end: endIndex,
+                    });
                     break;
                 }
                 case ArrayEventType.SORT: {
-                    for (let i = 0; i < transformed.indexes.length; ++i) {
-                        this.trackedData.markDirty(transformed.from + i);
-                    }
+                    this.trackedArray.markDirty({
+                        start: transformed.from,
+                        end: transformed.from + transformed.indexes.length,
+                    });
                     break;
                 }
             }
-            this.trackedData.addEvent(transformed);
+            this.trackedArray.addEvent(transformed);
         }
-        this.trackedData.tickClock();
+        this.trackedArray.tickClock();
     }
 
     retain() {
-        this.trackedData.retain();
+        this.trackedArray.retain();
     }
 
     release() {
-        this.trackedData.release();
+        this.trackedArray.release();
     }
 }
 

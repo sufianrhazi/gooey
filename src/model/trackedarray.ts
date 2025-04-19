@@ -1,4 +1,5 @@
 import * as log from '../common/log';
+import { DirtyArray } from './dirtyarray';
 import {
     addVertex,
     markDirty,
@@ -14,14 +15,13 @@ type TrackedDataSubscription<TEvent> = {
     events: TEvent[];
 };
 
-export class TrackedData<TKey, TEvent> implements Processable, Retainable {
+export class TrackedArray<TEvent> implements Processable, Retainable {
     private declare itemSubscriptions: Map<
         Retainable & Processable,
-        Map<TKey, number>
+        Map<'length' | number, number>
     >;
     private declare eventSubscriptions: TrackedDataSubscription<TEvent>[];
-    private declare dirtyKeys: Map<TKey, number>;
-    private declare clock: number;
+    private declare dirtyArray: DirtyArray;
     private declare onAlive?: (() => void) | undefined;
     private declare onDead?: (() => void) | undefined;
     private declare mergeEvents: (events: TEvent[]) => Iterable<TEvent>;
@@ -39,8 +39,7 @@ export class TrackedData<TKey, TEvent> implements Processable, Retainable {
         this.mergeEvents = mergeEvents;
         this.itemSubscriptions = new Map();
         this.eventSubscriptions = [];
-        this.dirtyKeys = new Map();
-        this.clock = 0;
+        this.dirtyArray = new DirtyArray();
         this.onAlive = lifecycle?.onAlive;
         this.onDead = lifecycle?.onDead;
         this.isDirty = false;
@@ -51,10 +50,10 @@ export class TrackedData<TKey, TEvent> implements Processable, Retainable {
     }
 
     tickClock() {
-        this.clock += 1;
+        this.dirtyArray.tickClock();
     }
 
-    notifyRead(key: TKey) {
+    notifyRead(key: 'length' | number) {
         const reader = notifyRead(this);
         if (reader && reader.__refcount > 0) {
             let subscriptions = this.itemSubscriptions.get(reader);
@@ -63,18 +62,16 @@ export class TrackedData<TKey, TEvent> implements Processable, Retainable {
                 this.itemSubscriptions.set(reader, subscriptions);
             }
             if (!subscriptions.has(key)) {
-                subscriptions.set(key, this.clock);
+                subscriptions.set(key, this.dirtyArray.getClock());
             }
         }
     }
 
-    markDirty(key: TKey) {
+    markDirty(key: 'length' | { start: number; end: number }) {
         if (this.__refcount === 0) {
             return;
         }
-        if (!this.dirtyKeys.has(key)) {
-            this.dirtyKeys.set(key, this.clock);
-        }
+        this.dirtyArray.markDirty(key);
         if (!this.isDirty) {
             markDirty(this);
             this.isDirty = true;
@@ -132,12 +129,12 @@ export class TrackedData<TKey, TEvent> implements Processable, Retainable {
 
         this.itemSubscriptions.clear();
         this.eventSubscriptions = [];
-        this.dirtyKeys.clear();
-        this.clock = 0;
+        this.dirtyArray.clear();
+        this.dirtyArray.resetClock();
     }
 
     __recalculate(): Processable[] {
-        log.assert(this.__refcount > 0, 'cannot flush dead trackeddata');
+        log.assert(this.__refcount > 0, 'cannot flush dead trackedarray');
 
         const toPropagate = new Set<Retainable & Processable>();
 
@@ -148,8 +145,8 @@ export class TrackedData<TKey, TEvent> implements Processable, Retainable {
         ] of this.itemSubscriptions.entries()) {
             if (reader.__refcount > 0) {
                 for (const [key, whenRead] of subscriptions.entries()) {
-                    const whenChanged = this.dirtyKeys.get(key);
-                    if (whenChanged !== undefined && whenRead <= whenChanged) {
+                    const whenChanged = this.dirtyArray.get(key);
+                    if (whenChanged !== null && whenRead <= whenChanged) {
                         toPropagate.add(reader);
                     }
                 }
@@ -168,7 +165,7 @@ export class TrackedData<TKey, TEvent> implements Processable, Retainable {
             }
         });
 
-        this.dirtyKeys.clear();
+        this.dirtyArray.clear();
         this.isDirty = false;
 
         // Propagate dirtiness
