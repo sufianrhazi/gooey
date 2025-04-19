@@ -1,28 +1,54 @@
-import type { Component, Model } from '../..';
-import Gooey, { calc, collection, field, flush, model, mount } from '../..';
+import Gooey, {
+    calc,
+    collection,
+    field,
+    flush,
+    model,
+    mount,
+    VERSION,
+} from '../..';
+import type { Collection, Component, Model } from '../..';
 
 const isRunning = field(false);
 
-const measurements = collection<string>([]);
-const byType = {
+const allMeasurements = [
+    { name: '1:add', count: 10000 },
+    { name: '2:update-all', count: 10000 },
+    { name: '3:update-some', count: 10 },
+    { name: '4:insert-some', count: 10 },
+    { name: '5:delete-some', count: 10 },
+    { name: '6:clear', count: 10000 },
+];
+
+function getMedian(count: number, times: number[]) {
+    if (times.length === 0) {
+        return 'N/A';
+    }
+    const sorted = [...times].sort((a, b) => a - b);
+    const left = sorted[Math.floor((sorted.length - 1) / 2)];
+    const right = sorted[Math.ceil((sorted.length - 1) / 2)];
+    const median = (left + right) / 2;
+    const itemsPerMs = count / median;
+    return `${median.toFixed(2)}ms (${itemsPerMs.toFixed(2)} items/ms)`;
+}
+
+const measurements: Record<string, Collection<number>> = {
     '1:add': collection<number>([]),
     '2:update-all': collection<number>([]),
     '3:update-some': collection<number>([]),
-    '4:replace-multiple': collection<number>([]),
-    '4:insert-multiple': collection<number>([]),
-    '4:remove-multiple': collection<number>([]),
-    '5:clear': collection<number>([]),
+    '4:insert-some': collection<number>([]),
+    '5:delete-some': collection<number>([]),
+    '6:clear': collection<number>([]),
 };
 
-const measure = (name: keyof typeof byType, fn: () => void) => {
+const measure = (name: string, fn: () => void) => {
     return () => {
         const start = performance.now();
         fn();
         flush();
         const time = performance.now() - start;
         console.log(`gooey ${name} duration`, time);
-        measurements.push(`gooey ${name} duration: ${time}ms`);
-        byType[name].push(time);
+        measurements[name].push(time);
     };
 };
 
@@ -33,32 +59,6 @@ const Benchmark: Component = () => {
     const addItems = measure('1:add', () => {
         for (let i = 0; i < 10000; ++i) {
             items.push(model({ val: itemId++ }));
-        }
-    });
-
-    const replaceMultiple = measure('4:replace-multiple', () => {
-        for (let i = 0; i < 10; ++i) {
-            items.splice(
-                Math.floor(Math.random() * items.length),
-                1,
-                model({ val: itemId++ })
-            );
-        }
-    });
-
-    const insertMultiple = measure('4:insert-multiple', () => {
-        for (let i = 0; i < 10; ++i) {
-            items.splice(
-                Math.floor(Math.random() * items.length),
-                0,
-                model({ val: itemId++ })
-            );
-        }
-    });
-
-    const removeMultiple = measure('4:remove-multiple', () => {
-        for (let i = 0; i < 10; ++i) {
-            items.splice(Math.floor(Math.random() * items.length), 1);
         }
     });
 
@@ -73,21 +73,48 @@ const Benchmark: Component = () => {
         }
     });
 
-    const clearItems = measure('5:clear', () => {
+    const insertSomeItems = measure('4:insert-some', () => {
+        for (let i = 0; i < 10; ++i) {
+            items.splice(Math.floor(Math.random() * items.length), 0, {
+                val: itemId++,
+            });
+        }
+    });
+
+    const deleteSomeItems = measure('5:delete-some', () => {
+        if (items.length === 0) return;
+        for (let i = 0; i < 10; ++i) {
+            items.splice(Math.floor(Math.random() * items.length), 1);
+        }
+    });
+
+    const clearItems = measure('6:clear', () => {
         items.splice(0, items.length);
     });
 
+    const runBenchmark = async () => {
+        isRunning.set(true);
+        const RUNS = 100;
+        for (let i = 0; i < RUNS; ++i) {
+            addItems();
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            updateAllItems();
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            updateSomeItems();
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            insertSomeItems();
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            deleteSomeItems();
+            await new Promise((resolve) => setTimeout(resolve, 10));
+            clearItems();
+            await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        isRunning.set(false);
+    };
+
     return (
         <div>
-            <style>
-                {`
-.item-container {
-    height: 100px;
-    overflow: auto;
-    contain: strict;
-}
-            `}
-            </style>
+            <p>Gooey version {VERSION}</p>
             <p>
                 <button disabled={isRunning} data-gooey-add on:click={addItems}>
                     Add items
@@ -104,28 +131,21 @@ const Benchmark: Component = () => {
                     data-gooey-update-some
                     on:click={updateSomeItems}
                 >
-                    Update 10 random items
+                    Update 10 items
                 </button>
                 <button
                     disabled={isRunning}
-                    data-gooey-replace-multiple
-                    on:click={replaceMultiple}
+                    data-gooey-insert-some
+                    on:click={insertSomeItems}
                 >
-                    Replace 10 random items
+                    Insert 10 items
                 </button>
                 <button
                     disabled={isRunning}
-                    data-gooey-insert-multiple
-                    on:click={insertMultiple}
+                    data-gooey-delete-some
+                    on:click={deleteSomeItems}
                 >
-                    Insert 10 random items
-                </button>
-                <button
-                    disabled={isRunning}
-                    data-gooey-remove-multiple
-                    on:click={removeMultiple}
-                >
-                    Remove 10 random items
+                    Delete 10 items
                 </button>
                 <button
                     disabled={isRunning}
@@ -134,141 +154,33 @@ const Benchmark: Component = () => {
                 >
                     Clear items
                 </button>
-                <button disabled={isRunning} on:click={run}>
-                    Run all 100 times
+                <button disabled={isRunning} on:click={runBenchmark}>
+                    Run benchmark
                 </button>
             </p>
-            <ul class="item-container">
+            <ul
+                class="bx by"
+                style="height: 100px; overflow: auto; contain: strict"
+            >
                 {items.mapView((item) => (
                     <li>{calc(() => item.val)}</li>
                 ))}
             </ul>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Action</th>
-                        <th>Min</th>
-                        <th>Max</th>
-                        <th>Median</th>
-                        <th>p95</th>
-                        <th>p99</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {Object.entries(byType).map(([type, collection]) => (
-                        <tr>
-                            <td>{type}</td>
-                            <td>
-                                {calc(() =>
-                                    collection.reduce(
-                                        (acc, val) => (acc < val ? acc : val),
-                                        Infinity
-                                    )
-                                )}
-                            </td>
-                            <td>
-                                {calc(() =>
-                                    collection.reduce(
-                                        (acc, val) => (acc > val ? acc : val),
-                                        -Infinity
-                                    )
-                                )}
-                            </td>
-                            {calc(() => {
-                                const sorted = collection
-                                    .slice()
-                                    .sort((a, b) => a - b);
-                                return (
-                                    <>
-                                        <td>
-                                            {(sorted[
-                                                Math.floor(sorted.length / 2)
-                                            ] +
-                                                sorted[
-                                                    Math.ceil(sorted.length / 2)
-                                                ]) /
-                                                2}
-                                        </td>
-                                        <td>
-                                            {(sorted[
-                                                Math.floor(
-                                                    (sorted.length - 1) * 0.95
-                                                )
-                                            ] +
-                                                sorted[
-                                                    Math.ceil(
-                                                        (sorted.length - 1) *
-                                                            0.95
-                                                    )
-                                                ]) /
-                                                2}
-                                        </td>
-                                        <td>
-                                            {(sorted[
-                                                Math.floor(
-                                                    (sorted.length - 1) * 0.99
-                                                )
-                                            ] +
-                                                sorted[
-                                                    Math.ceil(
-                                                        (sorted.length - 1) *
-                                                            0.99
-                                                    )
-                                                ]) /
-                                                2}
-                                        </td>
-                                    </>
-                                );
-                            })}
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
             <ul>
-                {measurements.mapView((measurement) => (
-                    <li>{measurement}</li>
+                {allMeasurements.map(({ name, count }) => (
+                    <li>
+                        {name}:{' '}
+                        {calc(() => (
+                            <>
+                                {measurements[name].length} runs; median time:{' '}
+                                {getMedian(count, measurements[name])}
+                            </>
+                        ))}
+                    </li>
                 ))}
             </ul>
         </div>
     );
 };
 
-const mainEl = document.getElementById('main');
-if (mainEl) {
-    mount(mainEl, <Benchmark />);
-}
-
-async function run() {
-    isRunning.set(true);
-    const impl = {
-        add: document.querySelector('[data-gooey-add]'),
-        updateAll: document.querySelector('[data-gooey-update-all]'),
-        updateSome: document.querySelector('[data-gooey-update-some]'),
-        replaceMultiple: document.querySelector(
-            '[data-gooey-replace-multiple]'
-        ),
-        insertMultiple: document.querySelector('[data-gooey-insert-multiple]'),
-        removeMultiple: document.querySelector('[data-gooey-remove-multiple]'),
-        clear: document.querySelector('[data-gooey-clear]'),
-    };
-
-    const RUNS = 100;
-    for (let i = 0; i < RUNS; ++i) {
-        impl.add?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        impl.updateSome?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        impl.updateAll?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        impl.replaceMultiple?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        impl.insertMultiple?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        impl.removeMultiple?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        impl.clear?.dispatchEvent(new MouseEvent('click'));
-        await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-    isRunning.set(false);
-}
-(window as any).run = run;
+mount(document.getElementById('main')!, <Benchmark />);
