@@ -79,14 +79,20 @@ export function applyArrayEvent<T>(
  *
  * i.e. join splice events that can be joined
  */
-export function* mergeArrayEvents<T>(events: ArrayEvent<T>[]) {
-    if (events.length === 0) {
+export function* mergeArrayEvents<T>(events: Iterable<ArrayEvent<T>>) {
+    const iterator = events[Symbol.iterator]();
+    const firstItem = iterator.next();
+    if (firstItem.done) {
         return;
     }
-    let lastEvent: ArrayEvent<T> = events[0];
+    let lastEvent = firstItem.value;
     let mergedItems: T[] | undefined;
-    for (let i = 1; i < events.length; ++i) {
-        const event = events[i];
+    while (true) {
+        const nextItem = iterator.next();
+        if (nextItem.done) {
+            break;
+        }
+        const event = nextItem.value;
 
         // Case 1: the insertion point of a splice is at the end of the change of the prior splice
         // These can be merged by using the 1st event's index, summing the count, and concatenating the items

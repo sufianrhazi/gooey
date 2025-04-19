@@ -1,6 +1,5 @@
 import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
 
-import { setLogLevel } from '../common/log';
 import type { Calculation } from './calc';
 import { calc } from './calc';
 import { collection } from './collection';
@@ -237,7 +236,6 @@ suite('calc', () => {
     });
 
     test('dependencies are path-dependent', () => {
-        setLogLevel('debug');
         const dependency = model(
             {
                 a: 1,

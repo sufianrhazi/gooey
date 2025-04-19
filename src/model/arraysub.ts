@@ -283,8 +283,8 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
     private declare source: DynamicArray<TSource>;
     private declare sourceUnsubscribe: (() => void) | undefined;
     private declare eventTransform: (
-        event: ArrayEvent<TSource>
-    ) => ArrayEvent<T>[];
+        events: Iterable<ArrayEvent<TSource>>
+    ) => Iterable<ArrayEvent<T>>;
     private declare items: T[];
     private declare trackedData: TrackedData<
         number | typeof lengthSymbol,
@@ -295,7 +295,9 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
 
     constructor(
         source: DynamicArray<TSource>,
-        eventTransform: (event: ArrayEvent<TSource>) => ArrayEvent<T>[],
+        eventTransform: (
+            events: Iterable<ArrayEvent<TSource>>
+        ) => Iterable<ArrayEvent<T>>,
         debugName?: string
     ) {
         this.source = source;
@@ -307,9 +309,7 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
                 onAlive: () => {
                     this.source.retain();
                     this.sourceUnsubscribe = this.source.subscribe((events) => {
-                        for (const event of events) {
-                            this.ingestEvent(event);
-                        }
+                        this.ingestEvents(events);
                     });
                 },
                 onDead: () => {
@@ -364,8 +364,8 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
         };
     }
 
-    private ingestEvent(event: ArrayEvent<TSource>) {
-        const transformedEvents = this.eventTransform(event);
+    private ingestEvents(events: Iterable<ArrayEvent<TSource>>) {
+        const transformedEvents = mergeArrayEvents(this.eventTransform(events));
         for (const transformed of transformedEvents) {
             const lengthBefore = this.items.length;
             applyArrayEvent(this.items, transformed);
@@ -430,19 +430,20 @@ export function mapView<TSource, TTarget>(
     source: DynamicArray<TSource>,
     mapFn: (val: TSource) => TTarget
 ): DerivedArraySub<TTarget, TSource> {
-    return new DerivedArraySub(source, (event) => {
-        switch (event.type) {
-            case ArrayEventType.SPLICE:
-                return [
-                    {
+    return new DerivedArraySub(source, function* (events) {
+        for (const event of events) {
+            switch (event.type) {
+                case ArrayEventType.SPLICE:
+                    yield {
                         type: event.type,
                         index: event.index,
                         count: event.count,
                         items: event.items?.map((val) => mapFn(val)),
-                    },
-                ];
-            default:
-                return [event];
+                    };
+                    break;
+                default:
+                    yield event;
+            }
         }
     });
 }
@@ -452,41 +453,37 @@ export function flatMapView<TSource, TTarget>(
     mapFn: (val: TSource) => TTarget[]
 ): DerivedArraySub<TTarget, TSource> {
     const slotSizes = new SlotSizes<TTarget[]>([]);
-    return new DerivedArraySub(source, (event) => {
-        const events: ArrayEvent<TTarget>[] = [];
-        switch (event.type) {
-            case ArrayEventType.SPLICE: {
-                const mappedItems =
-                    event.items?.map((item) => mapFn(item)) ?? [];
-                events.push(
-                    slotSizes.splice<TTarget>(
+    return new DerivedArraySub(source, function* (events) {
+        for (const event of events) {
+            switch (event.type) {
+                case ArrayEventType.SPLICE: {
+                    const mappedItems =
+                        event.items?.map((item) => mapFn(item)) ?? [];
+                    yield slotSizes.splice<TTarget>(
                         event.index,
                         event.count,
                         mappedItems
-                    ).event
-                );
-                mappedItems.forEach((item) => {
-                    events.push(
-                        slotSizes.applyEvent(item, {
+                    ).event;
+                    for (const item of mappedItems) {
+                        yield slotSizes.applyEvent(item, {
                             type: ArrayEventType.SPLICE,
                             index: 0,
                             count: 0,
                             items: item,
-                        })
-                    );
-                });
-                break;
-            }
-            case ArrayEventType.SORT: {
-                events.push(slotSizes.sort(event.from, event.indexes));
-                break;
-            }
-            case ArrayEventType.MOVE: {
-                events.push(slotSizes.move(event.from, event.count, event.to));
-                break;
+                        });
+                    }
+                    break;
+                }
+                case ArrayEventType.SORT: {
+                    yield slotSizes.sort(event.from, event.indexes);
+                    break;
+                }
+                case ArrayEventType.MOVE: {
+                    yield slotSizes.move(event.from, event.count, event.to);
+                    break;
+                }
             }
         }
-        return events;
     });
 }
 
