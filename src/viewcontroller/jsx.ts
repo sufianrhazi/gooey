@@ -35,6 +35,7 @@ export type JSXNode =
     | RenderNode
     | JSXNodeArray
     | Dynamic<JSXNode>
+    | Promise<JSXNode>
     | JSXRenderable;
 
 // The following interfaces are to allow for a recursive type alias: JSXNode

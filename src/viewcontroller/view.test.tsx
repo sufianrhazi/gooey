@@ -2482,6 +2482,65 @@ suite('foreign elements', () => {
     });
 });
 
+suite('promise values', () => {
+    test('promise resolved values are rendered', async () => {
+        const promise = Promise.resolve(<p id="inner">hooray</p>);
+        mount(testRoot, <div id="outer">{promise}</div>);
+        await Promise.resolve();
+        flush();
+        assert.is(
+            '<div id="outer"><p id="inner">hooray</p></div>',
+            testRoot.innerHTML
+        );
+    });
+
+    test('promise values render when resolved', async () => {
+        let res: (val: JSX.Node) => void = () => {};
+        const promise = new Promise<JSX.Node>((resolve) => {
+            res = resolve;
+        });
+        mount(testRoot, <div id="outer">{promise}</div>);
+
+        await Promise.resolve();
+
+        assert.is('<div id="outer"></div>', testRoot.innerHTML);
+
+        res(<p id="inner">hooray</p>);
+
+        await Promise.resolve();
+        flush();
+        assert.is(
+            '<div id="outer"><p id="inner">hooray</p></div>',
+            testRoot.innerHTML
+        );
+    });
+
+    test('promise values throw errors when errored', async () => {
+        let rej: (err: any) => void = () => {};
+        const promise = new Promise<JSX.Node>((resolve, reject) => {
+            rej = reject;
+        });
+        const MyComponent: Component = (_, { onError }) => {
+            onError((e) => <p id="error">we dead: {e.message}</p>);
+            return <div id="outer">{promise}</div>;
+        };
+        mount(testRoot, <MyComponent />);
+
+        await Promise.resolve();
+
+        assert.is('<div id="outer"></div>', testRoot.innerHTML);
+
+        rej(new Error('Something bad happened'));
+
+        await Promise.resolve();
+        flush();
+        assert.is(
+            '<p id="error">we dead: Something bad happened</p>',
+            testRoot.innerHTML
+        );
+    });
+});
+
 suite('IntrinsicObserver component', () => {
     test('with no children does nothing', () => {
         const nodes: {

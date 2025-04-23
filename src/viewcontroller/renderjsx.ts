@@ -1,4 +1,7 @@
 import * as log from '../common/log';
+import { wrapError } from '../common/util';
+import { calc } from '../model/calc';
+import { field } from '../model/field';
 import { isCustomJSXNode } from './jsx';
 import { ArrayRenderNode } from './rendernode/arrayrendernode';
 import { DynamicRenderNode } from './rendernode/dynamicrendernode';
@@ -43,10 +46,43 @@ export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
     }
     if (
         typeof jsxNode === 'object' &&
+        'get' in jsxNode &&
         typeof jsxNode.get === 'function' &&
         typeof jsxNode.subscribe === 'function'
     ) {
         return DynamicRenderNode(renderJSXNode, jsxNode);
+    }
+    if (
+        typeof jsxNode === 'object' &&
+        'then' in jsxNode &&
+        typeof jsxNode.then === 'function'
+    ) {
+        const promiseResult = field<
+            | { type: 'error'; error: Error }
+            | { type: 'resolved'; value: any }
+            | null
+        >(null);
+        const renderedValue = calc(() => {
+            const result = promiseResult.get();
+            if (!result) {
+                return null;
+            }
+            if (result.type === 'resolved') {
+                return result.value;
+            }
+            throw result.error;
+        });
+        jsxNode.then(
+            (val: any) => {
+                console.log('OK');
+                promiseResult.set({ type: 'resolved', value: val });
+            },
+            (err: any) => {
+                console.log('NOPE');
+                promiseResult.set({ type: 'error', error: wrapError(err) });
+            }
+        );
+        return DynamicRenderNode(renderJSXNode, renderedValue);
     }
     log.warn('Unexpected JSX node type, rendering nothing', jsxNode);
     return emptyRenderNode;
