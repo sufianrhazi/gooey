@@ -1040,7 +1040,7 @@ suite('ArrayRenderNode', () => {
                 },
                 {
                     type: ArrayEventType.SPLICE,
-                    index: 4,
+                    index: 3,
                     count: 0,
                     items: [div5],
                 },

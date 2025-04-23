@@ -167,7 +167,7 @@ export class SlotSizes<TEventSource> {
         switch (event.type) {
             case ArrayEventType.SPLICE: {
                 this.slots[sourceIndex] +=
-                    event.items?.length ?? 0 - event.count;
+                    (event.items?.length ?? 0) - event.count;
                 return {
                     type: ArrayEventType.SPLICE,
                     index: event.index + shift,
