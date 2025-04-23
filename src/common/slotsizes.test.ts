@@ -308,4 +308,91 @@ suite('SlotSizes', () => {
         );
         assert.deepEqual(['b:0', 'x:0', 'x:1', 'x:2', 'a:2'], result);
     });
+
+    test('bug: move with splice inbetween', () => {
+        const a = {};
+        const b = {};
+        const c = {};
+        const d = {};
+        const e = {};
+        const result: string[] = [];
+        const slotSizes = new SlotSizes<{}>([a, b, c, d, e]);
+
+        applyArrayEvent(
+            result,
+            slotSizes.applyEvent(a, {
+                type: ArrayEventType.SPLICE,
+                index: 0,
+                count: 0,
+                items: ['a'],
+            })
+        );
+        applyArrayEvent(
+            result,
+            slotSizes.applyEvent(b, {
+                type: ArrayEventType.SPLICE,
+                index: 0,
+                count: 0,
+                items: ['b'],
+            })
+        );
+        applyArrayEvent(
+            result,
+            slotSizes.applyEvent(c, {
+                type: ArrayEventType.SPLICE,
+                index: 0,
+                count: 0,
+                items: ['c'],
+            })
+        );
+        applyArrayEvent(
+            result,
+            slotSizes.applyEvent(d, {
+                type: ArrayEventType.SPLICE,
+                index: 0,
+                count: 0,
+                items: ['d'],
+            })
+        );
+        applyArrayEvent(
+            result,
+            slotSizes.applyEvent(e, {
+                type: ArrayEventType.SPLICE,
+                index: 0,
+                count: 0,
+                items: ['e'],
+            })
+        );
+
+        assert.deepEqual(['a', 'b', 'c', 'd', 'e'], result);
+
+        applyArrayEvent(result, slotSizes.move(3, 2, 0));
+
+        assert.deepEqual(['d', 'e', 'a', 'b', 'c'], result);
+
+        applyArrayEvent(
+            result,
+            slotSizes.applyEvent(a, {
+                type: ArrayEventType.SPLICE,
+                index: 0,
+                count: 0,
+                items: ['beforeA'],
+            })
+        );
+
+        applyArrayEvent(
+            result,
+            slotSizes.applyEvent(a, {
+                type: ArrayEventType.SPLICE,
+                index: 2,
+                count: 0,
+                items: ['afterA'],
+            })
+        );
+
+        assert.deepEqual(
+            ['d', 'e', 'beforeA', 'a', 'afterA', 'b', 'c'],
+            result
+        );
+    });
 });

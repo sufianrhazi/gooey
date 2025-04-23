@@ -89,7 +89,7 @@ export class SumArray {
             sum += this.buckets[bucketIndex];
         }
         const start = index & ~(this.bucketSize - 1);
-        for (let j = start; j < index; ++j) {
+        for (let j = start; j < index && j < this.slots.length; ++j) {
             sum += this.slots[j];
         }
         return sum;

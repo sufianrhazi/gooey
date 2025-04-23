@@ -42,10 +42,6 @@ export class SlotSizes<TEventSource> {
         }
     }
 
-    index(item: TEventSource): number | undefined {
-        return this.indexes.get(item);
-    }
-
     get(index: number): TEventSource | undefined {
         return this.items[index];
     }
@@ -59,8 +55,7 @@ export class SlotSizes<TEventSource> {
 
         const toShift = this.slots.getSum(to);
 
-        this.updateIndexes(from, from + count);
-        this.updateIndexes(to, to + count);
+        this.updateIndexes(Math.min(from, to), Math.max(from, to) + count);
 
         return {
             type: ArrayEventType.MOVE,
