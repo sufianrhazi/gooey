@@ -6,21 +6,34 @@ import type {
     ArrayEventSplice,
 } from './arrayevent';
 import * as log from './log';
+import { SumArray } from './sumarray';
+
+// 5 bit (32-sized bucket) size was chosen due to balancing practical sizes
+// Most elements have fewer than 32 items, so this will have no effect on those elements
+// However, if elements grow beyond 32 items, they tend to have many more (likely in the dozens to hundreds)
+// This seems like a "right" number to balance things out
+const SUMARRAY_BITS = 5;
 
 export class SlotSizes<TEventSource> {
     items: TEventSource[];
-    private slots: number[];
+    private slots: SumArray;
     private indexes: Map<TEventSource, number>;
 
     constructor(items: TEventSource[]) {
-        this.slots = items.map(() => 0);
+        this.slots = new SumArray(
+            SUMARRAY_BITS,
+            items.map(() => 0)
+        );
         this.items = items;
         this.indexes = new Map();
         this.updateIndexes(0, items.length);
     }
 
     clearSlots() {
-        this.slots = this.items.map(() => 0);
+        this.slots = new SumArray(
+            SUMARRAY_BITS,
+            this.items.map(() => 0)
+        );
     }
 
     updateIndexes(lo: number, hi: number) {
@@ -38,22 +51,13 @@ export class SlotSizes<TEventSource> {
     }
 
     move(from: number, count: number, to: number): ArrayEventMove {
-        let fromShift = 0;
-        let countShift = 0;
-        let toShift = 0;
-        for (let i = 0; i < from; ++i) {
-            fromShift += this.slots[i];
-        }
-        for (let i = from; i < from + count; ++i) {
-            countShift += this.slots[i];
-        }
+        const fromShift = this.slots.getSum(from);
+        const countShift = this.slots.getSum(from + count) - fromShift;
 
-        applyMove(this.slots, from, count, to);
+        this.slots.move(from, count, to);
         applyMove(this.items, from, count, to);
 
-        for (let i = 0; i < to; ++i) {
-            toShift += this.slots[i];
-        }
+        const toShift = this.slots.getSum(to);
 
         this.updateIndexes(from, from + count);
         this.updateIndexes(to, to + count);
@@ -94,19 +98,19 @@ export class SlotSizes<TEventSource> {
         let totalIndex = 0;
         const indexedSlots: number[][] = [];
         for (let i = 0; i < from + indexes.length; ++i) {
-            const slotSize = this.slots[i];
+            const slotSize = this.slots.get(i);
             const indexedSlot: number[] = [];
             for (let j = 0; j < slotSize; ++j) {
                 indexedSlot.push(totalIndex++);
             }
             indexedSlots.push(indexedSlot);
             if (i < from) {
-                fromShift += this.slots[i];
+                fromShift += this.slots.get(i);
             }
         }
         applySort(indexedSlots, from, indexes);
         const newIndexes = indexedSlots.slice(from).flat();
-        applySort(this.slots, from, indexes);
+        this.slots.sort(from, indexes);
         applySort(this.items, from, indexes);
         this.updateIndexes(from, from + indexes.length);
         return {
@@ -121,15 +125,13 @@ export class SlotSizes<TEventSource> {
         count: number,
         items: TEventSource[]
     ): { removed: TEventSource[]; event: ArrayEventSplice<T> } {
-        let shiftIndex = 0;
-        for (let i = 0; i < index; ++i) {
-            shiftIndex += this.slots[i];
-        }
-        let shiftCount = 0;
-        for (let i = index; i < index + count; ++i) {
-            shiftCount += this.slots[i];
-        }
-        this.slots.splice(index, count, ...items.map(() => 0));
+        const shiftIndex = this.slots.getSum(index);
+        const shiftCount = this.slots.getSum(index + count) - shiftIndex;
+        this.slots.splice(
+            index,
+            count,
+            items.map(() => 0)
+        );
         const removedItems = this.items.splice(index, count, ...items);
         for (const removedItem of removedItems) {
             this.indexes.delete(removedItem);
@@ -160,14 +162,15 @@ export class SlotSizes<TEventSource> {
             'event from unknown SlotSizes source',
             source
         );
-        let shift = 0;
-        for (let i = 0; i < sourceIndex; ++i) {
-            shift += this.slots[i];
-        }
+        const shift = this.slots.getSum(sourceIndex);
         switch (event.type) {
             case ArrayEventType.SPLICE: {
-                this.slots[sourceIndex] +=
-                    (event.items?.length ?? 0) - event.count;
+                this.slots.set(
+                    sourceIndex,
+                    this.slots.get(sourceIndex) +
+                        (event.items?.length ?? 0) -
+                        event.count
+                );
                 return {
                     type: ArrayEventType.SPLICE,
                     index: event.index + shift,
