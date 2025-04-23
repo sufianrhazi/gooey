@@ -9,7 +9,7 @@ export interface DynamicArray<T> {
 }
 export declare class ArraySub<T> implements DynamicArray<T> {
     private items;
-    private trackedData;
+    private trackedArray;
     __debugName: string;
     constructor(init?: T[] | undefined, debugName?: string, lifecycle?: {
         onAlive?: () => void;
@@ -38,15 +38,15 @@ export declare class DerivedArraySub<T, TSource> implements DynamicArray<T> {
     private sourceUnsubscribe;
     private eventTransform;
     private items;
-    private trackedData;
+    private trackedArray;
     __debugName: string;
-    constructor(source: DynamicArray<TSource>, eventTransform: (event: ArrayEvent<TSource>) => ArrayEvent<T>[], debugName?: string);
+    constructor(source: DynamicArray<TSource>, eventTransform: (events: Iterable<ArrayEvent<TSource>>) => Iterable<ArrayEvent<T>>, debugName?: string);
     get(index: number): T;
     getItemsUnsafe(): T[];
     set(index: number, value: T): void;
     getLength(): number;
     subscribe(handler: (events: Iterable<ArrayEvent<T>>) => void): () => void;
-    private ingestEvent;
+    private ingestEvents;
     retain(): void;
     release(): void;
 }

@@ -29,5 +29,5 @@ export declare function applyArrayEvent<T>(target: T[], event: ArrayEvent<T>): r
  *
  * i.e. join splice events that can be joined
  */
-export declare function mergeArrayEvents<T>(events: ArrayEvent<T>[]): Generator<ArrayEvent<T>, void, unknown>;
+export declare function mergeArrayEvents<T>(events: Iterable<ArrayEvent<T>>): Generator<ArrayEvent<T>, void, unknown>;
 //# sourceMappingURL=arrayevent.d.ts.map

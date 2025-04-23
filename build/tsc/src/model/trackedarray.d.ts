@@ -1,9 +1,8 @@
 import type { Processable, Retainable } from './engine';
-export declare class TrackedData<TKey, TEvent> implements Processable, Retainable {
+export declare class TrackedArray<TEvent> implements Processable, Retainable {
     private itemSubscriptions;
     private eventSubscriptions;
-    private dirtyKeys;
-    private clock;
+    private dirtyArray;
     private onAlive?;
     private onDead?;
     private mergeEvents;
@@ -16,8 +15,11 @@ export declare class TrackedData<TKey, TEvent> implements Processable, Retainabl
         onDead?: () => void;
     }, debugName?: string);
     tickClock(): void;
-    notifyRead(key: TKey): void;
-    markDirty(key: TKey): void;
+    notifyRead(key: 'length' | number): void;
+    markDirty(key: 'length' | {
+        start: number;
+        end: number;
+    }): void;
     addEvent(event: TEvent): void;
     subscribe(handler: (events: Iterable<TEvent>) => void): () => void;
     retain(): void;
@@ -26,4 +28,4 @@ export declare class TrackedData<TKey, TEvent> implements Processable, Retainabl
     __dead(): void;
     __recalculate(): Processable[];
 }
-//# sourceMappingURL=trackeddata.d.ts.map
+//# sourceMappingURL=trackedarray.d.ts.map

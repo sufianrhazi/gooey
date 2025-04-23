@@ -86,484 +86,6 @@ function assertExhausted(context, ...items) {
   throw new InvariantError("Assertion failure", { context, items });
 }
 
-// src/viewcontroller/jsx.ts
-function isCustomJSXNode(node) {
-  return !!(node && typeof node === "object" && "__renderNode" in node && typeof node.__renderNode === "function");
-}
-function attrBooleanToEmptyString(val) {
-  if (!val)
-    return void 0;
-  return "";
-}
-function attrStringOrNumberToNumber(val) {
-  if (val === void 0)
-    return void 0;
-  return typeof val === "number" ? val : parseInt(val);
-}
-function attrYesNo(val) {
-  if (val === void 0)
-    return void 0;
-  return val === "no" ? false : true;
-}
-var attrBehavior = {
-  "accept-charset": { idn: "acceptCharset" },
-  "aria-atomic": { idn: "ariaAtomic" },
-  "aria-autocomplete": { idn: "ariaAutoComplete" },
-  "aria-busy": { idn: "ariaBusy" },
-  "aria-checked": { idn: "ariaChecked" },
-  "aria-colcount": { idn: "ariaColCount" },
-  "aria-colindex": { idn: "ariaColIndex" },
-  "aria-colindextext": { idn: "ariaColIndexText" },
-  "aria-colspan": { idn: "ariaColSpan" },
-  "aria-current": { idn: "ariaCurrent" },
-  "aria-disabled": { idn: "ariaDisabled" },
-  "aria-expanded": { idn: "ariaExpanded" },
-  "aria-haspopup": { idn: "ariaHasPopup" },
-  "aria-hidden": { idn: "ariaHidden" },
-  "aria-invalid": { idn: "ariaInvalid" },
-  "aria-keyshortcuts": { idn: "ariaKeyShortcuts" },
-  "aria-label": { idn: "ariaLabel" },
-  "aria-level": { idn: "ariaLevel" },
-  "aria-live": { idn: "ariaLive" },
-  "aria-modal": { idn: "ariaModal" },
-  "aria-multiline": { idn: "ariaMultiLine" },
-  "aria-multiselectable": { idn: "ariaMultiSelectable" },
-  "aria-orientation": { idn: "ariaOrientation" },
-  "aria-placeholder": { idn: "ariaPlaceholder" },
-  "aria-posinset": { idn: "ariaPosInSet" },
-  "aria-pressed": { idn: "ariaPressed" },
-  "aria-readonly": { idn: "ariaReadOnly" },
-  "aria-required": { idn: "ariaRequired" },
-  "aria-roledescription": { idn: "ariaRoleDescription" },
-  "aria-rowcount": { idn: "ariaRowCount" },
-  "aria-rowindex": { idn: "ariaRowIndex" },
-  "aria-rowindextext": { idn: "ariaRowIndexText" },
-  "aria-rowspan": { idn: "ariaRowSpan" },
-  "aria-selected": { idn: "ariaSelected" },
-  "aria-setsize": { idn: "ariaSetSize" },
-  "aria-sort": { idn: "ariaSort" },
-  "aria-valuemax": { idn: "ariaValueMax" },
-  "aria-valuemin": { idn: "ariaValueMin" },
-  "aria-valuenow": { idn: "ariaValueNow" },
-  "aria-valuetext": { idn: "ariaValueText" },
-  "http-equiv": { idn: "httpEquiv" },
-  abbr: {},
-  accept: {},
-  accesskey: { idn: "accessKey" },
-  action: {},
-  allow: {},
-  allowfullscreen: { idn: "allowFullscreen" },
-  alt: {},
-  as: {},
-  async: {},
-  autocapitalize: {},
-  autocomplete: {},
-  autofocus: {},
-  autoplay: {},
-  charset: { idn: null },
-  checked: {},
-  cite: {},
-  class: { idn: "className" },
-  color: { idn: null },
-  cols: { idv: attrStringOrNumberToNumber },
-  colspan: { idn: "colSpan", idv: attrStringOrNumberToNumber },
-  content: {},
-  contenteditable: { idn: "contentEditable" },
-  controls: {},
-  coords: {},
-  crossorigin: { idn: "crossOrigin" },
-  data: {},
-  datetime: { idn: "dateTime" },
-  decoding: {},
-  default: {},
-  defer: {},
-  dir: {},
-  dirname: { idn: "dirName" },
-  disabled: {},
-  download: {},
-  draggable: {},
-  enctype: {},
-  enterkeyhint: { idn: "enterKeyHint" },
-  for: { idn: "htmlFor" },
-  form: { idn: null },
-  formaction: { idn: "formAction" },
-  formenctype: { idn: "formEnctype" },
-  formmethod: { idn: "formMethod" },
-  formnovalidate: { idn: "formNoValidate" },
-  formtarget: { idn: "formTarget" },
-  headers: {},
-  height: { idv: attrStringOrNumberToNumber },
-  hidden: {},
-  high: { idv: attrStringOrNumberToNumber },
-  href: {},
-  hreflang: {},
-  id: {},
-  imagesizes: { idn: "imageSizes" },
-  imagesrcset: { idn: "imageSrcset" },
-  indeterminate: { noa: true },
-  inputmode: { idn: "inputMode" },
-  integrity: {},
-  is: { idn: null },
-  ismap: { idn: "isMap" },
-  itemid: { idn: null },
-  itemprop: { idn: null },
-  itemref: { idn: null },
-  itemscope: { idn: null },
-  itemtype: { idn: null },
-  kind: {},
-  label: {},
-  lang: {},
-  list: {},
-  loading: {},
-  loop: { idv: attrBooleanToEmptyString },
-  low: { idv: attrStringOrNumberToNumber },
-  max: { idv: attrStringOrNumberToNumber },
-  maxlength: {
-    idn: "maxLength",
-    idv: attrStringOrNumberToNumber
-  },
-  media: {},
-  method: {},
-  min: { idv: attrStringOrNumberToNumber },
-  minlength: {
-    idn: "minLength",
-    idv: attrStringOrNumberToNumber
-  },
-  multiple: {},
-  muted: {},
-  name: {},
-  nomodule: { idn: "noModule" },
-  nonce: {},
-  novalidate: { idn: "noValidate" },
-  open: {},
-  optimum: { idv: attrStringOrNumberToNumber },
-  pattern: {},
-  ping: {},
-  placeholder: {},
-  playsinline: { idn: "playsInline" },
-  popover: {
-    idv: (val) => {
-      if (val === true)
-        return "auto";
-      if (val === false)
-        return void 0;
-      return val;
-    }
-  },
-  poster: {},
-  preload: {},
-  readonly: { idn: "readOnly" },
-  referrerpolicy: { idn: "referrerPolicy" },
-  rel: {},
-  required: {},
-  reversed: {},
-  role: {},
-  rows: { idv: attrStringOrNumberToNumber },
-  rowspan: { idn: "rowSpan", idv: attrStringOrNumberToNumber },
-  sandbox: {},
-  scope: {},
-  selected: {},
-  shape: {},
-  size: { idv: attrStringOrNumberToNumber },
-  sizes: {},
-  slot: {},
-  span: { idv: attrStringOrNumberToNumber },
-  spellcheck: {},
-  src: {},
-  srcdoc: {},
-  srclang: {},
-  srcset: {},
-  start: { idv: attrStringOrNumberToNumber },
-  step: { idv: attrStringOrNumberToNumber },
-  style: {},
-  tabindex: { idn: "tabIndex", idv: attrStringOrNumberToNumber },
-  target: {},
-  title: {},
-  translate: { idv: attrYesNo },
-  type: {},
-  usemap: { idn: "useMap" },
-  // value: {}, // NOTE: value is special and depends on the element
-  width: { idv: attrStringOrNumberToNumber },
-  wrap: {}
-};
-function setAttribute(element, attributeName, val) {
-  if (val === void 0 || val === null || val === false) {
-    element.removeAttribute(attributeName);
-  } else if (val === true) {
-    element.setAttribute(attributeName, "");
-  } else if (typeof val === "string") {
-    element.setAttribute(attributeName, val);
-  } else if (typeof val === "number" || typeof val === "bigint") {
-    element.setAttribute(attributeName, val.toString());
-  }
-}
-function assignProp(element, attribute, value) {
-  if (!(element instanceof HTMLElement)) {
-    setAttribute(element, attribute, value);
-    return;
-  }
-  if (attribute === "value") {
-    switch (element.tagName) {
-      case "PROGRESS":
-      case "METER":
-        setAttribute(element, attribute, value);
-        element.value = attrStringOrNumberToNumber(value);
-        break;
-      case "SELECT":
-        element.value = value;
-        break;
-      case "BUTTON":
-      case "DATA":
-      case "INPUT":
-      case "LI":
-      case "OPTION":
-      case "PARAM":
-      case "TEXTAREA":
-        setAttribute(element, attribute, value);
-        element.value = value;
-        break;
-      default:
-        setAttribute(element, attribute, value);
-    }
-    return;
-  }
-  const behavior = attrBehavior[attribute];
-  if (behavior) {
-    if (!behavior.noa) {
-      const attributeValue = value;
-      setAttribute(element, attribute, attributeValue);
-    }
-    if (behavior.idn !== null) {
-      const idlValue = behavior.idv ? behavior.idv(value) : value;
-      element[behavior.idn ?? attribute] = idlValue;
-    }
-    return;
-  }
-  setAttribute(element, attribute, value);
-}
-
-// src/common/arrayevent.ts
-var ArrayEventType = /* @__PURE__ */ ((ArrayEventType2) => {
-  ArrayEventType2["SPLICE"] = "splice";
-  ArrayEventType2["MOVE"] = "move";
-  ArrayEventType2["SORT"] = "sort";
-  return ArrayEventType2;
-})(ArrayEventType || {});
-var EMPTY_ARRAY = [];
-function applySort(target, from, indexes) {
-  const duped = target.slice(from, from + indexes.length);
-  for (let i = 0; i < indexes.length; ++i) {
-    target[i + from] = duped[indexes[i] - from];
-  }
-}
-function applyMove(target, from, count, to) {
-  const slice = target.splice(from, count);
-  target.splice(to, 0, ...slice);
-}
-function applyArrayEvent(target, event) {
-  switch (event.type) {
-    case "splice" /* SPLICE */: {
-      if (event.items) {
-        return target.splice(event.index, event.count, ...event.items);
-      } else {
-        return target.splice(event.index, event.count);
-      }
-    }
-    case "sort" /* SORT */: {
-      applySort(target, event.from, event.indexes);
-      break;
-    }
-    case "move" /* MOVE */: {
-      applyMove(target, event.from, event.count, event.to);
-      break;
-    }
-    default:
-      assertExhausted(event);
-  }
-  return EMPTY_ARRAY;
-}
-function* mergeArrayEvents(events) {
-  if (events.length === 0) {
-    return;
-  }
-  let lastEvent = events[0];
-  let mergedItems;
-  for (let i = 1; i < events.length; ++i) {
-    const event = events[i];
-    if (event.type === "splice" /* SPLICE */ && lastEvent.type === "splice" /* SPLICE */ && lastEvent.index + (lastEvent.items?.length ?? 0) === event.index) {
-      if (!mergedItems) {
-        mergedItems = lastEvent.items?.slice() ?? [];
-      }
-      if (event.items) {
-        mergedItems.push(...event.items);
-      }
-      if (mergedItems.length) {
-        lastEvent = {
-          type: "splice" /* SPLICE */,
-          index: lastEvent.index,
-          count: lastEvent.count + event.count,
-          items: mergedItems
-        };
-      } else {
-        lastEvent = {
-          type: "splice" /* SPLICE */,
-          index: lastEvent.index,
-          count: lastEvent.count + event.count
-        };
-      }
-    } else {
-      yield lastEvent;
-      lastEvent = event;
-      mergedItems = void 0;
-    }
-  }
-  yield lastEvent;
-}
-
-// src/common/slotsizes.ts
-var SlotSizes = class {
-  constructor(items) {
-    this.slots = items.map(() => 0);
-    this.items = items;
-    this.indexes = /* @__PURE__ */ new Map();
-    this.updateIndexes(0, items.length);
-  }
-  clearSlots() {
-    this.slots = this.items.map(() => 0);
-  }
-  updateIndexes(lo, hi) {
-    for (let i = lo; i < hi; ++i) {
-      this.indexes.set(this.items[i], i);
-    }
-  }
-  index(item) {
-    return this.indexes.get(item);
-  }
-  get(index) {
-    return this.items[index];
-  }
-  move(from, count, to) {
-    let fromShift = 0;
-    let countShift = 0;
-    let toShift = 0;
-    for (let i = 0; i < from; ++i) {
-      fromShift += this.slots[i];
-    }
-    for (let i = from; i < from + count; ++i) {
-      countShift += this.slots[i];
-    }
-    applyMove(this.slots, from, count, to);
-    applyMove(this.items, from, count, to);
-    for (let i = 0; i < to; ++i) {
-      toShift += this.slots[i];
-    }
-    this.updateIndexes(from, from + count);
-    this.updateIndexes(to, to + count);
-    return {
-      type: "move" /* MOVE */,
-      from: fromShift,
-      count: countShift,
-      to: toShift
-    };
-  }
-  sort(from, indexes) {
-    let fromShift = 0;
-    let totalIndex = 0;
-    const indexedSlots = [];
-    for (let i = 0; i < from + indexes.length; ++i) {
-      const slotSize = this.slots[i];
-      const indexedSlot = [];
-      for (let j = 0; j < slotSize; ++j) {
-        indexedSlot.push(totalIndex++);
-      }
-      indexedSlots.push(indexedSlot);
-      if (i < from) {
-        fromShift += this.slots[i];
-      }
-    }
-    applySort(indexedSlots, from, indexes);
-    const newIndexes = indexedSlots.slice(from).flat();
-    applySort(this.slots, from, indexes);
-    applySort(this.items, from, indexes);
-    this.updateIndexes(from, from + indexes.length);
-    return {
-      type: "sort" /* SORT */,
-      from: fromShift,
-      indexes: newIndexes
-    };
-  }
-  splice(index, count, items) {
-    let shiftIndex = 0;
-    for (let i = 0; i < index; ++i) {
-      shiftIndex += this.slots[i];
-    }
-    let shiftCount = 0;
-    for (let i = index; i < index + count; ++i) {
-      shiftCount += this.slots[i];
-    }
-    this.slots.splice(index, count, ...items.map(() => 0));
-    const removedItems = this.items.splice(index, count, ...items);
-    for (const removedItem of removedItems) {
-      this.indexes.delete(removedItem);
-    }
-    if (this.items.length === count) {
-      this.updateIndexes(index, index + count);
-    } else {
-      this.updateIndexes(index, this.items.length);
-    }
-    return {
-      removed: removedItems,
-      event: {
-        type: "splice" /* SPLICE */,
-        index: shiftIndex,
-        count: shiftCount,
-        items: []
-        // Note: added items are _always_ treated as if they are empty
-      }
-    };
-  }
-  applyEvent(source, event) {
-    const sourceIndex = this.indexes.get(source);
-    assert(
-      sourceIndex !== void 0,
-      "event from unknown SlotSizes source",
-      source
-    );
-    let shift = 0;
-    for (let i = 0; i < sourceIndex; ++i) {
-      shift += this.slots[i];
-    }
-    switch (event.type) {
-      case "splice" /* SPLICE */: {
-        this.slots[sourceIndex] += event.items?.length ?? 0 - event.count;
-        return {
-          type: "splice" /* SPLICE */,
-          index: event.index + shift,
-          count: event.count,
-          items: event.items
-        };
-      }
-      case "sort" /* SORT */: {
-        return {
-          type: "sort" /* SORT */,
-          from: event.from + shift,
-          indexes: event.indexes.map((index) => index + shift)
-        };
-      }
-      case "move" /* MOVE */: {
-        return {
-          type: "move" /* MOVE */,
-          from: event.from + shift,
-          count: event.count,
-          to: event.to + shift
-        };
-      }
-      default:
-        assertExhausted(event, "unknown ArrayEvent type");
-    }
-  }
-};
-
 // src/common/util.ts
 var noop = () => {
 };
@@ -1657,6 +1179,913 @@ function debugGetGraph() {
   return { vertices, edges, labels };
 }
 
+// src/model/calc.ts
+function strictEqual(a, b) {
+  return a === b;
+}
+var Calculation = class {
+  ensureResult() {
+    const result = this._result;
+    if (result && !result.ok) {
+      return { propagate: false, result };
+    }
+    if (result?.ok && !result.stale) {
+      debug(`Reuse calc ${this.__debugName}`);
+      return { propagate: false, result };
+    }
+    if (result?.ok && result.stale) {
+      debug(`Recalculating calc (stale) ${this.__debugName}`);
+      const lastValue = result.value;
+      const newResult = this.recalc();
+      if (newResult.ok && this._eq(lastValue, newResult.value)) {
+        debug(`Stale recalculation reused ${this.__debugName}`);
+        return {
+          propagate: false,
+          result: {
+            ok: true,
+            stale: false,
+            value: lastValue
+          }
+        };
+      }
+      return { propagate: true, result: newResult };
+    }
+    debug(`Recalculating calc ${this.__debugName}`);
+    return { propagate: true, result: this.recalc() };
+  }
+  get() {
+    notifyRead(this);
+    const { result } = this.ensureResult();
+    if (!result.ok) {
+      throw result.error;
+    }
+    return result.value;
+  }
+  recalc() {
+    if (this._calculating) {
+      throw new SynchronousCycleError(
+        "Cycle error: calculation cycle reached itself",
+        this
+      );
+    }
+    this._calculating = true;
+    let result;
+    const newDependencies = /* @__PURE__ */ new Set();
+    try {
+      result = {
+        ok: true,
+        stale: false,
+        value: trackReads(
+          (dependency) => {
+            if (!newDependencies.has(dependency)) {
+              newDependencies.add(dependency);
+              retain(dependency);
+              if (!this._dependencies.has(dependency) && isProcessable(dependency) && this.__refcount > 0) {
+                addEdge(dependency, this);
+              }
+            }
+            return this;
+          },
+          () => this._fn(),
+          this.__debugName
+        )
+      };
+    } catch (e) {
+      result = {
+        ok: false,
+        error: wrapError(e)
+      };
+    }
+    this._calculating = false;
+    for (const prevDependency of this._dependencies) {
+      if (!newDependencies.has(prevDependency) && isProcessable(prevDependency)) {
+        removeEdge(prevDependency, this);
+      }
+      release(prevDependency);
+    }
+    this._dependencies = newDependencies;
+    const synchronousError = !result.ok && result.error instanceof SynchronousCycleError ? result.error : null;
+    if (synchronousError) {
+      if (this.__refcount > 0) {
+        markCycleInformed(this);
+      }
+      if (synchronousError.sourceCalculation !== this) {
+        synchronousError.passthruCalculations.add(this);
+      } else {
+        for (const calculation of synchronousError.passthruCalculations) {
+          calculation.__invalidate();
+        }
+        const cycleDependencies = new Set(
+          this._dependencies
+        );
+        for (const calculation of synchronousError.passthruCalculations) {
+          for (const dependency of calculation.__cycle()) {
+            cycleDependencies.add(dependency);
+          }
+        }
+        for (const calculation of synchronousError.passthruCalculations) {
+          cycleDependencies.delete(calculation);
+        }
+        cycleDependencies.delete(this);
+      }
+    }
+    if (!result.ok) {
+      let error2;
+      if (result.error instanceof SynchronousCycleError && result.error.sourceCalculation === this) {
+        error2 = new CycleError(
+          "Cycle error: calculation cycle reached itself"
+        );
+      } else {
+        error2 = result.error;
+      }
+      if (this._errorHandler) {
+        try {
+          result = {
+            ok: true,
+            stale: false,
+            value: this._errorHandler(error2)
+          };
+        } catch (innerError) {
+          result = {
+            ok: false,
+            error: wrapError(innerError)
+          };
+        }
+      } else {
+        result = {
+          ok: false,
+          error: error2
+        };
+      }
+    }
+    if (this.__refcount > 0) {
+      this._result = result;
+    }
+    if (synchronousError && synchronousError.sourceCalculation !== this) {
+      throw synchronousError;
+    }
+    return result;
+  }
+  constructor(fn, debugName) {
+    this.__refcount = 0;
+    this.__debugName = debugName ?? `calc:(${fn.name})`;
+    this.__processable = true;
+    this._result = void 0;
+    this._fn = fn;
+    this._errorHandler = void 0;
+    this._calculating = false;
+    this._eq = strictEqual;
+    this._dependencies = /* @__PURE__ */ new Set();
+    this._subscriptions = /* @__PURE__ */ new Set();
+  }
+  onError(handler) {
+    this._errorHandler = handler;
+    return this;
+  }
+  setCmp(eq) {
+    this._eq = eq;
+    return this;
+  }
+  subscribe(handler) {
+    retain(this);
+    let args;
+    try {
+      args = [void 0, this.get()];
+    } catch (e) {
+      args = [wrapError(e), void 0];
+    }
+    if (!this._subscriptions) {
+      this._subscriptions = /* @__PURE__ */ new Set();
+    }
+    this._subscriptions.add(handler);
+    const unsubscribe = () => {
+      this._subscriptions?.delete(handler);
+      release(this);
+    };
+    handler(...args);
+    return unsubscribe;
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  __alive() {
+    addVertex(this);
+  }
+  __dead() {
+    this._result = void 0;
+    for (const dependency of this._dependencies) {
+      if (isProcessable(dependency)) {
+        removeEdge(dependency, this);
+      }
+      release(dependency);
+    }
+    this._dependencies.clear();
+    removeVertex(this);
+  }
+  __recalculate(vertexGroup) {
+    const { propagate, result } = this.ensureResult();
+    debug(
+      `Recalculated ${this.__debugName} (propagate=${propagate}) {result=${JSON.stringify(result)}}`
+    );
+    this.notifySubscriptions(result);
+    const toPropagate = [];
+    if (propagate) {
+      for (const dependency of getForwardDependencies(this)) {
+        toPropagate.push(dependency);
+      }
+    }
+    return toPropagate;
+  }
+  __invalidate() {
+    if (this._result?.ok) {
+      this._result = { ...this._result, stale: true };
+    } else {
+      this._result = void 0;
+    }
+  }
+  __cycle() {
+    const error2 = new MarkedCycleError(
+      "Cycle error: calculation cycle reached itself"
+    );
+    if (this._errorHandler) {
+      try {
+        this._result = {
+          ok: true,
+          stale: false,
+          value: this._errorHandler(error2)
+        };
+      } catch (e) {
+        this._result = { ok: false, error: wrapError(e) };
+      }
+    } else {
+      this._result = {
+        ok: false,
+        error: error2
+      };
+    }
+    this.notifySubscriptions(this._result);
+    return [...getForwardDependencies(this)];
+  }
+  notifySubscriptions(result) {
+    for (const subscription of this._subscriptions) {
+      if (result.ok) {
+        subscription(void 0, result.value);
+      } else {
+        subscription(result.error, void 0);
+      }
+    }
+  }
+  map(fn) {
+    return calc(() => fn(this.get()));
+  }
+};
+var CycleError = class extends Error {
+};
+var MarkedCycleError = class extends CycleError {
+};
+var SynchronousCycleError = class extends CycleError {
+  constructor(msg, sourceCalculation) {
+    super(msg);
+    this.sourceCalculation = sourceCalculation;
+    this.passthruCalculations = /* @__PURE__ */ new Set();
+  }
+};
+function calc(fn, debugName) {
+  return new Calculation(fn, debugName);
+}
+
+// src/model/field.ts
+var Field = class {
+  constructor(val, debugName) {
+    this._val = val;
+    this._changeClock = 0;
+    this.__processable = true;
+    this.__refcount = 0;
+    this.__debugName = debugName ?? "field";
+  }
+  get() {
+    notifyRead(this);
+    return this._val;
+  }
+  set(newVal) {
+    if (newVal !== this._val) {
+      if (this._subscribers) {
+        this._changeClock += 1;
+      }
+      this._val = newVal;
+      if (this.__refcount > 0) {
+        markDirty(this);
+      }
+    }
+  }
+  subscribe(subscriber) {
+    this.retain();
+    if (!this._subscribers)
+      this._subscribers = /* @__PURE__ */ new Map();
+    this._subscribers.set(subscriber, this._changeClock);
+    subscriber(void 0, this._val);
+    return () => {
+      if (this._subscribers?.has(subscriber)) {
+        this._subscribers?.delete(subscriber);
+        this.release();
+      }
+    };
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  __alive() {
+    addVertex(this);
+  }
+  __dead() {
+    removeVertex(this);
+  }
+  __recalculate() {
+    assert(this.__refcount > 0, "cannot flush dead field");
+    if (this._subscribers) {
+      for (const [subscriber, observeClock] of this._subscribers) {
+        if (observeClock < this._changeClock) {
+          subscriber(void 0, this._val);
+        }
+        this._subscribers.set(subscriber, 0);
+      }
+      this._changeClock = 0;
+    }
+    return [...getForwardDependencies(this)];
+  }
+  map(fn) {
+    return calc(() => fn(this.get()));
+  }
+};
+function field(val, debugName) {
+  return new Field(val, debugName);
+}
+
+// src/viewcontroller/jsx.ts
+function isCustomJSXNode(node) {
+  return !!(node && typeof node === "object" && "__renderNode" in node && typeof node.__renderNode === "function");
+}
+function attrBooleanToEmptyString(val) {
+  if (!val)
+    return void 0;
+  return "";
+}
+function attrStringOrNumberToNumber(val) {
+  if (val === void 0)
+    return void 0;
+  return typeof val === "number" ? val : parseInt(val);
+}
+function attrYesNo(val) {
+  if (val === void 0)
+    return void 0;
+  return val === "no" ? false : true;
+}
+var attrBehavior = {
+  "accept-charset": { idn: "acceptCharset" },
+  "aria-atomic": { idn: "ariaAtomic" },
+  "aria-autocomplete": { idn: "ariaAutoComplete" },
+  "aria-busy": { idn: "ariaBusy" },
+  "aria-checked": { idn: "ariaChecked" },
+  "aria-colcount": { idn: "ariaColCount" },
+  "aria-colindex": { idn: "ariaColIndex" },
+  "aria-colindextext": { idn: "ariaColIndexText" },
+  "aria-colspan": { idn: "ariaColSpan" },
+  "aria-current": { idn: "ariaCurrent" },
+  "aria-disabled": { idn: "ariaDisabled" },
+  "aria-expanded": { idn: "ariaExpanded" },
+  "aria-haspopup": { idn: "ariaHasPopup" },
+  "aria-hidden": { idn: "ariaHidden" },
+  "aria-invalid": { idn: "ariaInvalid" },
+  "aria-keyshortcuts": { idn: "ariaKeyShortcuts" },
+  "aria-label": { idn: "ariaLabel" },
+  "aria-level": { idn: "ariaLevel" },
+  "aria-live": { idn: "ariaLive" },
+  "aria-modal": { idn: "ariaModal" },
+  "aria-multiline": { idn: "ariaMultiLine" },
+  "aria-multiselectable": { idn: "ariaMultiSelectable" },
+  "aria-orientation": { idn: "ariaOrientation" },
+  "aria-placeholder": { idn: "ariaPlaceholder" },
+  "aria-posinset": { idn: "ariaPosInSet" },
+  "aria-pressed": { idn: "ariaPressed" },
+  "aria-readonly": { idn: "ariaReadOnly" },
+  "aria-required": { idn: "ariaRequired" },
+  "aria-roledescription": { idn: "ariaRoleDescription" },
+  "aria-rowcount": { idn: "ariaRowCount" },
+  "aria-rowindex": { idn: "ariaRowIndex" },
+  "aria-rowindextext": { idn: "ariaRowIndexText" },
+  "aria-rowspan": { idn: "ariaRowSpan" },
+  "aria-selected": { idn: "ariaSelected" },
+  "aria-setsize": { idn: "ariaSetSize" },
+  "aria-sort": { idn: "ariaSort" },
+  "aria-valuemax": { idn: "ariaValueMax" },
+  "aria-valuemin": { idn: "ariaValueMin" },
+  "aria-valuenow": { idn: "ariaValueNow" },
+  "aria-valuetext": { idn: "ariaValueText" },
+  "http-equiv": { idn: "httpEquiv" },
+  abbr: {},
+  accept: {},
+  accesskey: { idn: "accessKey" },
+  action: {},
+  allow: {},
+  allowfullscreen: { idn: "allowFullscreen" },
+  alt: {},
+  as: {},
+  async: {},
+  autocapitalize: {},
+  autocomplete: {},
+  autofocus: {},
+  autoplay: {},
+  charset: { idn: null },
+  checked: {},
+  cite: {},
+  class: { idn: "className" },
+  color: { idn: null },
+  cols: { idv: attrStringOrNumberToNumber },
+  colspan: { idn: "colSpan", idv: attrStringOrNumberToNumber },
+  content: {},
+  contenteditable: { idn: "contentEditable" },
+  controls: {},
+  coords: {},
+  crossorigin: { idn: "crossOrigin" },
+  data: {},
+  datetime: { idn: "dateTime" },
+  decoding: {},
+  default: {},
+  defer: {},
+  dir: {},
+  dirname: { idn: "dirName" },
+  disabled: {},
+  download: {},
+  draggable: {},
+  enctype: {},
+  enterkeyhint: { idn: "enterKeyHint" },
+  for: { idn: "htmlFor" },
+  form: { idn: null },
+  formaction: { idn: "formAction" },
+  formenctype: { idn: "formEnctype" },
+  formmethod: { idn: "formMethod" },
+  formnovalidate: { idn: "formNoValidate" },
+  formtarget: { idn: "formTarget" },
+  headers: {},
+  height: { idv: attrStringOrNumberToNumber },
+  hidden: {},
+  high: { idv: attrStringOrNumberToNumber },
+  href: {},
+  hreflang: {},
+  id: {},
+  imagesizes: { idn: "imageSizes" },
+  imagesrcset: { idn: "imageSrcset" },
+  indeterminate: { noa: true },
+  inputmode: { idn: "inputMode" },
+  integrity: {},
+  is: { idn: null },
+  ismap: { idn: "isMap" },
+  itemid: { idn: null },
+  itemprop: { idn: null },
+  itemref: { idn: null },
+  itemscope: { idn: null },
+  itemtype: { idn: null },
+  kind: {},
+  label: {},
+  lang: {},
+  list: {},
+  loading: {},
+  loop: { idv: attrBooleanToEmptyString },
+  low: { idv: attrStringOrNumberToNumber },
+  max: { idv: attrStringOrNumberToNumber },
+  maxlength: {
+    idn: "maxLength",
+    idv: attrStringOrNumberToNumber
+  },
+  media: {},
+  method: {},
+  min: { idv: attrStringOrNumberToNumber },
+  minlength: {
+    idn: "minLength",
+    idv: attrStringOrNumberToNumber
+  },
+  multiple: {},
+  muted: {},
+  name: {},
+  nomodule: { idn: "noModule" },
+  nonce: {},
+  novalidate: { idn: "noValidate" },
+  open: {},
+  optimum: { idv: attrStringOrNumberToNumber },
+  pattern: {},
+  ping: {},
+  placeholder: {},
+  playsinline: { idn: "playsInline" },
+  popover: {
+    idv: (val) => {
+      if (val === true)
+        return "auto";
+      if (val === false)
+        return void 0;
+      return val;
+    }
+  },
+  poster: {},
+  preload: {},
+  readonly: { idn: "readOnly" },
+  referrerpolicy: { idn: "referrerPolicy" },
+  rel: {},
+  required: {},
+  reversed: {},
+  role: {},
+  rows: { idv: attrStringOrNumberToNumber },
+  rowspan: { idn: "rowSpan", idv: attrStringOrNumberToNumber },
+  sandbox: {},
+  scope: {},
+  selected: {},
+  shape: {},
+  size: { idv: attrStringOrNumberToNumber },
+  sizes: {},
+  slot: {},
+  span: { idv: attrStringOrNumberToNumber },
+  spellcheck: {},
+  src: {},
+  srcdoc: {},
+  srclang: {},
+  srcset: {},
+  start: { idv: attrStringOrNumberToNumber },
+  step: { idv: attrStringOrNumberToNumber },
+  style: {},
+  tabindex: { idn: "tabIndex", idv: attrStringOrNumberToNumber },
+  target: {},
+  title: {},
+  translate: { idv: attrYesNo },
+  type: {},
+  usemap: { idn: "useMap" },
+  // value: {}, // NOTE: value is special and depends on the element
+  width: { idv: attrStringOrNumberToNumber },
+  wrap: {}
+};
+function setAttribute(element, attributeName, val) {
+  if (val === void 0 || val === null || val === false) {
+    element.removeAttribute(attributeName);
+  } else if (val === true) {
+    element.setAttribute(attributeName, "");
+  } else if (typeof val === "string") {
+    element.setAttribute(attributeName, val);
+  } else if (typeof val === "number" || typeof val === "bigint") {
+    element.setAttribute(attributeName, val.toString());
+  }
+}
+function assignProp(element, attribute, value) {
+  if (!(element instanceof HTMLElement)) {
+    setAttribute(element, attribute, value);
+    return;
+  }
+  if (attribute === "value") {
+    switch (element.tagName) {
+      case "PROGRESS":
+      case "METER":
+        setAttribute(element, attribute, value);
+        element.value = attrStringOrNumberToNumber(value);
+        break;
+      case "SELECT":
+        element.value = value;
+        break;
+      case "BUTTON":
+      case "DATA":
+      case "INPUT":
+      case "LI":
+      case "OPTION":
+      case "PARAM":
+      case "TEXTAREA":
+        setAttribute(element, attribute, value);
+        element.value = value;
+        break;
+      default:
+        setAttribute(element, attribute, value);
+    }
+    return;
+  }
+  const behavior = attrBehavior[attribute];
+  if (behavior) {
+    if (!behavior.noa) {
+      const attributeValue = value;
+      setAttribute(element, attribute, attributeValue);
+    }
+    if (behavior.idn !== null) {
+      const idlValue = behavior.idv ? behavior.idv(value) : value;
+      element[behavior.idn ?? attribute] = idlValue;
+    }
+    return;
+  }
+  setAttribute(element, attribute, value);
+}
+
+// src/common/arrayevent.ts
+var ArrayEventType = /* @__PURE__ */ ((ArrayEventType2) => {
+  ArrayEventType2["SPLICE"] = "splice";
+  ArrayEventType2["MOVE"] = "move";
+  ArrayEventType2["SORT"] = "sort";
+  return ArrayEventType2;
+})(ArrayEventType || {});
+var EMPTY_ARRAY = [];
+function applySort(target, from, indexes) {
+  const duped = target.slice(from, from + indexes.length);
+  for (let i = 0; i < indexes.length; ++i) {
+    target[i + from] = duped[indexes[i] - from];
+  }
+}
+function applyMove(target, from, count, to) {
+  const slice = target.splice(from, count);
+  target.splice(to, 0, ...slice);
+}
+function applyArrayEvent(target, event) {
+  switch (event.type) {
+    case "splice" /* SPLICE */: {
+      if (event.items) {
+        return target.splice(event.index, event.count, ...event.items);
+      } else {
+        return target.splice(event.index, event.count);
+      }
+    }
+    case "sort" /* SORT */: {
+      applySort(target, event.from, event.indexes);
+      break;
+    }
+    case "move" /* MOVE */: {
+      applyMove(target, event.from, event.count, event.to);
+      break;
+    }
+    default:
+      assertExhausted(event);
+  }
+  return EMPTY_ARRAY;
+}
+function* mergeArrayEvents(events) {
+  const iterator = events[Symbol.iterator]();
+  const firstItem = iterator.next();
+  if (firstItem.done) {
+    return;
+  }
+  let lastEvent = firstItem.value;
+  let mergedItems;
+  while (true) {
+    const nextItem = iterator.next();
+    if (nextItem.done) {
+      break;
+    }
+    const event = nextItem.value;
+    if (event.type === "splice" /* SPLICE */ && lastEvent.type === "splice" /* SPLICE */ && lastEvent.index + (lastEvent.items?.length ?? 0) === event.index) {
+      if (!mergedItems) {
+        mergedItems = lastEvent.items?.slice() ?? [];
+      }
+      if (event.items) {
+        mergedItems.push(...event.items);
+      }
+      if (mergedItems.length) {
+        lastEvent = {
+          type: "splice" /* SPLICE */,
+          index: lastEvent.index,
+          count: lastEvent.count + event.count,
+          items: mergedItems
+        };
+      } else {
+        lastEvent = {
+          type: "splice" /* SPLICE */,
+          index: lastEvent.index,
+          count: lastEvent.count + event.count
+        };
+      }
+    } else {
+      yield lastEvent;
+      lastEvent = event;
+      mergedItems = void 0;
+    }
+  }
+  yield lastEvent;
+}
+
+// src/common/sumarray.ts
+var SumArray = class {
+  constructor(bucketBits, items) {
+    this.bucketBits = bucketBits;
+    this.bucketSize = 1 << bucketBits;
+    this.slots = items;
+    this.buckets = this.recreate(this.slots);
+  }
+  recreate(items) {
+    const buckets = [];
+    for (let i = 0; i < items.length; i += this.bucketSize) {
+      let bucket = 0;
+      for (let j = 0; j < this.bucketSize && i + j < items.length; ++j) {
+        bucket += items[i + j];
+      }
+      buckets.push(bucket);
+    }
+    return buckets;
+  }
+  updateBuckets(from, to) {
+    const startBucket = from >> this.bucketBits;
+    const endBucket = to >> this.bucketBits;
+    for (let i = this.buckets.length; i < endBucket; ++i) {
+      this.buckets.push(0);
+    }
+    for (let i = startBucket; i <= endBucket; ++i) {
+      let bucket = 0;
+      const shift = i << this.bucketBits;
+      for (let j = 0; j < this.bucketSize && shift + j < this.slots.length; ++j) {
+        bucket += this.slots[shift + j];
+      }
+      this.buckets[i] = bucket;
+    }
+  }
+  splice(index, count, items) {
+    this.slots.splice(index, count, ...items);
+    this.updateBuckets(
+      index,
+      count === items.length ? index + count : this.slots.length
+    );
+    if (count - items.length > 0) {
+      const bucketSize = this.slots.length >> this.bucketBits;
+      if (this.buckets.length > bucketSize) {
+        this.buckets.length = bucketSize;
+      }
+    }
+  }
+  move(fromIndex, count, toIndex) {
+    applyMove(this.slots, fromIndex, count, toIndex);
+    this.updateBuckets(
+      Math.min(fromIndex, toIndex),
+      Math.max(fromIndex, toIndex) + count
+    );
+  }
+  sort(fromIndex, indices) {
+    applySort(this.slots, fromIndex, indices);
+    this.updateBuckets(fromIndex, fromIndex + indices.length);
+  }
+  getSum(index) {
+    if (index === 0) {
+      return 0;
+    }
+    let sum = 0;
+    for (let bucketIndex = 0, i = this.bucketSize; bucketIndex < this.buckets.length && i <= index; ++bucketIndex, i += this.bucketSize) {
+      sum += this.buckets[bucketIndex];
+    }
+    const start = index & ~(this.bucketSize - 1);
+    for (let j = start; j < index && j < this.slots.length; ++j) {
+      sum += this.slots[j];
+    }
+    return sum;
+  }
+  get(index) {
+    return this.slots[index];
+  }
+  set(index, value) {
+    const diff = value - this.slots[index];
+    this.slots[index] = value;
+    const bucketIndex = index >> this.bucketBits;
+    this.buckets[bucketIndex] += diff;
+  }
+};
+
+// src/common/slotsizes.ts
+var SUMARRAY_BITS = 5;
+var SlotSizes = class {
+  constructor(items) {
+    this.slots = new SumArray(
+      SUMARRAY_BITS,
+      items.map(() => 0)
+    );
+    this.items = items;
+    this.indexes = /* @__PURE__ */ new Map();
+    this.updateIndexes(0, items.length);
+  }
+  clearSlots() {
+    this.slots = new SumArray(
+      SUMARRAY_BITS,
+      this.items.map(() => 0)
+    );
+  }
+  updateIndexes(lo, hi) {
+    for (let i = lo; i < hi; ++i) {
+      this.indexes.set(this.items[i], i);
+    }
+  }
+  get(index) {
+    return this.items[index];
+  }
+  move(from, count, to) {
+    const fromShift = this.slots.getSum(from);
+    const countShift = this.slots.getSum(from + count) - fromShift;
+    this.slots.move(from, count, to);
+    applyMove(this.items, from, count, to);
+    const toShift = this.slots.getSum(to);
+    this.updateIndexes(Math.min(from, to), Math.max(from, to) + count);
+    return {
+      type: "move" /* MOVE */,
+      from: fromShift,
+      count: countShift,
+      to: toShift
+    };
+  }
+  sort(from, indexes) {
+    let fromShift = 0;
+    let totalIndex = 0;
+    const indexedSlots = [];
+    for (let i = 0; i < from + indexes.length; ++i) {
+      const slotSize = this.slots.get(i);
+      const indexedSlot = [];
+      for (let j = 0; j < slotSize; ++j) {
+        indexedSlot.push(totalIndex++);
+      }
+      indexedSlots.push(indexedSlot);
+      if (i < from) {
+        fromShift += this.slots.get(i);
+      }
+    }
+    applySort(indexedSlots, from, indexes);
+    const newIndexes = indexedSlots.slice(from).flat();
+    this.slots.sort(from, indexes);
+    applySort(this.items, from, indexes);
+    this.updateIndexes(from, from + indexes.length);
+    return {
+      type: "sort" /* SORT */,
+      from: fromShift,
+      indexes: newIndexes
+    };
+  }
+  splice(index, count, items) {
+    const shiftIndex = this.slots.getSum(index);
+    const shiftCount = this.slots.getSum(index + count) - shiftIndex;
+    this.slots.splice(
+      index,
+      count,
+      items.map(() => 0)
+    );
+    const removedItems = this.items.splice(index, count, ...items);
+    for (const removedItem of removedItems) {
+      this.indexes.delete(removedItem);
+    }
+    if (this.items.length === count) {
+      this.updateIndexes(index, index + count);
+    } else {
+      this.updateIndexes(index, this.items.length);
+    }
+    return {
+      removed: removedItems,
+      event: {
+        type: "splice" /* SPLICE */,
+        index: shiftIndex,
+        count: shiftCount,
+        items: []
+        // Note: added items are _always_ treated as if they are empty
+      }
+    };
+  }
+  applyEvent(source, event) {
+    const sourceIndex = this.indexes.get(source);
+    assert(
+      sourceIndex !== void 0,
+      "event from unknown SlotSizes source",
+      source
+    );
+    const shift = this.slots.getSum(sourceIndex);
+    switch (event.type) {
+      case "splice" /* SPLICE */: {
+        this.slots.set(
+          sourceIndex,
+          this.slots.get(sourceIndex) + (event.items?.length ?? 0) - event.count
+        );
+        return {
+          type: "splice" /* SPLICE */,
+          index: event.index + shift,
+          count: event.count,
+          items: event.items
+        };
+      }
+      case "sort" /* SORT */: {
+        return {
+          type: "sort" /* SORT */,
+          from: event.from + shift,
+          indexes: event.indexes.map((index) => index + shift)
+        };
+      }
+      case "move" /* MOVE */: {
+        return {
+          type: "move" /* MOVE */,
+          from: event.from + shift,
+          count: event.count,
+          to: event.to + shift
+        };
+      }
+      default:
+        assertExhausted(event, "unknown ArrayEvent type");
+    }
+  }
+};
+
 // src/viewcontroller/rendernode/rendernode.ts
 var SingleChildRenderNode = class {
   constructor(handlers, child, debugName) {
@@ -2183,8 +2612,32 @@ function renderJSXNode(jsxNode) {
   if (typeof jsxNode === "number" || typeof jsxNode === "bigint") {
     return TextRenderNode(jsxNode.toString());
   }
-  if (typeof jsxNode === "object" && typeof jsxNode.get === "function" && typeof jsxNode.subscribe === "function") {
+  if (typeof jsxNode === "object" && "get" in jsxNode && typeof jsxNode.get === "function" && typeof jsxNode.subscribe === "function") {
     return DynamicRenderNode(renderJSXNode, jsxNode);
+  }
+  if (typeof jsxNode === "object" && "then" in jsxNode && typeof jsxNode.then === "function") {
+    const promiseResult = field(null);
+    const renderedValue = calc(() => {
+      const result = promiseResult.get();
+      if (!result) {
+        return null;
+      }
+      if (result.type === "resolved") {
+        return result.value;
+      }
+      throw result.error;
+    });
+    jsxNode.then(
+      (val) => {
+        console.log("OK");
+        promiseResult.set({ type: "resolved", value: val });
+      },
+      (err) => {
+        console.log("NOPE");
+        promiseResult.set({ type: "error", error: wrapError(err) });
+      }
+    );
+    return DynamicRenderNode(renderJSXNode, renderedValue);
   }
   warn("Unexpected JSX node type, rendering nothing", jsxNode);
   return emptyRenderNode;
@@ -2389,284 +2842,6 @@ function ComponentRenderNode(Component, props, children, debugName) {
     debugName ?? `component(${Component.name})`
   );
   return renderNode;
-}
-
-// src/model/calc.ts
-function strictEqual(a, b) {
-  return a === b;
-}
-var Calculation = class {
-  ensureResult() {
-    const result = this._result;
-    if (result && !result.ok) {
-      return { propagate: false, result };
-    }
-    if (result?.ok && !result.stale) {
-      debug(`Reuse calc ${this.__debugName}`);
-      return { propagate: false, result };
-    }
-    if (result?.ok && result.stale) {
-      debug(`Recalculating calc (stale) ${this.__debugName}`);
-      const lastValue = result.value;
-      const newResult = this.recalc();
-      if (newResult.ok && this._eq(lastValue, newResult.value)) {
-        debug(`Stale recalculation reused ${this.__debugName}`);
-        return {
-          propagate: false,
-          result: {
-            ok: true,
-            stale: false,
-            value: lastValue
-          }
-        };
-      }
-      return { propagate: true, result: newResult };
-    }
-    debug(`Recalculating calc ${this.__debugName}`);
-    return { propagate: true, result: this.recalc() };
-  }
-  get() {
-    notifyRead(this);
-    const { result } = this.ensureResult();
-    if (!result.ok) {
-      throw result.error;
-    }
-    return result.value;
-  }
-  recalc() {
-    if (this._calculating) {
-      throw new SynchronousCycleError(
-        "Cycle error: calculation cycle reached itself",
-        this
-      );
-    }
-    this._calculating = true;
-    let result;
-    const newDependencies = /* @__PURE__ */ new Set();
-    try {
-      result = {
-        ok: true,
-        stale: false,
-        value: trackReads(
-          (dependency) => {
-            if (!newDependencies.has(dependency)) {
-              newDependencies.add(dependency);
-              retain(dependency);
-              if (!this._dependencies.has(dependency) && isProcessable(dependency) && this.__refcount > 0) {
-                addEdge(dependency, this);
-              }
-            }
-            return this;
-          },
-          () => this._fn(),
-          this.__debugName
-        )
-      };
-    } catch (e) {
-      result = {
-        ok: false,
-        error: wrapError(e)
-      };
-    }
-    this._calculating = false;
-    for (const prevDependency of this._dependencies) {
-      if (!newDependencies.has(prevDependency) && isProcessable(prevDependency)) {
-        removeEdge(prevDependency, this);
-      }
-      release(prevDependency);
-    }
-    this._dependencies = newDependencies;
-    const synchronousError = !result.ok && result.error instanceof SynchronousCycleError ? result.error : null;
-    if (synchronousError) {
-      if (this.__refcount > 0) {
-        markCycleInformed(this);
-      }
-      if (synchronousError.sourceCalculation !== this) {
-        synchronousError.passthruCalculations.add(this);
-      } else {
-        for (const calculation of synchronousError.passthruCalculations) {
-          calculation.__invalidate();
-        }
-        const cycleDependencies = new Set(
-          this._dependencies
-        );
-        for (const calculation of synchronousError.passthruCalculations) {
-          for (const dependency of calculation.__cycle()) {
-            cycleDependencies.add(dependency);
-          }
-        }
-        for (const calculation of synchronousError.passthruCalculations) {
-          cycleDependencies.delete(calculation);
-        }
-        cycleDependencies.delete(this);
-      }
-    }
-    if (!result.ok) {
-      let error2;
-      if (result.error instanceof SynchronousCycleError && result.error.sourceCalculation === this) {
-        error2 = new CycleError(
-          "Cycle error: calculation cycle reached itself"
-        );
-      } else {
-        error2 = result.error;
-      }
-      if (this._errorHandler) {
-        try {
-          result = {
-            ok: true,
-            stale: false,
-            value: this._errorHandler(error2)
-          };
-        } catch (innerError) {
-          result = {
-            ok: false,
-            error: wrapError(innerError)
-          };
-        }
-      } else {
-        result = {
-          ok: false,
-          error: error2
-        };
-      }
-    }
-    if (this.__refcount > 0) {
-      this._result = result;
-    }
-    if (synchronousError && synchronousError.sourceCalculation !== this) {
-      throw synchronousError;
-    }
-    return result;
-  }
-  constructor(fn, debugName) {
-    this.__refcount = 0;
-    this.__debugName = debugName ?? `calc:(${fn.name})`;
-    this.__processable = true;
-    this._result = void 0;
-    this._fn = fn;
-    this._errorHandler = void 0;
-    this._calculating = false;
-    this._eq = strictEqual;
-    this._dependencies = /* @__PURE__ */ new Set();
-    this._subscriptions = /* @__PURE__ */ new Set();
-  }
-  onError(handler) {
-    this._errorHandler = handler;
-    return this;
-  }
-  setCmp(eq) {
-    this._eq = eq;
-    return this;
-  }
-  subscribe(handler) {
-    retain(this);
-    let args;
-    try {
-      args = [void 0, this.get()];
-    } catch (e) {
-      args = [wrapError(e), void 0];
-    }
-    if (!this._subscriptions) {
-      this._subscriptions = /* @__PURE__ */ new Set();
-    }
-    this._subscriptions.add(handler);
-    const unsubscribe = () => {
-      this._subscriptions?.delete(handler);
-      release(this);
-    };
-    handler(...args);
-    return unsubscribe;
-  }
-  retain() {
-    retain(this);
-  }
-  release() {
-    release(this);
-  }
-  __alive() {
-    addVertex(this);
-  }
-  __dead() {
-    this._result = void 0;
-    for (const dependency of this._dependencies) {
-      if (isProcessable(dependency)) {
-        removeEdge(dependency, this);
-      }
-      release(dependency);
-    }
-    this._dependencies.clear();
-    removeVertex(this);
-  }
-  __recalculate(vertexGroup) {
-    const { propagate, result } = this.ensureResult();
-    debug(
-      `Recalculated ${this.__debugName} (propagate=${propagate}) {result=${JSON.stringify(result)}}`
-    );
-    this.notifySubscriptions(result);
-    const toPropagate = [];
-    if (propagate) {
-      for (const dependency of getForwardDependencies(this)) {
-        toPropagate.push(dependency);
-      }
-    }
-    return toPropagate;
-  }
-  __invalidate() {
-    if (this._result?.ok) {
-      this._result = { ...this._result, stale: true };
-    } else {
-      this._result = void 0;
-    }
-  }
-  __cycle() {
-    const error2 = new MarkedCycleError(
-      "Cycle error: calculation cycle reached itself"
-    );
-    if (this._errorHandler) {
-      try {
-        this._result = {
-          ok: true,
-          stale: false,
-          value: this._errorHandler(error2)
-        };
-      } catch (e) {
-        this._result = { ok: false, error: wrapError(e) };
-      }
-    } else {
-      this._result = {
-        ok: false,
-        error: error2
-      };
-    }
-    this.notifySubscriptions(this._result);
-    return [...getForwardDependencies(this)];
-  }
-  notifySubscriptions(result) {
-    for (const subscription of this._subscriptions) {
-      if (result.ok) {
-        subscription(void 0, result.value);
-      } else {
-        subscription(result.error, void 0);
-      }
-    }
-  }
-  map(fn) {
-    return calc(() => fn(this.get()));
-  }
-};
-var CycleError = class extends Error {
-};
-var MarkedCycleError = class extends CycleError {
-};
-var SynchronousCycleError = class extends CycleError {
-  constructor(msg, sourceCalculation) {
-    super(msg);
-    this.sourceCalculation = sourceCalculation;
-    this.passthruCalculations = /* @__PURE__ */ new Set();
-  }
-};
-function calc(fn, debugName) {
-  return new Calculation(fn, debugName);
 }
 
 // src/common/dyn.ts
@@ -3578,22 +3753,132 @@ function CollectionRenderNode(renderJSXNode2, collection2, debugName) {
   return renderNode;
 }
 
-// src/model/trackeddata.ts
-var TrackedData = class {
+// src/model/rangeassociation.ts
+var RangeAssociation = class {
+  constructor() {
+    this.intervals = [];
+  }
+  setAssociation(start, end, value) {
+    if (start >= end)
+      return;
+    const result = [];
+    const left = this.findFirstOverlap(start);
+    let i = left;
+    while (i < this.intervals.length && this.intervals[i].start < end) {
+      const current = this.intervals[i];
+      if (start < current.start) {
+        result.push({
+          start,
+          end: Math.min(current.start, end),
+          value
+        });
+      }
+      start = Math.max(start, current.end);
+      result.push(current);
+      i++;
+    }
+    if (start < end) {
+      result.push({ start, end, value });
+    }
+    this.intervals.splice(left, i - left, ...result);
+  }
+  getAssociation(index) {
+    if (isNaN(index)) {
+      return null;
+    }
+    if (this.intervals.length === 0) {
+      return null;
+    }
+    if (index < 0) {
+      return null;
+    }
+    const highestIndex = this.intervals[this.intervals.length - 1];
+    if (index >= highestIndex.end) {
+      return null;
+    }
+    let lo = 0, hi = this.intervals.length - 1;
+    while (lo <= hi) {
+      const mid = lo + hi >>> 1;
+      const { start, end, value } = this.intervals[mid];
+      if (index < start)
+        hi = mid - 1;
+      else if (index >= end)
+        lo = mid + 1;
+      else
+        return value;
+    }
+    return null;
+  }
+  findFirstOverlap(pos) {
+    let lo = 0, hi = this.intervals.length;
+    while (lo < hi) {
+      const mid = lo + hi >>> 1;
+      if (this.intervals[mid].end <= pos) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo;
+  }
+  clear() {
+    this.intervals = [];
+  }
+};
+
+// src/model/dirtyarray.ts
+var DirtyArray = class {
+  constructor() {
+    this.rangeAssociation = new RangeAssociation();
+    this.dirtyLength = null;
+    this.clock = 0;
+  }
+  markDirty(key) {
+    if (key === "length") {
+      if (this.dirtyLength === null) {
+        this.dirtyLength = this.clock;
+      }
+      return;
+    }
+    this.rangeAssociation.setAssociation(key.start, key.end, this.clock);
+  }
+  tickClock() {
+    this.clock += 1;
+  }
+  clear() {
+    this.dirtyLength = null;
+    this.rangeAssociation.clear();
+  }
+  resetClock() {
+    this.clock = 0;
+  }
+  getClock() {
+    return this.clock;
+  }
+  get(key) {
+    if (key === "length") {
+      return this.dirtyLength;
+    }
+    return this.rangeAssociation.getAssociation(key);
+  }
+};
+
+// src/model/trackedarray.ts
+var TrackedArray = class {
   constructor(mergeEvents, lifecycle, debugName) {
     this.mergeEvents = mergeEvents;
     this.itemSubscriptions = /* @__PURE__ */ new Map();
     this.eventSubscriptions = [];
-    this.dirtyKeys = /* @__PURE__ */ new Map();
-    this.clock = 0;
+    this.dirtyArray = new DirtyArray();
     this.onAlive = lifecycle?.onAlive;
     this.onDead = lifecycle?.onDead;
+    this.isDirty = false;
     this.__processable = true;
     this.__refcount = 0;
     this.__debugName = debugName ?? "arraysub";
   }
   tickClock() {
-    this.clock += 1;
+    this.dirtyArray.tickClock();
   }
   notifyRead(key) {
     const reader = notifyRead(this);
@@ -3604,7 +3889,7 @@ var TrackedData = class {
         this.itemSubscriptions.set(reader, subscriptions);
       }
       if (!subscriptions.has(key)) {
-        subscriptions.set(key, this.clock);
+        subscriptions.set(key, this.dirtyArray.getClock());
       }
     }
   }
@@ -3612,10 +3897,11 @@ var TrackedData = class {
     if (this.__refcount === 0) {
       return;
     }
-    if (!this.dirtyKeys.has(key)) {
-      this.dirtyKeys.set(key, this.clock);
+    this.dirtyArray.markDirty(key);
+    if (!this.isDirty) {
+      markDirty(this);
+      this.isDirty = true;
     }
-    markDirty(this);
   }
   addEvent(event) {
     if (this.__refcount === 0) {
@@ -3625,7 +3911,10 @@ var TrackedData = class {
       for (const subscription of this.eventSubscriptions) {
         subscription.events.push(event);
       }
-      markDirty(this);
+      if (!this.isDirty) {
+        markDirty(this);
+        this.isDirty = true;
+      }
     }
   }
   subscribe(handler) {
@@ -3658,11 +3947,11 @@ var TrackedData = class {
     removeVertex(this);
     this.itemSubscriptions.clear();
     this.eventSubscriptions = [];
-    this.dirtyKeys.clear();
-    this.clock = 0;
+    this.dirtyArray.clear();
+    this.dirtyArray.resetClock();
   }
   __recalculate() {
-    assert(this.__refcount > 0, "cannot flush dead trackeddata");
+    assert(this.__refcount > 0, "cannot flush dead trackedarray");
     const toPropagate = /* @__PURE__ */ new Set();
     for (const [
       reader,
@@ -3670,8 +3959,8 @@ var TrackedData = class {
     ] of this.itemSubscriptions.entries()) {
       if (reader.__refcount > 0) {
         for (const [key, whenRead] of subscriptions.entries()) {
-          const whenChanged = this.dirtyKeys.get(key);
-          if (whenChanged !== void 0 && whenRead <= whenChanged) {
+          const whenChanged = this.dirtyArray.get(key);
+          if (whenChanged !== null && whenRead <= whenChanged) {
             toPropagate.add(reader);
           }
         }
@@ -3686,13 +3975,13 @@ var TrackedData = class {
         subscription.events = [];
       }
     });
-    this.dirtyKeys.clear();
+    this.dirtyArray.clear();
+    this.isDirty = false;
     return [...toPropagate];
   }
 };
 
 // src/model/arraysub.ts
-var lengthSymbol = Symbol("ArraySubLength");
 function defaultSort(x, y) {
   if (x === void 0 && y === void 0)
     return 0;
@@ -3711,7 +4000,7 @@ function defaultSort(x, y) {
 var ArraySub = class {
   constructor(init, debugName, lifecycle) {
     this.items = init ?? [];
-    this.trackedData = new TrackedData(
+    this.trackedArray = new TrackedArray(
       mergeArrayEvents,
       lifecycle,
       debugName
@@ -3722,7 +4011,7 @@ var ArraySub = class {
     return this.items;
   }
   get(index) {
-    this.trackedData.notifyRead(index);
+    this.trackedArray.notifyRead(index);
     return this.items[index];
   }
   set(index, value) {
@@ -3740,14 +4029,14 @@ var ArraySub = class {
       return;
     }
     this.items[index] = value;
-    this.trackedData.markDirty(index);
-    this.trackedData.addEvent({
+    this.trackedArray.markDirty({ start: index, end: index + 1 });
+    this.trackedArray.addEvent({
       type: "splice" /* SPLICE */,
       index,
       count: 1,
       items: [value]
     });
-    this.trackedData.tickClock();
+    this.trackedArray.tickClock();
   }
   setLength(newLength) {
     if (newLength < this.items.length) {
@@ -3761,7 +4050,7 @@ var ArraySub = class {
     }
   }
   getLength() {
-    this.trackedData.notifyRead(lengthSymbol);
+    this.trackedArray.notifyRead("length");
     return this.items.length;
   }
   /**
@@ -3778,17 +4067,14 @@ var ArraySub = class {
     );
     const endLength = this.items.length;
     if (startLength === endLength) {
-      for (let i = index; i < index + items.length; ++i) {
-        this.trackedData.markDirty(i);
-      }
+      this.trackedArray.markDirty({
+        start: index,
+        end: index + items.length
+      });
     } else {
-      for (let i = index; i < endLength; ++i) {
-        this.trackedData.markDirty(i);
-      }
-      for (let i = endLength; i < startLength; ++i) {
-        this.trackedData.markDirty(i);
-      }
-      this.trackedData.markDirty(lengthSymbol);
+      this.trackedArray.markDirty({ start: index, end: endLength });
+      this.trackedArray.markDirty({ start: endLength, end: startLength });
+      this.trackedArray.markDirty("length");
     }
     return removed;
   }
@@ -3807,27 +4093,25 @@ var ArraySub = class {
       fixedIndex = index;
     }
     const removed = this.spliceInner(fixedIndex, count, items);
-    this.trackedData.addEvent({
+    this.trackedArray.addEvent({
       type: "splice" /* SPLICE */,
       index: fixedIndex,
       count,
       items
     });
-    this.trackedData.tickClock();
+    this.trackedArray.tickClock();
     return removed;
   }
   sort(sortFn = defaultSort) {
     const indexes = this.items.map((_unused, index) => index).sort((a, b) => sortFn(this.items[a], this.items[b]));
     this.items.sort(sortFn);
-    this.trackedData.addEvent({
+    this.trackedArray.addEvent({
       type: "sort" /* SORT */,
       from: 0,
       indexes
     });
-    for (let i = 0; i < this.items.length; ++i) {
-      this.trackedData.markDirty(i);
-    }
-    this.trackedData.tickClock();
+    this.trackedArray.markDirty({ start: 0, end: this.items.length });
+    this.trackedArray.tickClock();
     return this;
   }
   reverse() {
@@ -3836,15 +4120,13 @@ var ArraySub = class {
       indexes.push(i);
     }
     this.items.reverse();
-    this.trackedData.addEvent({
+    this.trackedArray.addEvent({
       type: "sort" /* SORT */,
       from: 0,
       indexes
     });
-    for (let i = 0; i < this.items.length; ++i) {
-      this.trackedData.markDirty(i);
-    }
-    this.trackedData.tickClock();
+    this.trackedArray.markDirty({ start: 0, end: this.items.length });
+    this.trackedArray.tickClock();
     return this;
   }
   moveSlice(fromIndex, count, toIndex) {
@@ -3852,20 +4134,18 @@ var ArraySub = class {
     this.items.splice(toIndex, 0, ...removed);
     const lowerBound = Math.min(fromIndex, toIndex);
     const upperBound = Math.max(fromIndex, toIndex) + count;
-    for (let i = lowerBound; i < upperBound; ++i) {
-      this.trackedData.markDirty(i);
-    }
-    this.trackedData.addEvent({
+    this.trackedArray.markDirty({ start: lowerBound, end: upperBound });
+    this.trackedArray.addEvent({
       type: "move" /* MOVE */,
       from: fromIndex,
       count,
       to: toIndex
     });
-    this.trackedData.tickClock();
+    this.trackedArray.tickClock();
   }
   subscribe(handler) {
     this.retain();
-    const unsubscribe = this.trackedData.subscribe(handler);
+    const unsubscribe = this.trackedArray.subscribe(handler);
     handler([
       {
         type: "splice" /* SPLICE */,
@@ -3880,10 +4160,10 @@ var ArraySub = class {
     };
   }
   retain() {
-    this.trackedData.retain();
+    this.trackedArray.retain();
   }
   release() {
-    this.trackedData.release();
+    this.trackedArray.release();
   }
 };
 var DerivedArraySub = class {
@@ -3891,15 +4171,13 @@ var DerivedArraySub = class {
     this.source = source;
     this.eventTransform = eventTransform;
     this.items = [];
-    this.trackedData = new TrackedData(
+    this.trackedArray = new TrackedArray(
       mergeArrayEvents,
       {
         onAlive: () => {
           this.source.retain();
           this.sourceUnsubscribe = this.source.subscribe((events) => {
-            for (const event of events) {
-              this.ingestEvent(event);
-            }
+            this.ingestEvents(events);
           });
         },
         onDead: () => {
@@ -3917,7 +4195,7 @@ var DerivedArraySub = class {
       index >= 0 && index < this.items.length,
       "Out-of-bounds ArraySub read"
     );
-    this.trackedData.notifyRead(index);
+    this.trackedArray.notifyRead(index);
     return this.items[index];
   }
   getItemsUnsafe() {
@@ -3927,12 +4205,12 @@ var DerivedArraySub = class {
     throw new Error("Read-only");
   }
   getLength() {
-    this.trackedData.notifyRead(lengthSymbol);
+    this.trackedArray.notifyRead("length");
     return this.items.length;
   }
   subscribe(handler) {
     this.retain();
-    const unsubscribe = this.trackedData.subscribe(handler);
+    const unsubscribe = this.trackedArray.subscribe(handler);
     handler([
       {
         type: "splice" /* SPLICE */,
@@ -3946,23 +4224,25 @@ var DerivedArraySub = class {
       this.release();
     };
   }
-  ingestEvent(event) {
-    const transformedEvents = this.eventTransform(event);
+  ingestEvents(events) {
+    const transformedEvents = mergeArrayEvents(this.eventTransform(events));
     for (const transformed of transformedEvents) {
       const lengthBefore = this.items.length;
       applyArrayEvent(this.items, transformed);
       const lengthAfter = this.items.length;
       switch (transformed.type) {
         case "splice" /* SPLICE */: {
-          for (let i = transformed.index; i < transformed.index + transformed.count; ++i) {
-            this.trackedData.markDirty(i);
-          }
+          this.trackedArray.markDirty({
+            start: transformed.index,
+            end: transformed.index + transformed.count
+          });
           if (lengthBefore !== lengthAfter) {
             const dirtyEnd = Math.max(lengthBefore, lengthAfter);
-            for (let i = transformed.index + transformed.count; i < dirtyEnd; ++i) {
-              this.trackedData.markDirty(i);
-            }
-            this.trackedData.markDirty(lengthSymbol);
+            this.trackedArray.markDirty({
+              start: transformed.index + transformed.count,
+              end: dirtyEnd
+            });
+            this.trackedArray.markDirty("length");
           }
           break;
         }
@@ -3972,82 +4252,81 @@ var DerivedArraySub = class {
             transformed.to
           );
           const endIndex = Math.max(transformed.from, transformed.to) + transformed.count;
-          for (let i = startIndex; i < endIndex; ++i) {
-            this.trackedData.markDirty(i);
-          }
+          this.trackedArray.markDirty({
+            start: startIndex,
+            end: endIndex
+          });
           break;
         }
         case "sort" /* SORT */: {
-          for (let i = 0; i < transformed.indexes.length; ++i) {
-            this.trackedData.markDirty(transformed.from + i);
-          }
+          this.trackedArray.markDirty({
+            start: transformed.from,
+            end: transformed.from + transformed.indexes.length
+          });
           break;
         }
       }
-      this.trackedData.addEvent(transformed);
+      this.trackedArray.addEvent(transformed);
     }
-    this.trackedData.tickClock();
+    this.trackedArray.tickClock();
   }
   retain() {
-    this.trackedData.retain();
+    this.trackedArray.retain();
   }
   release() {
-    this.trackedData.release();
+    this.trackedArray.release();
   }
 };
 function mapView(source, mapFn) {
-  return new DerivedArraySub(source, (event) => {
-    switch (event.type) {
-      case "splice" /* SPLICE */:
-        return [
-          {
+  return new DerivedArraySub(source, function* (events) {
+    for (const event of events) {
+      switch (event.type) {
+        case "splice" /* SPLICE */:
+          yield {
             type: event.type,
             index: event.index,
             count: event.count,
             items: event.items?.map((val) => mapFn(val))
-          }
-        ];
-      default:
-        return [event];
+          };
+          break;
+        default:
+          yield event;
+      }
     }
   });
 }
 function flatMapView(source, mapFn) {
   const slotSizes = new SlotSizes([]);
-  return new DerivedArraySub(source, (event) => {
-    const events = [];
-    switch (event.type) {
-      case "splice" /* SPLICE */: {
-        const mappedItems = event.items?.map((item) => mapFn(item)) ?? [];
-        events.push(
-          slotSizes.splice(
+  return new DerivedArraySub(source, function* (events) {
+    for (const event of events) {
+      switch (event.type) {
+        case "splice" /* SPLICE */: {
+          const mappedItems = event.items?.map((item) => mapFn(item)) ?? [];
+          yield slotSizes.splice(
             event.index,
             event.count,
             mappedItems
-          ).event
-        );
-        mappedItems.forEach((item) => {
-          events.push(
-            slotSizes.applyEvent(item, {
+          ).event;
+          for (const item of mappedItems) {
+            yield slotSizes.applyEvent(item, {
               type: "splice" /* SPLICE */,
               index: 0,
               count: 0,
               items: item
-            })
-          );
-        });
-        break;
-      }
-      case "sort" /* SORT */: {
-        events.push(slotSizes.sort(event.from, event.indexes));
-        break;
-      }
-      case "move" /* MOVE */: {
-        events.push(slotSizes.move(event.from, event.count, event.to));
-        break;
+            });
+          }
+          break;
+        }
+        case "sort" /* SORT */: {
+          yield slotSizes.sort(event.from, event.indexes);
+          break;
+        }
+        case "move" /* MOVE */: {
+          yield slotSizes.move(event.from, event.count, event.to);
+          break;
+        }
       }
     }
-    return events;
   });
 }
 function filterView(source, mapFn) {
@@ -4262,6 +4541,127 @@ function view(arraySub, debugName = `view(${arraySub.__debugName})`) {
   );
   return v;
 }
+
+// src/model/trackeddata.ts
+var TrackedData = class {
+  constructor(mergeEvents, lifecycle, debugName) {
+    this.mergeEvents = mergeEvents;
+    this.itemSubscriptions = /* @__PURE__ */ new Map();
+    this.eventSubscriptions = [];
+    this.dirtyKeys = /* @__PURE__ */ new Map();
+    this.clock = 0;
+    this.onAlive = lifecycle?.onAlive;
+    this.onDead = lifecycle?.onDead;
+    this.isDirty = false;
+    this.__processable = true;
+    this.__refcount = 0;
+    this.__debugName = debugName ?? "arraysub";
+  }
+  tickClock() {
+    this.clock += 1;
+  }
+  notifyRead(key) {
+    const reader = notifyRead(this);
+    if (reader && reader.__refcount > 0) {
+      let subscriptions = this.itemSubscriptions.get(reader);
+      if (!subscriptions) {
+        subscriptions = /* @__PURE__ */ new Map();
+        this.itemSubscriptions.set(reader, subscriptions);
+      }
+      if (!subscriptions.has(key)) {
+        subscriptions.set(key, this.clock);
+      }
+    }
+  }
+  markDirty(key) {
+    if (this.__refcount === 0) {
+      return;
+    }
+    if (!this.dirtyKeys.has(key)) {
+      this.dirtyKeys.set(key, this.clock);
+    }
+    if (!this.isDirty) {
+      markDirty(this);
+      this.isDirty = true;
+    }
+  }
+  addEvent(event) {
+    if (this.__refcount === 0) {
+      return;
+    }
+    if (this.eventSubscriptions.length > 0) {
+      for (const subscription of this.eventSubscriptions) {
+        subscription.events.push(event);
+      }
+      if (!this.isDirty) {
+        markDirty(this);
+        this.isDirty = true;
+      }
+    }
+  }
+  subscribe(handler) {
+    this.retain();
+    const subscription = {
+      handler,
+      events: []
+    };
+    this.eventSubscriptions.push(subscription);
+    return () => {
+      const index = this.eventSubscriptions.indexOf(subscription);
+      if (index >= 0) {
+        this.eventSubscriptions.splice(index, 1);
+        this.release();
+      }
+    };
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  __alive() {
+    addVertex(this);
+    this.onAlive?.();
+  }
+  __dead() {
+    this.onDead?.();
+    removeVertex(this);
+    this.itemSubscriptions.clear();
+    this.eventSubscriptions = [];
+    this.dirtyKeys.clear();
+    this.clock = 0;
+  }
+  __recalculate() {
+    assert(this.__refcount > 0, "cannot flush dead trackeddata");
+    const toPropagate = /* @__PURE__ */ new Set();
+    for (const [
+      reader,
+      subscriptions
+    ] of this.itemSubscriptions.entries()) {
+      if (reader.__refcount > 0) {
+        for (const [key, whenRead] of subscriptions.entries()) {
+          const whenChanged = this.dirtyKeys.get(key);
+          if (whenChanged !== void 0 && whenRead <= whenChanged) {
+            toPropagate.add(reader);
+          }
+        }
+      }
+    }
+    for (const reader of toPropagate) {
+      this.itemSubscriptions.delete(reader);
+    }
+    this.eventSubscriptions.forEach((subscription) => {
+      if (subscription.events.length) {
+        subscription.handler(this.mergeEvents(subscription.events));
+        subscription.events = [];
+      }
+    });
+    this.dirtyKeys.clear();
+    this.isDirty = false;
+    return [...toPropagate];
+  }
+};
 
 // src/model/dict.ts
 var DictEventType = /* @__PURE__ */ ((DictEventType2) => {
@@ -4489,76 +4889,6 @@ var Dict = class {
 };
 function dict(entries = [], debugName) {
   return new Dict(entries, debugName);
-}
-
-// src/model/field.ts
-var Field = class {
-  constructor(val, debugName) {
-    this._val = val;
-    this._changeClock = 0;
-    this.__processable = true;
-    this.__refcount = 0;
-    this.__debugName = debugName ?? "field";
-  }
-  get() {
-    notifyRead(this);
-    return this._val;
-  }
-  set(newVal) {
-    if (newVal !== this._val) {
-      if (this._subscribers) {
-        this._changeClock += 1;
-      }
-      this._val = newVal;
-      if (this.__refcount > 0) {
-        markDirty(this);
-      }
-    }
-  }
-  subscribe(subscriber) {
-    this.retain();
-    if (!this._subscribers)
-      this._subscribers = /* @__PURE__ */ new Map();
-    this._subscribers.set(subscriber, this._changeClock);
-    subscriber(void 0, this._val);
-    return () => {
-      if (this._subscribers?.has(subscriber)) {
-        this._subscribers?.delete(subscriber);
-        this.release();
-      }
-    };
-  }
-  retain() {
-    retain(this);
-  }
-  release() {
-    release(this);
-  }
-  __alive() {
-    addVertex(this);
-  }
-  __dead() {
-    removeVertex(this);
-  }
-  __recalculate() {
-    assert(this.__refcount > 0, "cannot flush dead field");
-    if (this._subscribers) {
-      for (const [subscriber, observeClock] of this._subscribers) {
-        if (observeClock < this._changeClock) {
-          subscriber(void 0, this._val);
-        }
-        this._subscribers.set(subscriber, 0);
-      }
-      this._changeClock = 0;
-    }
-    return [...getForwardDependencies(this)];
-  }
-  map(fn) {
-    return calc(() => fn(this.get()));
-  }
-};
-function field(val, debugName) {
-  return new Field(val, debugName);
 }
 
 // src/model/model.ts
@@ -5038,7 +5368,7 @@ function mount(target, node) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.21.1" : "development";
+var VERSION = true ? "0.22.0" : "development";
 export {
   ArrayEventType,
   ClassComponent,

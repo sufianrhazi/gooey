@@ -9,7 +9,7 @@ export declare function isCustomJSXNode(node: JSXNode): node is JSXRenderable;
 /**
  * The core type that can be used as a child or root of a JSX expression
  */
-export type JSXNode = string | number | boolean | null | undefined | bigint | symbol | Function | Node | RenderNode | JSXNodeArray | Dynamic<JSXNode> | JSXRenderable;
+export type JSXNode = string | number | boolean | null | undefined | bigint | symbol | Function | Node | RenderNode | JSXNodeArray | Dynamic<JSXNode> | Promise<JSXNode> | JSXRenderable;
 export interface JSXNodeArray extends Array<JSXNode> {
 }
 export interface CustomElements {

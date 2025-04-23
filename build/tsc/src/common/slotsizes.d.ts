@@ -6,7 +6,6 @@ export declare class SlotSizes<TEventSource> {
     constructor(items: TEventSource[]);
     clearSlots(): void;
     updateIndexes(lo: number, hi: number): void;
-    index(item: TEventSource): number | undefined;
     get(index: number): TEventSource | undefined;
     move(from: number, count: number, to: number): ArrayEventMove;
     sort(from: number, indexes: number[]): ArrayEventSort;

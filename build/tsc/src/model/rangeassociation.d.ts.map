@@ -1,0 +1,1 @@
+{"version":3,"file":"rangeassociation.d.ts","sourceRoot":"","sources":["../../../../src/model/rangeassociation.ts"],"names":[],"mappings":"AAMA,qBAAa,gBAAgB,CAAC,CAAC;IAC3B,OAAO,CAAC,SAAS,CAAqB;IAEtC,cAAc,CAAC,KAAK,EAAE,MAAM,EAAE,GAAG,EAAE,MAAM,EAAE,KAAK,EAAE,CAAC,GAAG,IAAI;IAqC1D,cAAc,CAAC,KAAK,EAAE,MAAM,GAAG,CAAC,GAAG,IAAI;IA4BvC,OAAO,CAAC,gBAAgB;IAiBxB,KAAK;CAGR"}
