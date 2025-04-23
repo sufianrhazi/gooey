@@ -90,7 +90,6 @@ export class RangeAssociation<T> {
     }
 
     clear() {
-        console.log('CLEAR how big', this.intervals.length);
         this.intervals = [];
     }
 }
