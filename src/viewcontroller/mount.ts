@@ -1,5 +1,6 @@
 import * as log from '../common/log';
 import { flush } from '../model/engine';
+import { renderJSXNode } from './renderjsx';
 import { ArrayRenderNode } from './rendernode/arrayrendernode';
 import { ForeignRenderNode } from './rendernode/foreignrendernode';
 import { PortalRenderNode } from './rendernode/portalrendernode';
@@ -8,14 +9,14 @@ import { HTML_NAMESPACE } from './xmlnamespace';
 
 export function mount(
     target: Element | ShadowRoot,
-    node: RenderNode
+    node: JSX.Node
 ): () => void {
     const skipNodes = target.childNodes.length;
     const children: RenderNode[] = [];
     for (let i = 0; i < target.childNodes.length; ++i) {
         children.push(ForeignRenderNode(target.childNodes[i]));
     }
-    children.push(node);
+    children.push(renderJSXNode(node));
     const root = PortalRenderNode(
         target,
         ArrayRenderNode(children),

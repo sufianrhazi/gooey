@@ -134,7 +134,7 @@ export function WebComponentRenderNode<
     let onUnmountCallbacks: undefined | (() => void)[];
     let onDestroyCallbacks: undefined | (() => void)[];
     const owned: Set<Retainable> = new Set();
-    let errorHandler: ((e: Error) => RenderNode | null) | undefined;
+    let errorHandler: ((e: Error) => JSX.Element | null) | undefined;
 
     function ensureResult() {
         if (!result) {
@@ -164,7 +164,7 @@ export function WebComponentRenderNode<
                     if (!onDestroyCallbacks) onDestroyCallbacks = [];
                     onDestroyCallbacks.push(handler);
                 },
-                onError: (handler: (e: Error) => RenderNode | null) => {
+                onError: (handler: (e: Error) => JSX.Element | null) => {
                     log.assert(
                         callbacksAllowed,
                         'onError must be called in component body'
@@ -298,7 +298,7 @@ export function WebComponentRenderNode<
                           ...fields,
                       };
             const Component = options.Component;
-            let jsxResult: RenderNode | Error;
+            let jsxResult: JSX.Element | Error;
             try {
                 jsxResult =
                     Component(componentProps, lifecycle) || emptyRenderNode;

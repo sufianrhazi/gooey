@@ -495,7 +495,7 @@ suite('mount static', () => {
                 hello
             </div>
         );
-        const dest = source.clone({ class: 'dest', 'data-cloned': 'true' }, [
+        const dest = source.clone?.({ class: 'dest', 'data-cloned': 'true' }, [
             <>howdy</>,
         ]);
         mount(
@@ -555,7 +555,7 @@ suite('mount static', () => {
                 </span>
             </div>
         );
-        const dest = source.clone();
+        const dest = source.clone?.();
         mount(
             testRoot,
             <>
@@ -763,7 +763,7 @@ suite('mount calculations', () => {
                 {calc(() => state.content)}
             </div>
         );
-        jsx.retain();
+        jsx.retain?.();
         const unmount = mount(testRoot, jsx);
         const divEl = testRoot.querySelector('#ok');
         unmount();
@@ -903,7 +903,7 @@ suite('mount components', () => {
         };
 
         const jsx = <Greet />;
-        jsx.retain();
+        jsx.retain?.();
 
         let unmount = mount(testRoot, jsx);
         assert.deepEqual(['render', 'onMount:1'], sequence);
@@ -1339,7 +1339,7 @@ suite('mount class components', () => {
         }
 
         const jsx = <Greet />;
-        jsx.retain();
+        jsx.retain?.();
 
         let unmount = mount(testRoot, jsx);
         assert.deepEqual(['construct', 'render', 'onMount:1'], sequence);
@@ -2307,7 +2307,7 @@ suite('mount collection mapped view', () => {
         const jsx = <>{items.mapView((item) => calc(() => <>{item}</>))}</>;
         const unmount = mount(testRoot, jsx);
         assert.is('foobarbazbum', testRoot.textContent);
-        jsx.retain();
+        jsx.retain?.();
         unmount();
         items.shift();
         items.pop();
@@ -2325,7 +2325,7 @@ suite('mount collection mapped view', () => {
         const jsx = <>{items.mapView((item) => calc(() => <>{item}</>))}</>;
         const unmount = mount(testRoot, jsx);
         assert.is('foobarbazbum', testRoot.textContent);
-        jsx.retain();
+        jsx.retain?.();
         unmount();
         items.shift();
         items.pop();
@@ -3131,7 +3131,7 @@ suite('rendered node reuse', () => {
         };
         const state = model({ isMounted: false });
         const jsx = <p ref={refFunc}>hello, world!</p>;
-        jsx.retain();
+        jsx.retain?.();
         mount(testRoot, <div>{calc(() => state.isMounted && jsx)}</div>);
 
         assert.deepEqual([], references);
@@ -3203,7 +3203,7 @@ suite('rendered node reuse', () => {
                 </p>
             </div>
         );
-        jsx.retain();
+        jsx.retain?.();
         mount(testRoot, <div>{calc(() => state.isMounted && jsx)}</div>);
 
         assert.deepEqual([], references);
@@ -3279,7 +3279,7 @@ suite('rendered node reuse', () => {
                 <strong>hello</strong>, <em>world</em>!
             </span>
         );
-        jsx.retain();
+        jsx.retain?.();
         mount(
             testRoot,
             <div>
@@ -3324,7 +3324,7 @@ suite('rendered node reuse', () => {
                 <strong>hello</strong>, <em>world</em>!
             </span>
         );
-        jsx.retain();
+        jsx.retain?.();
         const leftMount = document.createElement('div');
         const rightMount = document.createElement('div');
 
@@ -3375,7 +3375,7 @@ suite('rendered node reuse', () => {
                 <strong>hello</strong>, <em>world</em>!
             </button>
         );
-        jsx.retain();
+        jsx.retain?.();
         const leftMount = document.createElement('div');
         const rightMount = document.createElement('div');
 
@@ -5501,7 +5501,7 @@ suite('custom elements', () => {
             <div id="f">f</div>,
         ];
         for (const rn of jsx) {
-            rn.retain();
+            rn.retain?.();
         }
 
         const indexOffset = field(0);
@@ -5586,7 +5586,7 @@ suite('custom elements', () => {
 
         unmount();
         for (const rn of jsx) {
-            rn.release();
+            rn.release?.();
         }
     });
 

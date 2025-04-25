@@ -1,5 +1,5 @@
-import type { Component} from '../../index';
-import Gooey, { mount, model, calc } from '../../index';
+import type { Component } from '../../index';
+import Gooey, { calc, model, mount } from '../../index';
 
 const appRoot = document.getElementById('app');
 if (!appRoot) {
@@ -34,12 +34,12 @@ const Example: Component<{ children: JSX.Element }> = (
         left: false,
     });
     onMount(() => {
-        children.retain();
+        children.retain?.();
         const handle = setInterval(() => {
             state.left = !state.left;
         }, 3000);
         return () => {
-            children.release();
+            children.release?.();
             clearInterval(handle);
         };
     });

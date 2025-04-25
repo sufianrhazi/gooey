@@ -66,7 +66,7 @@ export function ComponentRenderNode<TProps>(
     let onUnmountCallbacks: undefined | (() => void)[];
     let onDestroyCallbacks: undefined | (() => void)[];
     let owned: Set<Retainable> = new Set();
-    let errorHandler: undefined | ((e: Error) => RenderNode | null);
+    let errorHandler: undefined | ((e: Error) => JSX.Element | null);
 
     function ensureResult() {
         if (!result) {
@@ -96,7 +96,7 @@ export function ComponentRenderNode<TProps>(
                     if (!onDestroyCallbacks) onDestroyCallbacks = [];
                     onDestroyCallbacks.push(handler);
                 },
-                onError: (handler: (e: Error) => RenderNode | null) => {
+                onError: (handler: (e: Error) => JSX.Element | null) => {
                     log.assert(
                         callbacksAllowed,
                         'onError must be called in component body'
@@ -116,7 +116,7 @@ export function ComponentRenderNode<TProps>(
             } else {
                 componentProps = props ? { ...props, children } : { children };
             }
-            let jsxResult: RenderNode | Error;
+            let jsxResult: JSX.Element | Error;
             try {
                 jsxResult =
                     Component(componentProps, lifecycle) || emptyRenderNode;

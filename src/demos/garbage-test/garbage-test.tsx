@@ -1,13 +1,12 @@
-import type {
-    Component} from '../../index';
+import type { Component } from '../../index';
 import Gooey, {
-    mount,
-    collection,
-    model,
     calc,
-    subscribe,
+    collection,
     flush,
     IntrinsicObserver,
+    model,
+    mount,
+    subscribe,
 } from '../../index';
 
 // eslint-disable-next-line @typescript-eslint/no-empty-function
@@ -463,7 +462,7 @@ const App = () => (
                     const components = strings.map((item) => (
                         <MyComponent name={item} />
                     ));
-                    components.forEach((component) => component.retain());
+                    components.forEach((component) => component.retain?.());
                     const unmount = mount(
                         el,
                         <>{calc(() => state.isMounted && components)}</>
@@ -479,7 +478,7 @@ const App = () => (
                         destroy: () => {
                             unmount();
                             components.forEach((component) =>
-                                component.release()
+                                component.release?.()
                             );
                         },
                     };

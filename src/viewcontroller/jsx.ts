@@ -52,7 +52,7 @@ declare global {
         /**
          * The core type produced by a JSX expression
          */
-        type Element = RenderNode;
+        type Element = RenderNode | (Promise<RenderNode> & Partial<RenderNode>);
 
         /**
          * The core type allowable as a child node in a JSX expression
