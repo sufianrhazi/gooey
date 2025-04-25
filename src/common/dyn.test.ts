@@ -1,7 +1,9 @@
 import { assert, suite, test } from '@srhazi/gooey-test';
 
 import { Calculation } from '../model/calc';
-import { dynGet, dynMap, dynSet, dynSubscribe } from './dyn';
+import { flush } from '../model/engine';
+import { field } from '../model/field';
+import { dyn, dynGet, dynMap, dynSet, dynSubscribe } from './dyn';
 import type { Dynamic } from './dyn';
 
 type TypeIs<T, V> = T extends V ? (V extends T ? true : false) : false;
@@ -177,5 +179,46 @@ suite('dyn', () => {
         const r = dynMap(3, (v) => ({ wrapped: v }));
         assert.isTruthy(r instanceof Calculation);
         assert.deepEqual({ wrapped: 3 }, r.get());
+    });
+
+    test('dyn helper is a handy wrapper', () => {
+        const x = dyn(3);
+
+        assert.is(3, x.get());
+        let result: any;
+        const unsubscribe = x.subscribe((err, value) => {
+            if (!err) {
+                result = value;
+            }
+        });
+        assert.is(3, result);
+        unsubscribe();
+        assert.is(9, x.map((v) => v ** 2).get());
+    });
+
+    test('dyn helper works with dynamic objects', () => {
+        const x = dyn(field(3));
+
+        assert.is(3, x.get());
+        let result: any;
+        const unsubscribe = x.subscribe((err, value) => {
+            if (!err) {
+                result = value;
+            }
+        });
+        assert.is(3, result);
+        unsubscribe();
+        assert.is(9, x.map((v) => v ** 2).get());
+    });
+
+    test('dyn map produces a working calculation', () => {
+        const dependency = field(0);
+        const x = dyn(3);
+        const what = x.map((v) => v + dependency.get());
+        what.retain();
+        assert.is(3, what.get());
+        dependency.set(5);
+        flush();
+        assert.is(8, what.get());
     });
 });

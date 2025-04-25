@@ -13,6 +13,7 @@ export type {
 export {
     dynGet,
     dynSet,
+    dynMap,
     dynSubscribe,
     isDynamic,
     isDynamicMut,
