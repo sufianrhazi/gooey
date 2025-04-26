@@ -1258,7 +1258,7 @@ var Calculation = class {
     }
     this._calculating = false;
     for (const prevDependency of this._dependencies) {
-      if (!newDependencies.has(prevDependency) && isProcessable(prevDependency)) {
+      if (!newDependencies.has(prevDependency) && isProcessable(prevDependency) && this.__refcount > 0) {
         removeEdge(prevDependency, this);
       }
       release(prevDependency);
@@ -1373,6 +1373,7 @@ var Calculation = class {
   }
   __alive() {
     addVertex(this);
+    this._dependencies.clear();
   }
   __dead() {
     this._result = void 0;
@@ -2870,6 +2871,9 @@ function isDynamic(val) {
 }
 function isDynamicMut(val) {
   return isDynamic(val) && "set" in val && typeof val.set === "function";
+}
+function dynMap(val, fn) {
+  return calc(() => fn(dynGet(val)));
 }
 
 // src/viewcontroller/webcomponents.ts
@@ -5331,7 +5335,7 @@ function mount(target, node) {
   for (let i = 0; i < target.childNodes.length; ++i) {
     children.push(ForeignRenderNode(target.childNodes[i]));
   }
-  children.push(node);
+  children.push(renderJSXNode(node));
   const root = PortalRenderNode(
     target,
     ArrayRenderNode(children),
@@ -5368,7 +5372,7 @@ function mount(target, node) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.22.0" : "development";
+var VERSION = true ? "0.23.0" : "development";
 export {
   ArrayEventType,
   ClassComponent,
@@ -5392,6 +5396,7 @@ export {
   defineCustomElement,
   dict,
   dynGet,
+  dynMap,
   dynSet,
   dynSubscribe,
   field,

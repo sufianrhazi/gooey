@@ -1,3 +1,2 @@
-import type { RenderNode } from './rendernode/rendernode';
-export declare function mount(target: Element | ShadowRoot, node: RenderNode): () => void;
+export declare function mount(target: Element | ShadowRoot, node: JSX.Node): () => void;
 //# sourceMappingURL=mount.d.ts.map

@@ -20,4 +20,9 @@ export declare function dynSubscribe<TVal>(wrapper: Dyn<TVal>, callback: Dynamic
 export declare function isDynamic<TVal>(val: Dyn<TVal>): val is Dynamic<TVal>;
 export declare function isDynamicMut<TVal>(val: DynMut<TVal>): val is DynamicMut<TVal>;
 export declare function dynMap<T, V>(val: Dyn<T>, fn: (val: T) => V): Calculation<V>;
+export declare function dyn<T>(val: Dyn<T>): {
+    get: () => T;
+    subscribe: (handler: DynamicSubscriptionHandler<T>) => () => void;
+    map: <V>(fn: (val: T) => V) => Calculation<V>;
+};
 //# sourceMappingURL=dyn.d.ts.map
