@@ -389,6 +389,54 @@ suite('calc', () => {
         assert.deepEqual(['Hello, world!', 'Hello, there!'], results);
         assert.is('Hello, not-flushed!', greeted.get());
     });
+
+    test('bug: retain/release crash', () => {
+        const v = field(10);
+        const c = calc(() => {
+            return v.get();
+        });
+        c.get();
+        c.retain();
+        c.get();
+        c.release();
+        c.get();
+        flush();
+        c.get();
+        c.retain();
+        c.get();
+        c.release();
+        c.get();
+    });
+
+    test('bug: non-retained adjustment to dependencies', () => {
+        const a = field(10);
+        const b = field(20);
+        const which = field(true);
+        const c = calc(() => {
+            return which.get() ? a.get() : b.get();
+        });
+        assert.is(10, c.get());
+        which.set(false);
+        assert.is(20, c.get());
+        which.set(true);
+        assert.is(10, c.get());
+
+        c.retain();
+        assert.is(10, c.get());
+        which.set(false);
+        flush();
+        assert.is(20, c.get());
+        which.set(true);
+        flush();
+        assert.is(10, c.get());
+        c.release();
+
+        assert.is(10, c.get());
+        which.set(false);
+        assert.is(20, c.get());
+        which.set(true);
+        assert.is(10, c.get());
+    });
 });
 
 suite('cycles', () => {

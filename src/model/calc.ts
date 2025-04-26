@@ -269,7 +269,8 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
         for (const prevDependency of this._dependencies) {
             if (
                 !newDependencies.has(prevDependency) &&
-                isProcessable(prevDependency)
+                isProcessable(prevDependency) &&
+                this.__refcount > 0
             ) {
                 // We lost a dependency
                 removeEdge(prevDependency, this);
@@ -421,6 +422,7 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
 
     __alive() {
         addVertex(this);
+        this._dependencies.clear();
     }
 
     __dead() {
