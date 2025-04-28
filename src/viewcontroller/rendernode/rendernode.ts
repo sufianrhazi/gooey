@@ -171,6 +171,7 @@ export class SingleChildRenderNode implements RenderNode, Retainable {
     }
 
     setChild(child: RenderNode) {
+        console.log('setChild', child);
         const toRemove = this.child;
         this.child = child;
         if (this._isMounted) {

@@ -25,28 +25,22 @@ export function isClassComponent(
     return val && val.prototype instanceof ClassComponent;
 }
 
-export function classComponentToFunctionComponentRenderNode<TProps>(
-    Component: ClassComponentConstructor<TProps>,
-    props: TProps,
-    children: JSX.Node[]
-) {
-    return ComponentRenderNode(
-        (props: TProps, lifecycle) => {
-            const instance = new Component(props);
-            if (!instance.render) return null;
-            if (instance.onDestroy)
-                lifecycle.onDestroy(instance.onDestroy.bind(instance));
-            if (instance.onMount)
-                lifecycle.onMount(instance.onMount.bind(instance));
-            if (instance.onError)
-                lifecycle.onError(instance.onError.bind(instance));
-            if (instance.onUnmount)
-                lifecycle.onUnmount(instance.onUnmount.bind(instance));
-            return instance.render();
-        },
-        props,
-        children
-    );
+export function classComponentToFunctionComponent<TProps>(
+    Component: ClassComponentConstructor<TProps>
+): FunctionComponent<TProps> {
+    return (props: TProps, lifecycle) => {
+        const instance = new Component(props);
+        if (instance.onDestroy)
+            lifecycle.onDestroy(instance.onDestroy.bind(instance));
+        if (instance.onMount)
+            lifecycle.onMount(instance.onMount.bind(instance));
+        if (instance.onError)
+            lifecycle.onError(instance.onError.bind(instance));
+        if (instance.onUnmount)
+            lifecycle.onUnmount(instance.onUnmount.bind(instance));
+        if (!instance.render) return null;
+        return instance.render();
+    };
 }
 
 export function createElement<TProps extends {} | undefined>(
@@ -61,17 +55,6 @@ export function createElement<TProps extends {} | undefined>(
             ArrayRenderNode(renderJSXChildren(children))
         );
     }
-    if (isClassComponent(type)) {
-        return classComponentToFunctionComponentRenderNode<TProps>(
-            type as ClassComponentConstructor<TProps>,
-            props,
-            children
-        );
-    }
-    return ComponentRenderNode<TProps>(
-        type as FunctionComponent<TProps>,
-        props,
-        children
-    );
+    return ComponentRenderNode<TProps>(type, props, children);
 }
 createElement.Fragment = Fragment;

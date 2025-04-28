@@ -1,6 +1,7 @@
 import * as log from '../common/log';
 import { noop } from '../common/util';
 import { commit } from '../viewcontroller/commit';
+import type { Component } from '../viewcontroller/rendernode/componentrendernode';
 import { Graph, ProcessAction } from './graph';
 
 export interface Retainable {
@@ -39,6 +40,10 @@ let isFlushing = false;
 let needsFlush = false;
 let flushHandle: (() => void) | null = null;
 let flushScheduler = defaultScheduler;
+let componentToReplaceSet: Map<
+    Component<any>,
+    Set<(newComponent: Component<any>) => void>
+> = new Map();
 
 function noopScheduler(callback: () => void) {
     return noop;
@@ -67,6 +72,46 @@ export function reset() {
     if (flushHandle) flushHandle();
     flushHandle = null;
     flushScheduler = defaultScheduler;
+    componentToReplaceSet = new Map();
+}
+
+export function registerComponentReload<T>(
+    component: Component<T>,
+    reload: (newComponent: typeof component) => void
+) {
+    let reloads = componentToReplaceSet.get(component);
+    if (!reloads) {
+        reloads = new Set();
+        componentToReplaceSet.set(component, reloads);
+    }
+    reloads.add(reload);
+}
+
+export function unregisterComponentReload<T>(
+    component: Component<T>,
+    reload: (newComponent: typeof component) => void
+) {
+    const reloads = componentToReplaceSet.get(component);
+    log.assert(
+        reloads,
+        'Internal error: unexpected unregisterComponentRenderNode, previously unseen',
+        { component, reload }
+    );
+    reloads.delete(reload);
+}
+
+export function replaceComponent<T>(
+    toReplace: Component<T>,
+    newComponent: Component<T>
+) {
+    const reloads = componentToReplaceSet.get(toReplace);
+    if (reloads) {
+        reloads.forEach((replace) => {
+            replace(newComponent);
+            registerComponentReload(newComponent, replace);
+        });
+    }
+    componentToReplaceSet.delete(toReplace);
 }
 
 function scheduleFlush() {

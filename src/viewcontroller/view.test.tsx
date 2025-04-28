@@ -16,7 +16,7 @@ import Gooey, {
     subscribe,
 } from '../index';
 import type { Component, Dyn, Model, Ref } from '../index';
-import { debugGetGraph } from '../model/engine';
+import { debugGetGraph, replaceComponent } from '../model/engine';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
 
@@ -1649,6 +1649,432 @@ suite('mount class components', () => {
                     <p class="child">only once</p>
                 </BadComponent>
             )
+        );
+    });
+});
+
+suite('hot module reload components', () => {
+    test('function component can be replaced', () => {
+        let log: string[] = [];
+        const ComponentA: Component<{ name: string }> = (
+            { name },
+            { onMount, onDestroy, onUnmount }
+        ) => {
+            log.push(`ComponentA:${name}:render`);
+            onMount(() => {
+                log.push(`ComponentA:${name}:mount`);
+            });
+            onUnmount(() => {
+                log.push(`ComponentA:${name}:unmount`);
+            });
+            onDestroy(() => {
+                log.push(`ComponentA:${name}:destroy`);
+            });
+            return <div>ComponentA: {name}</div>;
+        };
+        const ComponentB: Component<{ name: string }> = (
+            { name },
+            { onMount, onDestroy, onUnmount }
+        ) => {
+            log.push(`ComponentB:${name}:render`);
+            onMount(() => {
+                log.push(`ComponentB:${name}:mount`);
+            });
+            onUnmount(() => {
+                log.push(`ComponentB:${name}:unmount`);
+            });
+            onDestroy(() => {
+                log.push(`ComponentB:${name}:destroy`);
+            });
+            return <span>ComponentB: {name}</span>;
+        };
+
+        const unmount = mount(
+            testRoot,
+            <div>
+                <ComponentA name="one" />
+                <ComponentA name="two" />
+            </div>
+        );
+
+        assert.is(
+            '<div><div>ComponentA: one</div><div>ComponentA: two</div></div>',
+            testRoot.innerHTML
+        );
+        assert.deepEqual(
+            [
+                'ComponentA:one:render',
+                'ComponentA:two:render',
+                'ComponentA:one:mount',
+                'ComponentA:two:mount',
+            ],
+            log
+        );
+
+        log = [];
+        replaceComponent(ComponentA, ComponentB);
+        flush();
+
+        assert.is(
+            '<div><span>ComponentB: one</span><span>ComponentB: two</span></div>',
+            testRoot.innerHTML
+        );
+        assert.deepEqual(
+            [
+                'ComponentA:one:unmount',
+                'ComponentA:one:destroy',
+                'ComponentB:one:render',
+                'ComponentA:two:unmount',
+                'ComponentA:two:destroy',
+                'ComponentB:two:render',
+                'ComponentB:one:mount',
+                'ComponentB:two:mount',
+            ],
+            log
+        );
+
+        log = [];
+        replaceComponent(ComponentB, ComponentA);
+        flush();
+
+        assert.is(
+            '<div><div>ComponentA: one</div><div>ComponentA: two</div></div>',
+            testRoot.innerHTML
+        );
+        assert.deepEqual(
+            [
+                'ComponentB:one:unmount',
+                'ComponentB:one:destroy',
+                'ComponentA:one:render',
+                'ComponentB:two:unmount',
+                'ComponentB:two:destroy',
+                'ComponentA:two:render',
+                'ComponentA:one:mount',
+                'ComponentA:two:mount',
+            ],
+            log
+        );
+
+        log = [];
+        unmount();
+        assert.deepEqual(
+            [
+                'ComponentA:one:unmount',
+                'ComponentA:two:unmount',
+                'ComponentA:one:destroy',
+                'ComponentA:two:destroy',
+            ],
+            log
+        );
+    });
+
+    test('class component can be replaced with function component and back', () => {
+        let log: string[] = [];
+        class ComponentA extends ClassComponent<{ name: string }> {
+            render() {
+                log.push(`ComponentA:${this.props.name}:render`);
+                return <span>ComponentA: {this.props.name}</span>;
+            }
+            onMount() {
+                log.push(`ComponentA:${this.props.name}:mount`);
+            }
+            onUnmount() {
+                log.push(`ComponentA:${this.props.name}:unmount`);
+            }
+            onDestroy() {
+                log.push(`ComponentA:${this.props.name}:destroy`);
+            }
+        }
+        const ComponentB: Component<{ name: string }> = (
+            { name },
+            { onMount, onDestroy, onUnmount }
+        ) => {
+            log.push(`ComponentB:${name}:render`);
+            onMount(() => {
+                log.push(`ComponentB:${name}:mount`);
+            });
+            onUnmount(() => {
+                log.push(`ComponentB:${name}:unmount`);
+            });
+            onDestroy(() => {
+                log.push(`ComponentB:${name}:destroy`);
+            });
+            return <div>ComponentB: {name}</div>;
+        };
+
+        const unmount = mount(
+            testRoot,
+            <div>
+                <ComponentA name="one" />
+                <ComponentA name="two" />
+            </div>
+        );
+
+        assert.is(
+            '<div><span>ComponentA: one</span><span>ComponentA: two</span></div>',
+            testRoot.innerHTML
+        );
+        assert.deepEqual(
+            [
+                'ComponentA:one:render',
+                'ComponentA:two:render',
+                'ComponentA:one:mount',
+                'ComponentA:two:mount',
+            ],
+            log
+        );
+
+        log = [];
+        replaceComponent(ComponentA, ComponentB);
+        flush();
+
+        assert.is(
+            '<div><div>ComponentB: one</div><div>ComponentB: two</div></div>',
+            testRoot.innerHTML
+        );
+        assert.deepEqual(
+            [
+                'ComponentA:one:unmount',
+                'ComponentA:one:destroy',
+                'ComponentB:one:render',
+                'ComponentA:two:unmount',
+                'ComponentA:two:destroy',
+                'ComponentB:two:render',
+                'ComponentB:one:mount',
+                'ComponentB:two:mount',
+            ],
+            log
+        );
+
+        log = [];
+        replaceComponent(ComponentB, ComponentA);
+        flush();
+
+        assert.is(
+            '<div><span>ComponentA: one</span><span>ComponentA: two</span></div>',
+            testRoot.innerHTML
+        );
+        assert.deepEqual(
+            [
+                'ComponentB:one:unmount',
+                'ComponentB:one:destroy',
+                'ComponentA:one:render',
+                'ComponentB:two:unmount',
+                'ComponentB:two:destroy',
+                'ComponentA:two:render',
+                'ComponentA:one:mount',
+                'ComponentA:two:mount',
+            ],
+            log
+        );
+
+        log = [];
+        unmount();
+        assert.deepEqual(
+            [
+                'ComponentA:one:unmount',
+                'ComponentA:two:unmount',
+                'ComponentA:one:destroy',
+                'ComponentA:two:destroy',
+            ],
+            log
+        );
+    });
+
+    test('class component can be replaced with function component and back', () => {
+        let log: string[] = [];
+        const ComponentA: Component<{ name: string }> = (
+            { name },
+            { onMount, onDestroy, onUnmount }
+        ) => {
+            log.push(`ComponentA:${name}:render`);
+            onMount(() => {
+                log.push(`ComponentA:${name}:mount`);
+            });
+            onUnmount(() => {
+                log.push(`ComponentA:${name}:unmount`);
+            });
+            onDestroy(() => {
+                log.push(`ComponentA:${name}:destroy`);
+            });
+            return <div>ComponentA: {name}</div>;
+        };
+        class ComponentB extends ClassComponent<{ name: string }> {
+            render() {
+                log.push(`ComponentB:${this.props.name}:render`);
+                return <span>ComponentB: {this.props.name}</span>;
+            }
+            onMount() {
+                log.push(`ComponentB:${this.props.name}:mount`);
+            }
+            onUnmount() {
+                log.push(`ComponentB:${this.props.name}:unmount`);
+            }
+            onDestroy() {
+                log.push(`ComponentB:${this.props.name}:destroy`);
+            }
+        }
+
+        const unmount = mount(
+            testRoot,
+            <div>
+                <ComponentA name="one" />
+                <ComponentA name="two" />
+            </div>
+        );
+
+        assert.is(
+            '<div><div>ComponentA: one</div><div>ComponentA: two</div></div>',
+            testRoot.innerHTML
+        );
+        assert.deepEqual(
+            [
+                'ComponentA:one:render',
+                'ComponentA:two:render',
+                'ComponentA:one:mount',
+                'ComponentA:two:mount',
+            ],
+            log
+        );
+
+        log = [];
+        replaceComponent(ComponentA, ComponentB);
+        flush();
+
+        assert.is(
+            '<div><span>ComponentB: one</span><span>ComponentB: two</span></div>',
+            testRoot.innerHTML
+        );
+        assert.deepEqual(
+            [
+                'ComponentA:one:unmount',
+                'ComponentA:one:destroy',
+                'ComponentB:one:render',
+                'ComponentA:two:unmount',
+                'ComponentA:two:destroy',
+                'ComponentB:two:render',
+                'ComponentB:one:mount',
+                'ComponentB:two:mount',
+            ],
+            log
+        );
+
+        log = [];
+        replaceComponent(ComponentB, ComponentA);
+        flush();
+
+        assert.is(
+            '<div><div>ComponentA: one</div><div>ComponentA: two</div></div>',
+            testRoot.innerHTML
+        );
+        assert.deepEqual(
+            [
+                'ComponentB:one:unmount',
+                'ComponentB:one:destroy',
+                'ComponentA:one:render',
+                'ComponentB:two:unmount',
+                'ComponentB:two:destroy',
+                'ComponentA:two:render',
+                'ComponentA:one:mount',
+                'ComponentA:two:mount',
+            ],
+            log
+        );
+
+        log = [];
+        unmount();
+        assert.deepEqual(
+            [
+                'ComponentA:one:unmount',
+                'ComponentA:two:unmount',
+                'ComponentA:one:destroy',
+                'ComponentA:two:destroy',
+            ],
+            log
+        );
+    });
+
+    test('non-mounted components can be replaced', () => {
+        let log: string[] = [];
+        const ComponentA: Component<{ name: string }> = (
+            { name },
+            { onMount, onDestroy, onUnmount }
+        ) => {
+            log.push(`ComponentA:${name}:render`);
+            onMount(() => {
+                log.push(`ComponentA:${name}:mount`);
+            });
+            onUnmount(() => {
+                log.push(`ComponentA:${name}:unmount`);
+            });
+            onDestroy(() => {
+                log.push(`ComponentA:${name}:destroy`);
+            });
+            return <div>ComponentA: {name}</div>;
+        };
+        const ComponentB: Component<{ name: string }> = (
+            { name },
+            { onMount, onDestroy, onUnmount }
+        ) => {
+            log.push(`ComponentB:${name}:render`);
+            onMount(() => {
+                log.push(`ComponentB:${name}:mount`);
+            });
+            onUnmount(() => {
+                log.push(`ComponentB:${name}:unmount`);
+            });
+            onDestroy(() => {
+                log.push(`ComponentB:${name}:destroy`);
+            });
+            return <span>ComponentB: {name}</span>;
+        };
+
+        const jsx = (
+            <div>
+                <ComponentA name="one" />
+                <ComponentA name="two" />
+            </div>
+        );
+        jsx.retain();
+
+        assert.deepEqual(
+            ['ComponentA:one:render', 'ComponentA:two:render'],
+            log
+        );
+
+        log = [];
+        replaceComponent(ComponentA, ComponentB);
+        flush();
+
+        assert.deepEqual(
+            [
+                'ComponentA:one:destroy',
+                'ComponentB:one:render',
+                'ComponentA:two:destroy',
+                'ComponentB:two:render',
+            ],
+            log
+        );
+
+        log = [];
+        replaceComponent(ComponentB, ComponentA);
+        flush();
+
+        assert.deepEqual(
+            [
+                'ComponentB:one:destroy',
+                'ComponentA:one:render',
+                'ComponentB:two:destroy',
+                'ComponentA:two:render',
+            ],
+            log
+        );
+
+        log = [];
+        jsx.release();
+        assert.deepEqual(
+            ['ComponentA:one:destroy', 'ComponentA:two:destroy'],
+            log
         );
     });
 });

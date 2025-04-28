@@ -1,7 +1,16 @@
 import * as log from '../../common/log';
 import { wrapError } from '../../common/util';
 import type { Retainable } from '../../model/engine';
-import { release, retain } from '../../model/engine';
+import {
+    registerComponentReload,
+    release,
+    retain,
+    unregisterComponentReload,
+} from '../../model/engine';
+import {
+    classComponentToFunctionComponent,
+    isClassComponent,
+} from '../createelement';
 import { renderJSXNode } from '../renderjsx';
 import { RenderNodeCommitPhase } from './constants';
 import type { RenderNode } from './rendernode';
@@ -56,7 +65,7 @@ export class ClassComponent<TProps = EmptyProps>
 }
 
 export function ComponentRenderNode<TProps>(
-    Component: FunctionComponent<TProps>,
+    Component: Component<TProps>,
     props: TProps | null | undefined,
     children: JSX.Node[],
     debugName?: string
@@ -67,6 +76,10 @@ export function ComponentRenderNode<TProps>(
     let onDestroyCallbacks: undefined | (() => void)[];
     let owned: Set<Retainable> = new Set();
     let errorHandler: undefined | ((e: Error) => JSX.Element | null);
+    // Note: may be replaced live as a result of Hot Module Reloading
+    let ActiveComponent = isClassComponent(Component)
+        ? classComponentToFunctionComponent(Component)
+        : (Component as FunctionComponent<TProps>);
 
     function ensureResult() {
         if (!result) {
@@ -119,7 +132,8 @@ export function ComponentRenderNode<TProps>(
             let jsxResult: JSX.Element | Error;
             try {
                 jsxResult =
-                    Component(componentProps, lifecycle) || emptyRenderNode;
+                    ActiveComponent(componentProps, lifecycle) ||
+                    emptyRenderNode;
             } catch (e) {
                 const error = wrapError(e, 'Unknown error rendering component');
                 if (errorHandler) {
@@ -141,39 +155,79 @@ export function ComponentRenderNode<TProps>(
         return result;
     }
 
+    const cleanup = () => {
+        if (result && !(result instanceof Error)) {
+            renderNode.disown(result);
+        }
+        if (onDestroyCallbacks) {
+            for (const callback of onDestroyCallbacks) {
+                callback();
+            }
+        }
+
+        for (const item of owned) {
+            release(item);
+        }
+
+        owned = new Set();
+        onMountCallbacks = undefined;
+        onUnmountCallbacks = undefined;
+        onDestroyCallbacks = undefined;
+        result = undefined;
+        errorHandler = undefined;
+    };
+
+    const initialize = () => {
+        const componentResult = ensureResult();
+        if (componentResult instanceof Error) {
+            log.warn('Unhandled exception on detached component', {
+                error: componentResult,
+                renderNode: renderNode,
+            });
+        } else {
+            renderNode.own(componentResult);
+        }
+        return componentResult;
+    };
+
+    const replaceComponent = (newComponent: Component<TProps>) => {
+        if (renderNode.isMounted() && onUnmountCallbacks) {
+            for (const cb of onUnmountCallbacks) {
+                cb();
+            }
+        }
+        onUnmountCallbacks = undefined;
+        renderNode.setChild(emptyRenderNode);
+        cleanup();
+        if (isClassComponent(newComponent)) {
+            ActiveComponent = classComponentToFunctionComponent(newComponent);
+        } else {
+            ActiveComponent = newComponent as FunctionComponent<TProps>;
+        }
+        const componentResult = initialize();
+        if (renderNode.isAttached()) {
+            if (componentResult instanceof Error) {
+                renderNode.emitError(componentResult);
+            } else {
+                renderNode.setChild(componentResult);
+            }
+        }
+        if (renderNode.isMounted() && onMountCallbacks) {
+            // NOTE: is this needed?
+            renderNode.requestCommit(RenderNodeCommitPhase.COMMIT_MOUNT);
+        }
+        console.groupEnd();
+    };
+
     const renderNode = new SingleChildRenderNode(
         {
             onAlive: () => {
-                const componentResult = ensureResult();
-                if (componentResult instanceof Error) {
-                    log.warn('Unhandled exception on detached component', {
-                        error: componentResult,
-                        renderNode: renderNode,
-                    });
-                } else {
-                    renderNode.own(componentResult);
-                }
+                initialize();
+                registerComponentReload(Component, replaceComponent);
             },
             onDestroy: () => {
-                if (result && !(result instanceof Error)) {
-                    renderNode.disown(result);
-                }
-                if (onDestroyCallbacks) {
-                    for (const callback of onDestroyCallbacks) {
-                        callback();
-                    }
-                }
-
-                for (const item of owned) {
-                    release(item);
-                }
-
-                owned = new Set();
-                onMountCallbacks = undefined;
-                onUnmountCallbacks = undefined;
-                onDestroyCallbacks = undefined;
-                result = undefined;
-                errorHandler = undefined;
+                unregisterComponentReload(Component, replaceComponent);
+                cleanup();
             },
             onAttach: (parentContext) => {
                 if (result instanceof Error) {
