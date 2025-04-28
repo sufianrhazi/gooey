@@ -1,6 +1,9 @@
 import type { Dyn, Dynamic } from '../common/dyn';
 import type { RefObjectOrCallback } from './ref';
-import type { ClassComponentInterface } from './rendernode/componentrendernode';
+import type {
+    ClassComponentInterface,
+    Component,
+} from './rendernode/componentrendernode';
 import type { RenderNode } from './rendernode/rendernode';
 
 export interface JSXRenderable {
@@ -52,7 +55,17 @@ declare global {
         /**
          * The core type produced by a JSX expression
          */
-        type Element = RenderNode | (Promise<RenderNode> & Partial<RenderNode>);
+        type Element = RenderNode;
+
+        /**
+         * The element type
+         */
+        type ElementType =
+            | Component<any>
+            | Promise<RenderNode>
+            | keyof KnownElements
+            | keyof CustomElements
+            | string;
 
         /**
          * The core type allowable as a child node in a JSX expression

@@ -462,7 +462,7 @@ const App = () => (
                     const components = strings.map((item) => (
                         <MyComponent name={item} />
                     ));
-                    components.forEach((component) => component.retain?.());
+                    components.forEach((component) => component.retain());
                     const unmount = mount(
                         el,
                         <>{calc(() => state.isMounted && components)}</>
@@ -478,7 +478,7 @@ const App = () => (
                         destroy: () => {
                             unmount();
                             components.forEach((component) =>
-                                component.release?.()
+                                component.release()
                             );
                         },
                     };

@@ -34,12 +34,12 @@ const Example: Component<{ children: JSX.Element }> = (
         left: false,
     });
     onMount(() => {
-        children.retain?.();
+        children.retain();
         const handle = setInterval(() => {
             state.left = !state.left;
         }, 3000);
         return () => {
-            children.release?.();
+            children.release();
             clearInterval(handle);
         };
     });
