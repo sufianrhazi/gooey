@@ -74,11 +74,9 @@ export function renderJSXNode(jsxNode: JSX.Node): RenderNode {
         });
         jsxNode.then(
             (val: any) => {
-                console.log('OK');
                 promiseResult.set({ type: 'resolved', value: val });
             },
             (err: any) => {
-                console.log('NOPE');
                 promiseResult.set({ type: 'error', error: wrapError(err) });
             }
         );
