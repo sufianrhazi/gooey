@@ -1011,6 +1011,7 @@ var isFlushing = false;
 var needsFlush = false;
 var flushHandle = null;
 var flushScheduler = defaultScheduler2;
+var componentToReplaceSet = /* @__PURE__ */ new Map();
 function noopScheduler(callback) {
   return noop;
 }
@@ -1038,6 +1039,34 @@ function reset() {
     flushHandle();
   flushHandle = null;
   flushScheduler = defaultScheduler2;
+  componentToReplaceSet = /* @__PURE__ */ new Map();
+}
+function registerComponentReload(component, reload) {
+  let reloads = componentToReplaceSet.get(component);
+  if (!reloads) {
+    reloads = /* @__PURE__ */ new Set();
+    componentToReplaceSet.set(component, reloads);
+  }
+  reloads.add(reload);
+}
+function unregisterComponentReload(component, reload) {
+  const reloads = componentToReplaceSet.get(component);
+  assert(
+    reloads,
+    "Internal error: unexpected unregisterComponentRenderNode, previously unseen",
+    { component, reload }
+  );
+  reloads.delete(reload);
+}
+function replaceComponent(toReplace, newComponent) {
+  const reloads = componentToReplaceSet.get(toReplace);
+  if (reloads) {
+    reloads.forEach((replace) => {
+      replace(newComponent);
+      registerComponentReload(newComponent, replace);
+    });
+  }
+  componentToReplaceSet.delete(toReplace);
 }
 function scheduleFlush() {
   if (needsFlush)
@@ -2215,6 +2244,7 @@ var SingleChildRenderNode = class {
     return new SingleChildRenderNode(this.handlers, clonedChild);
   }
   setChild(child) {
+    console.log("setChild", child);
     const toRemove = this.child;
     this.child = child;
     if (this._isMounted) {
@@ -2731,6 +2761,7 @@ function ComponentRenderNode(Component, props, children, debugName) {
   let onDestroyCallbacks;
   let owned = /* @__PURE__ */ new Set();
   let errorHandler;
+  let ActiveComponent = isClassComponent(Component) ? classComponentToFunctionComponent(Component) : Component;
   function ensureResult() {
     if (!result) {
       let callbacksAllowed = true;
@@ -2781,7 +2812,7 @@ function ComponentRenderNode(Component, props, children, debugName) {
       }
       let jsxResult;
       try {
-        jsxResult = Component(componentProps, lifecycle) || emptyRenderNode;
+        jsxResult = ActiveComponent(componentProps, lifecycle) || emptyRenderNode;
       } catch (e) {
         const error2 = wrapError(e, "Unknown error rendering component");
         if (errorHandler) {
@@ -2802,37 +2833,73 @@ function ComponentRenderNode(Component, props, children, debugName) {
     }
     return result;
   }
+  const cleanup = () => {
+    if (result && !(result instanceof Error)) {
+      renderNode.disown(result);
+    }
+    if (onDestroyCallbacks) {
+      for (const callback of onDestroyCallbacks) {
+        callback();
+      }
+    }
+    for (const item of owned) {
+      release(item);
+    }
+    owned = /* @__PURE__ */ new Set();
+    onMountCallbacks = void 0;
+    onUnmountCallbacks = void 0;
+    onDestroyCallbacks = void 0;
+    result = void 0;
+    errorHandler = void 0;
+  };
+  const initialize = () => {
+    const componentResult = ensureResult();
+    if (componentResult instanceof Error) {
+      warn("Unhandled exception on detached component", {
+        error: componentResult,
+        renderNode
+      });
+    } else {
+      renderNode.own(componentResult);
+    }
+    return componentResult;
+  };
+  const replaceComponent2 = (newComponent) => {
+    if (renderNode.isMounted() && onUnmountCallbacks) {
+      for (const cb of onUnmountCallbacks) {
+        cb();
+      }
+    }
+    onUnmountCallbacks = void 0;
+    renderNode.setChild(emptyRenderNode);
+    cleanup();
+    if (isClassComponent(newComponent)) {
+      ActiveComponent = classComponentToFunctionComponent(newComponent);
+    } else {
+      ActiveComponent = newComponent;
+    }
+    const componentResult = initialize();
+    if (renderNode.isAttached()) {
+      if (componentResult instanceof Error) {
+        renderNode.emitError(componentResult);
+      } else {
+        renderNode.setChild(componentResult);
+      }
+    }
+    if (renderNode.isMounted() && onMountCallbacks) {
+      renderNode.requestCommit(3 /* COMMIT_MOUNT */);
+    }
+    console.groupEnd();
+  };
   const renderNode = new SingleChildRenderNode(
     {
       onAlive: () => {
-        const componentResult = ensureResult();
-        if (componentResult instanceof Error) {
-          warn("Unhandled exception on detached component", {
-            error: componentResult,
-            renderNode
-          });
-        } else {
-          renderNode.own(componentResult);
-        }
+        initialize();
+        registerComponentReload(Component, replaceComponent2);
       },
       onDestroy: () => {
-        if (result && !(result instanceof Error)) {
-          renderNode.disown(result);
-        }
-        if (onDestroyCallbacks) {
-          for (const callback of onDestroyCallbacks) {
-            callback();
-          }
-        }
-        for (const item of owned) {
-          release(item);
-        }
-        owned = /* @__PURE__ */ new Set();
-        onMountCallbacks = void 0;
-        onUnmountCallbacks = void 0;
-        onDestroyCallbacks = void 0;
-        result = void 0;
-        errorHandler = void 0;
+        unregisterComponentReload(Component, replaceComponent2);
+        cleanup();
       },
       onAttach: (parentContext) => {
         if (result instanceof Error) {
@@ -3617,25 +3684,21 @@ var Fragment = ({
 function isClassComponent(val) {
   return val && val.prototype instanceof ClassComponent;
 }
-function classComponentToFunctionComponentRenderNode(Component, props, children) {
-  return ComponentRenderNode(
-    (props2, lifecycle) => {
-      const instance = new Component(props2);
-      if (!instance.render)
-        return null;
-      if (instance.onDestroy)
-        lifecycle.onDestroy(instance.onDestroy.bind(instance));
-      if (instance.onMount)
-        lifecycle.onMount(instance.onMount.bind(instance));
-      if (instance.onError)
-        lifecycle.onError(instance.onError.bind(instance));
-      if (instance.onUnmount)
-        lifecycle.onUnmount(instance.onUnmount.bind(instance));
-      return instance.render();
-    },
-    props,
-    children
-  );
+function classComponentToFunctionComponent(Component) {
+  return (props, lifecycle) => {
+    const instance = new Component(props);
+    if (instance.onDestroy)
+      lifecycle.onDestroy(instance.onDestroy.bind(instance));
+    if (instance.onMount)
+      lifecycle.onMount(instance.onMount.bind(instance));
+    if (instance.onError)
+      lifecycle.onError(instance.onError.bind(instance));
+    if (instance.onUnmount)
+      lifecycle.onUnmount(instance.onUnmount.bind(instance));
+    if (!instance.render)
+      return null;
+    return instance.render();
+  };
 }
 function createElement(type, props, ...children) {
   if (typeof type === "string") {
@@ -3645,20 +3708,10 @@ function createElement(type, props, ...children) {
       ArrayRenderNode(renderJSXChildren(children))
     );
   }
-  if (isClassComponent(type)) {
-    return classComponentToFunctionComponentRenderNode(
-      type,
-      props,
-      children
-    );
-  }
-  return ComponentRenderNode(
-    type,
-    props,
-    children
-  );
+  return ComponentRenderNode(type, props, children);
 }
 createElement.Fragment = Fragment;
+createElement.replaceComponent = replaceComponent;
 
 // src/components/fragment.ts
 var Fragment2 = ({

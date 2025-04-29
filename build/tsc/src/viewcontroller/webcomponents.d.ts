@@ -423,10 +423,10 @@ export declare const getWebComponentTagConstructors: () => {
     readonly track: {
         new (): HTMLTrackElement;
         prototype: HTMLTrackElement;
-        readonly ERROR: number;
-        readonly LOADED: number;
-        readonly LOADING: number;
-        readonly NONE: number;
+        readonly NONE: 0;
+        readonly LOADING: 1;
+        readonly LOADED: 2;
+        readonly ERROR: 3;
     };
     readonly u: {
         new (): HTMLElement;

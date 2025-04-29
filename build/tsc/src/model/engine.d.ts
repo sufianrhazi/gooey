@@ -1,3 +1,4 @@
+import type { Component } from '../viewcontroller/rendernode/componentrendernode';
 export interface Retainable {
     __debugName: string;
     __refcount: number;
@@ -21,6 +22,9 @@ export declare function isProcessable(val: any): val is Processable;
  */
 type OnReadCallback = (vertex: Retainable & Processable) => Retainable & Processable;
 export declare function reset(): void;
+export declare function registerComponentReload<T>(component: Component<T>, reload: (newComponent: typeof component) => void): void;
+export declare function unregisterComponentReload<T>(component: Component<T>, reload: (newComponent: typeof component) => void): void;
+export declare function replaceComponent<T>(toReplace: Component<T>, newComponent: Component<T>): void;
 export declare function flush(): void;
 export declare function subscribe(scheduler?: (callback: () => void) => () => void): void;
 export declare function retain(retainable: Retainable): void;

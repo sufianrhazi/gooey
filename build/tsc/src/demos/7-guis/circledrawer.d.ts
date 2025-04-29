@@ -42,13 +42,13 @@ export declare class CircleDrawer extends ClassComponent {
     svgContainerEl: Ref<HTMLDivElement | undefined>;
     actions: Action[];
     constructor(props: {});
-    renderChildWindow(): JSX.Element;
+    renderChildWindow(): import("../../viewcontroller/rendernode/rendernode").RenderNode;
     onMount(): () => void;
     onUndoClick: () => void;
     onRedoClick: () => void;
     saveAdjustment(): void;
     onSvgClick: (event: MouseEvent) => void;
-    render(): JSX.Element;
+    render(): import("../../viewcontroller/rendernode/rendernode").RenderNode;
 }
 export {};
 //# sourceMappingURL=circledrawer.d.ts.map

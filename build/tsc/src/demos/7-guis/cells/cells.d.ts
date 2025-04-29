@@ -16,7 +16,7 @@ export declare class Cells extends ClassComponent {
     constructor(props: EmptyProps);
     moveFocusTo(position: Position): void;
     onKeyDown: (e: KeyboardEvent, tableEl: HTMLTableElement) => void;
-    renderCell(position: Position): JSX.Element;
-    render(): JSX.Element;
+    renderCell(position: Position): import("../../../viewcontroller/rendernode/rendernode").RenderNode;
+    render(): import("../../../viewcontroller/rendernode/rendernode").RenderNode;
 }
 //# sourceMappingURL=cells.d.ts.map

@@ -30,6 +30,6 @@ export declare class ClassComponent<TProps = EmptyProps> implements ClassCompone
     onDestroy?(): void;
     onError?(e: Error): JSX.Element | null;
 }
-export declare function ComponentRenderNode<TProps>(Component: FunctionComponent<TProps>, props: TProps | null | undefined, children: JSX.Node[], debugName?: string): RenderNode;
+export declare function ComponentRenderNode<TProps>(Component: Component<TProps>, props: TProps | null | undefined, children: JSX.Node[], debugName?: string): RenderNode;
 export {};
 //# sourceMappingURL=componentrendernode.d.ts.map
