@@ -19,10 +19,12 @@
   "exports": {
     ".": {
       "import": "./build/index.mjs",
+      "types": "./build/tsc/src/index.d.ts",
       "require": "./build/index.cjs"
     },
     "./debug": {
       "import": "./build/index.debug.mjs",
+      "types": "./build/tsc/src/index.d.ts",
       "require": "./build/index.debug.cjs"
     }
   },
