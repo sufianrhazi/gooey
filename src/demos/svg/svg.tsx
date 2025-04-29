@@ -1,5 +1,5 @@
-import type { Component, Calculation} from '../../index';
-import Gooey, { model, calc, mount } from '../../index';
+import type { Calculation, Component } from '../../index';
+import Gooey, { calc, model, mount } from '../../index';
 
 const ClockHand: Component<{
     cx: number;
@@ -275,7 +275,7 @@ if (root) {
                         cy="-5%"
                         r="4in"
                     />
-                    <SVG:circle
+                    <svg:circle
                         id="head"
                         fill="#FffF00"
                         class="head"
@@ -318,7 +318,7 @@ if (root) {
                                 stroke="black"
                                 stroke-width="5"
                             />
-                            <SVG:circle
+                            <svg:circle
                                 cx="-120"
                                 cy="-22.5%"
                                 r="2%"
