@@ -1,6 +1,6 @@
 import { assert, suite, test } from '@srhazi/gooey-test';
 
-import { RangeAssociation } from './RangeAssociation';
+import { RangeAssociation } from './rangeassociation';
 
 suite('RangeAssociation', () => {
     test('querying an empty rangeassociation produces nothing', () => {
