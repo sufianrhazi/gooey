@@ -127,6 +127,107 @@ suite('flushing behavior', () => {
         assert.deepEqual(['hello'], log);
     });
 
+    test('hotSwapModuleExport replaces field subscriptions', () => {
+        const a = field('hello');
+        const b = field('goodbye');
+
+        let log: string[] = [];
+        const unsubscribe = a.subscribe((err, value) => {
+            if (!err) {
+                log.push(value);
+            }
+        });
+
+        assert.deepEqual(['hello'], log);
+        flush();
+
+        assert.deepEqual(['hello'], log);
+
+        log = [];
+        hotSwapModuleExport(a, b);
+
+        assert.deepEqual(['goodbye'], log);
+        flush();
+        assert.deepEqual(['goodbye'], log);
+
+        log = [];
+        b.set('neat');
+        flush();
+
+        assert.deepEqual(['neat'], log);
+
+        log = [];
+        hotSwapModuleExport(b, a);
+
+        assert.deepEqual(['hello'], log);
+        flush();
+        assert.deepEqual(['hello'], log);
+
+        log = [];
+        hotSwapModuleExport(a, b); // sure why not
+
+        assert.deepEqual(['neat'], log);
+        unsubscribe();
+
+        log = [];
+        b.set('unseen');
+
+        assert.deepEqual([], log);
+        flush();
+        assert.deepEqual([], log);
+    });
+
+    test('hotSwapModuleExport replaces calc subscriptions', () => {
+        const shared = field('cool');
+        const a = calc(() => `${shared.get()}!`);
+        const b = calc(() => shared.get().toUpperCase());
+
+        let log: string[] = [];
+        const unsubscribe = a.subscribe((err, value) => {
+            if (!err) {
+                log.push(value);
+            }
+        });
+
+        assert.deepEqual(['cool!'], log);
+        flush();
+
+        assert.deepEqual(['cool!'], log);
+
+        log = [];
+        hotSwapModuleExport(a, b);
+
+        assert.deepEqual(['COOL'], log);
+        flush();
+        assert.deepEqual(['COOL'], log);
+
+        log = [];
+        shared.set('neat');
+        flush();
+
+        assert.deepEqual(['NEAT'], log);
+
+        log = [];
+        hotSwapModuleExport(b, a);
+
+        assert.deepEqual(['neat!'], log);
+        flush();
+        assert.deepEqual(['neat!'], log);
+
+        log = [];
+        hotSwapModuleExport(a, b); // sure why not
+
+        assert.deepEqual(['NEAT'], log);
+        unsubscribe();
+
+        log = [];
+        shared.set('unseen');
+
+        assert.deepEqual([], log);
+        flush();
+        assert.deepEqual([], log);
+    });
+
     test('hotSwapModuleExport dirties model dependencies', () => {
         const a = model({ foo: 'hello' });
         const b = model({ foo: 'goodbye' });

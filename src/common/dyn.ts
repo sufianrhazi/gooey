@@ -5,10 +5,16 @@ import { noop } from './util';
 export interface DynamicNonErrorSubscriptionHandler<T> {
     (error: undefined, val: T): void;
 }
+
 export interface DynamicSubscriptionHandler<T> {
     (
         ...args: [error: Error, val: undefined] | [error: undefined, val: T]
     ): void;
+}
+
+export interface DynamicInternalSubscription<T> {
+    onUnsubscribe: () => void;
+    handler: DynamicSubscriptionHandler<T>;
 }
 
 export interface Dynamic<out T> {

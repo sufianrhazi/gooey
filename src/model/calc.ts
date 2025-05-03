@@ -135,7 +135,11 @@
  *       does not equal the prior cached value.
  */
 
-import type { Dynamic, DynamicSubscriptionHandler } from '../common/dyn';
+import type {
+    Dynamic,
+    DynamicInternalSubscription,
+    DynamicSubscriptionHandler,
+} from '../common/dyn';
 import * as log from '../common/log';
 import { wrapError } from '../common/util';
 import {
@@ -165,6 +169,8 @@ function strictEqual<T>(a: T, b: T) {
     return a === b;
 }
 
+const takeCalcSubscriptionsSymbol = Symbol('takeCalcSubscriptions');
+
 export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
     declare __processable: true;
     declare __refcount: number;
@@ -176,7 +182,7 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
     private declare _calculating: boolean;
     private declare _eq: (a: T, b: T) => boolean;
     private declare _dependencies: Set<Processable & Retainable>;
-    private declare _subscriptions: Set<DynamicSubscriptionHandler<T>>;
+    private declare _subscriptions: DynamicInternalSubscription<T>[];
 
     private ensureResult(): {
         propagate: boolean;
@@ -379,7 +385,7 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
         this._calculating = false;
         this._eq = strictEqual;
         this._dependencies = new Set();
-        this._subscriptions = new Set();
+        this._subscriptions = [];
     }
 
     onError(handler: CalcErrorHandler<T>): this {
@@ -401,15 +407,20 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
             args = [wrapError(e), undefined];
         }
         if (!this._subscriptions) {
-            this._subscriptions = new Set();
+            this._subscriptions = [];
         }
-        this._subscriptions.add(handler);
-        const unsubscribe = () => {
-            this._subscriptions?.delete(handler);
-            release(this);
+        const subscription: DynamicInternalSubscription<T> = {
+            onUnsubscribe: () => {
+                this._subscriptions = this._subscriptions.filter(
+                    (sub) => sub !== subscription
+                );
+                release(this);
+            },
+            handler,
         };
+        this._subscriptions.push(subscription);
         handler(...args);
-        return unsubscribe;
+        return () => subscription.onUnsubscribe();
     }
 
     retain() {
@@ -495,15 +506,21 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
     private notifySubscriptions(result: CalculationResult<T>) {
         for (const subscription of this._subscriptions) {
             if (result.ok) {
-                subscription(undefined, result.value);
+                subscription.handler(undefined, result.value);
             } else {
-                subscription(result.error, undefined);
+                subscription.handler(result.error, undefined);
             }
         }
     }
 
     map<V>(fn: (val: T) => V): Calculation<V> {
         return calc(() => fn(this.get()));
+    }
+
+    [takeCalcSubscriptionsSymbol]() {
+        const toReturn = this._subscriptions;
+        this._subscriptions = [];
+        return toReturn;
     }
 }
 
@@ -524,4 +541,8 @@ export class SynchronousCycleError extends CycleError {
 
 export function calc<T>(fn: () => T, debugName?: string) {
     return new Calculation(fn, debugName);
+}
+
+export function takeCalcSubscriptions<T>(calc: Calculation<T>) {
+    return calc[takeCalcSubscriptionsSymbol]();
 }

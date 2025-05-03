@@ -1,6 +1,8 @@
 import type {
+    DynamicInternalSubscription,
     DynamicMut,
     DynamicNonErrorSubscriptionHandler,
+    DynamicSubscriptionHandler,
 } from '../common/dyn';
 import * as log from '../common/log';
 import type { Calculation } from './calc';
@@ -16,6 +18,8 @@ import {
     retain,
 } from './engine';
 
+const takeFieldSubscriptionsSymbol = Symbol('takeFieldSubscriptions');
+
 export class Field<T> implements Processable, Retainable, DynamicMut<T> {
     private declare _val: T;
     // Map of subscriber to the clock time
@@ -23,6 +27,7 @@ export class Field<T> implements Processable, Retainable, DynamicMut<T> {
         DynamicNonErrorSubscriptionHandler<T>,
         number
     >;
+    private declare _subscriptions: DynamicInternalSubscription<T>[];
     private declare _changeClock: number;
 
     declare __processable: true;
@@ -32,6 +37,7 @@ export class Field<T> implements Processable, Retainable, DynamicMut<T> {
     constructor(val: T, debugName?: string) {
         this._val = val;
         this._changeClock = 0;
+        this._subscriptions = [];
 
         this.__processable = true;
         this.__refcount = 0;
@@ -56,17 +62,30 @@ export class Field<T> implements Processable, Retainable, DynamicMut<T> {
         }
     }
 
-    subscribe(subscriber: DynamicNonErrorSubscriptionHandler<T>): () => void {
+    subscribe(handler: DynamicNonErrorSubscriptionHandler<T>): () => void {
         this.retain();
         if (!this._subscribers) this._subscribers = new Map();
-        this._subscribers.set(subscriber, this._changeClock);
-        subscriber(undefined, this._val);
-        return () => {
-            if (this._subscribers?.has(subscriber)) {
-                this._subscribers?.delete(subscriber);
-                this.release();
-            }
+        const subscription: DynamicInternalSubscription<T> = {
+            onUnsubscribe: () => {
+                if (this._subscribers?.has(handler)) {
+                    this._subscribers?.delete(handler);
+                    this.release();
+                }
+                this._subscriptions = this._subscriptions.filter(
+                    (sub) => sub !== subscription
+                );
+            },
+            // Yes, this is type incompatible. If a field is replaced by a
+            // calc; it's possible the subscription will be passed errors and
+            // the caller is not expecting that. This can only occur during hot
+            // swapping, and the type error will surface if it is incompatible,
+            // so this is "safe"
+            handler: handler as DynamicSubscriptionHandler<T>,
         };
+        this._subscriptions.push(subscription);
+        this._subscribers.set(handler, this._changeClock);
+        handler(undefined, this._val);
+        return () => subscription.onUnsubscribe();
     }
 
     retain() {
@@ -83,6 +102,8 @@ export class Field<T> implements Processable, Retainable, DynamicMut<T> {
 
     __dead() {
         removeVertex(this);
+        this._subscribers = undefined;
+        this._subscriptions = [];
     }
 
     __recalculate(): Processable[] {
@@ -102,8 +123,18 @@ export class Field<T> implements Processable, Retainable, DynamicMut<T> {
     map<V>(fn: (val: T) => V): Calculation<V> {
         return calc(() => fn(this.get()));
     }
+
+    [takeFieldSubscriptionsSymbol]() {
+        const toReturn = this._subscriptions;
+        this._subscriptions = [];
+        return toReturn;
+    }
 }
 
 export function field<T>(val: T, debugName?: string): Field<T> {
     return new Field(val, debugName);
+}
+
+export function takeFieldSubscriptions<T>(field: Field<T>) {
+    return field[takeFieldSubscriptionsSymbol]();
 }

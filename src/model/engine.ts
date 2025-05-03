@@ -1,12 +1,16 @@
 import { ArrayEventType } from '../common/arrayevent';
+import type { DynamicInternalSubscription } from '../common/dyn';
 import * as log from '../common/log';
 import { noop } from '../common/util';
 import { commit } from '../viewcontroller/commit';
 import { isClassComponent } from '../viewcontroller/createelement';
 import type { Component } from '../viewcontroller/rendernode/componentrendernode';
+import type { DynamicArraySubscription } from './arraysub';
+import { Calculation, takeCalcSubscriptions } from './calc';
 import type { Collection, View } from './collection';
 import { getDynamicArray, isCollectionOrView } from './collection';
 import { getDictTrackedData, isDict } from './dict';
+import { Field, takeFieldSubscriptions } from './field';
 import { Graph, ProcessAction } from './graph';
 import { getModelDict, isModel } from './model';
 
@@ -140,54 +144,32 @@ export function hotSwapModuleExport(
     beforeExport: unknown,
     afterExport: unknown
 ) {
-    if (isProcessable(beforeExport)) {
-        if (globalDependencyGraph.hasVertex(beforeExport)) {
-            for (const dep of globalDependencyGraph.getForwardDependencies(
-                beforeExport
-            )) {
-                globalDependencyGraph.markVertexDirty(dep);
-            }
-        }
+    let beforeVertex: Processable | undefined;
+    let beforeArraySubscriptions:
+        | { length: number; subscriptions: DynamicArraySubscription<unknown>[] }
+        | undefined;
+    let beforeValueSubscriptions:
+        | DynamicInternalSubscription<unknown>[]
+        | undefined;
+    let beforeComponent: Component<unknown> | undefined;
+    if (beforeExport instanceof Field) {
+        beforeVertex = beforeExport;
+        beforeValueSubscriptions = takeFieldSubscriptions(beforeExport);
+    } else if (beforeExport instanceof Calculation) {
+        beforeVertex = beforeExport;
+        beforeValueSubscriptions = takeCalcSubscriptions(beforeExport);
     } else if (isModel(beforeExport)) {
         const dict = getModelDict(beforeExport);
         const trackedData = getDictTrackedData(dict);
-        if (globalDependencyGraph.hasVertex(trackedData)) {
-            for (const dep of globalDependencyGraph.getForwardDependencies(
-                trackedData
-            )) {
-                globalDependencyGraph.markVertexDirty(dep);
-            }
-        }
+        beforeVertex = trackedData;
+        // TODO: model subscriptions
     } else if (isCollectionOrView(beforeExport)) {
         const dynamicArray = getDynamicArray(beforeExport);
-
-        // First invalidate the collection in the graph
-        const trackedArray = dynamicArray.getTrackedArray();
-        if (globalDependencyGraph.hasVertex(trackedArray)) {
-            for (const dep of globalDependencyGraph.getForwardDependencies(
-                trackedArray
-            )) {
-                globalDependencyGraph.markVertexDirty(dep);
-            }
-        }
-
-        // Then hand off subscriptions to the other collection
-        const subscriptions = dynamicArray.takeSubscriptions();
-        for (const subscription of subscriptions) {
-            subscription.handler([
-                {
-                    type: ArrayEventType.SPLICE,
-                    index: 0,
-                    count: beforeExport.length,
-                },
-            ]);
-            subscription.onUnsubscribe();
-            if (isCollectionOrView(afterExport)) {
-                subscription.onUnsubscribe = afterExport.subscribe((events) => {
-                    subscription.handler(events);
-                });
-            }
-        }
+        beforeVertex = dynamicArray.getTrackedArray();
+        beforeArraySubscriptions = {
+            length: beforeExport.length,
+            subscriptions: dynamicArray.takeSubscriptions(),
+        };
     } else if (isDict(beforeExport)) {
         const trackedData = getDictTrackedData(beforeExport);
         if (globalDependencyGraph.hasVertex(trackedData)) {
@@ -197,21 +179,88 @@ export function hotSwapModuleExport(
                 globalDependencyGraph.markVertexDirty(dep);
             }
         }
+        // TODO: dict subscriptions
     } else if (
-        (typeof beforeExport === 'function' ||
-            isClassComponent(beforeExport)) &&
-        (typeof afterExport === 'function' || isClassComponent(afterExport))
+        typeof beforeExport === 'function' ||
+        isClassComponent(beforeExport)
     ) {
-        const reloads = componentToReplaceSet.get(
-            beforeExport as Component<any>
-        );
-        if (reloads) {
-            reloads.forEach((replace) => {
-                replace(afterExport as Component<any>);
-                registerComponentReload(afterExport as Component<any>, replace);
+        beforeComponent = beforeExport as Component<any>;
+    }
+
+    // If the export was a vertex, downstream dependencies must be dirtied
+    if (beforeVertex) {
+        if (globalDependencyGraph.hasVertex(beforeVertex)) {
+            for (const dep of globalDependencyGraph.getForwardDependencies(
+                beforeVertex
+            )) {
+                globalDependencyGraph.markVertexDirty(dep);
+            }
+        }
+    }
+
+    // If the old export had value subscriptions, hand them to the new export
+    if (beforeValueSubscriptions) {
+        for (const subscription of beforeValueSubscriptions) {
+            subscription.onUnsubscribe();
+            if (
+                afterExport instanceof Calculation ||
+                afterExport instanceof Field
+            ) {
+                subscription.onUnsubscribe = afterExport.subscribe(
+                    subscription.handler
+                );
+            } else {
+                subscription.onUnsubscribe = noop;
+                subscription.handler(
+                    new Error(
+                        'Hot swapping replaced Field/Calculation with non-Field/Calculation value'
+                    ),
+                    undefined
+                );
+            }
+        }
+    }
+    // If the old export had array subscriptions, hand them to the new export
+    if (beforeArraySubscriptions) {
+        for (const subscription of beforeArraySubscriptions.subscriptions) {
+            subscription.handler([
+                {
+                    type: ArrayEventType.SPLICE,
+                    index: 0,
+                    count: beforeArraySubscriptions.length,
+                },
+            ]);
+            subscription.onUnsubscribe();
+
+            if (isCollectionOrView(afterExport)) {
+                subscription.onUnsubscribe = afterExport.subscribe((events) => {
+                    subscription.handler(events);
+                });
+            }
+        }
+    }
+
+    // If the old export is a component, replace with new export
+    if (beforeComponent) {
+        const replaceFunctions = componentToReplaceSet.get(beforeComponent);
+        if (replaceFunctions) {
+            // Note: if there is no after export, we swap it with a dead component
+            const afterComponent: Component<unknown> =
+                typeof afterExport === 'function' ||
+                isClassComponent(afterExport)
+                    ? (afterExport as Component<unknown>)
+                    : () => {
+                          log.warn(
+                              'Hot swapping replaced component with non-component value; the old component will now render to nothing'
+                          );
+                          return null;
+                      };
+            replaceFunctions.forEach((replaceFn) => {
+                replaceFn(afterComponent);
+                registerComponentReload(afterComponent, replaceFn);
             });
         }
-        componentToReplaceSet.delete(beforeExport as Component<any>);
+        componentToReplaceSet.delete(beforeComponent);
     }
 }
 
