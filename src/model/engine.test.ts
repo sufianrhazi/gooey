@@ -2,10 +2,12 @@ import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
 
 import { calc } from './calc';
 import { collection } from './collection';
-import { dict } from './dict';
+import { dict, DictEventType } from './dict';
+import type { DictEvent } from './dict';
 import { flush, hotSwapModuleExport, reset, retain, subscribe } from './engine';
 import { field } from './field';
-import { model } from './model';
+import { model, ModelEventType } from './model';
+import type { ModelEvent } from './model';
 
 beforeEach(() => {
     reset();
@@ -405,5 +407,197 @@ suite('flushing behavior', () => {
         assert.deepEqual([], log);
         flush();
         assert.deepEqual(['hello'], log);
+    });
+
+    test('hotSwapModuleExport dirties dict subscriptions', () => {
+        const a = dict([
+            ['foo', 'hello'],
+            ['baz', 'hey'],
+        ]);
+        const b = dict([
+            ['foo', 'goodbye'],
+            ['bar', 'cool'],
+        ]);
+
+        let log: DictEvent<string, string>[] = [];
+        const unsubscribe = a.subscribe((events) => {
+            log.push(...events);
+        });
+
+        assert.deepEqual(
+            [
+                {
+                    type: DictEventType.ADD,
+                    prop: 'foo',
+                    value: 'hello',
+                },
+                {
+                    type: DictEventType.ADD,
+                    prop: 'baz',
+                    value: 'hey',
+                },
+            ],
+            log
+        );
+
+        a.set('foo', 'newvalue');
+
+        flush();
+
+        assert.deepEqual(
+            [
+                {
+                    type: DictEventType.ADD,
+                    prop: 'foo',
+                    value: 'hello',
+                },
+                {
+                    type: DictEventType.ADD,
+                    prop: 'baz',
+                    value: 'hey',
+                },
+                {
+                    type: DictEventType.SET,
+                    prop: 'foo',
+                    value: 'newvalue',
+                },
+            ],
+            log
+        );
+
+        log = [];
+        hotSwapModuleExport(a, b);
+
+        assert.deepEqual(
+            [
+                { type: DictEventType.DEL, prop: 'foo' },
+                { type: DictEventType.DEL, prop: 'baz' },
+                { type: DictEventType.ADD, prop: 'foo', value: 'goodbye' },
+                { type: DictEventType.ADD, prop: 'bar', value: 'cool' },
+            ],
+            log
+        );
+        flush();
+        assert.deepEqual(
+            [
+                { type: DictEventType.DEL, prop: 'foo' },
+                { type: DictEventType.DEL, prop: 'baz' },
+                { type: DictEventType.ADD, prop: 'foo', value: 'goodbye' },
+                { type: DictEventType.ADD, prop: 'bar', value: 'cool' },
+            ],
+            log
+        );
+
+        log = [];
+        hotSwapModuleExport(b, a);
+
+        assert.deepEqual(
+            [
+                { type: DictEventType.DEL, prop: 'foo' },
+                { type: DictEventType.DEL, prop: 'bar' },
+                { type: DictEventType.ADD, prop: 'foo', value: 'newvalue' },
+                { type: DictEventType.ADD, prop: 'baz', value: 'hey' },
+            ],
+            log
+        );
+
+        log = [];
+        unsubscribe();
+        b.set('foo', 'unseen');
+        flush();
+        assert.deepEqual([], log);
+    });
+
+    test('hotSwapModuleExport dirties model subscriptions', () => {
+        const a = model({
+            foo: 'hello',
+            baz: 'hey',
+        });
+        const b = model({
+            foo: 'goodbye',
+            bar: 'cool',
+        });
+
+        let log: ModelEvent<any, string>[] = [];
+        const unsubscribe = model.subscribe(a, (events) => {
+            log.push(...events);
+        });
+
+        assert.deepEqual(
+            [
+                {
+                    type: ModelEventType.SET,
+                    prop: 'foo',
+                    value: 'hello',
+                },
+                {
+                    type: ModelEventType.SET,
+                    prop: 'baz',
+                    value: 'hey',
+                },
+            ],
+            log
+        );
+
+        a.foo = 'newvalue';
+
+        flush();
+
+        assert.deepEqual(
+            [
+                {
+                    type: ModelEventType.SET,
+                    prop: 'foo',
+                    value: 'hello',
+                },
+                {
+                    type: ModelEventType.SET,
+                    prop: 'baz',
+                    value: 'hey',
+                },
+                {
+                    type: ModelEventType.SET,
+                    prop: 'foo',
+                    value: 'newvalue',
+                },
+            ],
+            log
+        );
+
+        log = [];
+        hotSwapModuleExport(a, b);
+
+        assert.deepEqual(
+            [
+                { type: ModelEventType.SET, prop: 'foo', value: 'goodbye' },
+                { type: ModelEventType.SET, prop: 'bar', value: 'cool' },
+            ],
+            log
+        );
+        flush();
+        assert.deepEqual(
+            [
+                { type: ModelEventType.SET, prop: 'foo', value: 'goodbye' },
+                { type: ModelEventType.SET, prop: 'bar', value: 'cool' },
+            ],
+            log
+        );
+
+        log = [];
+        hotSwapModuleExport(b, a);
+
+        assert.deepEqual(
+            [
+                { type: ModelEventType.SET, prop: 'foo', value: 'newvalue' },
+                { type: ModelEventType.SET, prop: 'baz', value: 'hey' },
+            ],
+            log
+        );
+
+        log = [];
+        unsubscribe();
+        b.foo = 'unseen';
+        flush();
+        assert.deepEqual([], log);
     });
 });

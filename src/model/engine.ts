@@ -9,10 +9,13 @@ import type { DynamicArraySubscription } from './arraysub';
 import { Calculation, takeCalcSubscriptions } from './calc';
 import type { Collection, View } from './collection';
 import { getDynamicArray, isCollectionOrView } from './collection';
-import { getDictTrackedData, isDict } from './dict';
+import { DictEventType, getDictTrackedData, isDict } from './dict';
+import type { DictEvent } from './dict';
 import { Field, takeFieldSubscriptions } from './field';
 import { Graph, ProcessAction } from './graph';
-import { getModelDict, isModel } from './model';
+import { getModelDict, isModel, model } from './model';
+import type { ModelEvent } from './model';
+import type { TrackedDataSubscription } from './trackeddata';
 
 export interface Retainable {
     __debugName: string;
@@ -151,6 +154,22 @@ export function hotSwapModuleExport(
     let beforeValueSubscriptions:
         | DynamicInternalSubscription<unknown>[]
         | undefined;
+    let beforeDictSubscriptions:
+        | {
+              keys: unknown[];
+              subscriptions: TrackedDataSubscription<
+                  DictEvent<unknown, unknown>
+              >[];
+          }
+        | undefined;
+    let beforeModelSubscriptions:
+        | {
+              keys: unknown[];
+              subscriptions: TrackedDataSubscription<
+                  ModelEvent<any, string | number | symbol>
+              >[];
+          }
+        | undefined;
     let beforeComponent: Component<unknown> | undefined;
     if (beforeExport instanceof Field) {
         beforeVertex = beforeExport;
@@ -161,8 +180,15 @@ export function hotSwapModuleExport(
     } else if (isModel(beforeExport)) {
         const dict = getModelDict(beforeExport);
         const trackedData = getDictTrackedData(dict);
+        // TODO: this is unsound!
         beforeVertex = trackedData;
-        // TODO: model subscriptions
+        beforeModelSubscriptions = {
+            keys: [],
+            subscriptions:
+                trackedData.takeSubscriptions() as unknown as TrackedDataSubscription<
+                    ModelEvent<any, any>
+                >[],
+        };
     } else if (isCollectionOrView(beforeExport)) {
         const dynamicArray = getDynamicArray(beforeExport);
         beforeVertex = dynamicArray.getTrackedArray();
@@ -179,7 +205,10 @@ export function hotSwapModuleExport(
                 globalDependencyGraph.markVertexDirty(dep);
             }
         }
-        // TODO: dict subscriptions
+        beforeDictSubscriptions = {
+            keys: Array.from(beforeExport.keys()),
+            subscriptions: trackedData.takeSubscriptions(),
+        };
     } else if (
         typeof beforeExport === 'function' ||
         isClassComponent(beforeExport)
@@ -233,9 +262,42 @@ export function hotSwapModuleExport(
             subscription.onUnsubscribe();
 
             if (isCollectionOrView(afterExport)) {
-                subscription.onUnsubscribe = afterExport.subscribe((events) => {
-                    subscription.handler(events);
-                });
+                subscription.onUnsubscribe = afterExport.subscribe(
+                    subscription.handler
+                );
+            }
+        }
+    }
+
+    // If the old export had dict subscriptions, hand them to the new export
+    if (beforeDictSubscriptions) {
+        for (const subscription of beforeDictSubscriptions.subscriptions) {
+            subscription.handler(
+                beforeDictSubscriptions.keys.map((key) => ({
+                    type: DictEventType.DEL,
+                    prop: key,
+                }))
+            );
+            subscription.onUnsubscribe();
+
+            if (isDict(afterExport)) {
+                subscription.onUnsubscribe = afterExport.subscribe(
+                    subscription.handler
+                );
+            }
+        }
+    }
+
+    // If the old export had model subscriptions, hand them to the new export
+    if (beforeModelSubscriptions) {
+        for (const subscription of beforeModelSubscriptions.subscriptions) {
+            subscription.onUnsubscribe();
+
+            if (isModel(afterExport)) {
+                subscription.onUnsubscribe = model.subscribe(
+                    afterExport,
+                    subscription.handler
+                );
             }
         }
     }

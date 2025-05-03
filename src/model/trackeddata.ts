@@ -9,7 +9,8 @@ import {
 } from './engine';
 import type { Processable, Retainable } from './engine';
 
-type TrackedDataSubscription<TEvent> = {
+export type TrackedDataSubscription<TEvent> = {
+    onUnsubscribe: () => void;
     handler: (events: Iterable<TEvent>) => void;
     events: TEvent[];
 };
@@ -99,18 +100,19 @@ export class TrackedData<TKey, TEvent> implements Processable, Retainable {
     subscribe(handler: (events: Iterable<TEvent>) => void) {
         this.retain(); // yes, by virtue of subscribing to this, it is retained
         const subscription = {
+            onUnsubscribe: () => {
+                const index = this.eventSubscriptions.indexOf(subscription);
+                if (index >= 0) {
+                    this.eventSubscriptions.splice(index, 1);
+                    this.release();
+                }
+            },
             handler,
             events: [],
         };
         this.eventSubscriptions.push(subscription);
 
-        return () => {
-            const index = this.eventSubscriptions.indexOf(subscription);
-            if (index >= 0) {
-                this.eventSubscriptions.splice(index, 1);
-                this.release();
-            }
-        };
+        return () => subscription.onUnsubscribe();
     }
 
     retain() {
@@ -173,5 +175,11 @@ export class TrackedData<TKey, TEvent> implements Processable, Retainable {
 
         // Propagate dirtiness
         return [...toPropagate];
+    }
+
+    takeSubscriptions() {
+        const toReturn = this.eventSubscriptions;
+        this.eventSubscriptions = [];
+        return toReturn;
     }
 }
