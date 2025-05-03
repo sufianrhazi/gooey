@@ -1,8 +1,14 @@
+import { ArrayEventType } from '../common/arrayevent';
 import * as log from '../common/log';
 import { noop } from '../common/util';
 import { commit } from '../viewcontroller/commit';
+import { isClassComponent } from '../viewcontroller/createelement';
 import type { Component } from '../viewcontroller/rendernode/componentrendernode';
+import type { Collection, View } from './collection';
+import { getDynamicArray, isCollectionOrView } from './collection';
+import { getDictTrackedData, isDict } from './dict';
 import { Graph, ProcessAction } from './graph';
+import { getModelDict, isModel } from './model';
 
 export interface Retainable {
     __debugName: string;
@@ -44,6 +50,10 @@ let componentToReplaceSet: Map<
     Component<any>,
     Set<(newComponent: Component<any>) => void>
 > = new Map();
+let collectionToReplaceSet: Map<
+    Collection<any> | View<any>,
+    Set<(newCollection: Collection<any> | View<any>) => void>
+> = new Map();
 
 function noopScheduler(callback: () => void) {
     return noop;
@@ -73,6 +83,7 @@ export function reset() {
     flushHandle = null;
     flushScheduler = defaultScheduler;
     componentToReplaceSet = new Map();
+    collectionToReplaceSet = new Map();
 }
 
 export function registerComponentReload<T>(
@@ -100,18 +111,108 @@ export function unregisterComponentReload<T>(
     reloads.delete(reload);
 }
 
-export function replaceComponent<T>(
-    toReplace: Component<T>,
-    newComponent: Component<T>
+export function registerCollectionViewReload<T>(
+    coll: Collection<T> | View<T>,
+    reload: (newComponent: typeof coll) => void
 ) {
-    const reloads = componentToReplaceSet.get(toReplace);
-    if (reloads) {
-        reloads.forEach((replace) => {
-            replace(newComponent);
-            registerComponentReload(newComponent, replace);
-        });
+    let reloads = collectionToReplaceSet.get(coll);
+    if (!reloads) {
+        reloads = new Set();
+        collectionToReplaceSet.set(coll, reloads);
     }
-    componentToReplaceSet.delete(toReplace);
+    reloads.add(reload);
+}
+
+export function unregisterCollectionViewReload<T>(
+    coll: Collection<T> | View<T>,
+    reload: (newComponent: typeof coll) => void
+) {
+    const reloads = collectionToReplaceSet.get(coll);
+    log.assert(
+        reloads,
+        'Internal error: unexpected unregisterComponentRenderNode, previously unseen',
+        { coll, reload }
+    );
+    reloads.delete(reload);
+}
+
+export function hotSwapModuleExport(
+    beforeExport: unknown,
+    afterExport: unknown
+) {
+    if (isProcessable(beforeExport)) {
+        if (globalDependencyGraph.hasVertex(beforeExport)) {
+            for (const dep of globalDependencyGraph.getForwardDependencies(
+                beforeExport
+            )) {
+                globalDependencyGraph.markVertexDirty(dep);
+            }
+        }
+    } else if (isModel(beforeExport)) {
+        const dict = getModelDict(beforeExport);
+        const trackedData = getDictTrackedData(dict);
+        if (globalDependencyGraph.hasVertex(trackedData)) {
+            for (const dep of globalDependencyGraph.getForwardDependencies(
+                trackedData
+            )) {
+                globalDependencyGraph.markVertexDirty(dep);
+            }
+        }
+    } else if (isCollectionOrView(beforeExport)) {
+        const dynamicArray = getDynamicArray(beforeExport);
+
+        // First invalidate the collection in the graph
+        const trackedArray = dynamicArray.getTrackedArray();
+        if (globalDependencyGraph.hasVertex(trackedArray)) {
+            for (const dep of globalDependencyGraph.getForwardDependencies(
+                trackedArray
+            )) {
+                globalDependencyGraph.markVertexDirty(dep);
+            }
+        }
+
+        // Then hand off subscriptions to the other collection
+        const subscriptions = dynamicArray.takeSubscriptions();
+        for (const subscription of subscriptions) {
+            subscription.handler([
+                {
+                    type: ArrayEventType.SPLICE,
+                    index: 0,
+                    count: beforeExport.length,
+                },
+            ]);
+            subscription.onUnsubscribe();
+            if (isCollectionOrView(afterExport)) {
+                subscription.onUnsubscribe = afterExport.subscribe((events) => {
+                    subscription.handler(events);
+                });
+            }
+        }
+    } else if (isDict(beforeExport)) {
+        const trackedData = getDictTrackedData(beforeExport);
+        if (globalDependencyGraph.hasVertex(trackedData)) {
+            for (const dep of globalDependencyGraph.getForwardDependencies(
+                trackedData
+            )) {
+                globalDependencyGraph.markVertexDirty(dep);
+            }
+        }
+    } else if (
+        (typeof beforeExport === 'function' ||
+            isClassComponent(beforeExport)) &&
+        (typeof afterExport === 'function' || isClassComponent(afterExport))
+    ) {
+        const reloads = componentToReplaceSet.get(
+            beforeExport as Component<any>
+        );
+        if (reloads) {
+            reloads.forEach((replace) => {
+                replace(afterExport as Component<any>);
+                registerComponentReload(afterExport as Component<any>, replace);
+            });
+        }
+        componentToReplaceSet.delete(beforeExport as Component<any>);
+    }
 }
 
 function scheduleFlush() {

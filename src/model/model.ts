@@ -17,15 +17,21 @@ const modelDictSymbol = Symbol('modelDict');
 
 export type Model<T extends {}> = T;
 
-function getModelDict<T extends {}>(model: Model<T>): Dict<keyof T, any> {
+export function getModelDict<T extends {}>(
+    model: Model<T>
+): Dict<keyof T, any> {
     const dict = (model as any)[modelDictSymbol];
     log.assert(dict, 'Unable to retrieve internal model dict');
     return dict;
 }
 
+export function isModel(value: unknown): value is Model<object> {
+    return !!(value && typeof value === 'object' && modelDictSymbol in value);
+}
+
 export function model<T extends {}>(target: T, debugName?: string): Model<T> {
     const modelDict = dict(Object.entries(target), debugName);
-    const modelObj: Model<T> = { ...target };
+    const modelObj: Model<T> = {} as Model<T>;
     Object.keys(target).forEach((key) => {
         Object.defineProperty(modelObj, key, {
             get: () => {
@@ -34,9 +40,13 @@ export function model<T extends {}>(target: T, debugName?: string): Model<T> {
             set: (newValue) => {
                 modelDict.set(key, newValue);
             },
+            enumerable: true,
         });
     });
-    Object.defineProperty(modelObj, modelDictSymbol, { get: () => modelDict });
+    Object.defineProperty(modelObj, modelDictSymbol, {
+        get: () => modelDict,
+        enumerable: false,
+    });
     return modelObj;
 }
 

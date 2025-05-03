@@ -8,6 +8,14 @@ import * as log from '../common/log';
 import { SlotSizes } from '../common/slotsizes';
 import { TrackedArray } from './trackedarray';
 
+export type DynamicArraySubscription<T> = {
+    handler: (events: Iterable<ArrayEvent<T>>) => void;
+    /**
+     * The thing called when users unsubscribe; note: this is *mutable*
+     */
+    onUnsubscribe: () => void;
+};
+
 // https://tc39.es/ecma262/multipage/indexed-collections.html#sec-sortcompare
 function defaultSort(x: any, y: any) {
     if (x === undefined && y === undefined) return 0;
@@ -27,11 +35,14 @@ export interface DynamicArray<T> {
     subscribe(handler: (event: Iterable<ArrayEvent<T>>) => void): () => void;
     retain(): void;
     release(): void;
+    takeSubscriptions(): DynamicArraySubscription<T>[];
+    getTrackedArray(): TrackedArray<ArrayEvent<T>>;
 }
 
 export class ArraySub<T> implements DynamicArray<T> {
     private declare items: T[];
     private declare trackedArray: TrackedArray<ArrayEvent<T>>;
+    private declare subscriptions: DynamicArraySubscription<T>[];
 
     declare __debugName: string;
 
@@ -46,6 +57,7 @@ export class ArraySub<T> implements DynamicArray<T> {
             lifecycle,
             debugName
         );
+        this.subscriptions = [];
 
         this.__debugName = debugName ?? 'arraysub';
     }
@@ -242,7 +254,7 @@ export class ArraySub<T> implements DynamicArray<T> {
 
     subscribe(handler: (events: Iterable<ArrayEvent<T>>) => void) {
         this.retain();
-        const unsubscribe = this.trackedArray.subscribe(handler);
+        const trackedArrayUnsubscribe = this.trackedArray.subscribe(handler);
         handler([
             {
                 type: ArrayEventType.SPLICE,
@@ -251,10 +263,25 @@ export class ArraySub<T> implements DynamicArray<T> {
                 items: this.items.slice(),
             },
         ]);
-        return () => {
-            unsubscribe();
+        const onUnsubscribe = () => {
+            trackedArrayUnsubscribe();
             this.release();
+            this.subscriptions = this.subscriptions.filter(
+                (sub) => sub !== subscription
+            );
         };
+        const subscription = {
+            handler,
+            onUnsubscribe,
+        };
+        this.subscriptions.push(subscription);
+        return () => subscription.onUnsubscribe();
+    }
+
+    takeSubscriptions() {
+        const toReturn = this.subscriptions;
+        this.subscriptions = [];
+        return toReturn;
     }
 
     retain() {
@@ -263,6 +290,10 @@ export class ArraySub<T> implements DynamicArray<T> {
 
     release() {
         this.trackedArray.release();
+    }
+
+    getTrackedArray() {
+        return this.trackedArray;
     }
 }
 
@@ -274,6 +305,7 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
     ) => Iterable<ArrayEvent<T>>;
     private declare items: T[];
     private declare trackedArray: TrackedArray<ArrayEvent<T>>;
+    private declare subscriptions: DynamicArraySubscription<T>[];
 
     declare __debugName: string;
 
@@ -285,6 +317,7 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
         debugName?: string
     ) {
         this.source = source;
+        this.sourceUnsubscribe = undefined;
         this.eventTransform = eventTransform;
         this.items = [];
         this.trackedArray = new TrackedArray(
@@ -304,17 +337,42 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
             },
             debugName
         );
+        this.subscriptions = [];
 
         this.__debugName = debugName ?? 'arraysub';
     }
 
+    replaceSource(source: DynamicArray<TSource>) {
+        this.sourceUnsubscribe?.();
+        if (this.items.length > 0) {
+            this.ingestEvents([
+                {
+                    type: ArrayEventType.SPLICE,
+                    index: 0,
+                    count: this.items.length,
+                },
+            ]);
+        }
+        this.items = [];
+        this.source.release();
+
+        this.source = source;
+        this.source.retain();
+        this.sourceUnsubscribe = this.source.subscribe((events) => {
+            this.ingestEvents(events);
+        });
+    }
+
     get(index: number) {
+        // Note: notifyRead must happen before asserting index bounds
+        // Calculations may read values from an unalive view; as a result of
+        // reading the view's value, the calculation will cause the view to
+        // become alive, populating it from the source collection.
+        this.trackedArray.notifyRead(index);
         log.assert(
             index >= 0 && index < this.items.length,
             'Out-of-bounds ArraySub read'
         );
-
-        this.trackedArray.notifyRead(index);
         return this.items[index];
     }
 
@@ -333,7 +391,7 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
 
     subscribe(handler: (events: Iterable<ArrayEvent<T>>) => void) {
         this.retain();
-        const unsubscribe = this.trackedArray.subscribe(handler);
+        const trackedArrayUnsubscribe = this.trackedArray.subscribe(handler);
         handler([
             {
                 type: ArrayEventType.SPLICE,
@@ -342,10 +400,25 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
                 items: this.items.slice(),
             },
         ]);
-        return () => {
-            unsubscribe();
+        const onUnsubscribe = () => {
+            trackedArrayUnsubscribe();
             this.release();
+            this.subscriptions = this.subscriptions.filter(
+                (sub) => sub !== subscription
+            );
         };
+        const subscription = {
+            handler,
+            onUnsubscribe,
+        };
+        this.subscriptions.push(subscription);
+        return () => subscription.onUnsubscribe();
+    }
+
+    takeSubscriptions() {
+        const toReturn = this.subscriptions;
+        this.subscriptions = [];
+        return toReturn;
     }
 
     private ingestEvents(events: Iterable<ArrayEvent<TSource>>) {
@@ -403,6 +476,10 @@ export class DerivedArraySub<T, TSource> implements DynamicArray<T> {
 
     release() {
         this.trackedArray.release();
+    }
+
+    getTrackedArray() {
+        return this.trackedArray;
     }
 }
 

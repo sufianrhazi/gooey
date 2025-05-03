@@ -1,4 +1,4 @@
-import { replaceComponent } from '../model/engine';
+import { hotSwapModuleExport } from '../model/engine';
 import { renderJSXChildren } from './renderjsx';
 import { ArrayRenderNode } from './rendernode/arrayrendernode';
 import type {
@@ -59,4 +59,4 @@ export function createElement<TProps extends {} | undefined>(
     return ComponentRenderNode<TProps>(type, props, children);
 }
 createElement.Fragment = Fragment;
-createElement.replaceComponent = replaceComponent;
+createElement.hotSwapModuleExport = hotSwapModuleExport;

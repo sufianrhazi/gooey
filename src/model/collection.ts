@@ -7,6 +7,7 @@ import type { DerivedArraySub, DynamicArray } from './arraysub';
 import { ArraySub, filterView, flatMapView, mapView } from './arraysub';
 
 const collectionSymbol = Symbol('collection');
+const dynamicArraySymbol = Symbol('dynamicArray');
 
 interface CollectionViewSharedInterface<T> {
     //
@@ -36,6 +37,11 @@ interface CollectionViewSharedInterface<T> {
     subscribe: (
         handler: (events: Iterable<ArrayEvent<T>>) => void
     ) => () => void;
+
+    //
+    // Internal access
+    //
+    [dynamicArraySymbol]: () => DynamicArray<T>;
 }
 
 export interface Collection<T>
@@ -95,6 +101,8 @@ function makeCollectionOrView<T, I extends { __debugName: string }>(
 
         subscribe: (handler: (event: Iterable<ArrayEvent<T>>) => void) =>
             dynamicArray.subscribe(handler),
+
+        [dynamicArraySymbol]: () => dynamicArray,
 
         ...additionalPrototypeProps,
     };
@@ -203,7 +211,7 @@ export function collection<T>(
     values: T[] = [],
     debugName: string = 'collection'
 ): Collection<T> {
-    const arraySub = new ArraySub(values);
+    const arraySub = new ArraySub(values, debugName);
     const coll = makeCollectionOrView(
         arraySub,
         {
@@ -300,4 +308,19 @@ export function view<T>(
         unsupported
     ) as unknown as View<T>;
     return v;
+}
+
+export function getDynamicArray(item: Collection<unknown> | View<unknown>) {
+    return item[dynamicArraySymbol]();
+}
+
+export function isCollectionOrView(
+    value: unknown
+): value is Collection<any> | View<any> {
+    return !!(
+        value &&
+        typeof value === 'object' &&
+        collectionSymbol in value &&
+        value[collectionSymbol] === true
+    );
 }

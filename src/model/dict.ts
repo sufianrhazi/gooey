@@ -65,10 +65,11 @@ function* mergeDictEvents<K, V>(events: DictEvent<K, V>[]) {
 
 const sizeSymbol = Symbol('dictSize');
 const keysSymbol = Symbol('dictKeys');
+const trackedDataSymbol = Symbol('trackedData');
 
 export class Dict<K, V> implements Retainable {
     private declare items: Map<K, V>;
-    private declare trackedData: TrackedData<
+    declare [trackedDataSymbol]: TrackedData<
         K | typeof sizeSymbol | typeof keysSymbol,
         DictEvent<K, V>
     >;
@@ -78,7 +79,11 @@ export class Dict<K, V> implements Retainable {
 
     constructor(init?: [key: K, value: V][] | undefined, debugName?: string) {
         this.items = new Map(init ?? []);
-        this.trackedData = new TrackedData(mergeDictEvents, {}, debugName);
+        this[trackedDataSymbol] = new TrackedData(
+            mergeDictEvents,
+            {},
+            debugName
+        );
 
         this.__refcount = 0;
         this.__debugName = debugName ?? 'arraysub';
@@ -89,12 +94,12 @@ export class Dict<K, V> implements Retainable {
     }
 
     get(key: K): V | undefined {
-        this.trackedData.notifyRead(key);
+        this[trackedDataSymbol].notifyRead(key);
         return this.items.get(key);
     }
 
     has(key: K): boolean {
-        this.trackedData.notifyRead(key);
+        this[trackedDataSymbol].notifyRead(key);
         return this.items.has(key);
     }
 
@@ -105,20 +110,20 @@ export class Dict<K, V> implements Retainable {
         }
         const hasKey = this.items.has(key);
         this.items.set(key, value);
-        this.trackedData.markDirty(key);
+        this[trackedDataSymbol].markDirty(key);
 
         if (!hasKey) {
-            this.trackedData.markDirty(sizeSymbol);
-            this.trackedData.markDirty(keysSymbol);
+            this[trackedDataSymbol].markDirty(sizeSymbol);
+            this[trackedDataSymbol].markDirty(keysSymbol);
         }
 
-        this.trackedData.addEvent({
+        this[trackedDataSymbol].addEvent({
             type: hasKey ? DictEventType.SET : DictEventType.ADD,
             prop: key,
             value,
         });
 
-        this.trackedData.tickClock();
+        this[trackedDataSymbol].tickClock();
     }
 
     delete(key: K) {
@@ -127,16 +132,16 @@ export class Dict<K, V> implements Retainable {
             return;
         }
         this.items.delete(key);
-        this.trackedData.markDirty(key);
-        this.trackedData.markDirty(sizeSymbol);
-        this.trackedData.markDirty(keysSymbol);
+        this[trackedDataSymbol].markDirty(key);
+        this[trackedDataSymbol].markDirty(sizeSymbol);
+        this[trackedDataSymbol].markDirty(keysSymbol);
 
-        this.trackedData.addEvent({
+        this[trackedDataSymbol].addEvent({
             type: DictEventType.DEL,
             prop: key,
         });
 
-        this.trackedData.tickClock();
+        this[trackedDataSymbol].tickClock();
     }
 
     clear() {
@@ -147,15 +152,15 @@ export class Dict<K, V> implements Retainable {
         const keys = Array.from(this.items.keys());
         this.items.clear();
         for (const key of keys) {
-            this.trackedData.markDirty(key);
-            this.trackedData.addEvent({
+            this[trackedDataSymbol].markDirty(key);
+            this[trackedDataSymbol].addEvent({
                 type: DictEventType.DEL,
                 prop: key,
             });
         }
-        this.trackedData.markDirty(sizeSymbol);
+        this[trackedDataSymbol].markDirty(sizeSymbol);
 
-        this.trackedData.tickClock();
+        this[trackedDataSymbol].tickClock();
     }
 
     forEach(fn: (value: V, key: K) => void) {
@@ -198,7 +203,7 @@ export class Dict<K, V> implements Retainable {
     }
 
     *keys() {
-        this.trackedData.notifyRead(keysSymbol);
+        this[trackedDataSymbol].notifyRead(keysSymbol);
         const keys = Array.from(this.items.keys());
         for (const key of keys) {
             yield key;
@@ -206,11 +211,11 @@ export class Dict<K, V> implements Retainable {
     }
 
     *values() {
-        this.trackedData.notifyRead(keysSymbol);
+        this[trackedDataSymbol].notifyRead(keysSymbol);
         const keys = Array.from(this.items.keys());
         const values: V[] = [];
         for (const key of keys) {
-            this.trackedData.notifyRead(key);
+            this[trackedDataSymbol].notifyRead(key);
             values.push(this.items.get(key)!);
         }
         for (const value of values) {
@@ -219,11 +224,11 @@ export class Dict<K, V> implements Retainable {
     }
 
     *entries() {
-        this.trackedData.notifyRead(keysSymbol);
+        this[trackedDataSymbol].notifyRead(keysSymbol);
         const keys = Array.from(this.items.keys());
         const entries: [K, V][] = [];
         for (const key of keys) {
-            this.trackedData.notifyRead(key);
+            this[trackedDataSymbol].notifyRead(key);
             entries.push([key, this.items.get(key)!]);
         }
         for (const entry of entries) {
@@ -232,7 +237,7 @@ export class Dict<K, V> implements Retainable {
     }
 
     get size() {
-        this.trackedData.notifyRead(sizeSymbol);
+        this[trackedDataSymbol].notifyRead(sizeSymbol);
         return this.items.size;
     }
 
@@ -248,7 +253,7 @@ export class Dict<K, V> implements Retainable {
         );
         handler(initialEvents);
 
-        const unsubscribe = this.trackedData.subscribe(handler);
+        const unsubscribe = this[trackedDataSymbol].subscribe(handler);
         return () => {
             unsubscribe();
             this.release();
@@ -264,14 +269,24 @@ export class Dict<K, V> implements Retainable {
     }
 
     __alive() {
-        this.trackedData.retain();
+        this[trackedDataSymbol].retain();
     }
 
     __dead() {
-        this.trackedData.release();
+        this[trackedDataSymbol].release();
     }
+}
+
+export function getDictTrackedData<K, V>(
+    dict: Dict<K, V>
+): TrackedData<K | typeof sizeSymbol | typeof keysSymbol, DictEvent<K, V>> {
+    return dict[trackedDataSymbol];
 }
 
 export function dict<K, V>(entries: [K, V][] = [], debugName?: string) {
     return new Dict<K, V>(entries, debugName);
+}
+
+export function isDict(value: unknown): value is Dict<unknown, unknown> {
+    return value instanceof Dict;
 }
