@@ -4,7 +4,7 @@ import { calc } from './calc';
 import { collection } from './collection';
 import { dict, DictEventType } from './dict';
 import type { DictEvent } from './dict';
-import { flush, hotSwapModuleExport, reset, retain, subscribe } from './engine';
+import { flush, hotSwap, reset, retain, subscribe } from './engine';
 import { field } from './field';
 import { model, ModelEventType } from './model';
 import type { ModelEvent } from './model';
@@ -91,7 +91,7 @@ suite('flushing behavior', () => {
         assert.deepEqual([{ val: 'other' }, { val: 'other 2' }], sideRecalcs);
     });
 
-    test('hotSwapModuleExport dirties field dependencies', () => {
+    test('hotSwap dirties field dependencies', () => {
         const a = field('hello');
         const b = field('goodbye');
 
@@ -113,7 +113,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['hello'], log);
 
         log = [];
-        hotSwapModuleExport(a, b);
+        hotSwap(a, b);
         target = b;
 
         assert.deepEqual([], log);
@@ -121,7 +121,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['goodbye'], log);
 
         log = [];
-        hotSwapModuleExport(b, a);
+        hotSwap(b, a);
         target = a;
 
         assert.deepEqual([], log);
@@ -129,7 +129,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['hello'], log);
     });
 
-    test('hotSwapModuleExport replaces field subscriptions', () => {
+    test('hotSwap replaces field subscriptions', () => {
         const a = field('hello');
         const b = field('goodbye');
 
@@ -146,7 +146,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['hello'], log);
 
         log = [];
-        hotSwapModuleExport(a, b);
+        hotSwap(a, b);
 
         assert.deepEqual(['goodbye'], log);
         flush();
@@ -159,14 +159,14 @@ suite('flushing behavior', () => {
         assert.deepEqual(['neat'], log);
 
         log = [];
-        hotSwapModuleExport(b, a);
+        hotSwap(b, a);
 
         assert.deepEqual(['hello'], log);
         flush();
         assert.deepEqual(['hello'], log);
 
         log = [];
-        hotSwapModuleExport(a, b); // sure why not
+        hotSwap(a, b); // sure why not
 
         assert.deepEqual(['neat'], log);
         unsubscribe();
@@ -179,7 +179,7 @@ suite('flushing behavior', () => {
         assert.deepEqual([], log);
     });
 
-    test('hotSwapModuleExport replaces calc subscriptions', () => {
+    test('hotSwap replaces calc subscriptions', () => {
         const shared = field('cool');
         const a = calc(() => `${shared.get()}!`);
         const b = calc(() => shared.get().toUpperCase());
@@ -197,7 +197,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['cool!'], log);
 
         log = [];
-        hotSwapModuleExport(a, b);
+        hotSwap(a, b);
 
         assert.deepEqual(['COOL'], log);
         flush();
@@ -210,14 +210,14 @@ suite('flushing behavior', () => {
         assert.deepEqual(['NEAT'], log);
 
         log = [];
-        hotSwapModuleExport(b, a);
+        hotSwap(b, a);
 
         assert.deepEqual(['neat!'], log);
         flush();
         assert.deepEqual(['neat!'], log);
 
         log = [];
-        hotSwapModuleExport(a, b); // sure why not
+        hotSwap(a, b); // sure why not
 
         assert.deepEqual(['NEAT'], log);
         unsubscribe();
@@ -230,7 +230,7 @@ suite('flushing behavior', () => {
         assert.deepEqual([], log);
     });
 
-    test('hotSwapModuleExport dirties model dependencies', () => {
+    test('hotSwap dirties model dependencies', () => {
         const a = model({ foo: 'hello' });
         const b = model({ foo: 'goodbye' });
 
@@ -252,7 +252,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['hello'], log);
 
         log = [];
-        hotSwapModuleExport(a, b);
+        hotSwap(a, b);
         target = b;
 
         assert.deepEqual([], log);
@@ -260,7 +260,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['goodbye'], log);
 
         log = [];
-        hotSwapModuleExport(b, a);
+        hotSwap(b, a);
         target = a;
 
         assert.deepEqual([], log);
@@ -268,7 +268,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['hello'], log);
     });
 
-    test('hotSwapModuleExport dirties collection dependencies', () => {
+    test('hotSwap dirties collection dependencies', () => {
         const a = collection(['foo', 'hello', 'bar']);
         const b = collection(['baz', 'goodbye', 'bum']);
 
@@ -290,7 +290,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['hello'], log);
 
         log = [];
-        hotSwapModuleExport(a, b);
+        hotSwap(a, b);
         target = b;
 
         assert.deepEqual([], log);
@@ -298,7 +298,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['goodbye'], log);
 
         log = [];
-        hotSwapModuleExport(b, a);
+        hotSwap(b, a);
         target = a;
 
         assert.deepEqual([], log);
@@ -306,7 +306,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['hello'], log);
     });
 
-    test('hotSwapModuleExport swaps mapView correctly', () => {
+    test('hotSwap swaps mapView correctly', () => {
         // Okay, our goal is to swap out the consuming collection/view for a
         // mapView or any other mapped view
         //
@@ -357,21 +357,21 @@ suite('flushing behavior', () => {
         assert.deepEqual(['HELLO'], log);
 
         log = [];
-        hotSwapModuleExport(a, b);
+        hotSwap(a, b);
 
         assert.deepEqual([], log);
         flush();
         assert.deepEqual(['GOODBYE'], log);
 
         log = [];
-        hotSwapModuleExport(b, a);
+        hotSwap(b, a);
 
         assert.deepEqual([], log);
         flush();
         assert.deepEqual(['HELLO'], log);
     });
 
-    test('hotSwapModuleExport dirties dict dependencies', () => {
+    test('hotSwap dirties dict dependencies', () => {
         const a = dict([['foo', 'hello']]);
         const b = dict([['foo', 'goodbye']]);
 
@@ -393,7 +393,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['hello'], log);
 
         log = [];
-        hotSwapModuleExport(a, b);
+        hotSwap(a, b);
         target = b;
 
         assert.deepEqual([], log);
@@ -401,7 +401,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['goodbye'], log);
 
         log = [];
-        hotSwapModuleExport(b, a);
+        hotSwap(b, a);
         target = a;
 
         assert.deepEqual([], log);
@@ -409,7 +409,7 @@ suite('flushing behavior', () => {
         assert.deepEqual(['hello'], log);
     });
 
-    test('hotSwapModuleExport dirties dict subscriptions', () => {
+    test('hotSwap dirties dict subscriptions', () => {
         const a = dict([
             ['foo', 'hello'],
             ['baz', 'hey'],
@@ -466,7 +466,7 @@ suite('flushing behavior', () => {
         );
 
         log = [];
-        hotSwapModuleExport(a, b);
+        hotSwap(a, b);
 
         assert.deepEqual(
             [
@@ -489,7 +489,7 @@ suite('flushing behavior', () => {
         );
 
         log = [];
-        hotSwapModuleExport(b, a);
+        hotSwap(b, a);
 
         assert.deepEqual(
             [
@@ -508,7 +508,7 @@ suite('flushing behavior', () => {
         assert.deepEqual([], log);
     });
 
-    test('hotSwapModuleExport dirties model subscriptions', () => {
+    test('hotSwap dirties model subscriptions', () => {
         const a = model({
             foo: 'hello',
             baz: 'hey',
@@ -565,7 +565,7 @@ suite('flushing behavior', () => {
         );
 
         log = [];
-        hotSwapModuleExport(a, b);
+        hotSwap(a, b);
 
         assert.deepEqual(
             [
@@ -584,7 +584,7 @@ suite('flushing behavior', () => {
         );
 
         log = [];
-        hotSwapModuleExport(b, a);
+        hotSwap(b, a);
 
         assert.deepEqual(
             [

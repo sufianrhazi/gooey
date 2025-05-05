@@ -40,6 +40,7 @@ export {
     debug,
     debugSubscribe,
     debugGetGraph,
+    hotSwap,
 } from './model/engine';
 export type { Model, ModelEvent } from './model/model';
 export { model, ModelEventType } from './model/model';

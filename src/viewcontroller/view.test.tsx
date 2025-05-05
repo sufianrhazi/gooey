@@ -16,7 +16,7 @@ import Gooey, {
     subscribe,
 } from '../index';
 import type { Component, Dyn, Model, Ref } from '../index';
-import { debugGetGraph, hotSwapModuleExport } from '../model/engine';
+import { debugGetGraph, hotSwap } from '../model/engine';
 
 let testRoot: HTMLElement = document.getElementById('test-root')!;
 
@@ -1712,7 +1712,7 @@ suite('hot module reload components', () => {
         );
 
         log = [];
-        hotSwapModuleExport(ComponentA, ComponentB);
+        hotSwap(ComponentA, ComponentB);
         flush();
 
         assert.is(
@@ -1734,7 +1734,7 @@ suite('hot module reload components', () => {
         );
 
         log = [];
-        hotSwapModuleExport(ComponentB, ComponentA);
+        hotSwap(ComponentB, ComponentA);
         flush();
 
         assert.is(
@@ -1825,7 +1825,7 @@ suite('hot module reload components', () => {
         );
 
         log = [];
-        hotSwapModuleExport(ComponentA, ComponentB);
+        hotSwap(ComponentA, ComponentB);
         flush();
 
         assert.is(
@@ -1847,7 +1847,7 @@ suite('hot module reload components', () => {
         );
 
         log = [];
-        hotSwapModuleExport(ComponentB, ComponentA);
+        hotSwap(ComponentB, ComponentA);
         flush();
 
         assert.is(
@@ -1938,7 +1938,7 @@ suite('hot module reload components', () => {
         );
 
         log = [];
-        hotSwapModuleExport(ComponentA, ComponentB);
+        hotSwap(ComponentA, ComponentB);
         flush();
 
         assert.is(
@@ -1960,7 +1960,7 @@ suite('hot module reload components', () => {
         );
 
         log = [];
-        hotSwapModuleExport(ComponentB, ComponentA);
+        hotSwap(ComponentB, ComponentA);
         flush();
 
         assert.is(
@@ -2043,7 +2043,7 @@ suite('hot module reload components', () => {
         );
 
         log = [];
-        hotSwapModuleExport(ComponentA, ComponentB);
+        hotSwap(ComponentA, ComponentB);
         flush();
 
         assert.deepEqual(
@@ -2057,7 +2057,7 @@ suite('hot module reload components', () => {
         );
 
         log = [];
-        hotSwapModuleExport(ComponentB, ComponentA);
+        hotSwap(ComponentB, ComponentA);
         flush();
 
         assert.deepEqual(

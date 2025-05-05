@@ -162,10 +162,7 @@ export function unregisterCollectionViewReload<T>(
     reloads.delete(reload);
 }
 
-export function hotSwapModuleExport(
-    beforeExport: unknown,
-    afterExport: unknown
-) {
+export function hotSwap(beforeExport: unknown, afterExport: unknown) {
     let beforeVertex: Processable | undefined;
     let beforeArraySubscriptions:
         | { length: number; subscriptions: DynamicArraySubscription<unknown>[] }
