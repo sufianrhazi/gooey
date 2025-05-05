@@ -90,7 +90,7 @@ export class CircleDrawer extends ClassComponent {
     constructor(props: {}) {
         super(props);
 
-        this.undoStack = new UndoStack(collection([]), {
+        this.undoStack = new UndoStack(collection(), {
             doAction: (state: Collection<Circle>, action: Action) => {
                 switch (action.type) {
                     case 'new':
