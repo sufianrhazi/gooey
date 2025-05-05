@@ -1,5 +1,6 @@
 import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
 
+import Gooey from '..';
 import { ArrayEventType } from '../common/arrayevent';
 import { calc } from '../model/calc';
 import { collection } from '../model/collection';
@@ -141,12 +142,15 @@ suite('TextRenderNode', () => {
 
     test('fails if mounted twice', () => {
         const text = TextRenderNode('hello');
-        let unmount = mount(testRoot, text);
-        assert.throwsMatching(/double attached/, () => mount(testRoot, text));
-        unmount();
-        unmount = mount(testRoot, text);
-        assert.throwsMatching(/double attached/, () => mount(testRoot, text));
-        unmount();
+        assert.throwsMatching(/double attached/, () =>
+            mount(
+                testRoot,
+                <div>
+                    <a>{text}</a>
+                    <b>{text}</b>
+                </div>
+            )
+        );
     });
 
     test('can be mounted and unmounted while retained', () => {
@@ -175,11 +179,15 @@ suite('ForeignRenderNode', () => {
     test('fails if mounted twice', () => {
         const node = document.createElement('div');
         const foreign = ForeignRenderNode(node);
-        const unmount = mount(testRoot, foreign);
         assert.throwsMatching(/double attached/, () =>
-            mount(testRoot, foreign)
+            mount(
+                testRoot,
+                <div>
+                    <a>{foreign}</a>
+                    <b>{foreign}</b>
+                </div>
+            )
         );
-        unmount();
     });
 
     test('can be mounted and unmounted while retained', () => {

@@ -1,29 +1,28 @@
 import * as log from '../common/log';
-import { flush } from '../model/engine';
+import { flush, registerMountPoint, takeMountPoint } from '../model/engine';
 import { renderJSXNode } from './renderjsx';
-import { ArrayRenderNode } from './rendernode/arrayrendernode';
-import { ForeignRenderNode } from './rendernode/foreignrendernode';
 import { PortalRenderNode } from './rendernode/portalrendernode';
-import type { RenderNode } from './rendernode/rendernode';
 import { HTML_NAMESPACE } from './xmlnamespace';
 
 export function mount(
     target: Element | ShadowRoot,
     node: JSX.Node
 ): () => void {
-    const skipNodes = target.childNodes.length;
-    const children: RenderNode[] = [];
-    for (let i = 0; i < target.childNodes.length; ++i) {
-        children.push(ForeignRenderNode(target.childNodes[i]));
+    const priorMount = takeMountPoint(target);
+    if (priorMount) {
+        log.warn(
+            'Multiple mount() calls to the same target, resetting the old mount'
+        );
+        priorMount();
     }
-    children.push(renderJSXNode(node));
-    const root = PortalRenderNode(
-        target,
-        ArrayRenderNode(children),
-        null,
-        'root'
+    log.assert(
+        target.childNodes.length === 0,
+        'mount() called on non-empty target',
+        { target }
     );
+    const root = PortalRenderNode(target, renderJSXNode(node), null, 'root');
     root.retain();
+
     let syncError: undefined | Error;
     root.attach({
         nodeEmitter: (event) => {
@@ -42,6 +41,7 @@ export function mount(
         root.release();
         throw syncError;
     }
+
     // WE HAVE A CONUNDRUM!
     // - When onMount() is called _before_ flushing, IntrinsicObserver callbacks work as expected; but component onMount notifications fail
     // - When onMount() is called _after_ flushing, IntrinsicObserver callbacks fail; but component onMount notifications work as expected
@@ -51,13 +51,24 @@ export function mount(
     // - refRaw={} callbacks should be equivalent to retain() (NEEDS BETTER NAME)
     // Overall, it really sucks that we have to flush at all here.
     root.onMount();
-    flush();
-    return () => {
-        const nodesToKeep = Array.from(target.childNodes).slice(0, skipNodes);
+
+    let unsubscribed = false;
+    const unsubscribe = () => {
+        if (unsubscribed) {
+            log.warn('mount() unmount function called multiple times');
+            return;
+        }
+        takeMountPoint(target);
+        unsubscribed = true;
         root.onUnmount();
         flush();
-        target.replaceChildren(...nodesToKeep);
+        target.replaceChildren(); // TODO: Woah nellie, this is weird
         root.detach();
         root.release();
     };
+    registerMountPoint(target, unsubscribe);
+
+    flush();
+
+    return unsubscribe;
 }

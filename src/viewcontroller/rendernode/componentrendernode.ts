@@ -216,7 +216,6 @@ export function ComponentRenderNode<TProps>(
             // NOTE: is this needed?
             renderNode.requestCommit(RenderNodeCommitPhase.COMMIT_MOUNT);
         }
-        console.groupEnd();
     };
 
     const renderNode = new SingleChildRenderNode(

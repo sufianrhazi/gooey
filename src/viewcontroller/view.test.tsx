@@ -2077,6 +2077,51 @@ suite('hot module reload components', () => {
             log
         );
     });
+
+    test('mounting twice causes an unmount of the first', () => {
+        const log: string[] = [];
+
+        const MyComponent: Component<{ name: string }> = (
+            { name },
+            { onMount, onUnmount }
+        ) => {
+            onMount(() => log.push(`mount:${name}`));
+            onUnmount(() => log.push(`unmount:${name}`));
+            return <div>{name}</div>;
+        };
+
+        const a = mount(testRoot, <MyComponent name="a" />);
+        assert.deepEqual(['mount:a'], log);
+        const b = mount(testRoot, <MyComponent name="b" />);
+        assert.deepEqual(['mount:a', 'unmount:a', 'mount:b'], log);
+        const c = mount(testRoot, <MyComponent name="c" />);
+        assert.deepEqual(
+            ['mount:a', 'unmount:a', 'mount:b', 'unmount:b', 'mount:c'],
+            log
+        );
+        a();
+        assert.deepEqual(
+            ['mount:a', 'unmount:a', 'mount:b', 'unmount:b', 'mount:c'],
+            log
+        );
+        b();
+        assert.deepEqual(
+            ['mount:a', 'unmount:a', 'mount:b', 'unmount:b', 'mount:c'],
+            log
+        );
+        c();
+        assert.deepEqual(
+            [
+                'mount:a',
+                'unmount:a',
+                'mount:b',
+                'unmount:b',
+                'mount:c',
+                'unmount:c',
+            ],
+            log
+        );
+    });
 });
 
 suite('mount arrays', () => {

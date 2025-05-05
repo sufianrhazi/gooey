@@ -75,6 +75,7 @@ export function PortalRenderNode(
                 }
             },
             onCommit: (phase: RenderNodeCommitPhase) => {
+                console.log('COMMIT', RenderNodeCommitPhase[phase]);
                 if (phase === RenderNodeCommitPhase.COMMIT_UNMOUNT && refProp) {
                     if (refProp instanceof Ref) {
                         refProp.current = undefined;

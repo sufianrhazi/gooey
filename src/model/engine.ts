@@ -47,6 +47,8 @@ type OnReadCallback = (
     vertex: Retainable & Processable
 ) => Retainable & Processable;
 
+export type MountSubscription = () => void;
+
 let globalDependencyGraph = new Graph<Processable>(processHandler);
 let trackReadCallbackStack: (OnReadCallback | null)[] = [];
 let isFlushing = false;
@@ -61,6 +63,7 @@ let collectionToReplaceSet: Map<
     Collection<any> | View<any>,
     Set<(newCollection: Collection<any> | View<any>) => void>
 > = new Map();
+let mountPoints: Map<Element | ShadowRoot, MountSubscription> = new Map();
 
 function noopScheduler(callback: () => void) {
     return noop;
@@ -91,6 +94,22 @@ export function reset() {
     flushScheduler = defaultScheduler;
     componentToReplaceSet = new Map();
     collectionToReplaceSet = new Map();
+    mountPoints = new Map();
+}
+
+export function registerMountPoint(
+    target: Element | ShadowRoot,
+    mountSubscription: MountSubscription
+) {
+    mountPoints.set(target, mountSubscription);
+}
+
+export function takeMountPoint(target: Element | ShadowRoot) {
+    const sub = mountPoints.get(target);
+    if (sub) {
+        mountPoints.delete(target);
+    }
+    return sub;
 }
 
 export function registerComponentReload<T>(
