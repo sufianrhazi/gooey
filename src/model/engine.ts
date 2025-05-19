@@ -129,12 +129,9 @@ export function unregisterComponentReload<T>(
     reload: (newComponent: typeof component) => void
 ) {
     const reloads = componentToReplaceSet.get(component);
-    log.assert(
-        reloads,
-        'Internal error: unexpected unregisterComponentRenderNode, previously unseen',
-        { component, reload }
-    );
-    reloads.delete(reload);
+    if (reloads) {
+        reloads.delete(reload);
+    }
 }
 
 export function registerCollectionViewReload<T>(
