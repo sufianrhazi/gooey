@@ -1,4 +1,12 @@
 import type { ArrayEvent } from '../common/arrayevent';
+import { TrackedArray } from './trackedarray';
+export type DynamicArraySubscription<T> = {
+    handler: (events: Iterable<ArrayEvent<T>>) => void;
+    /**
+     * The thing called when users unsubscribe; note: this is *mutable*
+     */
+    onUnsubscribe: () => void;
+};
 export interface DynamicArray<T> {
     get(key: number): T;
     getLength(): number;
@@ -6,10 +14,13 @@ export interface DynamicArray<T> {
     subscribe(handler: (event: Iterable<ArrayEvent<T>>) => void): () => void;
     retain(): void;
     release(): void;
+    takeSubscriptions(): DynamicArraySubscription<T>[];
+    getTrackedArray(): TrackedArray<ArrayEvent<T>>;
 }
 export declare class ArraySub<T> implements DynamicArray<T> {
     private items;
     private trackedArray;
+    private subscriptions;
     __debugName: string;
     constructor(init?: T[] | undefined, debugName?: string, lifecycle?: {
         onAlive?: () => void;
@@ -30,8 +41,10 @@ export declare class ArraySub<T> implements DynamicArray<T> {
     reverse(): this;
     moveSlice(fromIndex: number, count: number, toIndex: number): void;
     subscribe(handler: (events: Iterable<ArrayEvent<T>>) => void): () => void;
+    takeSubscriptions(): DynamicArraySubscription<T>[];
     retain(): void;
     release(): void;
+    getTrackedArray(): TrackedArray<ArrayEvent<T>>;
 }
 export declare class DerivedArraySub<T, TSource> implements DynamicArray<T> {
     private source;
@@ -39,16 +52,20 @@ export declare class DerivedArraySub<T, TSource> implements DynamicArray<T> {
     private eventTransform;
     private items;
     private trackedArray;
+    private subscriptions;
     __debugName: string;
     constructor(source: DynamicArray<TSource>, eventTransform: (events: Iterable<ArrayEvent<TSource>>) => Iterable<ArrayEvent<T>>, debugName?: string);
+    replaceSource(source: DynamicArray<TSource>): void;
     get(index: number): T;
     getItemsUnsafe(): T[];
     set(index: number, value: T): void;
     getLength(): number;
     subscribe(handler: (events: Iterable<ArrayEvent<T>>) => void): () => void;
+    takeSubscriptions(): DynamicArraySubscription<T>[];
     private ingestEvents;
     retain(): void;
     release(): void;
+    getTrackedArray(): TrackedArray<ArrayEvent<T>>;
 }
 export declare function mapView<TSource, TTarget>(source: DynamicArray<TSource>, mapFn: (val: TSource) => TTarget): DerivedArraySub<TTarget, TSource>;
 export declare function flatMapView<TSource, TTarget>(source: DynamicArray<TSource>, mapFn: (val: TSource) => TTarget[]): DerivedArraySub<TTarget, TSource>;

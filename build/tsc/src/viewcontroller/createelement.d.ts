@@ -14,6 +14,5 @@ export declare namespace createElement {
     var Fragment: FunctionComponent<{
         children?: JSX.Node | JSX.Node[];
     }>;
-    var replaceComponent: typeof import("../model/engine").replaceComponent;
 }
 //# sourceMappingURL=createelement.d.ts.map

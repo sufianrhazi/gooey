@@ -16,7 +16,7 @@ export type { DictEvent } from './model/dict';
 export { dict, Dict, DictEventType } from './model/dict';
 export type { Field } from './model/field';
 export { field } from './model/field';
-export { reset, subscribe, flush, debug, debugSubscribe, debugGetGraph, } from './model/engine';
+export { reset, subscribe, flush, debug, debugSubscribe, debugGetGraph, hotSwap, } from './model/engine';
 export type { Model, ModelEvent } from './model/model';
 export { model, ModelEventType } from './model/model';
 export { createElement } from './viewcontroller/createelement';

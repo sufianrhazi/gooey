@@ -1,4 +1,5 @@
 import type { Component } from '../viewcontroller/rendernode/componentrendernode';
+import type { Collection, View } from './collection';
 export interface Retainable {
     __debugName: string;
     __refcount: number;
@@ -21,10 +22,15 @@ export declare function isProcessable(val: any): val is Processable;
  *   Data D gets a reference back to Reader R so it may markDirty(reader) when D is processed and needs to propagate change
  */
 type OnReadCallback = (vertex: Retainable & Processable) => Retainable & Processable;
+export type MountSubscription = () => void;
 export declare function reset(): void;
+export declare function registerMountPoint(target: Element | ShadowRoot, mountSubscription: MountSubscription): void;
+export declare function takeMountPoint(target: Element | ShadowRoot): MountSubscription | undefined;
 export declare function registerComponentReload<T>(component: Component<T>, reload: (newComponent: typeof component) => void): void;
 export declare function unregisterComponentReload<T>(component: Component<T>, reload: (newComponent: typeof component) => void): void;
-export declare function replaceComponent<T>(toReplace: Component<T>, newComponent: Component<T>): void;
+export declare function registerCollectionViewReload<T>(coll: Collection<T> | View<T>, reload: (newComponent: typeof coll) => void): void;
+export declare function unregisterCollectionViewReload<T>(coll: Collection<T> | View<T>, reload: (newComponent: typeof coll) => void): void;
+export declare function hotSwap(beforeExport: unknown, afterExport: unknown): void;
 export declare function flush(): void;
 export declare function subscribe(scheduler?: (callback: () => void) => () => void): void;
 export declare function retain(retainable: Retainable): void;

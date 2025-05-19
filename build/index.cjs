@@ -48,6 +48,7 @@ __export(src_exports, {
   field: () => field,
   flush: () => flush,
   getLogLevel: () => getLogLevel,
+  hotSwap: () => hotSwap,
   isDynamic: () => isDynamic,
   isDynamicMut: () => isDynamicMut,
   model: () => model,
@@ -149,6 +150,90 @@ function wrapError(e, msg) {
   return err;
 }
 
+// src/common/arrayevent.ts
+var ArrayEventType = /* @__PURE__ */ ((ArrayEventType2) => {
+  ArrayEventType2["SPLICE"] = "splice";
+  ArrayEventType2["MOVE"] = "move";
+  ArrayEventType2["SORT"] = "sort";
+  return ArrayEventType2;
+})(ArrayEventType || {});
+var EMPTY_ARRAY = [];
+function applySort(target, from, indexes) {
+  const duped = target.slice(from, from + indexes.length);
+  for (let i = 0; i < indexes.length; ++i) {
+    target[i + from] = duped[indexes[i] - from];
+  }
+}
+function applyMove(target, from, count, to) {
+  const slice = target.splice(from, count);
+  target.splice(to, 0, ...slice);
+}
+function applyArrayEvent(target, event) {
+  switch (event.type) {
+    case "splice" /* SPLICE */: {
+      if (event.items) {
+        return target.splice(event.index, event.count, ...event.items);
+      } else {
+        return target.splice(event.index, event.count);
+      }
+    }
+    case "sort" /* SORT */: {
+      applySort(target, event.from, event.indexes);
+      break;
+    }
+    case "move" /* MOVE */: {
+      applyMove(target, event.from, event.count, event.to);
+      break;
+    }
+    default:
+      assertExhausted(event);
+  }
+  return EMPTY_ARRAY;
+}
+function* mergeArrayEvents(events) {
+  const iterator = events[Symbol.iterator]();
+  const firstItem = iterator.next();
+  if (firstItem.done) {
+    return;
+  }
+  let lastEvent = firstItem.value;
+  let mergedItems;
+  while (true) {
+    const nextItem = iterator.next();
+    if (nextItem.done) {
+      break;
+    }
+    const event = nextItem.value;
+    if (event.type === "splice" /* SPLICE */ && lastEvent.type === "splice" /* SPLICE */ && lastEvent.index + (lastEvent.items?.length ?? 0) === event.index) {
+      if (!mergedItems) {
+        mergedItems = lastEvent.items?.slice() ?? [];
+      }
+      if (event.items) {
+        mergedItems.push(...event.items);
+      }
+      if (mergedItems.length) {
+        lastEvent = {
+          type: "splice" /* SPLICE */,
+          index: lastEvent.index,
+          count: lastEvent.count + event.count,
+          items: mergedItems
+        };
+      } else {
+        lastEvent = {
+          type: "splice" /* SPLICE */,
+          index: lastEvent.index,
+          count: lastEvent.count + event.count
+        };
+      }
+    } else {
+      yield lastEvent;
+      lastEvent = event;
+      mergedItems = void 0;
+    }
+  }
+  yield lastEvent;
+}
+
 // src/viewcontroller/commit.ts
 var COMMIT_SEQUENCE = [
   0 /* COMMIT_UNMOUNT */,
@@ -208,6 +293,1966 @@ function requestCommit(target, phase) {
   if (!commitHandle) {
     commitHandle = commitScheduler(commit);
   }
+}
+
+// src/common/sumarray.ts
+var SumArray = class {
+  constructor(bucketBits, items) {
+    this.bucketBits = bucketBits;
+    this.bucketSize = 1 << bucketBits;
+    this.slots = items;
+    this.buckets = this.recreate(this.slots);
+  }
+  recreate(items) {
+    const buckets = [];
+    for (let i = 0; i < items.length; i += this.bucketSize) {
+      let bucket = 0;
+      for (let j = 0; j < this.bucketSize && i + j < items.length; ++j) {
+        bucket += items[i + j];
+      }
+      buckets.push(bucket);
+    }
+    return buckets;
+  }
+  updateBuckets(from, to) {
+    const startBucket = from >> this.bucketBits;
+    const endBucket = to >> this.bucketBits;
+    for (let i = this.buckets.length; i < endBucket; ++i) {
+      this.buckets.push(0);
+    }
+    for (let i = startBucket; i <= endBucket; ++i) {
+      let bucket = 0;
+      const shift = i << this.bucketBits;
+      for (let j = 0; j < this.bucketSize && shift + j < this.slots.length; ++j) {
+        bucket += this.slots[shift + j];
+      }
+      this.buckets[i] = bucket;
+    }
+  }
+  splice(index, count, items) {
+    this.slots.splice(index, count, ...items);
+    this.updateBuckets(
+      index,
+      count === items.length ? index + count : this.slots.length
+    );
+    if (count - items.length > 0) {
+      const bucketSize = this.slots.length >> this.bucketBits;
+      if (this.buckets.length > bucketSize) {
+        this.buckets.length = bucketSize;
+      }
+    }
+  }
+  move(fromIndex, count, toIndex) {
+    applyMove(this.slots, fromIndex, count, toIndex);
+    this.updateBuckets(
+      Math.min(fromIndex, toIndex),
+      Math.max(fromIndex, toIndex) + count
+    );
+  }
+  sort(fromIndex, indices) {
+    applySort(this.slots, fromIndex, indices);
+    this.updateBuckets(fromIndex, fromIndex + indices.length);
+  }
+  getSum(index) {
+    if (index === 0) {
+      return 0;
+    }
+    let sum = 0;
+    for (let bucketIndex = 0, i = this.bucketSize; bucketIndex < this.buckets.length && i <= index; ++bucketIndex, i += this.bucketSize) {
+      sum += this.buckets[bucketIndex];
+    }
+    const start = index & ~(this.bucketSize - 1);
+    for (let j = start; j < index && j < this.slots.length; ++j) {
+      sum += this.slots[j];
+    }
+    return sum;
+  }
+  get(index) {
+    return this.slots[index];
+  }
+  set(index, value) {
+    const diff = value - this.slots[index];
+    this.slots[index] = value;
+    const bucketIndex = index >> this.bucketBits;
+    this.buckets[bucketIndex] += diff;
+  }
+};
+
+// src/common/slotsizes.ts
+var SUMARRAY_BITS = 5;
+var SlotSizes = class {
+  constructor(items) {
+    this.slots = new SumArray(
+      SUMARRAY_BITS,
+      items.map(() => 0)
+    );
+    this.items = items;
+    this.indexes = /* @__PURE__ */ new Map();
+    this.updateIndexes(0, items.length);
+  }
+  clearSlots() {
+    this.slots = new SumArray(
+      SUMARRAY_BITS,
+      this.items.map(() => 0)
+    );
+  }
+  updateIndexes(lo, hi) {
+    for (let i = lo; i < hi; ++i) {
+      this.indexes.set(this.items[i], i);
+    }
+  }
+  get(index) {
+    return this.items[index];
+  }
+  move(from, count, to) {
+    const fromShift = this.slots.getSum(from);
+    const countShift = this.slots.getSum(from + count) - fromShift;
+    this.slots.move(from, count, to);
+    applyMove(this.items, from, count, to);
+    const toShift = this.slots.getSum(to);
+    this.updateIndexes(Math.min(from, to), Math.max(from, to) + count);
+    return {
+      type: "move" /* MOVE */,
+      from: fromShift,
+      count: countShift,
+      to: toShift
+    };
+  }
+  sort(from, indexes) {
+    let fromShift = 0;
+    let totalIndex = 0;
+    const indexedSlots = [];
+    for (let i = 0; i < from + indexes.length; ++i) {
+      const slotSize = this.slots.get(i);
+      const indexedSlot = [];
+      for (let j = 0; j < slotSize; ++j) {
+        indexedSlot.push(totalIndex++);
+      }
+      indexedSlots.push(indexedSlot);
+      if (i < from) {
+        fromShift += this.slots.get(i);
+      }
+    }
+    applySort(indexedSlots, from, indexes);
+    const newIndexes = indexedSlots.slice(from).flat();
+    this.slots.sort(from, indexes);
+    applySort(this.items, from, indexes);
+    this.updateIndexes(from, from + indexes.length);
+    return {
+      type: "sort" /* SORT */,
+      from: fromShift,
+      indexes: newIndexes
+    };
+  }
+  splice(index, count, items) {
+    const shiftIndex = this.slots.getSum(index);
+    const shiftCount = this.slots.getSum(index + count) - shiftIndex;
+    this.slots.splice(
+      index,
+      count,
+      items.map(() => 0)
+    );
+    const removedItems = this.items.splice(index, count, ...items);
+    for (const removedItem of removedItems) {
+      this.indexes.delete(removedItem);
+    }
+    if (this.items.length === count) {
+      this.updateIndexes(index, index + count);
+    } else {
+      this.updateIndexes(index, this.items.length);
+    }
+    return {
+      removed: removedItems,
+      event: {
+        type: "splice" /* SPLICE */,
+        index: shiftIndex,
+        count: shiftCount,
+        items: []
+        // Note: added items are _always_ treated as if they are empty
+      }
+    };
+  }
+  applyEvent(source, event) {
+    const sourceIndex = this.indexes.get(source);
+    assert(
+      sourceIndex !== void 0,
+      "event from unknown SlotSizes source",
+      source
+    );
+    const shift = this.slots.getSum(sourceIndex);
+    switch (event.type) {
+      case "splice" /* SPLICE */: {
+        this.slots.set(
+          sourceIndex,
+          this.slots.get(sourceIndex) + (event.items?.length ?? 0) - event.count
+        );
+        return {
+          type: "splice" /* SPLICE */,
+          index: event.index + shift,
+          count: event.count,
+          items: event.items
+        };
+      }
+      case "sort" /* SORT */: {
+        return {
+          type: "sort" /* SORT */,
+          from: event.from + shift,
+          indexes: event.indexes.map((index) => index + shift)
+        };
+      }
+      case "move" /* MOVE */: {
+        return {
+          type: "move" /* MOVE */,
+          from: event.from + shift,
+          count: event.count,
+          to: event.to + shift
+        };
+      }
+      default:
+        assertExhausted(event, "unknown ArrayEvent type");
+    }
+  }
+};
+
+// src/viewcontroller/rendernode/rendernode.ts
+var SingleChildRenderNode = class {
+  constructor(handlers, child, debugName) {
+    this.handleEvent = (event) => {
+      if (event.type === "splice" /* SPLICE */) {
+        this.liveNodes += (event.items?.length ?? 0) - event.count;
+      }
+      if (!this.handlers.onEvent?.(event)) {
+        assert(
+          this.parentContext,
+          "Unexpected event on detached RenderNode"
+        );
+        this.parentContext.nodeEmitter(event);
+      }
+    };
+    this.handleError = (event) => {
+      if (!this.handlers.onError?.(event)) {
+        if (this.parentContext) {
+          this.parentContext.errorEmitter(event);
+        } else {
+          warn("Unhandled error on detached RenderNode", event);
+        }
+      }
+    };
+    this.handlers = handlers;
+    this.child = child;
+    this._isMounted = false;
+    this.parentContext = void 0;
+    this.liveNodes = 0;
+    this.depth = 0;
+    this.__debugName = debugName ?? `custom`;
+    this.__refcount = 0;
+  }
+  isAttached() {
+    return !!this.parentContext;
+  }
+  isMounted() {
+    return this._isMounted;
+  }
+  emitEvent(event) {
+    assert(
+      this.parentContext,
+      "RenderNode attempted to emit event when detached"
+    );
+    this.parentContext.nodeEmitter(event);
+  }
+  emitError(error2) {
+    assert(
+      this.parentContext,
+      "RenderNode attempted to emit error when detached"
+    );
+    this.parentContext.errorEmitter(error2);
+  }
+  commit(phase) {
+    this.handlers.onCommit?.(phase);
+  }
+  requestCommit(phase) {
+    requestCommit(this, phase);
+  }
+  clone(props, children) {
+    if (this.handlers.clone) {
+      return this.handlers.clone(props, children);
+    }
+    const clonedChild = this.child.clone();
+    return new SingleChildRenderNode(this.handlers, clonedChild);
+  }
+  setChild(child) {
+    const toRemove = this.child;
+    this.child = child;
+    if (this._isMounted) {
+      toRemove.onUnmount();
+    }
+    if (this.parentContext) {
+      if (this.liveNodes > 0) {
+        this.parentContext.nodeEmitter({
+          type: "splice" /* SPLICE */,
+          index: 0,
+          count: this.liveNodes
+        });
+      }
+      toRemove.detach();
+    }
+    this.liveNodes = 0;
+    this.disown(toRemove);
+    this.own(this.child);
+    if (this.parentContext) {
+      this.child.attach({
+        nodeEmitter: this.handleEvent,
+        errorEmitter: this.handleError,
+        xmlNamespace: this.parentContext.xmlNamespace
+      });
+    }
+    if (this._isMounted) {
+      this.child.onMount();
+    }
+  }
+  detach() {
+    assert(this.parentContext, "double detached");
+    this.child.detach();
+    this.parentContext = void 0;
+    this.handlers.onDetach?.();
+  }
+  attach(parentContext) {
+    assert(!this.parentContext, "Invariant: double attached");
+    this.parentContext = parentContext;
+    this.child.attach({
+      nodeEmitter: this.handleEvent,
+      errorEmitter: this.handleError,
+      xmlNamespace: this.parentContext.xmlNamespace
+    });
+    this.handlers.onAttach?.(parentContext);
+  }
+  onMount() {
+    this._isMounted = true;
+    this.child.onMount();
+    this.handlers.onMount?.();
+  }
+  onUnmount() {
+    this._isMounted = false;
+    this.child.onUnmount();
+    this.handlers.onUnmount?.();
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  __alive() {
+    this.own(this.child);
+    this.handlers.onAlive?.();
+  }
+  __dead() {
+    this.handlers.onDestroy?.();
+    this.disown(this.child);
+    this.parentContext = void 0;
+  }
+  own(child) {
+    if (child === emptyRenderNode)
+      return;
+    child.setDepth(this.depth + 1);
+    child.retain();
+  }
+  disown(child) {
+    if (child === emptyRenderNode)
+      return;
+    child.release();
+    child.setDepth(0);
+  }
+  getDepth() {
+    return this.depth;
+  }
+  setDepth(depth) {
+    this.depth = depth;
+  }
+};
+var MultiChildRenderNode = class {
+  constructor(handlers, children, debugName) {
+    this.handleError = (event) => {
+      if (!this.handlers.onError?.(event)) {
+        if (this.parentContext) {
+          this.parentContext.errorEmitter(event);
+        } else {
+          warn("Unhandled error on detached RenderNode", event);
+        }
+      }
+    };
+    this.depth = 0;
+    this.handlers = handlers;
+    this._isMounted = false;
+    this.slotSizes = new SlotSizes(children);
+    this.parentContext = void 0;
+    this.pendingCommit = void 0;
+    this.__debugName = debugName ?? `custom`;
+    this.__refcount = 0;
+  }
+  isAttached() {
+    return !!this.parentContext;
+  }
+  isMounted() {
+    return this._isMounted;
+  }
+  emitEvent(event) {
+    assert(
+      this.parentContext,
+      "RenderNode attempted to emit event when detached"
+    );
+    this.parentContext.nodeEmitter(event);
+  }
+  emitError(error2) {
+    assert(
+      this.parentContext,
+      "RenderNode attempted to emit error when detached"
+    );
+    this.parentContext.errorEmitter(error2);
+  }
+  commit(phase) {
+    this.handlers.onCommit?.(phase);
+  }
+  requestCommit(phase) {
+    requestCommit(this, phase);
+  }
+  clone(props, children) {
+    if (this.handlers.clone) {
+      return this.handlers.clone(props, children);
+    }
+    const clonedChildren = this.slotSizes.items.map(
+      (child) => child.clone()
+    );
+    return new MultiChildRenderNode(this.handlers, clonedChildren);
+  }
+  sortChildren(from, indexes) {
+    const event = this.slotSizes.sort(from, indexes);
+    this.parentContext?.nodeEmitter(event);
+  }
+  moveChildren(from, count, to) {
+    const event = this.slotSizes.move(from, count, to);
+    this.parentContext?.nodeEmitter(event);
+  }
+  spliceChildren(index, count, children) {
+    for (let i = index; i < index + count; ++i) {
+      const child = this.slotSizes.items[i];
+      if (this._isMounted) {
+        child.onUnmount();
+      }
+    }
+    const { removed, event } = this.slotSizes.splice(
+      index,
+      count,
+      children
+    );
+    if (this.parentContext && event.count > 0) {
+      this.parentContext.nodeEmitter({
+        type: "splice" /* SPLICE */,
+        index: event.index,
+        count: event.count
+        // Note: we do *not* take the responsibility of emitting the new nodes -- the children do that on attach
+      });
+    }
+    for (const child of removed) {
+      if (this.parentContext) {
+        child.detach();
+      }
+      this.disown(child);
+    }
+    for (const child of children) {
+      this.own(child);
+      if (this.parentContext) {
+        child.attach({
+          nodeEmitter: (event2) => this.handleChildEvent(child, event2),
+          errorEmitter: this.handleError,
+          xmlNamespace: this.parentContext.xmlNamespace
+        });
+      }
+      if (this._isMounted) {
+        child.onMount();
+      }
+    }
+  }
+  handleChildEvent(child, event) {
+    if (!this.handlers.onChildEvent?.(child, event)) {
+      const shifted = this.slotSizes.applyEvent(child, event);
+      this.handleEvent(shifted);
+    }
+  }
+  handleEvent(event) {
+    if (!this.handlers.onEvent?.(event)) {
+      assert(
+        this.parentContext,
+        "Unexpected event on detached RenderNode"
+      );
+      this.parentContext.nodeEmitter(event);
+    }
+  }
+  detach() {
+    assert(this.parentContext, "double detached");
+    this.slotSizes.clearSlots();
+    for (const child of this.slotSizes.items) {
+      child.detach();
+    }
+    this.parentContext = void 0;
+    this.handlers.onDetach?.();
+  }
+  attach(parentContext) {
+    assert(!this.parentContext, "Invariant: double attached");
+    this.parentContext = parentContext;
+    for (const child of this.slotSizes.items) {
+      child.attach({
+        nodeEmitter: (event) => {
+          this.handleChildEvent(child, event);
+        },
+        errorEmitter: this.handleError,
+        xmlNamespace: this.parentContext.xmlNamespace
+      });
+    }
+    this.handlers.onAttach?.(parentContext);
+  }
+  onMount() {
+    this._isMounted = true;
+    for (const child of this.slotSizes.items) {
+      child.onMount();
+    }
+    this.handlers.onMount?.();
+  }
+  onUnmount() {
+    this._isMounted = false;
+    for (const child of this.slotSizes.items) {
+      child.onUnmount();
+    }
+    this.handlers.onUnmount?.();
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  __alive() {
+    for (const child of this.slotSizes.items) {
+      this.own(child);
+    }
+    this.handlers.onAlive?.();
+  }
+  __dead() {
+    this.handlers.onDestroy?.();
+    for (const child of this.slotSizes.items) {
+      this.disown(child);
+    }
+    this.parentContext = void 0;
+  }
+  own(child) {
+    if (child === emptyRenderNode)
+      return;
+    child.setDepth(this.depth + 1);
+    child.retain();
+  }
+  disown(child) {
+    if (child === emptyRenderNode)
+      return;
+    child.release();
+    child.setDepth(0);
+  }
+  getDepth() {
+    return this.depth;
+  }
+  setDepth(depth) {
+    this.depth = depth;
+  }
+};
+var EmptyRenderNode = class {
+  constructor() {
+    this.__debugName = "<empty>";
+    this.__refcount = 1;
+  }
+  detach() {
+  }
+  attach() {
+  }
+  onMount() {
+  }
+  onUnmount() {
+  }
+  retain() {
+  }
+  release() {
+  }
+  commit() {
+  }
+  getDepth() {
+    return 0;
+  }
+  setDepth() {
+  }
+  clone() {
+    return emptyRenderNode;
+  }
+  __alive() {
+  }
+  __dead() {
+  }
+};
+var emptyRenderNode = new EmptyRenderNode();
+function isRenderNode(obj) {
+  return obj && (obj instanceof SingleChildRenderNode || obj instanceof MultiChildRenderNode || obj instanceof EmptyRenderNode);
+}
+
+// src/modelview/collectionrendernode.ts
+function CollectionRenderNode(renderJSXNode2, collection2, debugName) {
+  let unsubscribe;
+  function handleEvent(events) {
+    for (const event of events) {
+      switch (event.type) {
+        case "splice" /* SPLICE */:
+          renderNode.spliceChildren(
+            event.index,
+            event.count,
+            event.items?.map((item) => renderJSXNode2(item)) ?? []
+          );
+          break;
+        case "move" /* MOVE */:
+          renderNode.moveChildren(event.from, event.count, event.to);
+          break;
+        case "sort" /* SORT */:
+          renderNode.sortChildren(event.from, event.indexes);
+          break;
+      }
+    }
+  }
+  const renderNode = new MultiChildRenderNode(
+    {
+      onAlive: () => {
+        unsubscribe = collection2.subscribe(handleEvent);
+      },
+      onDestroy: () => {
+        unsubscribe?.();
+        untrackReads(() => {
+          renderNode.spliceChildren(0, collection2.length, []);
+        });
+      }
+    },
+    [],
+    debugName ?? `CollectionRenderNode(${collection2.__debugName})`
+  );
+  return renderNode;
+}
+
+// src/model/rangeassociation.ts
+var RangeAssociation = class {
+  constructor() {
+    this.intervals = [];
+  }
+  setAssociation(start, end, value) {
+    if (start >= end)
+      return;
+    const result = [];
+    const left = this.findFirstOverlap(start);
+    let i = left;
+    while (i < this.intervals.length && this.intervals[i].start < end) {
+      const current = this.intervals[i];
+      if (start < current.start) {
+        result.push({
+          start,
+          end: Math.min(current.start, end),
+          value
+        });
+      }
+      start = Math.max(start, current.end);
+      result.push(current);
+      i++;
+    }
+    if (start < end) {
+      result.push({ start, end, value });
+    }
+    this.intervals.splice(left, i - left, ...result);
+  }
+  getAssociation(index) {
+    if (isNaN(index)) {
+      return null;
+    }
+    if (this.intervals.length === 0) {
+      return null;
+    }
+    if (index < 0) {
+      return null;
+    }
+    const highestIndex = this.intervals[this.intervals.length - 1];
+    if (index >= highestIndex.end) {
+      return null;
+    }
+    let lo = 0, hi = this.intervals.length - 1;
+    while (lo <= hi) {
+      const mid = lo + hi >>> 1;
+      const { start, end, value } = this.intervals[mid];
+      if (index < start)
+        hi = mid - 1;
+      else if (index >= end)
+        lo = mid + 1;
+      else
+        return value;
+    }
+    return null;
+  }
+  findFirstOverlap(pos) {
+    let lo = 0, hi = this.intervals.length;
+    while (lo < hi) {
+      const mid = lo + hi >>> 1;
+      if (this.intervals[mid].end <= pos) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo;
+  }
+  clear() {
+    this.intervals = [];
+  }
+};
+
+// src/model/dirtyarray.ts
+var DirtyArray = class {
+  constructor() {
+    this.rangeAssociation = new RangeAssociation();
+    this.dirtyLength = null;
+    this.clock = 0;
+  }
+  markDirty(key) {
+    if (key === "length") {
+      if (this.dirtyLength === null) {
+        this.dirtyLength = this.clock;
+      }
+      return;
+    }
+    this.rangeAssociation.setAssociation(key.start, key.end, this.clock);
+  }
+  tickClock() {
+    this.clock += 1;
+  }
+  clear() {
+    this.dirtyLength = null;
+    this.rangeAssociation.clear();
+  }
+  resetClock() {
+    this.clock = 0;
+  }
+  getClock() {
+    return this.clock;
+  }
+  get(key) {
+    if (key === "length") {
+      return this.dirtyLength;
+    }
+    return this.rangeAssociation.getAssociation(key);
+  }
+};
+
+// src/model/trackedarray.ts
+var TrackedArray = class {
+  constructor(mergeEvents, lifecycle, debugName) {
+    this.mergeEvents = mergeEvents;
+    this.itemSubscriptions = /* @__PURE__ */ new Map();
+    this.eventSubscriptions = [];
+    this.dirtyArray = new DirtyArray();
+    this.onAlive = lifecycle?.onAlive;
+    this.onDead = lifecycle?.onDead;
+    this.isDirty = false;
+    this.__processable = true;
+    this.__refcount = 0;
+    this.__debugName = debugName ?? "arraysub";
+  }
+  tickClock() {
+    this.dirtyArray.tickClock();
+  }
+  notifyRead(key) {
+    const reader = notifyRead(this);
+    if (reader && reader.__refcount > 0) {
+      let subscriptions = this.itemSubscriptions.get(reader);
+      if (!subscriptions) {
+        subscriptions = /* @__PURE__ */ new Map();
+        this.itemSubscriptions.set(reader, subscriptions);
+      }
+      if (!subscriptions.has(key)) {
+        subscriptions.set(key, this.dirtyArray.getClock());
+      }
+    }
+  }
+  markDirty(key) {
+    if (this.__refcount === 0) {
+      return;
+    }
+    this.dirtyArray.markDirty(key);
+    if (!this.isDirty) {
+      markDirty(this);
+      this.isDirty = true;
+    }
+  }
+  addEvent(event) {
+    if (this.__refcount === 0) {
+      return;
+    }
+    if (this.eventSubscriptions.length > 0) {
+      for (const subscription of this.eventSubscriptions) {
+        subscription.events.push(event);
+      }
+      if (!this.isDirty) {
+        markDirty(this);
+        this.isDirty = true;
+      }
+    }
+  }
+  subscribe(handler) {
+    this.retain();
+    const subscription = {
+      handler,
+      events: []
+    };
+    this.eventSubscriptions.push(subscription);
+    return () => {
+      const index = this.eventSubscriptions.indexOf(subscription);
+      if (index >= 0) {
+        this.eventSubscriptions.splice(index, 1);
+        this.release();
+      }
+    };
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  __alive() {
+    addVertex(this);
+    this.onAlive?.();
+  }
+  __dead() {
+    this.onDead?.();
+    removeVertex(this);
+    this.itemSubscriptions.clear();
+    this.eventSubscriptions = [];
+    this.dirtyArray.clear();
+    this.dirtyArray.resetClock();
+  }
+  __recalculate() {
+    assert(this.__refcount > 0, "cannot flush dead trackedarray");
+    const toPropagate = /* @__PURE__ */ new Set();
+    for (const [
+      reader,
+      subscriptions
+    ] of this.itemSubscriptions.entries()) {
+      if (reader.__refcount > 0) {
+        for (const [key, whenRead] of subscriptions.entries()) {
+          const whenChanged = this.dirtyArray.get(key);
+          if (whenChanged !== null && whenRead <= whenChanged) {
+            toPropagate.add(reader);
+          }
+        }
+      }
+    }
+    for (const reader of toPropagate) {
+      this.itemSubscriptions.delete(reader);
+    }
+    this.eventSubscriptions.forEach((subscription) => {
+      if (subscription.events.length) {
+        subscription.handler(this.mergeEvents(subscription.events));
+        subscription.events = [];
+      }
+    });
+    this.dirtyArray.clear();
+    this.isDirty = false;
+    return [...toPropagate];
+  }
+};
+
+// src/model/arraysub.ts
+function defaultSort(x, y) {
+  if (x === void 0 && y === void 0)
+    return 0;
+  if (x === void 0)
+    return 1;
+  if (y === void 0)
+    return -1;
+  const xStr = "" + x;
+  const yStr = "" + y;
+  if (xStr < yStr)
+    return -1;
+  if (xStr > yStr)
+    return 1;
+  return 0;
+}
+var ArraySub = class {
+  constructor(init, debugName, lifecycle) {
+    this.items = init ?? [];
+    this.trackedArray = new TrackedArray(
+      mergeArrayEvents,
+      lifecycle,
+      debugName
+    );
+    this.subscriptions = [];
+    this.__debugName = debugName ?? "arraysub";
+  }
+  getItemsUnsafe() {
+    return this.items;
+  }
+  get(index) {
+    this.trackedArray.notifyRead(index);
+    return this.items[index];
+  }
+  set(index, value) {
+    if (index >= this.items.length) {
+      warn("Assigning to out-of-bounds index");
+      const items = [];
+      for (let i = this.items.length; i < index; ++i) {
+        items.push(void 0);
+      }
+      items.push(value);
+      this.splice(this.items.length, 0, items);
+      return;
+    }
+    if (this.items[index] === value) {
+      return;
+    }
+    this.items[index] = value;
+    this.trackedArray.markDirty({ start: index, end: index + 1 });
+    this.trackedArray.addEvent({
+      type: "splice" /* SPLICE */,
+      index,
+      count: 1,
+      items: [value]
+    });
+    this.trackedArray.tickClock();
+  }
+  setLength(newLength) {
+    if (newLength < this.items.length) {
+      this.splice(newLength, this.items.length - newLength, []);
+    } else if (newLength > this.items.length) {
+      const items = [];
+      for (let i = this.items.length; i < newLength; ++i) {
+        items.push(void 0);
+      }
+      this.splice(this.items.length, 0, items);
+    }
+  }
+  getLength() {
+    this.trackedArray.notifyRead("length");
+    return this.items.length;
+  }
+  /**
+   * Implement a splice, dirtying the affected fields, but do not queue a
+   * splice event
+   */
+  spliceInner(index, count, items) {
+    const startLength = this.items.length;
+    const removed = Array.prototype.splice.call(
+      this.items,
+      index,
+      count,
+      ...items
+    );
+    const endLength = this.items.length;
+    if (startLength === endLength) {
+      this.trackedArray.markDirty({
+        start: index,
+        end: index + items.length
+      });
+    } else {
+      this.trackedArray.markDirty({ start: index, end: endLength });
+      this.trackedArray.markDirty({ start: endLength, end: startLength });
+      this.trackedArray.markDirty("length");
+    }
+    return removed;
+  }
+  splice(index, count, items) {
+    if (count === 0 && items.length === 0) {
+      return [];
+    }
+    let fixedIndex;
+    if (index < -this.items.length) {
+      fixedIndex = 0;
+    } else if (index < 0) {
+      fixedIndex = this.items.length - index;
+    } else if (index > this.items.length) {
+      fixedIndex = this.items.length;
+    } else {
+      fixedIndex = index;
+    }
+    const removed = this.spliceInner(fixedIndex, count, items);
+    this.trackedArray.addEvent({
+      type: "splice" /* SPLICE */,
+      index: fixedIndex,
+      count,
+      items
+    });
+    this.trackedArray.tickClock();
+    return removed;
+  }
+  sort(sortFn = defaultSort) {
+    const indexes = this.items.map((_unused, index) => index).sort((a, b) => sortFn(this.items[a], this.items[b]));
+    this.items.sort(sortFn);
+    this.trackedArray.addEvent({
+      type: "sort" /* SORT */,
+      from: 0,
+      indexes
+    });
+    this.trackedArray.markDirty({ start: 0, end: this.items.length });
+    this.trackedArray.tickClock();
+    return this;
+  }
+  reverse() {
+    const indexes = [];
+    for (let i = this.items.length - 1; i >= 0; --i) {
+      indexes.push(i);
+    }
+    this.items.reverse();
+    this.trackedArray.addEvent({
+      type: "sort" /* SORT */,
+      from: 0,
+      indexes
+    });
+    this.trackedArray.markDirty({ start: 0, end: this.items.length });
+    this.trackedArray.tickClock();
+    return this;
+  }
+  moveSlice(fromIndex, count, toIndex) {
+    const removed = this.items.splice(fromIndex, count);
+    this.items.splice(toIndex, 0, ...removed);
+    const lowerBound = Math.min(fromIndex, toIndex);
+    const upperBound = Math.max(fromIndex, toIndex) + count;
+    this.trackedArray.markDirty({ start: lowerBound, end: upperBound });
+    this.trackedArray.addEvent({
+      type: "move" /* MOVE */,
+      from: fromIndex,
+      count,
+      to: toIndex
+    });
+    this.trackedArray.tickClock();
+  }
+  subscribe(handler) {
+    this.retain();
+    const trackedArrayUnsubscribe = this.trackedArray.subscribe(handler);
+    handler([
+      {
+        type: "splice" /* SPLICE */,
+        index: 0,
+        count: 0,
+        items: this.items.slice()
+      }
+    ]);
+    const onUnsubscribe = () => {
+      trackedArrayUnsubscribe();
+      this.release();
+      this.subscriptions = this.subscriptions.filter(
+        (sub) => sub !== subscription
+      );
+    };
+    const subscription = {
+      handler,
+      onUnsubscribe
+    };
+    this.subscriptions.push(subscription);
+    return () => subscription.onUnsubscribe();
+  }
+  takeSubscriptions() {
+    const toReturn = this.subscriptions;
+    this.subscriptions = [];
+    return toReturn;
+  }
+  retain() {
+    this.trackedArray.retain();
+  }
+  release() {
+    this.trackedArray.release();
+  }
+  getTrackedArray() {
+    return this.trackedArray;
+  }
+};
+var DerivedArraySub = class {
+  constructor(source, eventTransform, debugName) {
+    this.source = source;
+    this.sourceUnsubscribe = void 0;
+    this.eventTransform = eventTransform;
+    this.items = [];
+    this.trackedArray = new TrackedArray(
+      mergeArrayEvents,
+      {
+        onAlive: () => {
+          this.source.retain();
+          this.sourceUnsubscribe = this.source.subscribe((events) => {
+            this.ingestEvents(events);
+          });
+        },
+        onDead: () => {
+          this.sourceUnsubscribe?.();
+          this.items = [];
+          this.source.release();
+        }
+      },
+      debugName
+    );
+    this.subscriptions = [];
+    this.__debugName = debugName ?? "arraysub";
+  }
+  replaceSource(source) {
+    this.sourceUnsubscribe?.();
+    if (this.items.length > 0) {
+      this.ingestEvents([
+        {
+          type: "splice" /* SPLICE */,
+          index: 0,
+          count: this.items.length
+        }
+      ]);
+    }
+    this.items = [];
+    this.source.release();
+    this.source = source;
+    this.source.retain();
+    this.sourceUnsubscribe = this.source.subscribe((events) => {
+      this.ingestEvents(events);
+    });
+  }
+  get(index) {
+    this.trackedArray.notifyRead(index);
+    assert(
+      index >= 0 && index < this.items.length,
+      "Out-of-bounds ArraySub read"
+    );
+    return this.items[index];
+  }
+  getItemsUnsafe() {
+    return this.items;
+  }
+  set(index, value) {
+    throw new Error("Read-only");
+  }
+  getLength() {
+    this.trackedArray.notifyRead("length");
+    return this.items.length;
+  }
+  subscribe(handler) {
+    this.retain();
+    const trackedArrayUnsubscribe = this.trackedArray.subscribe(handler);
+    handler([
+      {
+        type: "splice" /* SPLICE */,
+        index: 0,
+        count: 0,
+        items: this.items.slice()
+      }
+    ]);
+    const onUnsubscribe = () => {
+      trackedArrayUnsubscribe();
+      this.release();
+      this.subscriptions = this.subscriptions.filter(
+        (sub) => sub !== subscription
+      );
+    };
+    const subscription = {
+      handler,
+      onUnsubscribe
+    };
+    this.subscriptions.push(subscription);
+    return () => subscription.onUnsubscribe();
+  }
+  takeSubscriptions() {
+    const toReturn = this.subscriptions;
+    this.subscriptions = [];
+    return toReturn;
+  }
+  ingestEvents(events) {
+    const transformedEvents = mergeArrayEvents(this.eventTransform(events));
+    for (const transformed of transformedEvents) {
+      const lengthBefore = this.items.length;
+      applyArrayEvent(this.items, transformed);
+      const lengthAfter = this.items.length;
+      switch (transformed.type) {
+        case "splice" /* SPLICE */: {
+          this.trackedArray.markDirty({
+            start: transformed.index,
+            end: transformed.index + transformed.count
+          });
+          if (lengthBefore !== lengthAfter) {
+            const dirtyEnd = Math.max(lengthBefore, lengthAfter);
+            this.trackedArray.markDirty({
+              start: transformed.index + transformed.count,
+              end: dirtyEnd
+            });
+            this.trackedArray.markDirty("length");
+          }
+          break;
+        }
+        case "move" /* MOVE */: {
+          const startIndex = Math.min(
+            transformed.from,
+            transformed.to
+          );
+          const endIndex = Math.max(transformed.from, transformed.to) + transformed.count;
+          this.trackedArray.markDirty({
+            start: startIndex,
+            end: endIndex
+          });
+          break;
+        }
+        case "sort" /* SORT */: {
+          this.trackedArray.markDirty({
+            start: transformed.from,
+            end: transformed.from + transformed.indexes.length
+          });
+          break;
+        }
+      }
+      this.trackedArray.addEvent(transformed);
+    }
+    this.trackedArray.tickClock();
+  }
+  retain() {
+    this.trackedArray.retain();
+  }
+  release() {
+    this.trackedArray.release();
+  }
+  getTrackedArray() {
+    return this.trackedArray;
+  }
+};
+function mapView(source, mapFn) {
+  return new DerivedArraySub(source, function* (events) {
+    for (const event of events) {
+      switch (event.type) {
+        case "splice" /* SPLICE */:
+          yield {
+            type: event.type,
+            index: event.index,
+            count: event.count,
+            items: event.items?.map((val) => mapFn(val))
+          };
+          break;
+        default:
+          yield event;
+      }
+    }
+  });
+}
+function flatMapView(source, mapFn) {
+  const slotSizes = new SlotSizes([]);
+  return new DerivedArraySub(source, function* (events) {
+    for (const event of events) {
+      switch (event.type) {
+        case "splice" /* SPLICE */: {
+          const mappedItems = event.items?.map((item) => mapFn(item)) ?? [];
+          yield slotSizes.splice(
+            event.index,
+            event.count,
+            mappedItems
+          ).event;
+          for (const item of mappedItems) {
+            yield slotSizes.applyEvent(item, {
+              type: "splice" /* SPLICE */,
+              index: 0,
+              count: 0,
+              items: item
+            });
+          }
+          break;
+        }
+        case "sort" /* SORT */: {
+          yield slotSizes.sort(event.from, event.indexes);
+          break;
+        }
+        case "move" /* MOVE */: {
+          yield slotSizes.move(event.from, event.count, event.to);
+          break;
+        }
+      }
+    }
+  });
+}
+function filterView(source, mapFn) {
+  return flatMapView(source, (item) => mapFn(item) ? [item] : []);
+}
+
+// src/model/collection.ts
+var collectionSymbol = Symbol("collection");
+var dynamicArraySymbol = Symbol("dynamicArray");
+function makeCollectionOrView(dynamicArray, additionalPrototypeProps, isWritable, setFn) {
+  const values = dynamicArray.getItemsUnsafe();
+  const pseudoPrototype = {
+    dispose: () => {
+      revoke();
+    },
+    retain: () => {
+      dynamicArray.retain();
+    },
+    release: () => {
+      dynamicArray.release();
+    },
+    mapView: (fn, debugName) => view(mapView(dynamicArray, fn), debugName),
+    filterView: (fn, debugName) => view(filterView(dynamicArray, fn), debugName),
+    flatMapView: (fn, debugName) => view(flatMapView(dynamicArray, fn), debugName),
+    subscribe: (handler) => dynamicArray.subscribe(handler),
+    [dynamicArraySymbol]: () => dynamicArray,
+    ...additionalPrototypeProps
+  };
+  const getPropertyDescriptor = (prop) => {
+    if (prop === collectionSymbol) {
+      return {
+        value: true,
+        writable: false,
+        enumerable: false,
+        configurable: false
+      };
+    }
+    if (prop in pseudoPrototype) {
+      return {
+        value: pseudoPrototype[prop],
+        writable: false,
+        enumerable: false,
+        configurable: false
+      };
+    }
+    if (prop === "length") {
+      return {
+        value: dynamicArray.getLength(),
+        writable: false,
+        enumerable: true,
+        configurable: false
+      };
+    }
+    const numericProp = typeof prop === "string" ? parseInt(prop) : null;
+    if (numericProp !== null && numericProp.toString() === prop) {
+      return {
+        value: dynamicArray.get(numericProp),
+        writable: isWritable,
+        enumerable: true,
+        configurable: true
+      };
+    }
+    return void 0;
+  };
+  const { proxy, revoke } = Proxy.revocable(values, {
+    get: (target, prop, receiver) => {
+      const descriptor = getPropertyDescriptor(prop);
+      if (!descriptor) {
+        return target[prop];
+      }
+      return descriptor.value;
+    },
+    set: (target, prop, value, receiver) => {
+      if (prop === collectionSymbol) {
+        return false;
+      }
+      if (prop in pseudoPrototype) {
+        warn(
+          "Reassigning built-in methods not supported on collections/views"
+        );
+        return false;
+      }
+      if (prop === "length") {
+        return setFn(prop, value);
+      }
+      const numericProp = typeof prop === "string" ? parseInt(prop) : null;
+      if (numericProp !== null && numericProp.toString() === prop) {
+        return setFn(numericProp, value);
+      }
+      warn(
+        "Cannot assign to unsupported values on collections/views",
+        { prop }
+      );
+      return false;
+    },
+    has: (target, prop) => {
+      return getPropertyDescriptor(prop) !== void 0;
+    },
+    ownKeys: (target) => {
+      const keys = [];
+      const length = dynamicArray.getLength();
+      for (let i = 0; i < length; ++i) {
+        keys.push(i.toString());
+      }
+      keys.push("length");
+      return keys;
+    },
+    defineProperty: () => {
+      warn("defineProperty not supported on collections");
+      return false;
+    },
+    deleteProperty: () => {
+      warn("delete not supported on collections");
+      return false;
+    },
+    getOwnPropertyDescriptor: (target, prop) => {
+      return getPropertyDescriptor(prop);
+    },
+    setPrototypeOf: () => {
+      warn("setPrototypeOf not supported on collections");
+      return false;
+    }
+  });
+  return proxy;
+}
+function collection(values = [], debugName = "collection") {
+  const arraySub = new ArraySub(values, debugName);
+  const coll = makeCollectionOrView(
+    arraySub,
+    {
+      reject(predicate) {
+        const removed = [];
+        for (let i = arraySub.getLength() - 1; i >= 0; --i) {
+          if (predicate(arraySub.get(i))) {
+            removed.push(arraySub.splice(i, 1, [])[0]);
+          }
+        }
+        return removed.reverse();
+      },
+      moveSlice(from, count, to) {
+        arraySub.moveSlice(from, count, to);
+      },
+      splice(index, count, ...items) {
+        return arraySub.splice(index, count, items);
+      },
+      sort(fn) {
+        arraySub.sort(fn);
+        return this;
+      },
+      reverse() {
+        arraySub.reverse();
+        return this;
+      },
+      pop() {
+        const length = arraySub.getItemsUnsafe().length;
+        if (length === 0) {
+          return void 0;
+        }
+        return arraySub.splice(length - 1, 1, [])[0];
+      },
+      shift() {
+        const length = arraySub.getItemsUnsafe().length;
+        if (length === 0) {
+          return void 0;
+        }
+        return arraySub.splice(0, 1, [])[0];
+      },
+      unshift(...items) {
+        arraySub.splice(0, 0, items);
+        return arraySub.getItemsUnsafe().length;
+      },
+      push(...items) {
+        arraySub.splice(Infinity, 0, items);
+        return arraySub.getItemsUnsafe().length;
+      },
+      asView() {
+        return view(arraySub);
+      },
+      __renderNode: (renderJsxNode) => {
+        return CollectionRenderNode(renderJsxNode, coll, debugName);
+      },
+      __debugName: debugName
+    },
+    true,
+    (prop, value) => {
+      if (prop === "length") {
+        arraySub.setLength(value);
+      } else {
+        arraySub.set(prop, value);
+      }
+      return true;
+    }
+  );
+  return coll;
+}
+function view(arraySub, debugName = `view(${arraySub.__debugName})`) {
+  function unsupported() {
+    throw new Error("Cannot mutate readonly view");
+  }
+  const v = makeCollectionOrView(
+    arraySub,
+    {
+      push: unsupported,
+      unshift: unsupported,
+      pop: unsupported,
+      shift: unsupported,
+      __renderNode: (renderJsxNode) => {
+        return CollectionRenderNode(renderJsxNode, v, debugName);
+      },
+      __debugName: debugName
+    },
+    false,
+    unsupported
+  );
+  return v;
+}
+function getDynamicArray(item) {
+  return item[dynamicArraySymbol]();
+}
+function isCollectionOrView(value) {
+  return !!(value && typeof value === "object" && collectionSymbol in value && value[collectionSymbol] === true);
+}
+
+// src/model/trackeddata.ts
+var TrackedData = class {
+  constructor(mergeEvents, lifecycle, debugName) {
+    this.mergeEvents = mergeEvents;
+    this.itemSubscriptions = /* @__PURE__ */ new Map();
+    this.eventSubscriptions = [];
+    this.dirtyKeys = /* @__PURE__ */ new Map();
+    this.clock = 0;
+    this.onAlive = lifecycle?.onAlive;
+    this.onDead = lifecycle?.onDead;
+    this.isDirty = false;
+    this.__processable = true;
+    this.__refcount = 0;
+    this.__debugName = debugName ?? "arraysub";
+  }
+  tickClock() {
+    this.clock += 1;
+  }
+  notifyRead(key) {
+    const reader = notifyRead(this);
+    if (reader && reader.__refcount > 0) {
+      let subscriptions = this.itemSubscriptions.get(reader);
+      if (!subscriptions) {
+        subscriptions = /* @__PURE__ */ new Map();
+        this.itemSubscriptions.set(reader, subscriptions);
+      }
+      if (!subscriptions.has(key)) {
+        subscriptions.set(key, this.clock);
+      }
+    }
+  }
+  markDirty(key) {
+    if (this.__refcount === 0) {
+      return;
+    }
+    if (!this.dirtyKeys.has(key)) {
+      this.dirtyKeys.set(key, this.clock);
+    }
+    if (!this.isDirty) {
+      markDirty(this);
+      this.isDirty = true;
+    }
+  }
+  addEvent(event) {
+    if (this.__refcount === 0) {
+      return;
+    }
+    if (this.eventSubscriptions.length > 0) {
+      for (const subscription of this.eventSubscriptions) {
+        subscription.events.push(event);
+      }
+      if (!this.isDirty) {
+        markDirty(this);
+        this.isDirty = true;
+      }
+    }
+  }
+  subscribe(handler) {
+    this.retain();
+    const subscription = {
+      onUnsubscribe: () => {
+        const index = this.eventSubscriptions.indexOf(subscription);
+        if (index >= 0) {
+          this.eventSubscriptions.splice(index, 1);
+          this.release();
+        }
+      },
+      handler,
+      events: []
+    };
+    this.eventSubscriptions.push(subscription);
+    return () => subscription.onUnsubscribe();
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  __alive() {
+    addVertex(this);
+    this.onAlive?.();
+  }
+  __dead() {
+    this.onDead?.();
+    removeVertex(this);
+    this.itemSubscriptions.clear();
+    this.eventSubscriptions = [];
+    this.dirtyKeys.clear();
+    this.clock = 0;
+  }
+  __recalculate() {
+    assert(this.__refcount > 0, "cannot flush dead trackeddata");
+    const toPropagate = /* @__PURE__ */ new Set();
+    for (const [
+      reader,
+      subscriptions
+    ] of this.itemSubscriptions.entries()) {
+      if (reader.__refcount > 0) {
+        for (const [key, whenRead] of subscriptions.entries()) {
+          const whenChanged = this.dirtyKeys.get(key);
+          if (whenChanged !== void 0 && whenRead <= whenChanged) {
+            toPropagate.add(reader);
+          }
+        }
+      }
+    }
+    for (const reader of toPropagate) {
+      this.itemSubscriptions.delete(reader);
+    }
+    this.eventSubscriptions.forEach((subscription) => {
+      if (subscription.events.length) {
+        subscription.handler(this.mergeEvents(subscription.events));
+        subscription.events = [];
+      }
+    });
+    this.dirtyKeys.clear();
+    this.isDirty = false;
+    return [...toPropagate];
+  }
+  takeSubscriptions() {
+    const toReturn = this.eventSubscriptions;
+    this.eventSubscriptions = [];
+    return toReturn;
+  }
+};
+
+// src/model/dict.ts
+var DictEventType = /* @__PURE__ */ ((DictEventType2) => {
+  DictEventType2["ADD"] = "add";
+  DictEventType2["SET"] = "set";
+  DictEventType2["DEL"] = "del";
+  return DictEventType2;
+})(DictEventType || {});
+function* mergeDictEvents(events) {
+  if (events.length === 0) {
+    return;
+  }
+  let lastEvent = events[0];
+  for (let i = 1; i < events.length; ++i) {
+    const event = events[i];
+    if (lastEvent?.prop === event.prop) {
+      switch (lastEvent.type) {
+        case "add" /* ADD */:
+        case "set" /* SET */:
+          if (event.type === "set" /* SET */) {
+            lastEvent = {
+              type: lastEvent.type,
+              // ADD/SET followed by SET overwrites with the new value
+              prop: event.prop,
+              value: event.value
+              // Use overridden value
+            };
+            return;
+          }
+          if (event.type === "del" /* DEL */) {
+            lastEvent = void 0;
+            return;
+          }
+          break;
+        case "del" /* DEL */:
+          if (event.type === "add" /* ADD */) {
+            lastEvent = {
+              type: "set" /* SET */,
+              // DEL followed by ADD is a SET
+              prop: event.prop,
+              value: event.value
+            };
+          }
+          break;
+      }
+    } else {
+      if (lastEvent) {
+        yield lastEvent;
+      }
+      lastEvent = event;
+    }
+  }
+  if (lastEvent) {
+    yield lastEvent;
+  }
+}
+var sizeSymbol = Symbol("dictSize");
+var keysSymbol = Symbol("dictKeys");
+var trackedDataSymbol = Symbol("trackedData");
+var Dict = class {
+  constructor(init, debugName) {
+    this.items = new Map(init ?? []);
+    this[trackedDataSymbol] = new TrackedData(
+      mergeDictEvents,
+      {},
+      debugName
+    );
+    this.__refcount = 0;
+    this.__debugName = debugName ?? "arraysub";
+  }
+  getItemsUnsafe() {
+    return this.items;
+  }
+  get(key) {
+    this[trackedDataSymbol].notifyRead(key);
+    return this.items.get(key);
+  }
+  has(key) {
+    this[trackedDataSymbol].notifyRead(key);
+    return this.items.has(key);
+  }
+  set(key, value) {
+    if (this.items.get(key) === value) {
+      return;
+    }
+    const hasKey = this.items.has(key);
+    this.items.set(key, value);
+    this[trackedDataSymbol].markDirty(key);
+    if (!hasKey) {
+      this[trackedDataSymbol].markDirty(sizeSymbol);
+      this[trackedDataSymbol].markDirty(keysSymbol);
+    }
+    this[trackedDataSymbol].addEvent({
+      type: hasKey ? "set" /* SET */ : "add" /* ADD */,
+      prop: key,
+      value
+    });
+    this[trackedDataSymbol].tickClock();
+  }
+  delete(key) {
+    if (!this.items.has(key)) {
+      return;
+    }
+    this.items.delete(key);
+    this[trackedDataSymbol].markDirty(key);
+    this[trackedDataSymbol].markDirty(sizeSymbol);
+    this[trackedDataSymbol].markDirty(keysSymbol);
+    this[trackedDataSymbol].addEvent({
+      type: "del" /* DEL */,
+      prop: key
+    });
+    this[trackedDataSymbol].tickClock();
+  }
+  clear() {
+    if (this.items.size === 0) {
+      return;
+    }
+    const keys = Array.from(this.items.keys());
+    this.items.clear();
+    for (const key of keys) {
+      this[trackedDataSymbol].markDirty(key);
+      this[trackedDataSymbol].addEvent({
+        type: "del" /* DEL */,
+        prop: key
+      });
+    }
+    this[trackedDataSymbol].markDirty(sizeSymbol);
+    this[trackedDataSymbol].tickClock();
+  }
+  forEach(fn) {
+    for (const [key, value] of this.entries()) {
+      fn(value, key);
+    }
+  }
+  keysView(debugName) {
+    let subscription;
+    const arrSub = new ArraySub([], debugName, {
+      onAlive: () => {
+        subscription = this.subscribe((events) => {
+          for (const event of events) {
+            switch (event.type) {
+              case "add" /* ADD */:
+                arrSub.splice(Infinity, 0, [event.prop]);
+                break;
+              case "set" /* SET */:
+                break;
+              case "del" /* DEL */: {
+                const items = arrSub.getItemsUnsafe();
+                const index = items.indexOf(event.prop);
+                if (index !== -1) {
+                  arrSub.splice(index, 1, []);
+                }
+                break;
+              }
+            }
+          }
+        });
+      },
+      onDead: () => {
+        subscription?.();
+        subscription = void 0;
+      }
+    });
+    const keysView = view(arrSub, debugName);
+    return keysView;
+  }
+  *keys() {
+    this[trackedDataSymbol].notifyRead(keysSymbol);
+    const keys = Array.from(this.items.keys());
+    for (const key of keys) {
+      yield key;
+    }
+  }
+  *values() {
+    this[trackedDataSymbol].notifyRead(keysSymbol);
+    const keys = Array.from(this.items.keys());
+    const values = [];
+    for (const key of keys) {
+      this[trackedDataSymbol].notifyRead(key);
+      values.push(this.items.get(key));
+    }
+    for (const value of values) {
+      yield value;
+    }
+  }
+  *entries() {
+    this[trackedDataSymbol].notifyRead(keysSymbol);
+    const keys = Array.from(this.items.keys());
+    const entries = [];
+    for (const key of keys) {
+      this[trackedDataSymbol].notifyRead(key);
+      entries.push([key, this.items.get(key)]);
+    }
+    for (const entry of entries) {
+      yield entry;
+    }
+  }
+  get size() {
+    this[trackedDataSymbol].notifyRead(sizeSymbol);
+    return this.items.size;
+  }
+  subscribe(handler) {
+    this.retain();
+    const initialEvents = mergeDictEvents(
+      Array.from(this.items.entries()).map(([key, value]) => ({
+        type: "add" /* ADD */,
+        prop: key,
+        value
+      }))
+    );
+    handler(initialEvents);
+    const unsubscribe = this[trackedDataSymbol].subscribe(handler);
+    return () => {
+      unsubscribe();
+      this.release();
+    };
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  __alive() {
+    this[trackedDataSymbol].retain();
+  }
+  __dead() {
+    this[trackedDataSymbol].release();
+  }
+};
+trackedDataSymbol;
+function getDictTrackedData(dict2) {
+  return dict2[trackedDataSymbol];
+}
+function dict(entries = [], debugName) {
+  return new Dict(entries, debugName);
+}
+function isDict(value) {
+  return value instanceof Dict;
+}
+
+// src/model/field.ts
+var takeFieldSubscriptionsSymbol = Symbol("takeFieldSubscriptions");
+var Field = class {
+  constructor(val, debugName) {
+    this._val = val;
+    this._changeClock = 0;
+    this._subscriptions = [];
+    this.__processable = true;
+    this.__refcount = 0;
+    this.__debugName = debugName ?? "field";
+  }
+  get() {
+    notifyRead(this);
+    return this._val;
+  }
+  set(newVal) {
+    if (newVal !== this._val) {
+      if (this._subscribers) {
+        this._changeClock += 1;
+      }
+      this._val = newVal;
+      if (this.__refcount > 0) {
+        markDirty(this);
+      }
+    }
+  }
+  subscribe(handler) {
+    this.retain();
+    if (!this._subscribers)
+      this._subscribers = /* @__PURE__ */ new Map();
+    const subscription = {
+      onUnsubscribe: () => {
+        if (this._subscribers?.has(handler)) {
+          this._subscribers?.delete(handler);
+          this.release();
+        }
+        this._subscriptions = this._subscriptions.filter(
+          (sub) => sub !== subscription
+        );
+      },
+      // Yes, this is type incompatible. If a field is replaced by a
+      // calc; it's possible the subscription will be passed errors and
+      // the caller is not expecting that. This can only occur during hot
+      // swapping, and the type error will surface if it is incompatible,
+      // so this is "safe"
+      handler
+    };
+    this._subscriptions.push(subscription);
+    this._subscribers.set(handler, this._changeClock);
+    handler(void 0, this._val);
+    return () => subscription.onUnsubscribe();
+  }
+  retain() {
+    retain(this);
+  }
+  release() {
+    release(this);
+  }
+  __alive() {
+    addVertex(this);
+  }
+  __dead() {
+    removeVertex(this);
+    this._subscribers = void 0;
+    this._subscriptions = [];
+  }
+  __recalculate() {
+    assert(this.__refcount > 0, "cannot flush dead field");
+    if (this._subscribers) {
+      for (const [subscriber, observeClock] of this._subscribers) {
+        if (observeClock < this._changeClock) {
+          subscriber(void 0, this._val);
+        }
+        this._subscribers.set(subscriber, 0);
+      }
+      this._changeClock = 0;
+    }
+    return [...getForwardDependencies(this)];
+  }
+  map(fn) {
+    return calc(() => fn(this.get()));
+  }
+  [takeFieldSubscriptionsSymbol]() {
+    const toReturn = this._subscriptions;
+    this._subscriptions = [];
+    return toReturn;
+  }
+};
+function field(val, debugName) {
+  return new Field(val, debugName);
+}
+function takeFieldSubscriptions(field2) {
+  return field2[takeFieldSubscriptionsSymbol]();
 }
 
 // src/model/tarjan.ts
@@ -939,6 +2984,76 @@ function removeUnordered(array, value) {
   array.pop();
 }
 
+// src/model/model.ts
+var ModelEventType = /* @__PURE__ */ ((ModelEventType2) => {
+  ModelEventType2["SET"] = "set";
+  return ModelEventType2;
+})(ModelEventType || {});
+var modelDictSymbol = Symbol("modelDict");
+function getModelDict(model2) {
+  const dict2 = model2[modelDictSymbol];
+  assert(dict2, "Unable to retrieve internal model dict");
+  return dict2;
+}
+function isModel(value) {
+  return !!(value && typeof value === "object" && modelDictSymbol in value);
+}
+function model(target, debugName) {
+  const modelDict = dict(Object.entries(target), debugName);
+  const modelObj = {};
+  Object.keys(target).forEach((key) => {
+    Object.defineProperty(modelObj, key, {
+      get: () => {
+        return modelDict.get(key);
+      },
+      set: (newValue) => {
+        modelDict.set(key, newValue);
+      },
+      enumerable: true
+    });
+  });
+  Object.defineProperty(modelObj, modelDictSymbol, {
+    get: () => modelDict,
+    enumerable: false
+  });
+  return modelObj;
+}
+model.subscribe = function modelSubscribe(sourceModel, handler, debugName) {
+  const modelDict = getModelDict(sourceModel);
+  return modelDict.subscribe((events) => {
+    const transformed = [];
+    for (const event of events) {
+      if (event.type === "set" /* SET */ || event.type === "add" /* ADD */) {
+        transformed.push({
+          type: "set" /* SET */,
+          prop: event.prop,
+          value: event.value
+        });
+      }
+    }
+    if (transformed.length) {
+      handler(transformed);
+    }
+  });
+};
+model.field = function modelField(sourceModel, field2) {
+  return {
+    get: () => sourceModel[field2],
+    set: (newValue) => {
+      sourceModel[field2] = newValue;
+    },
+    subscribe: (handler) => {
+      return model.subscribe(sourceModel, (events) => {
+        for (const event of events) {
+          if (event.prop === field2) {
+            handler(void 0, event.value);
+          }
+        }
+      });
+    }
+  };
+};
+
 // src/model/engine.ts
 function isProcessable(val) {
   return val && val.__processable === true;
@@ -950,6 +3065,8 @@ var needsFlush = false;
 var flushHandle = null;
 var flushScheduler = defaultScheduler2;
 var componentToReplaceSet = /* @__PURE__ */ new Map();
+var collectionToReplaceSet = /* @__PURE__ */ new Map();
+var mountPoints = /* @__PURE__ */ new Map();
 function noopScheduler(callback) {
   return noop;
 }
@@ -978,6 +3095,18 @@ function reset() {
   flushHandle = null;
   flushScheduler = defaultScheduler2;
   componentToReplaceSet = /* @__PURE__ */ new Map();
+  collectionToReplaceSet = /* @__PURE__ */ new Map();
+  mountPoints = /* @__PURE__ */ new Map();
+}
+function registerMountPoint(target, mountSubscription) {
+  mountPoints.set(target, mountSubscription);
+}
+function takeMountPoint(target) {
+  const sub = mountPoints.get(target);
+  if (sub) {
+    mountPoints.delete(target);
+  }
+  return sub;
 }
 function registerComponentReload(component, reload) {
   let reloads = componentToReplaceSet.get(component);
@@ -989,22 +3118,141 @@ function registerComponentReload(component, reload) {
 }
 function unregisterComponentReload(component, reload) {
   const reloads = componentToReplaceSet.get(component);
-  assert(
-    reloads,
-    "Internal error: unexpected unregisterComponentRenderNode, previously unseen",
-    { component, reload }
-  );
-  reloads.delete(reload);
-}
-function replaceComponent(toReplace, newComponent) {
-  const reloads = componentToReplaceSet.get(toReplace);
   if (reloads) {
-    reloads.forEach((replace) => {
-      replace(newComponent);
-      registerComponentReload(newComponent, replace);
-    });
+    reloads.delete(reload);
   }
-  componentToReplaceSet.delete(toReplace);
+}
+function hotSwap(beforeExport, afterExport) {
+  let beforeVertex;
+  let beforeArraySubscriptions;
+  let beforeValueSubscriptions;
+  let beforeDictSubscriptions;
+  let beforeModelSubscriptions;
+  let beforeComponent;
+  if (beforeExport instanceof Field) {
+    beforeVertex = beforeExport;
+    beforeValueSubscriptions = takeFieldSubscriptions(beforeExport);
+  } else if (beforeExport instanceof Calculation) {
+    beforeVertex = beforeExport;
+    beforeValueSubscriptions = takeCalcSubscriptions(beforeExport);
+  } else if (isModel(beforeExport)) {
+    const dict2 = getModelDict(beforeExport);
+    const trackedData = getDictTrackedData(dict2);
+    beforeVertex = trackedData;
+    beforeModelSubscriptions = {
+      keys: [],
+      subscriptions: trackedData.takeSubscriptions()
+    };
+  } else if (isCollectionOrView(beforeExport)) {
+    const dynamicArray = getDynamicArray(beforeExport);
+    beforeVertex = dynamicArray.getTrackedArray();
+    beforeArraySubscriptions = {
+      length: beforeExport.length,
+      subscriptions: dynamicArray.takeSubscriptions()
+    };
+  } else if (isDict(beforeExport)) {
+    const trackedData = getDictTrackedData(beforeExport);
+    if (globalDependencyGraph.hasVertex(trackedData)) {
+      for (const dep of globalDependencyGraph.getForwardDependencies(
+        trackedData
+      )) {
+        globalDependencyGraph.markVertexDirty(dep);
+      }
+    }
+    beforeDictSubscriptions = {
+      keys: Array.from(beforeExport.keys()),
+      subscriptions: trackedData.takeSubscriptions()
+    };
+  } else if (typeof beforeExport === "function" || isClassComponent(beforeExport)) {
+    beforeComponent = beforeExport;
+  }
+  if (beforeVertex) {
+    if (globalDependencyGraph.hasVertex(beforeVertex)) {
+      for (const dep of globalDependencyGraph.getForwardDependencies(
+        beforeVertex
+      )) {
+        globalDependencyGraph.markVertexDirty(dep);
+      }
+    }
+  }
+  if (beforeValueSubscriptions) {
+    for (const subscription of beforeValueSubscriptions) {
+      subscription.onUnsubscribe();
+      if (afterExport instanceof Calculation || afterExport instanceof Field) {
+        subscription.onUnsubscribe = afterExport.subscribe(
+          subscription.handler
+        );
+      } else {
+        subscription.onUnsubscribe = noop;
+        subscription.handler(
+          new Error(
+            "Hot swapping replaced Field/Calculation with non-Field/Calculation value"
+          ),
+          void 0
+        );
+      }
+    }
+  }
+  if (beforeArraySubscriptions) {
+    for (const subscription of beforeArraySubscriptions.subscriptions) {
+      subscription.handler([
+        {
+          type: "splice" /* SPLICE */,
+          index: 0,
+          count: beforeArraySubscriptions.length
+        }
+      ]);
+      subscription.onUnsubscribe();
+      if (isCollectionOrView(afterExport)) {
+        subscription.onUnsubscribe = afterExport.subscribe(
+          subscription.handler
+        );
+      }
+    }
+  }
+  if (beforeDictSubscriptions) {
+    for (const subscription of beforeDictSubscriptions.subscriptions) {
+      subscription.handler(
+        beforeDictSubscriptions.keys.map((key) => ({
+          type: "del" /* DEL */,
+          prop: key
+        }))
+      );
+      subscription.onUnsubscribe();
+      if (isDict(afterExport)) {
+        subscription.onUnsubscribe = afterExport.subscribe(
+          subscription.handler
+        );
+      }
+    }
+  }
+  if (beforeModelSubscriptions) {
+    for (const subscription of beforeModelSubscriptions.subscriptions) {
+      subscription.onUnsubscribe();
+      if (isModel(afterExport)) {
+        subscription.onUnsubscribe = model.subscribe(
+          afterExport,
+          subscription.handler
+        );
+      }
+    }
+  }
+  if (beforeComponent) {
+    const replaceFunctions = componentToReplaceSet.get(beforeComponent);
+    if (replaceFunctions) {
+      const afterComponent = typeof afterExport === "function" || isClassComponent(afterExport) ? afterExport : () => {
+        warn(
+          "Hot swapping replaced component with non-component value; the old component will now render to nothing"
+        );
+        return null;
+      };
+      replaceFunctions.forEach((replaceFn) => {
+        replaceFn(afterComponent);
+        registerComponentReload(afterComponent, replaceFn);
+      });
+    }
+    componentToReplaceSet.delete(beforeComponent);
+  }
 }
 function scheduleFlush() {
   if (needsFlush)
@@ -1164,6 +3412,7 @@ function debugGetGraph() {
 function strictEqual(a, b) {
   return a === b;
 }
+var takeCalcSubscriptionsSymbol = Symbol("takeCalcSubscriptions");
 var Calculation = class {
   ensureResult() {
     const result = this._result;
@@ -1313,7 +3562,7 @@ var Calculation = class {
     this._calculating = false;
     this._eq = strictEqual;
     this._dependencies = /* @__PURE__ */ new Set();
-    this._subscriptions = /* @__PURE__ */ new Set();
+    this._subscriptions = [];
   }
   onError(handler) {
     this._errorHandler = handler;
@@ -1332,15 +3581,20 @@ var Calculation = class {
       args = [wrapError(e), void 0];
     }
     if (!this._subscriptions) {
-      this._subscriptions = /* @__PURE__ */ new Set();
+      this._subscriptions = [];
     }
-    this._subscriptions.add(handler);
-    const unsubscribe = () => {
-      this._subscriptions?.delete(handler);
-      release(this);
+    const subscription = {
+      onUnsubscribe: () => {
+        this._subscriptions = this._subscriptions.filter(
+          (sub) => sub !== subscription
+        );
+        release(this);
+      },
+      handler
     };
+    this._subscriptions.push(subscription);
     handler(...args);
-    return unsubscribe;
+    return () => subscription.onUnsubscribe();
   }
   retain() {
     retain(this);
@@ -1407,14 +3661,19 @@ var Calculation = class {
   notifySubscriptions(result) {
     for (const subscription of this._subscriptions) {
       if (result.ok) {
-        subscription(void 0, result.value);
+        subscription.handler(void 0, result.value);
       } else {
-        subscription(result.error, void 0);
+        subscription.handler(result.error, void 0);
       }
     }
   }
   map(fn) {
     return calc(() => fn(this.get()));
+  }
+  [takeCalcSubscriptionsSymbol]() {
+    const toReturn = this._subscriptions;
+    this._subscriptions = [];
+    return toReturn;
   }
 };
 var CycleError = class extends Error {
@@ -1431,75 +3690,8 @@ var SynchronousCycleError = class extends CycleError {
 function calc(fn, debugName) {
   return new Calculation(fn, debugName);
 }
-
-// src/model/field.ts
-var Field = class {
-  constructor(val, debugName) {
-    this._val = val;
-    this._changeClock = 0;
-    this.__processable = true;
-    this.__refcount = 0;
-    this.__debugName = debugName ?? "field";
-  }
-  get() {
-    notifyRead(this);
-    return this._val;
-  }
-  set(newVal) {
-    if (newVal !== this._val) {
-      if (this._subscribers) {
-        this._changeClock += 1;
-      }
-      this._val = newVal;
-      if (this.__refcount > 0) {
-        markDirty(this);
-      }
-    }
-  }
-  subscribe(subscriber) {
-    this.retain();
-    if (!this._subscribers)
-      this._subscribers = /* @__PURE__ */ new Map();
-    this._subscribers.set(subscriber, this._changeClock);
-    subscriber(void 0, this._val);
-    return () => {
-      if (this._subscribers?.has(subscriber)) {
-        this._subscribers?.delete(subscriber);
-        this.release();
-      }
-    };
-  }
-  retain() {
-    retain(this);
-  }
-  release() {
-    release(this);
-  }
-  __alive() {
-    addVertex(this);
-  }
-  __dead() {
-    removeVertex(this);
-  }
-  __recalculate() {
-    assert(this.__refcount > 0, "cannot flush dead field");
-    if (this._subscribers) {
-      for (const [subscriber, observeClock] of this._subscribers) {
-        if (observeClock < this._changeClock) {
-          subscriber(void 0, this._val);
-        }
-        this._subscribers.set(subscriber, 0);
-      }
-      this._changeClock = 0;
-    }
-    return [...getForwardDependencies(this)];
-  }
-  map(fn) {
-    return calc(() => fn(this.get()));
-  }
-};
-function field(val, debugName) {
-  return new Field(val, debugName);
+function takeCalcSubscriptions(calc2) {
+  return calc2[takeCalcSubscriptionsSymbol]();
 }
 
 // src/viewcontroller/jsx.ts
@@ -1575,7 +3767,7 @@ var attrBehavior = {
   autocapitalize: {},
   autocomplete: {},
   autofocus: {},
-  autoplay: {},
+  autoplay: { idn: null, idv: attrBooleanToEmptyString },
   charset: { idn: null },
   checked: {},
   cite: {},
@@ -1646,7 +3838,7 @@ var attrBehavior = {
     idv: attrStringOrNumberToNumber
   },
   multiple: {},
-  muted: {},
+  muted: { idn: null, idv: attrBooleanToEmptyString },
   name: {},
   nomodule: { idn: "noModule" },
   nonce: {},
@@ -1756,696 +3948,6 @@ function assignProp(element, attribute, value) {
     return;
   }
   setAttribute(element, attribute, value);
-}
-
-// src/common/arrayevent.ts
-var ArrayEventType = /* @__PURE__ */ ((ArrayEventType2) => {
-  ArrayEventType2["SPLICE"] = "splice";
-  ArrayEventType2["MOVE"] = "move";
-  ArrayEventType2["SORT"] = "sort";
-  return ArrayEventType2;
-})(ArrayEventType || {});
-var EMPTY_ARRAY = [];
-function applySort(target, from, indexes) {
-  const duped = target.slice(from, from + indexes.length);
-  for (let i = 0; i < indexes.length; ++i) {
-    target[i + from] = duped[indexes[i] - from];
-  }
-}
-function applyMove(target, from, count, to) {
-  const slice = target.splice(from, count);
-  target.splice(to, 0, ...slice);
-}
-function applyArrayEvent(target, event) {
-  switch (event.type) {
-    case "splice" /* SPLICE */: {
-      if (event.items) {
-        return target.splice(event.index, event.count, ...event.items);
-      } else {
-        return target.splice(event.index, event.count);
-      }
-    }
-    case "sort" /* SORT */: {
-      applySort(target, event.from, event.indexes);
-      break;
-    }
-    case "move" /* MOVE */: {
-      applyMove(target, event.from, event.count, event.to);
-      break;
-    }
-    default:
-      assertExhausted(event);
-  }
-  return EMPTY_ARRAY;
-}
-function* mergeArrayEvents(events) {
-  const iterator = events[Symbol.iterator]();
-  const firstItem = iterator.next();
-  if (firstItem.done) {
-    return;
-  }
-  let lastEvent = firstItem.value;
-  let mergedItems;
-  while (true) {
-    const nextItem = iterator.next();
-    if (nextItem.done) {
-      break;
-    }
-    const event = nextItem.value;
-    if (event.type === "splice" /* SPLICE */ && lastEvent.type === "splice" /* SPLICE */ && lastEvent.index + (lastEvent.items?.length ?? 0) === event.index) {
-      if (!mergedItems) {
-        mergedItems = lastEvent.items?.slice() ?? [];
-      }
-      if (event.items) {
-        mergedItems.push(...event.items);
-      }
-      if (mergedItems.length) {
-        lastEvent = {
-          type: "splice" /* SPLICE */,
-          index: lastEvent.index,
-          count: lastEvent.count + event.count,
-          items: mergedItems
-        };
-      } else {
-        lastEvent = {
-          type: "splice" /* SPLICE */,
-          index: lastEvent.index,
-          count: lastEvent.count + event.count
-        };
-      }
-    } else {
-      yield lastEvent;
-      lastEvent = event;
-      mergedItems = void 0;
-    }
-  }
-  yield lastEvent;
-}
-
-// src/common/sumarray.ts
-var SumArray = class {
-  constructor(bucketBits, items) {
-    this.bucketBits = bucketBits;
-    this.bucketSize = 1 << bucketBits;
-    this.slots = items;
-    this.buckets = this.recreate(this.slots);
-  }
-  recreate(items) {
-    const buckets = [];
-    for (let i = 0; i < items.length; i += this.bucketSize) {
-      let bucket = 0;
-      for (let j = 0; j < this.bucketSize && i + j < items.length; ++j) {
-        bucket += items[i + j];
-      }
-      buckets.push(bucket);
-    }
-    return buckets;
-  }
-  updateBuckets(from, to) {
-    const startBucket = from >> this.bucketBits;
-    const endBucket = to >> this.bucketBits;
-    for (let i = this.buckets.length; i < endBucket; ++i) {
-      this.buckets.push(0);
-    }
-    for (let i = startBucket; i <= endBucket; ++i) {
-      let bucket = 0;
-      const shift = i << this.bucketBits;
-      for (let j = 0; j < this.bucketSize && shift + j < this.slots.length; ++j) {
-        bucket += this.slots[shift + j];
-      }
-      this.buckets[i] = bucket;
-    }
-  }
-  splice(index, count, items) {
-    this.slots.splice(index, count, ...items);
-    this.updateBuckets(
-      index,
-      count === items.length ? index + count : this.slots.length
-    );
-    if (count - items.length > 0) {
-      const bucketSize = this.slots.length >> this.bucketBits;
-      if (this.buckets.length > bucketSize) {
-        this.buckets.length = bucketSize;
-      }
-    }
-  }
-  move(fromIndex, count, toIndex) {
-    applyMove(this.slots, fromIndex, count, toIndex);
-    this.updateBuckets(
-      Math.min(fromIndex, toIndex),
-      Math.max(fromIndex, toIndex) + count
-    );
-  }
-  sort(fromIndex, indices) {
-    applySort(this.slots, fromIndex, indices);
-    this.updateBuckets(fromIndex, fromIndex + indices.length);
-  }
-  getSum(index) {
-    if (index === 0) {
-      return 0;
-    }
-    let sum = 0;
-    for (let bucketIndex = 0, i = this.bucketSize; bucketIndex < this.buckets.length && i <= index; ++bucketIndex, i += this.bucketSize) {
-      sum += this.buckets[bucketIndex];
-    }
-    const start = index & ~(this.bucketSize - 1);
-    for (let j = start; j < index && j < this.slots.length; ++j) {
-      sum += this.slots[j];
-    }
-    return sum;
-  }
-  get(index) {
-    return this.slots[index];
-  }
-  set(index, value) {
-    const diff = value - this.slots[index];
-    this.slots[index] = value;
-    const bucketIndex = index >> this.bucketBits;
-    this.buckets[bucketIndex] += diff;
-  }
-};
-
-// src/common/slotsizes.ts
-var SUMARRAY_BITS = 5;
-var SlotSizes = class {
-  constructor(items) {
-    this.slots = new SumArray(
-      SUMARRAY_BITS,
-      items.map(() => 0)
-    );
-    this.items = items;
-    this.indexes = /* @__PURE__ */ new Map();
-    this.updateIndexes(0, items.length);
-  }
-  clearSlots() {
-    this.slots = new SumArray(
-      SUMARRAY_BITS,
-      this.items.map(() => 0)
-    );
-  }
-  updateIndexes(lo, hi) {
-    for (let i = lo; i < hi; ++i) {
-      this.indexes.set(this.items[i], i);
-    }
-  }
-  get(index) {
-    return this.items[index];
-  }
-  move(from, count, to) {
-    const fromShift = this.slots.getSum(from);
-    const countShift = this.slots.getSum(from + count) - fromShift;
-    this.slots.move(from, count, to);
-    applyMove(this.items, from, count, to);
-    const toShift = this.slots.getSum(to);
-    this.updateIndexes(Math.min(from, to), Math.max(from, to) + count);
-    return {
-      type: "move" /* MOVE */,
-      from: fromShift,
-      count: countShift,
-      to: toShift
-    };
-  }
-  sort(from, indexes) {
-    let fromShift = 0;
-    let totalIndex = 0;
-    const indexedSlots = [];
-    for (let i = 0; i < from + indexes.length; ++i) {
-      const slotSize = this.slots.get(i);
-      const indexedSlot = [];
-      for (let j = 0; j < slotSize; ++j) {
-        indexedSlot.push(totalIndex++);
-      }
-      indexedSlots.push(indexedSlot);
-      if (i < from) {
-        fromShift += this.slots.get(i);
-      }
-    }
-    applySort(indexedSlots, from, indexes);
-    const newIndexes = indexedSlots.slice(from).flat();
-    this.slots.sort(from, indexes);
-    applySort(this.items, from, indexes);
-    this.updateIndexes(from, from + indexes.length);
-    return {
-      type: "sort" /* SORT */,
-      from: fromShift,
-      indexes: newIndexes
-    };
-  }
-  splice(index, count, items) {
-    const shiftIndex = this.slots.getSum(index);
-    const shiftCount = this.slots.getSum(index + count) - shiftIndex;
-    this.slots.splice(
-      index,
-      count,
-      items.map(() => 0)
-    );
-    const removedItems = this.items.splice(index, count, ...items);
-    for (const removedItem of removedItems) {
-      this.indexes.delete(removedItem);
-    }
-    if (this.items.length === count) {
-      this.updateIndexes(index, index + count);
-    } else {
-      this.updateIndexes(index, this.items.length);
-    }
-    return {
-      removed: removedItems,
-      event: {
-        type: "splice" /* SPLICE */,
-        index: shiftIndex,
-        count: shiftCount,
-        items: []
-        // Note: added items are _always_ treated as if they are empty
-      }
-    };
-  }
-  applyEvent(source, event) {
-    const sourceIndex = this.indexes.get(source);
-    assert(
-      sourceIndex !== void 0,
-      "event from unknown SlotSizes source",
-      source
-    );
-    const shift = this.slots.getSum(sourceIndex);
-    switch (event.type) {
-      case "splice" /* SPLICE */: {
-        this.slots.set(
-          sourceIndex,
-          this.slots.get(sourceIndex) + (event.items?.length ?? 0) - event.count
-        );
-        return {
-          type: "splice" /* SPLICE */,
-          index: event.index + shift,
-          count: event.count,
-          items: event.items
-        };
-      }
-      case "sort" /* SORT */: {
-        return {
-          type: "sort" /* SORT */,
-          from: event.from + shift,
-          indexes: event.indexes.map((index) => index + shift)
-        };
-      }
-      case "move" /* MOVE */: {
-        return {
-          type: "move" /* MOVE */,
-          from: event.from + shift,
-          count: event.count,
-          to: event.to + shift
-        };
-      }
-      default:
-        assertExhausted(event, "unknown ArrayEvent type");
-    }
-  }
-};
-
-// src/viewcontroller/rendernode/rendernode.ts
-var SingleChildRenderNode = class {
-  constructor(handlers, child, debugName) {
-    this.handleEvent = (event) => {
-      if (event.type === "splice" /* SPLICE */) {
-        this.liveNodes += (event.items?.length ?? 0) - event.count;
-      }
-      if (!this.handlers.onEvent?.(event)) {
-        assert(
-          this.parentContext,
-          "Unexpected event on detached RenderNode"
-        );
-        this.parentContext.nodeEmitter(event);
-      }
-    };
-    this.handleError = (event) => {
-      if (!this.handlers.onError?.(event)) {
-        if (this.parentContext) {
-          this.parentContext.errorEmitter(event);
-        } else {
-          warn("Unhandled error on detached RenderNode", event);
-        }
-      }
-    };
-    this.handlers = handlers;
-    this.child = child;
-    this._isMounted = false;
-    this.parentContext = void 0;
-    this.liveNodes = 0;
-    this.depth = 0;
-    this.__debugName = debugName ?? `custom`;
-    this.__refcount = 0;
-  }
-  isAttached() {
-    return !!this.parentContext;
-  }
-  isMounted() {
-    return this._isMounted;
-  }
-  emitEvent(event) {
-    assert(
-      this.parentContext,
-      "RenderNode attempted to emit event when detached"
-    );
-    this.parentContext.nodeEmitter(event);
-  }
-  emitError(error2) {
-    assert(
-      this.parentContext,
-      "RenderNode attempted to emit error when detached"
-    );
-    this.parentContext.errorEmitter(error2);
-  }
-  commit(phase) {
-    this.handlers.onCommit?.(phase);
-  }
-  requestCommit(phase) {
-    requestCommit(this, phase);
-  }
-  clone(props, children) {
-    if (this.handlers.clone) {
-      return this.handlers.clone(props, children);
-    }
-    const clonedChild = this.child.clone();
-    return new SingleChildRenderNode(this.handlers, clonedChild);
-  }
-  setChild(child) {
-    console.log("setChild", child);
-    const toRemove = this.child;
-    this.child = child;
-    if (this._isMounted) {
-      toRemove.onUnmount();
-    }
-    if (this.parentContext) {
-      if (this.liveNodes > 0) {
-        this.parentContext.nodeEmitter({
-          type: "splice" /* SPLICE */,
-          index: 0,
-          count: this.liveNodes
-        });
-      }
-      toRemove.detach();
-    }
-    this.liveNodes = 0;
-    this.disown(toRemove);
-    this.own(this.child);
-    if (this.parentContext) {
-      this.child.attach({
-        nodeEmitter: this.handleEvent,
-        errorEmitter: this.handleError,
-        xmlNamespace: this.parentContext.xmlNamespace
-      });
-    }
-    if (this._isMounted) {
-      this.child.onMount();
-    }
-  }
-  detach() {
-    assert(this.parentContext, "double detached");
-    this.child.detach();
-    this.parentContext = void 0;
-    this.handlers.onDetach?.();
-  }
-  attach(parentContext) {
-    assert(!this.parentContext, "Invariant: double attached");
-    this.parentContext = parentContext;
-    this.child.attach({
-      nodeEmitter: this.handleEvent,
-      errorEmitter: this.handleError,
-      xmlNamespace: this.parentContext.xmlNamespace
-    });
-    this.handlers.onAttach?.(parentContext);
-  }
-  onMount() {
-    this._isMounted = true;
-    this.child.onMount();
-    this.handlers.onMount?.();
-  }
-  onUnmount() {
-    this._isMounted = false;
-    this.child.onUnmount();
-    this.handlers.onUnmount?.();
-  }
-  retain() {
-    retain(this);
-  }
-  release() {
-    release(this);
-  }
-  __alive() {
-    this.own(this.child);
-    this.handlers.onAlive?.();
-  }
-  __dead() {
-    this.handlers.onDestroy?.();
-    this.disown(this.child);
-    this.parentContext = void 0;
-  }
-  own(child) {
-    if (child === emptyRenderNode)
-      return;
-    child.setDepth(this.depth + 1);
-    child.retain();
-  }
-  disown(child) {
-    if (child === emptyRenderNode)
-      return;
-    child.release();
-    child.setDepth(0);
-  }
-  getDepth() {
-    return this.depth;
-  }
-  setDepth(depth) {
-    this.depth = depth;
-  }
-};
-var MultiChildRenderNode = class {
-  constructor(handlers, children, debugName) {
-    this.handleError = (event) => {
-      if (!this.handlers.onError?.(event)) {
-        if (this.parentContext) {
-          this.parentContext.errorEmitter(event);
-        } else {
-          warn("Unhandled error on detached RenderNode", event);
-        }
-      }
-    };
-    this.depth = 0;
-    this.handlers = handlers;
-    this._isMounted = false;
-    this.slotSizes = new SlotSizes(children);
-    this.parentContext = void 0;
-    this.pendingCommit = void 0;
-    this.__debugName = debugName ?? `custom`;
-    this.__refcount = 0;
-  }
-  isAttached() {
-    return !!this.parentContext;
-  }
-  isMounted() {
-    return this._isMounted;
-  }
-  emitEvent(event) {
-    assert(
-      this.parentContext,
-      "RenderNode attempted to emit event when detached"
-    );
-    this.parentContext.nodeEmitter(event);
-  }
-  emitError(error2) {
-    assert(
-      this.parentContext,
-      "RenderNode attempted to emit error when detached"
-    );
-    this.parentContext.errorEmitter(error2);
-  }
-  commit(phase) {
-    this.handlers.onCommit?.(phase);
-  }
-  requestCommit(phase) {
-    requestCommit(this, phase);
-  }
-  clone(props, children) {
-    if (this.handlers.clone) {
-      return this.handlers.clone(props, children);
-    }
-    const clonedChildren = this.slotSizes.items.map(
-      (child) => child.clone()
-    );
-    return new MultiChildRenderNode(this.handlers, clonedChildren);
-  }
-  sortChildren(from, indexes) {
-    const event = this.slotSizes.sort(from, indexes);
-    this.parentContext?.nodeEmitter(event);
-  }
-  moveChildren(from, count, to) {
-    const event = this.slotSizes.move(from, count, to);
-    this.parentContext?.nodeEmitter(event);
-  }
-  spliceChildren(index, count, children) {
-    for (let i = index; i < index + count; ++i) {
-      const child = this.slotSizes.items[i];
-      if (this._isMounted) {
-        child.onUnmount();
-      }
-    }
-    const { removed, event } = this.slotSizes.splice(
-      index,
-      count,
-      children
-    );
-    if (this.parentContext && event.count > 0) {
-      this.parentContext.nodeEmitter({
-        type: "splice" /* SPLICE */,
-        index: event.index,
-        count: event.count
-        // Note: we do *not* take the responsibility of emitting the new nodes -- the children do that on attach
-      });
-    }
-    for (const child of removed) {
-      if (this.parentContext) {
-        child.detach();
-      }
-      this.disown(child);
-    }
-    for (const child of children) {
-      this.own(child);
-      if (this.parentContext) {
-        child.attach({
-          nodeEmitter: (event2) => this.handleChildEvent(child, event2),
-          errorEmitter: this.handleError,
-          xmlNamespace: this.parentContext.xmlNamespace
-        });
-      }
-      if (this._isMounted) {
-        child.onMount();
-      }
-    }
-  }
-  handleChildEvent(child, event) {
-    if (!this.handlers.onChildEvent?.(child, event)) {
-      const shifted = this.slotSizes.applyEvent(child, event);
-      this.handleEvent(shifted);
-    }
-  }
-  handleEvent(event) {
-    if (!this.handlers.onEvent?.(event)) {
-      assert(
-        this.parentContext,
-        "Unexpected event on detached RenderNode"
-      );
-      this.parentContext.nodeEmitter(event);
-    }
-  }
-  detach() {
-    assert(this.parentContext, "double detached");
-    this.slotSizes.clearSlots();
-    for (const child of this.slotSizes.items) {
-      child.detach();
-    }
-    this.parentContext = void 0;
-    this.handlers.onDetach?.();
-  }
-  attach(parentContext) {
-    assert(!this.parentContext, "Invariant: double attached");
-    this.parentContext = parentContext;
-    for (const child of this.slotSizes.items) {
-      child.attach({
-        nodeEmitter: (event) => {
-          this.handleChildEvent(child, event);
-        },
-        errorEmitter: this.handleError,
-        xmlNamespace: this.parentContext.xmlNamespace
-      });
-    }
-    this.handlers.onAttach?.(parentContext);
-  }
-  onMount() {
-    this._isMounted = true;
-    for (const child of this.slotSizes.items) {
-      child.onMount();
-    }
-    this.handlers.onMount?.();
-  }
-  onUnmount() {
-    this._isMounted = false;
-    for (const child of this.slotSizes.items) {
-      child.onUnmount();
-    }
-    this.handlers.onUnmount?.();
-  }
-  retain() {
-    retain(this);
-  }
-  release() {
-    release(this);
-  }
-  __alive() {
-    for (const child of this.slotSizes.items) {
-      this.own(child);
-    }
-    this.handlers.onAlive?.();
-  }
-  __dead() {
-    this.handlers.onDestroy?.();
-    for (const child of this.slotSizes.items) {
-      this.disown(child);
-    }
-    this.parentContext = void 0;
-  }
-  own(child) {
-    if (child === emptyRenderNode)
-      return;
-    child.setDepth(this.depth + 1);
-    child.retain();
-  }
-  disown(child) {
-    if (child === emptyRenderNode)
-      return;
-    child.release();
-    child.setDepth(0);
-  }
-  getDepth() {
-    return this.depth;
-  }
-  setDepth(depth) {
-    this.depth = depth;
-  }
-};
-var EmptyRenderNode = class {
-  constructor() {
-    this.__debugName = "<empty>";
-    this.__refcount = 1;
-  }
-  detach() {
-  }
-  attach() {
-  }
-  onMount() {
-  }
-  onUnmount() {
-  }
-  retain() {
-  }
-  release() {
-  }
-  commit() {
-  }
-  getDepth() {
-    return 0;
-  }
-  setDepth() {
-  }
-  clone() {
-    return emptyRenderNode;
-  }
-  __alive() {
-  }
-  __dead() {
-  }
-};
-var emptyRenderNode = new EmptyRenderNode();
-function isRenderNode(obj) {
-  return obj && (obj instanceof SingleChildRenderNode || obj instanceof MultiChildRenderNode || obj instanceof EmptyRenderNode);
 }
 
 // src/viewcontroller/rendernode/arrayrendernode.ts
@@ -2605,11 +4107,9 @@ function renderJSXNode(jsxNode) {
     });
     jsxNode.then(
       (val) => {
-        console.log("OK");
         promiseResult.set({ type: "resolved", value: val });
       },
       (err) => {
-        console.log("NOPE");
         promiseResult.set({ type: "error", error: wrapError(err) });
       }
     );
@@ -2748,7 +4248,7 @@ function ComponentRenderNode(Component, props, children, debugName) {
     }
     return componentResult;
   };
-  const replaceComponent2 = (newComponent) => {
+  const replaceComponent = (newComponent) => {
     if (renderNode.isMounted() && onUnmountCallbacks) {
       for (const cb of onUnmountCallbacks) {
         cb();
@@ -2773,16 +4273,15 @@ function ComponentRenderNode(Component, props, children, debugName) {
     if (renderNode.isMounted() && onMountCallbacks) {
       renderNode.requestCommit(3 /* COMMIT_MOUNT */);
     }
-    console.groupEnd();
   };
   const renderNode = new SingleChildRenderNode(
     {
       onAlive: () => {
         initialize();
-        registerComponentReload(Component, replaceComponent2);
+        registerComponentReload(Component, replaceComponent);
       },
       onDestroy: () => {
-        unregisterComponentReload(Component, replaceComponent2);
+        unregisterComponentReload(Component, replaceComponent);
         cleanup();
       },
       onAttach: (parentContext) => {
@@ -3595,7 +5094,6 @@ function createElement(type, props, ...children) {
   return ComponentRenderNode(type, props, children);
 }
 createElement.Fragment = Fragment;
-createElement.replaceComponent = replaceComponent;
 
 // src/components/fragment.ts
 var Fragment2 = ({
@@ -3713,1247 +5211,6 @@ var IntrinsicObserver = ({ nodeCallback, elementCallback, children }) => {
     elementCallback,
     ArrayRenderNode(renderJSXChildren(children))
   );
-};
-
-// src/modelview/collectionrendernode.ts
-function CollectionRenderNode(renderJSXNode2, collection2, debugName) {
-  let unsubscribe;
-  function handleEvent(events) {
-    for (const event of events) {
-      switch (event.type) {
-        case "splice" /* SPLICE */:
-          renderNode.spliceChildren(
-            event.index,
-            event.count,
-            event.items?.map((item) => renderJSXNode2(item)) ?? []
-          );
-          break;
-        case "move" /* MOVE */:
-          renderNode.moveChildren(event.from, event.count, event.to);
-          break;
-        case "sort" /* SORT */:
-          renderNode.sortChildren(event.from, event.indexes);
-          break;
-      }
-    }
-  }
-  const renderNode = new MultiChildRenderNode(
-    {
-      onAlive: () => {
-        unsubscribe = collection2.subscribe(handleEvent);
-      },
-      onDestroy: () => {
-        unsubscribe?.();
-        untrackReads(() => {
-          renderNode.spliceChildren(0, collection2.length, []);
-        });
-      }
-    },
-    [],
-    debugName ?? `CollectionRenderNode(${collection2.__debugName})`
-  );
-  return renderNode;
-}
-
-// src/model/rangeassociation.ts
-var RangeAssociation = class {
-  constructor() {
-    this.intervals = [];
-  }
-  setAssociation(start, end, value) {
-    if (start >= end)
-      return;
-    const result = [];
-    const left = this.findFirstOverlap(start);
-    let i = left;
-    while (i < this.intervals.length && this.intervals[i].start < end) {
-      const current = this.intervals[i];
-      if (start < current.start) {
-        result.push({
-          start,
-          end: Math.min(current.start, end),
-          value
-        });
-      }
-      start = Math.max(start, current.end);
-      result.push(current);
-      i++;
-    }
-    if (start < end) {
-      result.push({ start, end, value });
-    }
-    this.intervals.splice(left, i - left, ...result);
-  }
-  getAssociation(index) {
-    if (isNaN(index)) {
-      return null;
-    }
-    if (this.intervals.length === 0) {
-      return null;
-    }
-    if (index < 0) {
-      return null;
-    }
-    const highestIndex = this.intervals[this.intervals.length - 1];
-    if (index >= highestIndex.end) {
-      return null;
-    }
-    let lo = 0, hi = this.intervals.length - 1;
-    while (lo <= hi) {
-      const mid = lo + hi >>> 1;
-      const { start, end, value } = this.intervals[mid];
-      if (index < start)
-        hi = mid - 1;
-      else if (index >= end)
-        lo = mid + 1;
-      else
-        return value;
-    }
-    return null;
-  }
-  findFirstOverlap(pos) {
-    let lo = 0, hi = this.intervals.length;
-    while (lo < hi) {
-      const mid = lo + hi >>> 1;
-      if (this.intervals[mid].end <= pos) {
-        lo = mid + 1;
-      } else {
-        hi = mid;
-      }
-    }
-    return lo;
-  }
-  clear() {
-    this.intervals = [];
-  }
-};
-
-// src/model/dirtyarray.ts
-var DirtyArray = class {
-  constructor() {
-    this.rangeAssociation = new RangeAssociation();
-    this.dirtyLength = null;
-    this.clock = 0;
-  }
-  markDirty(key) {
-    if (key === "length") {
-      if (this.dirtyLength === null) {
-        this.dirtyLength = this.clock;
-      }
-      return;
-    }
-    this.rangeAssociation.setAssociation(key.start, key.end, this.clock);
-  }
-  tickClock() {
-    this.clock += 1;
-  }
-  clear() {
-    this.dirtyLength = null;
-    this.rangeAssociation.clear();
-  }
-  resetClock() {
-    this.clock = 0;
-  }
-  getClock() {
-    return this.clock;
-  }
-  get(key) {
-    if (key === "length") {
-      return this.dirtyLength;
-    }
-    return this.rangeAssociation.getAssociation(key);
-  }
-};
-
-// src/model/trackedarray.ts
-var TrackedArray = class {
-  constructor(mergeEvents, lifecycle, debugName) {
-    this.mergeEvents = mergeEvents;
-    this.itemSubscriptions = /* @__PURE__ */ new Map();
-    this.eventSubscriptions = [];
-    this.dirtyArray = new DirtyArray();
-    this.onAlive = lifecycle?.onAlive;
-    this.onDead = lifecycle?.onDead;
-    this.isDirty = false;
-    this.__processable = true;
-    this.__refcount = 0;
-    this.__debugName = debugName ?? "arraysub";
-  }
-  tickClock() {
-    this.dirtyArray.tickClock();
-  }
-  notifyRead(key) {
-    const reader = notifyRead(this);
-    if (reader && reader.__refcount > 0) {
-      let subscriptions = this.itemSubscriptions.get(reader);
-      if (!subscriptions) {
-        subscriptions = /* @__PURE__ */ new Map();
-        this.itemSubscriptions.set(reader, subscriptions);
-      }
-      if (!subscriptions.has(key)) {
-        subscriptions.set(key, this.dirtyArray.getClock());
-      }
-    }
-  }
-  markDirty(key) {
-    if (this.__refcount === 0) {
-      return;
-    }
-    this.dirtyArray.markDirty(key);
-    if (!this.isDirty) {
-      markDirty(this);
-      this.isDirty = true;
-    }
-  }
-  addEvent(event) {
-    if (this.__refcount === 0) {
-      return;
-    }
-    if (this.eventSubscriptions.length > 0) {
-      for (const subscription of this.eventSubscriptions) {
-        subscription.events.push(event);
-      }
-      if (!this.isDirty) {
-        markDirty(this);
-        this.isDirty = true;
-      }
-    }
-  }
-  subscribe(handler) {
-    this.retain();
-    const subscription = {
-      handler,
-      events: []
-    };
-    this.eventSubscriptions.push(subscription);
-    return () => {
-      const index = this.eventSubscriptions.indexOf(subscription);
-      if (index >= 0) {
-        this.eventSubscriptions.splice(index, 1);
-        this.release();
-      }
-    };
-  }
-  retain() {
-    retain(this);
-  }
-  release() {
-    release(this);
-  }
-  __alive() {
-    addVertex(this);
-    this.onAlive?.();
-  }
-  __dead() {
-    this.onDead?.();
-    removeVertex(this);
-    this.itemSubscriptions.clear();
-    this.eventSubscriptions = [];
-    this.dirtyArray.clear();
-    this.dirtyArray.resetClock();
-  }
-  __recalculate() {
-    assert(this.__refcount > 0, "cannot flush dead trackedarray");
-    const toPropagate = /* @__PURE__ */ new Set();
-    for (const [
-      reader,
-      subscriptions
-    ] of this.itemSubscriptions.entries()) {
-      if (reader.__refcount > 0) {
-        for (const [key, whenRead] of subscriptions.entries()) {
-          const whenChanged = this.dirtyArray.get(key);
-          if (whenChanged !== null && whenRead <= whenChanged) {
-            toPropagate.add(reader);
-          }
-        }
-      }
-    }
-    for (const reader of toPropagate) {
-      this.itemSubscriptions.delete(reader);
-    }
-    this.eventSubscriptions.forEach((subscription) => {
-      if (subscription.events.length) {
-        subscription.handler(this.mergeEvents(subscription.events));
-        subscription.events = [];
-      }
-    });
-    this.dirtyArray.clear();
-    this.isDirty = false;
-    return [...toPropagate];
-  }
-};
-
-// src/model/arraysub.ts
-function defaultSort(x, y) {
-  if (x === void 0 && y === void 0)
-    return 0;
-  if (x === void 0)
-    return 1;
-  if (y === void 0)
-    return -1;
-  const xStr = "" + x;
-  const yStr = "" + y;
-  if (xStr < yStr)
-    return -1;
-  if (xStr > yStr)
-    return 1;
-  return 0;
-}
-var ArraySub = class {
-  constructor(init, debugName, lifecycle) {
-    this.items = init ?? [];
-    this.trackedArray = new TrackedArray(
-      mergeArrayEvents,
-      lifecycle,
-      debugName
-    );
-    this.__debugName = debugName ?? "arraysub";
-  }
-  getItemsUnsafe() {
-    return this.items;
-  }
-  get(index) {
-    this.trackedArray.notifyRead(index);
-    return this.items[index];
-  }
-  set(index, value) {
-    if (index >= this.items.length) {
-      warn("Assigning to out-of-bounds index");
-      const items = [];
-      for (let i = this.items.length; i < index; ++i) {
-        items.push(void 0);
-      }
-      items.push(value);
-      this.splice(this.items.length, 0, items);
-      return;
-    }
-    if (this.items[index] === value) {
-      return;
-    }
-    this.items[index] = value;
-    this.trackedArray.markDirty({ start: index, end: index + 1 });
-    this.trackedArray.addEvent({
-      type: "splice" /* SPLICE */,
-      index,
-      count: 1,
-      items: [value]
-    });
-    this.trackedArray.tickClock();
-  }
-  setLength(newLength) {
-    if (newLength < this.items.length) {
-      this.splice(newLength, this.items.length - newLength, []);
-    } else if (newLength > this.items.length) {
-      const items = [];
-      for (let i = this.items.length; i < newLength; ++i) {
-        items.push(void 0);
-      }
-      this.splice(this.items.length, 0, items);
-    }
-  }
-  getLength() {
-    this.trackedArray.notifyRead("length");
-    return this.items.length;
-  }
-  /**
-   * Implement a splice, dirtying the affected fields, but do not queue a
-   * splice event
-   */
-  spliceInner(index, count, items) {
-    const startLength = this.items.length;
-    const removed = Array.prototype.splice.call(
-      this.items,
-      index,
-      count,
-      ...items
-    );
-    const endLength = this.items.length;
-    if (startLength === endLength) {
-      this.trackedArray.markDirty({
-        start: index,
-        end: index + items.length
-      });
-    } else {
-      this.trackedArray.markDirty({ start: index, end: endLength });
-      this.trackedArray.markDirty({ start: endLength, end: startLength });
-      this.trackedArray.markDirty("length");
-    }
-    return removed;
-  }
-  splice(index, count, items) {
-    if (count === 0 && items.length === 0) {
-      return [];
-    }
-    let fixedIndex;
-    if (index < -this.items.length) {
-      fixedIndex = 0;
-    } else if (index < 0) {
-      fixedIndex = this.items.length - index;
-    } else if (index > this.items.length) {
-      fixedIndex = this.items.length;
-    } else {
-      fixedIndex = index;
-    }
-    const removed = this.spliceInner(fixedIndex, count, items);
-    this.trackedArray.addEvent({
-      type: "splice" /* SPLICE */,
-      index: fixedIndex,
-      count,
-      items
-    });
-    this.trackedArray.tickClock();
-    return removed;
-  }
-  sort(sortFn = defaultSort) {
-    const indexes = this.items.map((_unused, index) => index).sort((a, b) => sortFn(this.items[a], this.items[b]));
-    this.items.sort(sortFn);
-    this.trackedArray.addEvent({
-      type: "sort" /* SORT */,
-      from: 0,
-      indexes
-    });
-    this.trackedArray.markDirty({ start: 0, end: this.items.length });
-    this.trackedArray.tickClock();
-    return this;
-  }
-  reverse() {
-    const indexes = [];
-    for (let i = this.items.length - 1; i >= 0; --i) {
-      indexes.push(i);
-    }
-    this.items.reverse();
-    this.trackedArray.addEvent({
-      type: "sort" /* SORT */,
-      from: 0,
-      indexes
-    });
-    this.trackedArray.markDirty({ start: 0, end: this.items.length });
-    this.trackedArray.tickClock();
-    return this;
-  }
-  moveSlice(fromIndex, count, toIndex) {
-    const removed = this.items.splice(fromIndex, count);
-    this.items.splice(toIndex, 0, ...removed);
-    const lowerBound = Math.min(fromIndex, toIndex);
-    const upperBound = Math.max(fromIndex, toIndex) + count;
-    this.trackedArray.markDirty({ start: lowerBound, end: upperBound });
-    this.trackedArray.addEvent({
-      type: "move" /* MOVE */,
-      from: fromIndex,
-      count,
-      to: toIndex
-    });
-    this.trackedArray.tickClock();
-  }
-  subscribe(handler) {
-    this.retain();
-    const unsubscribe = this.trackedArray.subscribe(handler);
-    handler([
-      {
-        type: "splice" /* SPLICE */,
-        index: 0,
-        count: 0,
-        items: this.items.slice()
-      }
-    ]);
-    return () => {
-      unsubscribe();
-      this.release();
-    };
-  }
-  retain() {
-    this.trackedArray.retain();
-  }
-  release() {
-    this.trackedArray.release();
-  }
-};
-var DerivedArraySub = class {
-  constructor(source, eventTransform, debugName) {
-    this.source = source;
-    this.eventTransform = eventTransform;
-    this.items = [];
-    this.trackedArray = new TrackedArray(
-      mergeArrayEvents,
-      {
-        onAlive: () => {
-          this.source.retain();
-          this.sourceUnsubscribe = this.source.subscribe((events) => {
-            this.ingestEvents(events);
-          });
-        },
-        onDead: () => {
-          this.sourceUnsubscribe?.();
-          this.items = [];
-          this.source.release();
-        }
-      },
-      debugName
-    );
-    this.__debugName = debugName ?? "arraysub";
-  }
-  get(index) {
-    assert(
-      index >= 0 && index < this.items.length,
-      "Out-of-bounds ArraySub read"
-    );
-    this.trackedArray.notifyRead(index);
-    return this.items[index];
-  }
-  getItemsUnsafe() {
-    return this.items;
-  }
-  set(index, value) {
-    throw new Error("Read-only");
-  }
-  getLength() {
-    this.trackedArray.notifyRead("length");
-    return this.items.length;
-  }
-  subscribe(handler) {
-    this.retain();
-    const unsubscribe = this.trackedArray.subscribe(handler);
-    handler([
-      {
-        type: "splice" /* SPLICE */,
-        index: 0,
-        count: 0,
-        items: this.items.slice()
-      }
-    ]);
-    return () => {
-      unsubscribe();
-      this.release();
-    };
-  }
-  ingestEvents(events) {
-    const transformedEvents = mergeArrayEvents(this.eventTransform(events));
-    for (const transformed of transformedEvents) {
-      const lengthBefore = this.items.length;
-      applyArrayEvent(this.items, transformed);
-      const lengthAfter = this.items.length;
-      switch (transformed.type) {
-        case "splice" /* SPLICE */: {
-          this.trackedArray.markDirty({
-            start: transformed.index,
-            end: transformed.index + transformed.count
-          });
-          if (lengthBefore !== lengthAfter) {
-            const dirtyEnd = Math.max(lengthBefore, lengthAfter);
-            this.trackedArray.markDirty({
-              start: transformed.index + transformed.count,
-              end: dirtyEnd
-            });
-            this.trackedArray.markDirty("length");
-          }
-          break;
-        }
-        case "move" /* MOVE */: {
-          const startIndex = Math.min(
-            transformed.from,
-            transformed.to
-          );
-          const endIndex = Math.max(transformed.from, transformed.to) + transformed.count;
-          this.trackedArray.markDirty({
-            start: startIndex,
-            end: endIndex
-          });
-          break;
-        }
-        case "sort" /* SORT */: {
-          this.trackedArray.markDirty({
-            start: transformed.from,
-            end: transformed.from + transformed.indexes.length
-          });
-          break;
-        }
-      }
-      this.trackedArray.addEvent(transformed);
-    }
-    this.trackedArray.tickClock();
-  }
-  retain() {
-    this.trackedArray.retain();
-  }
-  release() {
-    this.trackedArray.release();
-  }
-};
-function mapView(source, mapFn) {
-  return new DerivedArraySub(source, function* (events) {
-    for (const event of events) {
-      switch (event.type) {
-        case "splice" /* SPLICE */:
-          yield {
-            type: event.type,
-            index: event.index,
-            count: event.count,
-            items: event.items?.map((val) => mapFn(val))
-          };
-          break;
-        default:
-          yield event;
-      }
-    }
-  });
-}
-function flatMapView(source, mapFn) {
-  const slotSizes = new SlotSizes([]);
-  return new DerivedArraySub(source, function* (events) {
-    for (const event of events) {
-      switch (event.type) {
-        case "splice" /* SPLICE */: {
-          const mappedItems = event.items?.map((item) => mapFn(item)) ?? [];
-          yield slotSizes.splice(
-            event.index,
-            event.count,
-            mappedItems
-          ).event;
-          for (const item of mappedItems) {
-            yield slotSizes.applyEvent(item, {
-              type: "splice" /* SPLICE */,
-              index: 0,
-              count: 0,
-              items: item
-            });
-          }
-          break;
-        }
-        case "sort" /* SORT */: {
-          yield slotSizes.sort(event.from, event.indexes);
-          break;
-        }
-        case "move" /* MOVE */: {
-          yield slotSizes.move(event.from, event.count, event.to);
-          break;
-        }
-      }
-    }
-  });
-}
-function filterView(source, mapFn) {
-  return flatMapView(source, (item) => mapFn(item) ? [item] : []);
-}
-
-// src/model/collection.ts
-var collectionSymbol = Symbol("collection");
-function makeCollectionOrView(dynamicArray, additionalPrototypeProps, isWritable, setFn) {
-  const values = dynamicArray.getItemsUnsafe();
-  const pseudoPrototype = {
-    dispose: () => {
-      revoke();
-    },
-    retain: () => {
-      dynamicArray.retain();
-    },
-    release: () => {
-      dynamicArray.release();
-    },
-    mapView: (fn, debugName) => view(mapView(dynamicArray, fn), debugName),
-    filterView: (fn, debugName) => view(filterView(dynamicArray, fn), debugName),
-    flatMapView: (fn, debugName) => view(flatMapView(dynamicArray, fn), debugName),
-    subscribe: (handler) => dynamicArray.subscribe(handler),
-    ...additionalPrototypeProps
-  };
-  const getPropertyDescriptor = (prop) => {
-    if (prop === collectionSymbol) {
-      return {
-        value: true,
-        writable: false,
-        enumerable: false,
-        configurable: false
-      };
-    }
-    if (prop in pseudoPrototype) {
-      return {
-        value: pseudoPrototype[prop],
-        writable: false,
-        enumerable: false,
-        configurable: false
-      };
-    }
-    if (prop === "length") {
-      return {
-        value: dynamicArray.getLength(),
-        writable: false,
-        enumerable: true,
-        configurable: false
-      };
-    }
-    const numericProp = typeof prop === "string" ? parseInt(prop) : null;
-    if (numericProp !== null && numericProp.toString() === prop) {
-      return {
-        value: dynamicArray.get(numericProp),
-        writable: isWritable,
-        enumerable: true,
-        configurable: true
-      };
-    }
-    return void 0;
-  };
-  const { proxy, revoke } = Proxy.revocable(values, {
-    get: (target, prop, receiver) => {
-      const descriptor = getPropertyDescriptor(prop);
-      if (!descriptor) {
-        return target[prop];
-      }
-      return descriptor.value;
-    },
-    set: (target, prop, value, receiver) => {
-      if (prop === collectionSymbol) {
-        return false;
-      }
-      if (prop in pseudoPrototype) {
-        warn(
-          "Reassigning built-in methods not supported on collections/views"
-        );
-        return false;
-      }
-      if (prop === "length") {
-        return setFn(prop, value);
-      }
-      const numericProp = typeof prop === "string" ? parseInt(prop) : null;
-      if (numericProp !== null && numericProp.toString() === prop) {
-        return setFn(numericProp, value);
-      }
-      warn(
-        "Cannot assign to unsupported values on collections/views",
-        { prop }
-      );
-      return false;
-    },
-    has: (target, prop) => {
-      return getPropertyDescriptor(prop) !== void 0;
-    },
-    ownKeys: (target) => {
-      const keys = [];
-      const length = dynamicArray.getLength();
-      for (let i = 0; i < length; ++i) {
-        keys.push(i.toString());
-      }
-      keys.push("length");
-      return keys;
-    },
-    defineProperty: () => {
-      warn("defineProperty not supported on collections");
-      return false;
-    },
-    deleteProperty: () => {
-      warn("delete not supported on collections");
-      return false;
-    },
-    getOwnPropertyDescriptor: (target, prop) => {
-      return getPropertyDescriptor(prop);
-    },
-    setPrototypeOf: () => {
-      warn("setPrototypeOf not supported on collections");
-      return false;
-    }
-  });
-  return proxy;
-}
-function collection(values = [], debugName = "collection") {
-  const arraySub = new ArraySub(values);
-  const coll = makeCollectionOrView(
-    arraySub,
-    {
-      reject(predicate) {
-        const removed = [];
-        for (let i = arraySub.getLength() - 1; i >= 0; --i) {
-          if (predicate(arraySub.get(i))) {
-            removed.push(arraySub.splice(i, 1, [])[0]);
-          }
-        }
-        return removed.reverse();
-      },
-      moveSlice(from, count, to) {
-        arraySub.moveSlice(from, count, to);
-      },
-      splice(index, count, ...items) {
-        return arraySub.splice(index, count, items);
-      },
-      sort(fn) {
-        arraySub.sort(fn);
-        return this;
-      },
-      reverse() {
-        arraySub.reverse();
-        return this;
-      },
-      pop() {
-        const length = arraySub.getItemsUnsafe().length;
-        if (length === 0) {
-          return void 0;
-        }
-        return arraySub.splice(length - 1, 1, [])[0];
-      },
-      shift() {
-        const length = arraySub.getItemsUnsafe().length;
-        if (length === 0) {
-          return void 0;
-        }
-        return arraySub.splice(0, 1, [])[0];
-      },
-      unshift(...items) {
-        arraySub.splice(0, 0, items);
-        return arraySub.getItemsUnsafe().length;
-      },
-      push(...items) {
-        arraySub.splice(Infinity, 0, items);
-        return arraySub.getItemsUnsafe().length;
-      },
-      asView() {
-        return view(arraySub);
-      },
-      __renderNode: (renderJsxNode) => {
-        return CollectionRenderNode(renderJsxNode, coll, debugName);
-      },
-      __debugName: debugName
-    },
-    true,
-    (prop, value) => {
-      if (prop === "length") {
-        arraySub.setLength(value);
-      } else {
-        arraySub.set(prop, value);
-      }
-      return true;
-    }
-  );
-  return coll;
-}
-function view(arraySub, debugName = `view(${arraySub.__debugName})`) {
-  function unsupported() {
-    throw new Error("Cannot mutate readonly view");
-  }
-  const v = makeCollectionOrView(
-    arraySub,
-    {
-      push: unsupported,
-      unshift: unsupported,
-      pop: unsupported,
-      shift: unsupported,
-      __renderNode: (renderJsxNode) => {
-        return CollectionRenderNode(renderJsxNode, v, debugName);
-      },
-      __debugName: debugName
-    },
-    false,
-    unsupported
-  );
-  return v;
-}
-
-// src/model/trackeddata.ts
-var TrackedData = class {
-  constructor(mergeEvents, lifecycle, debugName) {
-    this.mergeEvents = mergeEvents;
-    this.itemSubscriptions = /* @__PURE__ */ new Map();
-    this.eventSubscriptions = [];
-    this.dirtyKeys = /* @__PURE__ */ new Map();
-    this.clock = 0;
-    this.onAlive = lifecycle?.onAlive;
-    this.onDead = lifecycle?.onDead;
-    this.isDirty = false;
-    this.__processable = true;
-    this.__refcount = 0;
-    this.__debugName = debugName ?? "arraysub";
-  }
-  tickClock() {
-    this.clock += 1;
-  }
-  notifyRead(key) {
-    const reader = notifyRead(this);
-    if (reader && reader.__refcount > 0) {
-      let subscriptions = this.itemSubscriptions.get(reader);
-      if (!subscriptions) {
-        subscriptions = /* @__PURE__ */ new Map();
-        this.itemSubscriptions.set(reader, subscriptions);
-      }
-      if (!subscriptions.has(key)) {
-        subscriptions.set(key, this.clock);
-      }
-    }
-  }
-  markDirty(key) {
-    if (this.__refcount === 0) {
-      return;
-    }
-    if (!this.dirtyKeys.has(key)) {
-      this.dirtyKeys.set(key, this.clock);
-    }
-    if (!this.isDirty) {
-      markDirty(this);
-      this.isDirty = true;
-    }
-  }
-  addEvent(event) {
-    if (this.__refcount === 0) {
-      return;
-    }
-    if (this.eventSubscriptions.length > 0) {
-      for (const subscription of this.eventSubscriptions) {
-        subscription.events.push(event);
-      }
-      if (!this.isDirty) {
-        markDirty(this);
-        this.isDirty = true;
-      }
-    }
-  }
-  subscribe(handler) {
-    this.retain();
-    const subscription = {
-      handler,
-      events: []
-    };
-    this.eventSubscriptions.push(subscription);
-    return () => {
-      const index = this.eventSubscriptions.indexOf(subscription);
-      if (index >= 0) {
-        this.eventSubscriptions.splice(index, 1);
-        this.release();
-      }
-    };
-  }
-  retain() {
-    retain(this);
-  }
-  release() {
-    release(this);
-  }
-  __alive() {
-    addVertex(this);
-    this.onAlive?.();
-  }
-  __dead() {
-    this.onDead?.();
-    removeVertex(this);
-    this.itemSubscriptions.clear();
-    this.eventSubscriptions = [];
-    this.dirtyKeys.clear();
-    this.clock = 0;
-  }
-  __recalculate() {
-    assert(this.__refcount > 0, "cannot flush dead trackeddata");
-    const toPropagate = /* @__PURE__ */ new Set();
-    for (const [
-      reader,
-      subscriptions
-    ] of this.itemSubscriptions.entries()) {
-      if (reader.__refcount > 0) {
-        for (const [key, whenRead] of subscriptions.entries()) {
-          const whenChanged = this.dirtyKeys.get(key);
-          if (whenChanged !== void 0 && whenRead <= whenChanged) {
-            toPropagate.add(reader);
-          }
-        }
-      }
-    }
-    for (const reader of toPropagate) {
-      this.itemSubscriptions.delete(reader);
-    }
-    this.eventSubscriptions.forEach((subscription) => {
-      if (subscription.events.length) {
-        subscription.handler(this.mergeEvents(subscription.events));
-        subscription.events = [];
-      }
-    });
-    this.dirtyKeys.clear();
-    this.isDirty = false;
-    return [...toPropagate];
-  }
-};
-
-// src/model/dict.ts
-var DictEventType = /* @__PURE__ */ ((DictEventType2) => {
-  DictEventType2["ADD"] = "add";
-  DictEventType2["SET"] = "set";
-  DictEventType2["DEL"] = "del";
-  return DictEventType2;
-})(DictEventType || {});
-function* mergeDictEvents(events) {
-  if (events.length === 0) {
-    return;
-  }
-  let lastEvent = events[0];
-  for (let i = 1; i < events.length; ++i) {
-    const event = events[i];
-    if (lastEvent?.prop === event.prop) {
-      switch (lastEvent.type) {
-        case "add" /* ADD */:
-        case "set" /* SET */:
-          if (event.type === "set" /* SET */) {
-            lastEvent = {
-              type: lastEvent.type,
-              // ADD/SET followed by SET overwrites with the new value
-              prop: event.prop,
-              value: event.value
-              // Use overridden value
-            };
-            return;
-          }
-          if (event.type === "del" /* DEL */) {
-            lastEvent = void 0;
-            return;
-          }
-          break;
-        case "del" /* DEL */:
-          if (event.type === "add" /* ADD */) {
-            lastEvent = {
-              type: "set" /* SET */,
-              // DEL followed by ADD is a SET
-              prop: event.prop,
-              value: event.value
-            };
-          }
-          break;
-      }
-    } else {
-      if (lastEvent) {
-        yield lastEvent;
-      }
-      lastEvent = event;
-    }
-  }
-  if (lastEvent) {
-    yield lastEvent;
-  }
-}
-var sizeSymbol = Symbol("dictSize");
-var keysSymbol = Symbol("dictKeys");
-var Dict = class {
-  constructor(init, debugName) {
-    this.items = new Map(init ?? []);
-    this.trackedData = new TrackedData(mergeDictEvents, {}, debugName);
-    this.__refcount = 0;
-    this.__debugName = debugName ?? "arraysub";
-  }
-  getItemsUnsafe() {
-    return this.items;
-  }
-  get(key) {
-    this.trackedData.notifyRead(key);
-    return this.items.get(key);
-  }
-  has(key) {
-    this.trackedData.notifyRead(key);
-    return this.items.has(key);
-  }
-  set(key, value) {
-    if (this.items.get(key) === value) {
-      return;
-    }
-    const hasKey = this.items.has(key);
-    this.items.set(key, value);
-    this.trackedData.markDirty(key);
-    if (!hasKey) {
-      this.trackedData.markDirty(sizeSymbol);
-      this.trackedData.markDirty(keysSymbol);
-    }
-    this.trackedData.addEvent({
-      type: hasKey ? "set" /* SET */ : "add" /* ADD */,
-      prop: key,
-      value
-    });
-    this.trackedData.tickClock();
-  }
-  delete(key) {
-    if (!this.items.has(key)) {
-      return;
-    }
-    this.items.delete(key);
-    this.trackedData.markDirty(key);
-    this.trackedData.markDirty(sizeSymbol);
-    this.trackedData.markDirty(keysSymbol);
-    this.trackedData.addEvent({
-      type: "del" /* DEL */,
-      prop: key
-    });
-    this.trackedData.tickClock();
-  }
-  clear() {
-    if (this.items.size === 0) {
-      return;
-    }
-    const keys = Array.from(this.items.keys());
-    this.items.clear();
-    for (const key of keys) {
-      this.trackedData.markDirty(key);
-      this.trackedData.addEvent({
-        type: "del" /* DEL */,
-        prop: key
-      });
-    }
-    this.trackedData.markDirty(sizeSymbol);
-    this.trackedData.tickClock();
-  }
-  forEach(fn) {
-    for (const [key, value] of this.entries()) {
-      fn(value, key);
-    }
-  }
-  keysView(debugName) {
-    let subscription;
-    const arrSub = new ArraySub([], debugName, {
-      onAlive: () => {
-        subscription = this.subscribe((events) => {
-          for (const event of events) {
-            switch (event.type) {
-              case "add" /* ADD */:
-                arrSub.splice(Infinity, 0, [event.prop]);
-                break;
-              case "set" /* SET */:
-                break;
-              case "del" /* DEL */: {
-                const items = arrSub.getItemsUnsafe();
-                const index = items.indexOf(event.prop);
-                if (index !== -1) {
-                  arrSub.splice(index, 1, []);
-                }
-                break;
-              }
-            }
-          }
-        });
-      },
-      onDead: () => {
-        subscription?.();
-        subscription = void 0;
-      }
-    });
-    const keysView = view(arrSub, debugName);
-    return keysView;
-  }
-  *keys() {
-    this.trackedData.notifyRead(keysSymbol);
-    const keys = Array.from(this.items.keys());
-    for (const key of keys) {
-      yield key;
-    }
-  }
-  *values() {
-    this.trackedData.notifyRead(keysSymbol);
-    const keys = Array.from(this.items.keys());
-    const values = [];
-    for (const key of keys) {
-      this.trackedData.notifyRead(key);
-      values.push(this.items.get(key));
-    }
-    for (const value of values) {
-      yield value;
-    }
-  }
-  *entries() {
-    this.trackedData.notifyRead(keysSymbol);
-    const keys = Array.from(this.items.keys());
-    const entries = [];
-    for (const key of keys) {
-      this.trackedData.notifyRead(key);
-      entries.push([key, this.items.get(key)]);
-    }
-    for (const entry of entries) {
-      yield entry;
-    }
-  }
-  get size() {
-    this.trackedData.notifyRead(sizeSymbol);
-    return this.items.size;
-  }
-  subscribe(handler) {
-    this.retain();
-    const initialEvents = mergeDictEvents(
-      Array.from(this.items.entries()).map(([key, value]) => ({
-        type: "add" /* ADD */,
-        prop: key,
-        value
-      }))
-    );
-    handler(initialEvents);
-    const unsubscribe = this.trackedData.subscribe(handler);
-    return () => {
-      unsubscribe();
-      this.release();
-    };
-  }
-  retain() {
-    retain(this);
-  }
-  release() {
-    release(this);
-  }
-  __alive() {
-    this.trackedData.retain();
-  }
-  __dead() {
-    this.trackedData.release();
-  }
-};
-function dict(entries = [], debugName) {
-  return new Dict(entries, debugName);
-}
-
-// src/model/model.ts
-var ModelEventType = /* @__PURE__ */ ((ModelEventType2) => {
-  ModelEventType2["SET"] = "set";
-  return ModelEventType2;
-})(ModelEventType || {});
-var modelDictSymbol = Symbol("modelDict");
-function getModelDict(model2) {
-  const dict2 = model2[modelDictSymbol];
-  assert(dict2, "Unable to retrieve internal model dict");
-  return dict2;
-}
-function model(target, debugName) {
-  const modelDict = dict(Object.entries(target), debugName);
-  const modelObj = { ...target };
-  Object.keys(target).forEach((key) => {
-    Object.defineProperty(modelObj, key, {
-      get: () => {
-        return modelDict.get(key);
-      },
-      set: (newValue) => {
-        modelDict.set(key, newValue);
-      }
-    });
-  });
-  Object.defineProperty(modelObj, modelDictSymbol, { get: () => modelDict });
-  return modelObj;
-}
-model.subscribe = function modelSubscribe(sourceModel, handler, debugName) {
-  const modelDict = getModelDict(sourceModel);
-  return modelDict.subscribe((events) => {
-    const transformed = [];
-    for (const event of events) {
-      if (event.type === "set" /* SET */ || event.type === "add" /* ADD */) {
-        transformed.push({
-          type: "set" /* SET */,
-          prop: event.prop,
-          value: event.value
-        });
-      }
-    }
-    if (transformed.length) {
-      handler(transformed);
-    }
-  });
-};
-model.field = function modelField(sourceModel, field2) {
-  return {
-    get: () => sourceModel[field2],
-    set: (newValue) => {
-      sourceModel[field2] = newValue;
-    },
-    subscribe: (handler) => {
-      return model.subscribe(sourceModel, (events) => {
-        for (const event of events) {
-          if (event.prop === field2) {
-            handler(void 0, event.value);
-          }
-        }
-      });
-    }
-  };
 };
 
 // src/viewcontroller/rendernode/webcomponentrendernode.ts
@@ -5328,18 +5585,19 @@ function defineCustomElement(options) {
 
 // src/viewcontroller/mount.ts
 function mount(target, node) {
-  const skipNodes = target.childNodes.length;
-  const children = [];
-  for (let i = 0; i < target.childNodes.length; ++i) {
-    children.push(ForeignRenderNode(target.childNodes[i]));
+  const priorMount = takeMountPoint(target);
+  if (priorMount) {
+    warn(
+      "Multiple mount() calls to the same target, resetting the old mount"
+    );
+    priorMount();
   }
-  children.push(renderJSXNode(node));
-  const root = PortalRenderNode(
-    target,
-    ArrayRenderNode(children),
-    null,
-    "root"
+  assert(
+    target.childNodes.length === 0,
+    "mount() called on non-empty target",
+    { target }
   );
+  const root = PortalRenderNode(target, renderJSXNode(node), null, "root");
   root.retain();
   let syncError;
   root.attach({
@@ -5357,18 +5615,26 @@ function mount(target, node) {
     throw syncError;
   }
   root.onMount();
-  flush();
-  return () => {
-    const nodesToKeep = Array.from(target.childNodes).slice(0, skipNodes);
+  let unsubscribed = false;
+  const unsubscribe = () => {
+    if (unsubscribed) {
+      warn("mount() unmount function called multiple times");
+      return;
+    }
+    takeMountPoint(target);
+    unsubscribed = true;
     root.onUnmount();
     flush();
-    target.replaceChildren(...nodesToKeep);
+    target.replaceChildren();
     root.detach();
     root.release();
   };
+  registerMountPoint(target, unsubscribe);
+  flush();
+  return unsubscribe;
 }
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.23.0" : "development";
+var VERSION = true ? "0.24.0" : "development";
 //# sourceMappingURL=index.cjs.map

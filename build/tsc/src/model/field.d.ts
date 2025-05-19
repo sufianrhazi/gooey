@@ -1,9 +1,11 @@
-import type { DynamicMut, DynamicNonErrorSubscriptionHandler } from '../common/dyn';
+import type { DynamicInternalSubscription, DynamicMut, DynamicNonErrorSubscriptionHandler } from '../common/dyn';
 import type { Calculation } from './calc';
 import type { Processable, Retainable } from './engine';
+declare const takeFieldSubscriptionsSymbol: unique symbol;
 export declare class Field<T> implements Processable, Retainable, DynamicMut<T> {
     private _val;
     private _subscribers?;
+    private _subscriptions;
     private _changeClock;
     __processable: true;
     __refcount: number;
@@ -11,13 +13,16 @@ export declare class Field<T> implements Processable, Retainable, DynamicMut<T> 
     constructor(val: T, debugName?: string);
     get(): T;
     set(newVal: T): void;
-    subscribe(subscriber: DynamicNonErrorSubscriptionHandler<T>): () => void;
+    subscribe(handler: DynamicNonErrorSubscriptionHandler<T>): () => void;
     retain(): void;
     release(): void;
     __alive(): void;
     __dead(): void;
     __recalculate(): Processable[];
     map<V>(fn: (val: T) => V): Calculation<V>;
+    [takeFieldSubscriptionsSymbol](): DynamicInternalSubscription<T>[];
 }
 export declare function field<T>(val: T, debugName?: string): Field<T>;
+export declare function takeFieldSubscriptions<T>(field: Field<T>): DynamicInternalSubscription<T>[];
+export {};
 //# sourceMappingURL=field.d.ts.map

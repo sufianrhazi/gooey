@@ -1,5 +1,6 @@
 import type { View } from './collection';
 import type { Retainable } from './engine';
+import { TrackedData } from './trackeddata';
 export declare enum DictEventType {
     ADD = "add",
     SET = "set",
@@ -19,9 +20,12 @@ export type DictEvent<K, V> = {
     value?: V;
 };
 export type Model<T extends {}> = T;
+declare const sizeSymbol: unique symbol;
+declare const keysSymbol: unique symbol;
+declare const trackedDataSymbol: unique symbol;
 export declare class Dict<K, V> implements Retainable {
     private items;
-    private trackedData;
+    [trackedDataSymbol]: TrackedData<K | typeof sizeSymbol | typeof keysSymbol, DictEvent<K, V>>;
     __refcount: number;
     __debugName: string;
     constructor(init?: [key: K, value: V][] | undefined, debugName?: string);
@@ -43,5 +47,8 @@ export declare class Dict<K, V> implements Retainable {
     __alive(): void;
     __dead(): void;
 }
+export declare function getDictTrackedData<K, V>(dict: Dict<K, V>): TrackedData<K | typeof sizeSymbol | typeof keysSymbol, DictEvent<K, V>>;
 export declare function dict<K, V>(entries?: [K, V][], debugName?: string): Dict<K, V>;
+export declare function isDict(value: unknown): value is Dict<unknown, unknown>;
+export {};
 //# sourceMappingURL=dict.d.ts.map

@@ -1,8 +1,9 @@
 import type { ArrayEvent } from '../common/arrayevent';
 import type { JSXNode } from '../viewcontroller/jsx';
 import type { RenderNode } from '../viewcontroller/rendernode/rendernode';
-import type { DerivedArraySub } from './arraysub';
+import type { DerivedArraySub, DynamicArray } from './arraysub';
 import { ArraySub } from './arraysub';
+declare const dynamicArraySymbol: unique symbol;
 interface CollectionViewSharedInterface<T> {
     /** Destroy the collection */
     dispose(): void;
@@ -15,6 +16,7 @@ interface CollectionViewSharedInterface<T> {
     filterView(filterFn: (value: T) => boolean, debugName?: string): View<T>;
     flatMapView<V>(flatMapFn: (value: T) => V[], debugName?: string): View<V>;
     subscribe: (handler: (events: Iterable<ArrayEvent<T>>) => void) => () => void;
+    [dynamicArraySymbol]: () => DynamicArray<T>;
 }
 export interface Collection<T> extends Array<T>, CollectionViewSharedInterface<T> {
     /** Mutate the collection, rejecting items that pass the predicate fn */
@@ -29,5 +31,7 @@ export interface View<T> extends ReadonlyArray<T>, CollectionViewSharedInterface
 }
 export declare function collection<T>(values?: T[], debugName?: string): Collection<T>;
 export declare function view<T>(arraySub: ArraySub<T> | DerivedArraySub<T, any>, debugName?: string): View<T>;
+export declare function getDynamicArray(item: Collection<unknown> | View<unknown>): DynamicArray<unknown>;
+export declare function isCollectionOrView(value: unknown): value is Collection<any> | View<any>;
 export {};
 //# sourceMappingURL=collection.d.ts.map

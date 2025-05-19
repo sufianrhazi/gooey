@@ -5,6 +5,10 @@ export interface DynamicNonErrorSubscriptionHandler<T> {
 export interface DynamicSubscriptionHandler<T> {
     (...args: [error: Error, val: undefined] | [error: undefined, val: T]): void;
 }
+export interface DynamicInternalSubscription<T> {
+    onUnsubscribe: () => void;
+    handler: DynamicSubscriptionHandler<T>;
+}
 export interface Dynamic<out T> {
     get: () => T;
     subscribe: (fn: DynamicSubscriptionHandler<T>) => () => void;

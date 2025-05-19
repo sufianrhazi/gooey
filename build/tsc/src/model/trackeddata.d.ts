@@ -1,4 +1,9 @@
 import type { Processable, Retainable } from './engine';
+export type TrackedDataSubscription<TEvent> = {
+    onUnsubscribe: () => void;
+    handler: (events: Iterable<TEvent>) => void;
+    events: TEvent[];
+};
 export declare class TrackedData<TKey, TEvent> implements Processable, Retainable {
     private itemSubscriptions;
     private eventSubscriptions;
@@ -25,5 +30,6 @@ export declare class TrackedData<TKey, TEvent> implements Processable, Retainabl
     __alive(): void;
     __dead(): void;
     __recalculate(): Processable[];
+    takeSubscriptions(): TrackedDataSubscription<TEvent>[];
 }
 //# sourceMappingURL=trackeddata.d.ts.map
