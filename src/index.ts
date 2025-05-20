@@ -11,6 +11,7 @@ export type {
     DynamicNonErrorSubscriptionHandler,
 } from './common/dyn';
 export {
+    dyn,
     dynGet,
     dynSet,
     dynMap,
