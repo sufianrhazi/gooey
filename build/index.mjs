@@ -4324,6 +4324,13 @@ function isDynamicMut(val) {
 function dynMap(val, fn) {
   return calc(() => fn(dynGet(val)));
 }
+function dyn(val) {
+  return {
+    get: () => dynGet(val),
+    subscribe: (handler) => dynSubscribe(val, handler),
+    map: (fn) => dynMap(val, fn)
+  };
+}
 
 // src/viewcontroller/webcomponents.ts
 var getWebComponentTagConstructors = () => ({
@@ -5574,7 +5581,7 @@ function mount(target, node) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.24.0" : "development";
+var VERSION = true ? "0.24.1" : "development";
 export {
   ArrayEventType,
   ClassComponent,
@@ -5597,6 +5604,7 @@ export {
   src_default as default,
   defineCustomElement,
   dict,
+  dyn,
   dynGet,
   dynMap,
   dynSet,

@@ -2,7 +2,7 @@ import { createElement } from './viewcontroller/createelement';
 export type { ArrayEvent } from './common/arrayevent';
 export { ArrayEventType, applyArrayEvent } from './common/arrayevent';
 export type { Dyn, DynMut, Dynamic, DynamicMut, DynamicSubscriptionHandler, DynamicNonErrorSubscriptionHandler, } from './common/dyn';
-export { dynGet, dynSet, dynMap, dynSubscribe, isDynamic, isDynamicMut, } from './common/dyn';
+export { dyn, dynGet, dynSet, dynMap, dynSubscribe, isDynamic, isDynamicMut, } from './common/dyn';
 export type { LogLevel } from './common/log';
 export { getLogLevel, setLogLevel } from './common/log';
 export { InvariantError } from './common/types';

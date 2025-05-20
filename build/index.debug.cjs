@@ -41,6 +41,7 @@ __export(src_exports, {
   default: () => src_default,
   defineCustomElement: () => defineCustomElement,
   dict: () => dict,
+  dyn: () => dyn,
   dynGet: () => dynGet,
   dynMap: () => dynMap,
   dynSet: () => dynSet,
@@ -4502,6 +4503,13 @@ function isDynamicMut(val) {
 function dynMap(val, fn) {
   return calc(() => fn(dynGet(val)));
 }
+function dyn(val) {
+  return {
+    get: () => dynGet(val),
+    subscribe: (handler) => dynSubscribe(val, handler),
+    map: (fn) => dynMap(val, fn)
+  };
+}
 
 // src/viewcontroller/webcomponents.ts
 var getWebComponentTagConstructors = () => ({
@@ -5752,5 +5760,5 @@ function mount(target, node) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.24.0" : "development";
+var VERSION = true ? "0.24.1" : "development";
 //# sourceMappingURL=index.debug.cjs.map
