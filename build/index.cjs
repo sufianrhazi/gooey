@@ -3466,7 +3466,9 @@ var Calculation = class {
           (dependency) => {
             if (!newDependencies.has(dependency)) {
               newDependencies.add(dependency);
-              retain(dependency);
+              if (this.__refcount > 0) {
+                retain(dependency);
+              }
               if (!this._dependencies.has(dependency) && isProcessable(dependency) && this.__refcount > 0) {
                 addEdge(dependency, this);
               }
@@ -3488,7 +3490,9 @@ var Calculation = class {
       if (!newDependencies.has(prevDependency) && isProcessable(prevDependency) && this.__refcount > 0) {
         removeEdge(prevDependency, this);
       }
-      release(prevDependency);
+      if (this.__refcount > 0) {
+        release(prevDependency);
+      }
     }
     this._dependencies = newDependencies;
     const synchronousError = !result.ok && result.error instanceof SynchronousCycleError ? result.error : null;
@@ -3564,6 +3568,8 @@ var Calculation = class {
     this._eq = strictEqual;
     this._dependencies = /* @__PURE__ */ new Set();
     this._subscriptions = [];
+    this._onAlive = /* @__PURE__ */ new Set();
+    this._onDead = /* @__PURE__ */ new Set();
   }
   onError(handler) {
     this._errorHandler = handler;
@@ -3606,8 +3612,14 @@ var Calculation = class {
   __alive() {
     addVertex(this);
     this._dependencies.clear();
+    for (const handler of this._onAlive) {
+      handler();
+    }
   }
   __dead() {
+    for (const handler of this._onDead) {
+      handler();
+    }
     this._result = void 0;
     for (const dependency of this._dependencies) {
       if (isProcessable(dependency)) {
@@ -3676,6 +3688,18 @@ var Calculation = class {
     this._subscriptions = [];
     return toReturn;
   }
+  onAlive(handler) {
+    this._onAlive.add(handler);
+    return () => {
+      this._onAlive.delete(handler);
+    };
+  }
+  onDead(handler) {
+    this._onDead.add(handler);
+    return () => {
+      this._onDead.delete(handler);
+    };
+  }
 };
 var CycleError = class extends Error {
 };
@@ -3691,6 +3715,81 @@ var SynchronousCycleError = class extends CycleError {
 function calc(fn, debugName) {
   return new Calculation(fn, debugName);
 }
+calc.async = function asyncCalc(fn) {
+  let isLoading = false;
+  let error2 = void 0;
+  let data = void 0;
+  const state = field({
+    isLoading,
+    error: error2,
+    data
+  });
+  const fnCalc = calc(fn);
+  let activeSentinel = {};
+  const onResolve = (resolveValue, lastSentinel) => {
+    if (activeSentinel === lastSentinel) {
+      isLoading = false;
+      error2 = void 0;
+      data = resolveValue;
+      state.set({
+        isLoading,
+        error: error2,
+        data
+      });
+    }
+  };
+  const onError = (resultErr, lastSentinel) => {
+    if (activeSentinel === lastSentinel) {
+      isLoading = false;
+      error2 = resultErr instanceof Error ? resultErr : new Error("Unknown error");
+      state.set({
+        isLoading,
+        error: error2,
+        data
+      });
+    }
+  };
+  const handlePromise = (promise) => {
+    activeSentinel = {};
+    const lastSentinel = activeSentinel;
+    if (!isLoading) {
+      isLoading = true;
+      state.set({
+        isLoading,
+        error: error2,
+        data
+      });
+    }
+    promise.then(
+      (val) => onResolve(val, lastSentinel),
+      (err) => onError(err, lastSentinel)
+    );
+  };
+  let unsubscribe;
+  const mappedCalc = calc(() => {
+    return state.get();
+  });
+  mappedCalc.onAlive(() => {
+    unsubscribe = fnCalc.subscribe((err, promise) => {
+      if (err) {
+        isLoading = false;
+        error2 = err;
+        state.set({
+          isLoading,
+          error: error2,
+          data
+        });
+      } else {
+        handlePromise(promise);
+      }
+    });
+  });
+  mappedCalc.onDead(() => {
+    unsubscribe?.();
+    unsubscribe = void 0;
+  });
+  return mappedCalc;
+};
 function takeCalcSubscriptions(calc2) {
   return calc2[takeCalcSubscriptionsSymbol]();
 }

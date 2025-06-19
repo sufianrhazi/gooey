@@ -22,6 +22,8 @@ export declare class Calculation<T> implements Retainable, Processable, Dynamic<
     private _eq;
     private _dependencies;
     private _subscriptions;
+    private _onAlive;
+    private _onDead;
     private ensureResult;
     get(): T;
     recalc(): CalculationResult<T>;
@@ -39,6 +41,8 @@ export declare class Calculation<T> implements Retainable, Processable, Dynamic<
     private notifySubscriptions;
     map<V>(fn: (val: T) => V): Calculation<V>;
     [takeCalcSubscriptionsSymbol](): DynamicInternalSubscription<T>[];
+    onAlive(handler: () => void): () => void;
+    onDead(handler: () => void): () => void;
 }
 export declare class CycleError extends Error {
 }
@@ -47,7 +51,15 @@ export declare class SynchronousCycleError extends CycleError {
     passthruCalculations: Set<Calculation<any>>;
     constructor(msg: string, sourceCalculation: Calculation<any>);
 }
+export type AsyncCalculationResult<T> = {
+    isLoading: boolean;
+    error: Error | undefined;
+    data: T | undefined;
+};
 export declare function calc<T>(fn: () => T, debugName?: string): Calculation<T>;
+export declare namespace calc {
+    var async: <T>(fn: () => Promise<T>) => Dynamic<AsyncCalculationResult<T>>;
+}
 export declare function takeCalcSubscriptions<T>(calc: Calculation<T>): DynamicInternalSubscription<T>[];
 export {};
 //# sourceMappingURL=calc.d.ts.map

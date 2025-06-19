@@ -9,7 +9,7 @@ export { InvariantError } from './common/types';
 export { Fragment } from './components/fragment';
 export { IntrinsicObserver } from './components/intrinsicobserver';
 export { calc, CycleError } from './model/calc';
-export type { Calculation } from './model/calc';
+export type { Calculation, AsyncCalculationResult } from './model/calc';
 export type { Collection, View } from './model/collection';
 export { collection } from './model/collection';
 export type { DictEvent } from './model/dict';
