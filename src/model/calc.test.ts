@@ -1,6 +1,6 @@
 import { assert, beforeEach, suite, test } from '@srhazi/gooey-test';
 
-import type { Calculation } from './calc';
+import type { AsyncCalculationResult, Calculation } from './calc';
 import { calc } from './calc';
 import { collection } from './collection';
 import { dict } from './dict';
@@ -436,6 +436,444 @@ suite('calc', () => {
         assert.is(20, c.get());
         which.set(true);
         assert.is(10, c.get());
+    });
+
+    test('onAlive/onDead called when calc becomes alive/dead via get', () => {
+        let log: string[] = [];
+        const f = field('one');
+        const inner = calc(() => {
+            const v = f.get();
+            log.push(`get:${v}`);
+            return f.get();
+        });
+        inner.onAlive(() => log.push('alive'));
+        inner.onDead(() => log.push('dead'));
+
+        const outer = calc(() => {
+            return inner.get();
+        });
+
+        assert.deepEqual([], log);
+        inner.get();
+        assert.deepEqual(['get:one'], log);
+
+        log = [];
+        outer.get();
+        assert.deepEqual(['get:one'], log);
+
+        log = [];
+        outer.retain();
+        assert.deepEqual([], log);
+        outer.get();
+        assert.deepEqual(['alive', 'get:one'], log);
+
+        log = [];
+        f.set('two');
+        flush();
+        assert.deepEqual(['get:two'], log);
+
+        log = [];
+        outer.release();
+        assert.deepEqual(['dead'], log);
+    });
+    test('onAlive/onDead called when calc becomes alive/dead via subscribe', () => {});
+});
+
+suite('calc.async', () => {
+    test('it turns an async function into a loading/data result', async () => {
+        const value = field('yes');
+        const values: AsyncCalculationResult<string>[] = [];
+        const log: string[] = [];
+        const c = calc.async<string>(async () => {
+            const before = value.get();
+            log.push(`before:${before}`);
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            log.push(`after:${before}`);
+            return before;
+        });
+        const unsubscribe = c.subscribe((err, val) => {
+            if (!err) {
+                values.push(val);
+            }
+        });
+        assert.deepEqual(
+            [
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: undefined,
+                },
+            ],
+            values
+        );
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        flush();
+        assert.deepEqual(
+            [
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: undefined,
+                },
+                {
+                    isLoading: false,
+                    error: undefined,
+                    data: 'yes',
+                },
+            ],
+            values
+        );
+        assert.deepEqual(['before:yes', 'after:yes'], log);
+        unsubscribe();
+    });
+
+    test('thrown errors before await produce error result', async () => {
+        const value = field('yes');
+        const values: AsyncCalculationResult<string>[] = [];
+        const c = calc.async<string>(async () => {
+            const before = value.get();
+            throw new Error('ruh roh');
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            return before;
+        });
+        const unsubscribe = c.subscribe((err, val) => {
+            if (!err) {
+                values.push(val);
+            }
+        });
+        await Promise.resolve();
+        flush();
+        assert.is(2, values.length);
+        assert.is(true, values[0].isLoading);
+        assert.is(undefined, values[0].error);
+        assert.is(undefined, values[0].data);
+        assert.is(false, values[1].isLoading);
+        assert.is('ruh roh', values[1].error?.message);
+        assert.is(undefined, values[1].data);
+        unsubscribe();
+    });
+
+    test('thrown errors after await produce error result', async () => {
+        const value = field('yes');
+        const values: AsyncCalculationResult<string>[] = [];
+        const c = calc.async<string>(async () => {
+            const before = value.get();
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            throw new Error('ruh roh');
+            return before;
+        });
+        const unsubscribe = c.subscribe((err, val) => {
+            if (!err) {
+                values.push(val);
+            }
+        });
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        flush();
+        assert.is(2, values.length);
+        assert.is(true, values[0].isLoading);
+        assert.is(undefined, values[0].error);
+        assert.is(undefined, values[0].data);
+        assert.is(false, values[1].isLoading);
+        assert.is('ruh roh', values[1].error?.message);
+        assert.is(undefined, values[1].data);
+        unsubscribe();
+    });
+
+    test('error cleared on resolution', async () => {
+        const value = field('throw');
+        const values: AsyncCalculationResult<string>[] = [];
+        const c = calc.async<string>(async () => {
+            const before = value.get();
+            if (before === 'throw') {
+                throw new Error('ruh roh');
+            }
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            return before;
+        });
+        const unsubscribe = c.subscribe((err, val) => {
+            if (!err) {
+                values.push(val);
+            }
+        });
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        flush();
+        assert.is(2, values.length);
+        assert.is(true, values[0].isLoading);
+        assert.is(undefined, values[0].error);
+        assert.is(undefined, values[0].data);
+        assert.is(false, values[1].isLoading);
+        assert.is('ruh roh', values[1].error?.message);
+        assert.is(undefined, values[1].data);
+        value.set('ok');
+        flush();
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        flush();
+        assert.is(4, values.length);
+        assert.is(true, values[2].isLoading);
+        assert.is('ruh roh', values[2].error?.message);
+        assert.is(undefined, values[2].data);
+        assert.is(false, values[3].isLoading);
+        assert.is(undefined, values[3].error?.message);
+        assert.is('ok', values[3].data);
+        unsubscribe();
+    });
+
+    test('it does not kick off async function when not retained', async () => {
+        const value = field('yes');
+        const log: string[] = [];
+        const c = calc.async<string>(async () => {
+            const before = value.get();
+            log.push(`before:${before}`);
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            log.push(`after:${before}`);
+            return before;
+        });
+        assert.deepEqual(
+            {
+                isLoading: false,
+                error: undefined,
+                data: undefined,
+            },
+            c.get()
+        );
+        flush();
+        assert.deepEqual([], log);
+        assert.deepEqual(
+            {
+                isLoading: false,
+                error: undefined,
+                data: undefined,
+            },
+            c.get()
+        );
+    });
+
+    test('changes read before first await trigger reload', async () => {
+        const value = field('one');
+        let log: string[] = [];
+        const values: AsyncCalculationResult<string>[] = [];
+        const c = calc.async<string>(async () => {
+            const before = value.get();
+            log.push(`before:${before}`);
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            log.push(`after:${before}`);
+            return before;
+        });
+        const unsubscribe = c.subscribe((err, val) => !err && values.push(val));
+        assert.deepEqual(
+            [
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: undefined,
+                },
+            ],
+            values
+        );
+        assert.deepEqual(['before:one'], log);
+        log = [];
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        flush();
+        assert.deepEqual(
+            [
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: undefined,
+                },
+                {
+                    isLoading: false,
+                    error: undefined,
+                    data: 'one',
+                },
+            ],
+            values
+        );
+        assert.deepEqual(['after:one'], log);
+        log = [];
+
+        value.set('two');
+        flush();
+        assert.deepEqual(
+            [
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: undefined,
+                },
+                {
+                    isLoading: false,
+                    error: undefined,
+                    data: 'one',
+                },
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: 'one',
+                },
+            ],
+            values
+        );
+        assert.deepEqual(['before:two'], log);
+        log = [];
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        flush();
+        assert.deepEqual(
+            [
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: undefined,
+                },
+                {
+                    isLoading: false,
+                    error: undefined,
+                    data: 'one',
+                },
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: 'one',
+                },
+                {
+                    isLoading: false,
+                    error: undefined,
+                    data: 'two',
+                },
+            ],
+            values
+        );
+        assert.deepEqual(['after:two'], log);
+
+        unsubscribe();
+    });
+
+    test('changes read after first await do not trigger reload', async () => {
+        const value = field('one');
+        const unrelated = field('unrelated');
+        const values: AsyncCalculationResult<string>[] = [];
+        const c = calc.async<string>(async () => {
+            const before = value.get();
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            return `${before}, ${unrelated.get()}`; // bad pattern!
+        });
+        const unsubscribe = c.subscribe((err, val) => !err && values.push(val));
+        assert.deepEqual(
+            [
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: undefined,
+                },
+            ],
+            values
+        );
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        flush();
+        assert.deepEqual(
+            [
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: undefined,
+                },
+                {
+                    isLoading: false,
+                    error: undefined,
+                    data: 'one, unrelated',
+                },
+            ],
+            values
+        );
+
+        unrelated.set('new unrelated value');
+        flush();
+        assert.deepEqual(
+            [
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: undefined,
+                },
+                {
+                    isLoading: false,
+                    error: undefined,
+                    data: 'one, unrelated',
+                },
+            ],
+            values
+        );
+        unsubscribe();
+    });
+
+    test('change before await resolves reloads and defers resolution', async () => {
+        const value = field('one');
+        const values: AsyncCalculationResult<string>[] = [];
+        const c = calc.async<string>(async () => {
+            const before = value.get();
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            return before;
+        });
+        const unsubscribe = c.subscribe((err, val) => !err && values.push(val));
+        assert.deepEqual(
+            [
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: undefined,
+                },
+            ],
+            values
+        );
+        await new Promise((resolve) => setTimeout(resolve, 75));
+        flush();
+        assert.deepEqual(
+            [
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: undefined,
+                },
+            ],
+            values
+        );
+
+        value.set('two');
+        flush();
+
+        await new Promise((resolve) => setTimeout(resolve, 75));
+        flush();
+        assert.deepEqual(
+            [
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: undefined,
+                },
+            ],
+            values
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 75));
+        flush();
+
+        assert.deepEqual(
+            [
+                {
+                    isLoading: true,
+                    error: undefined,
+                    data: undefined,
+                },
+                {
+                    isLoading: false,
+                    error: undefined,
+                    data: 'two',
+                },
+            ],
+            values
+        );
+
+        unsubscribe();
     });
 });
 
@@ -1313,10 +1751,7 @@ suite('cycles with partial recovery', () => {
 
         data.hasCycle = true;
         assert.is('catcher caught', catcher.get());
-        assert.throwsMatching(
-            /Cycle error: calculation cycle reached itself/,
-            () => calculations.a.get()
-        );
+        assert.is('a cycleB CAUGHT', calculations.a.get());
         assert.is('B CAUGHT', calculations.b.get());
     });
 
@@ -1351,6 +1786,8 @@ suite('cycles with partial recovery', () => {
 
     test('retained behavior, no cycle -> cycle', () => {
         const { catcher, calculations, data } = setup();
+
+        catcher.retain();
 
         data.hasCycle = false;
         assert.is('a no cycle', catcher.get());

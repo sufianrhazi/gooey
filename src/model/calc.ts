@@ -156,6 +156,7 @@ import {
     trackReads,
 } from './engine';
 import type { Processable, Retainable } from './engine';
+import { field } from './field';
 
 type CalcUnsubscribe = () => void;
 
@@ -183,6 +184,8 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
     private declare _eq: (a: T, b: T) => boolean;
     private declare _dependencies: Set<Processable & Retainable>;
     private declare _subscriptions: DynamicInternalSubscription<T>[];
+    private declare _onAlive: Set<() => void>;
+    private declare _onDead: Set<() => void>;
 
     private ensureResult(): {
         propagate: boolean;
@@ -248,7 +251,9 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
                     (dependency) => {
                         if (!newDependencies.has(dependency)) {
                             newDependencies.add(dependency);
-                            retain(dependency);
+                            if (this.__refcount > 0) {
+                                retain(dependency);
+                            }
                             if (
                                 !this._dependencies.has(dependency) &&
                                 isProcessable(dependency) &&
@@ -281,7 +286,9 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
                 // We lost a dependency
                 removeEdge(prevDependency, this);
             }
-            release(prevDependency); // We **always** release previous dependencies, since we **always** retain new ones
+            if (this.__refcount > 0) {
+                release(prevDependency); // We **always** release previous dependencies, since we **always** retain new ones
+            }
         }
         this._dependencies = newDependencies;
 
@@ -386,6 +393,8 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
         this._eq = strictEqual;
         this._dependencies = new Set();
         this._subscriptions = [];
+        this._onAlive = new Set();
+        this._onDead = new Set();
     }
 
     onError(handler: CalcErrorHandler<T>): this {
@@ -434,9 +443,15 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
     __alive() {
         addVertex(this);
         this._dependencies.clear();
+        for (const handler of this._onAlive) {
+            handler();
+        }
     }
 
     __dead() {
+        for (const handler of this._onDead) {
+            handler();
+        }
         this._result = undefined;
 
         for (const dependency of this._dependencies) {
@@ -522,6 +537,20 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
         this._subscriptions = [];
         return toReturn;
     }
+
+    onAlive(handler: () => void) {
+        this._onAlive.add(handler);
+        return () => {
+            this._onAlive.delete(handler);
+        };
+    }
+
+    onDead(handler: () => void) {
+        this._onDead.add(handler);
+        return () => {
+            this._onDead.delete(handler);
+        };
+    }
 }
 
 export class CycleError extends Error {}
@@ -539,9 +568,99 @@ export class SynchronousCycleError extends CycleError {
     }
 }
 
+export type AsyncCalculationResult<T> = {
+    isLoading: boolean;
+    error: Error | undefined;
+    data: T | undefined;
+};
+
 export function calc<T>(fn: () => T, debugName?: string) {
     return new Calculation(fn, debugName);
 }
+calc.async = function asyncCalc<T>(
+    fn: () => Promise<T>
+): Dynamic<AsyncCalculationResult<T>> {
+    let isLoading = false;
+    let error: Error | undefined = undefined;
+    let data: T | undefined = undefined;
+    const state = field<AsyncCalculationResult<T>>({
+        isLoading,
+        error,
+        data,
+    });
+    const fnCalc = calc(fn);
+
+    let activeSentinel = {};
+
+    const onResolve = (resolveValue: T, lastSentinel: {}) => {
+        if (activeSentinel === lastSentinel) {
+            isLoading = false;
+            error = undefined;
+            data = resolveValue;
+            state.set({
+                isLoading,
+                error,
+                data,
+            });
+        }
+    };
+    const onError = (resultErr: unknown, lastSentinel: {}) => {
+        if (activeSentinel === lastSentinel) {
+            isLoading = false;
+            error =
+                resultErr instanceof Error
+                    ? resultErr
+                    : new Error('Unknown error');
+            state.set({
+                isLoading,
+                error,
+                data,
+            });
+        }
+    };
+
+    const handlePromise = (promise: Promise<T>) => {
+        activeSentinel = {};
+        const lastSentinel = activeSentinel;
+        if (!isLoading) {
+            isLoading = true;
+            state.set({
+                isLoading,
+                error,
+                data,
+            });
+        }
+        promise.then(
+            (val) => onResolve(val, lastSentinel),
+            (err) => onError(err, lastSentinel)
+        );
+    };
+
+    let unsubscribe: (() => void) | undefined;
+    const mappedCalc = calc(() => {
+        return state.get();
+    });
+    mappedCalc.onAlive(() => {
+        unsubscribe = fnCalc.subscribe((err, promise) => {
+            if (err) {
+                isLoading = false;
+                error = err;
+                state.set({
+                    isLoading,
+                    error,
+                    data,
+                });
+            } else {
+                handlePromise(promise);
+            }
+        });
+    });
+    mappedCalc.onDead(() => {
+        unsubscribe?.();
+        unsubscribe = undefined;
+    });
+    return mappedCalc;
+};
 
 export function takeCalcSubscriptions<T>(calc: Calculation<T>) {
     return calc[takeCalcSubscriptionsSymbol]();
