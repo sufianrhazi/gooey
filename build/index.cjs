@@ -43,7 +43,7 @@ __export(src_exports, {
   dict: () => dict,
   dyn: () => dyn,
   dynGet: () => dynGet,
-  dynMap: () => dynMap,
+  dynMapCalc: () => dynMapCalc,
   dynSet: () => dynSet,
   dynSubscribe: () => dynSubscribe,
   field: () => field,
@@ -2240,7 +2240,7 @@ var Field = class {
     }
     return [...getForwardDependencies(this)];
   }
-  map(fn) {
+  mapCalc(fn) {
     return calc(() => fn(this.get()));
   }
   [takeFieldSubscriptionsSymbol]() {
@@ -3680,7 +3680,7 @@ var Calculation = class {
       }
     }
   }
-  map(fn) {
+  mapCalc(fn) {
     return calc(() => fn(this.get()));
   }
   [takeCalcSubscriptionsSymbol]() {
@@ -4483,14 +4483,14 @@ function isDynamic(val) {
 function isDynamicMut(val) {
   return isDynamic(val) && "set" in val && typeof val.set === "function";
 }
-function dynMap(val, fn) {
+function dynMapCalc(val, fn) {
   return calc(() => fn(dynGet(val)));
 }
 function dyn(val) {
   return {
     get: () => dynGet(val),
     subscribe: (handler) => dynSubscribe(val, handler),
-    map: (fn) => dynMap(val, fn)
+    mapCalc: (fn) => dynMapCalc(val, fn)
   };
 }
 

@@ -39,7 +39,7 @@ export declare class Calculation<T> implements Retainable, Processable, Dynamic<
     __invalidate(): void;
     __cycle(): Processable[];
     private notifySubscriptions;
-    map<V>(fn: (val: T) => V): Calculation<V>;
+    mapCalc<V>(fn: (val: T) => V): Calculation<V>;
     [takeCalcSubscriptionsSymbol](): DynamicInternalSubscription<T>[];
     onAlive(handler: () => void): () => void;
     onDead(handler: () => void): () => void;
@@ -58,7 +58,7 @@ export type AsyncCalculationResult<T> = {
 };
 export declare function calc<T>(fn: () => T, debugName?: string): Calculation<T>;
 export declare namespace calc {
-    var async: <T>(fn: () => Promise<T>) => Dynamic<AsyncCalculationResult<T>>;
+    var async: <T>(fn: () => Promise<T>) => Calculation<AsyncCalculationResult<T>>;
 }
 export declare function takeCalcSubscriptions<T>(calc: Calculation<T>): DynamicInternalSubscription<T>[];
 export {};

@@ -19,7 +19,7 @@ export declare class Field<T> implements Processable, Retainable, DynamicMut<T> 
     __alive(): void;
     __dead(): void;
     __recalculate(): Processable[];
-    map<V>(fn: (val: T) => V): Calculation<V>;
+    mapCalc<V>(fn: (val: T) => V): Calculation<V>;
     [takeFieldSubscriptionsSymbol](): DynamicInternalSubscription<T>[];
 }
 export declare function field<T>(val: T, debugName?: string): Field<T>;
