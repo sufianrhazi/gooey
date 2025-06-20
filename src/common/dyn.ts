@@ -74,18 +74,22 @@ export function isDynamicMut<TVal>(val: DynMut<TVal>): val is DynamicMut<TVal> {
     return isDynamic(val) && 'set' in val && typeof val.set === 'function';
 }
 
-export function dynMap<T, V>(val: Dyn<T>, fn: (val: T) => V): Calculation<V> {
+export function dynMapCalc<T, V>(
+    val: Dyn<T>,
+    fn: (val: T) => V
+): Calculation<V> {
     return calc(() => fn(dynGet(val)));
 }
 
 export function dyn<T>(val: Dyn<T>): {
     get: () => T;
     subscribe: (handler: DynamicSubscriptionHandler<T>) => () => void;
-    map: <V>(fn: (val: T) => V) => Calculation<V>;
+    mapCalc: <V>(fn: (val: T) => V) => Calculation<V>;
 } {
     return {
         get: () => dynGet(val),
         subscribe: (handler) => dynSubscribe(val, handler),
-        map: <V>(fn: (val: T) => V): Calculation<V> => dynMap<T, V>(val, fn),
+        mapCalc: <V>(fn: (val: T) => V): Calculation<V> =>
+            dynMapCalc<T, V>(val, fn),
     };
 }

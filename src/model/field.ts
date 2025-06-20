@@ -120,7 +120,7 @@ export class Field<T> implements Processable, Retainable, DynamicMut<T> {
         return [...getForwardDependencies(this)];
     }
 
-    map<V>(fn: (val: T) => V): Calculation<V> {
+    mapCalc<V>(fn: (val: T) => V): Calculation<V> {
         return calc(() => fn(this.get()));
     }
 

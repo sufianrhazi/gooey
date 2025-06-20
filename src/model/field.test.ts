@@ -94,4 +94,18 @@ suite('field', () => {
         flush();
         assert.deepEqual(['one', 'two'], log);
     });
+
+    test('mapCalc produces a calculation', () => {
+        const name = field('alice');
+        const caps = name.mapCalc((value) => value.toUpperCase());
+
+        assert.is('alice', name.get());
+        assert.is('ALICE', caps.get());
+
+        name.set('bob');
+        flush();
+
+        assert.is('bob', name.get());
+        assert.is('BOB', caps.get());
+    });
 });

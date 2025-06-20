@@ -14,7 +14,7 @@ export {
     dyn,
     dynGet,
     dynSet,
-    dynMap,
+    dynMapCalc,
     dynSubscribe,
     isDynamic,
     isDynamicMut,

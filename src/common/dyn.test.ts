@@ -3,7 +3,7 @@ import { assert, suite, test } from '@srhazi/gooey-test';
 import { Calculation } from '../model/calc';
 import { flush } from '../model/engine';
 import { field } from '../model/field';
-import { dyn, dynGet, dynMap, dynSet, dynSubscribe } from './dyn';
+import { dyn, dynGet, dynMapCalc, dynSet, dynSubscribe } from './dyn';
 import type { Dynamic } from './dyn';
 
 type TypeIs<T, V> = T extends V ? (V extends T ? true : false) : false;
@@ -175,8 +175,8 @@ suite('dyn', () => {
         dynSet(x, 'cool');
     });
 
-    test('dynMap works on constants', () => {
-        const r = dynMap(3, (v) => ({ wrapped: v }));
+    test('dynMapCalc works on constants', () => {
+        const r = dynMapCalc(3, (v) => ({ wrapped: v }));
         assert.isTruthy(r instanceof Calculation);
         assert.deepEqual({ wrapped: 3 }, r.get());
     });
@@ -193,7 +193,7 @@ suite('dyn', () => {
         });
         assert.is(3, result);
         unsubscribe();
-        assert.is(9, x.map((v) => v ** 2).get());
+        assert.is(9, x.mapCalc((v) => v ** 2).get());
     });
 
     test('dyn helper works with dynamic objects', () => {
@@ -208,13 +208,13 @@ suite('dyn', () => {
         });
         assert.is(3, result);
         unsubscribe();
-        assert.is(9, x.map((v) => v ** 2).get());
+        assert.is(9, x.mapCalc((v) => v ** 2).get());
     });
 
     test('dyn map produces a working calculation', () => {
         const dependency = field(0);
         const x = dyn(3);
-        const what = x.map((v) => v + dependency.get());
+        const what = x.mapCalc((v) => v + dependency.get());
         what.retain();
         assert.is(3, what.get());
         dependency.set(5);

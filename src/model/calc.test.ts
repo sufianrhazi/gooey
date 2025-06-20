@@ -368,10 +368,10 @@ suite('calc', () => {
         assert.deepEqual([1], values);
     });
 
-    test('.map() produces a mapped calculation', () => {
+    test('.mapCalc() produces a mapped calculation', () => {
         const name = field('world');
-        const excited = name.map((str) => `${str}!`);
-        const greeted = excited.map((str) => `Hello, ${str}`);
+        const excited = name.mapCalc((str) => `${str}!`);
+        const greeted = excited.mapCalc((str) => `Hello, ${str}`);
         const results: string[] = [];
         const unsubscribe = greeted.subscribe((err, value) => {
             if (!err) {

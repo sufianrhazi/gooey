@@ -528,7 +528,7 @@ export class Calculation<T> implements Retainable, Processable, Dynamic<T> {
         }
     }
 
-    map<V>(fn: (val: T) => V): Calculation<V> {
+    mapCalc<V>(fn: (val: T) => V): Calculation<V> {
         return calc(() => fn(this.get()));
     }
 
