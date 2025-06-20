@@ -579,7 +579,7 @@ export function calc<T>(fn: () => T, debugName?: string) {
 }
 calc.async = function asyncCalc<T>(
     fn: () => Promise<T>
-): Dynamic<AsyncCalculationResult<T>> {
+): Calculation<AsyncCalculationResult<T>> {
     let isLoading = false;
     let error: Error | undefined = undefined;
     let data: T | undefined = undefined;
