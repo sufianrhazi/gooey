@@ -10,7 +10,7 @@ declare const UnusedSymbolForChildrenOmission: unique symbol;
 export type EmptyProps = {
     [UnusedSymbolForChildrenOmission]?: boolean;
 };
-export type FunctionComponent<TProps = {}> = (props: TProps & EmptyProps, lifecycle: ComponentLifecycle) => JSX.Element | null;
+export type FunctionComponent<TProps = {}> = ((props: TProps & EmptyProps, lifecycle: ComponentLifecycle) => JSX.Element | null) | ((props: TProps & EmptyProps, lifecycle: ComponentLifecycle) => Promise<JSX.Element | null>);
 export interface ClassComponentConstructor<TProps> {
     new (props: TProps): ClassComponent<TProps>;
 }
