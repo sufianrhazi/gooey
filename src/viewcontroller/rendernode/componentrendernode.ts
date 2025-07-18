@@ -32,10 +32,15 @@ export type Component<TProps = {}> =
 declare const UnusedSymbolForChildrenOmission: unique symbol;
 export type EmptyProps = { [UnusedSymbolForChildrenOmission]?: boolean };
 
-export type FunctionComponent<TProps = {}> = (
-    props: TProps & EmptyProps,
-    lifecycle: ComponentLifecycle
-) => JSX.Element | null;
+export type FunctionComponent<TProps = {}> =
+    | ((
+          props: TProps & EmptyProps,
+          lifecycle: ComponentLifecycle
+      ) => JSX.Element | null)
+    | ((
+          props: TProps & EmptyProps,
+          lifecycle: ComponentLifecycle
+      ) => Promise<JSX.Element | null>);
 
 export interface ClassComponentConstructor<TProps> {
     new (props: TProps): ClassComponent<TProps>;
@@ -129,7 +134,7 @@ export function ComponentRenderNode<TProps>(
             } else {
                 componentProps = props ? { ...props, children } : { children };
             }
-            let jsxResult: JSX.Element | Error;
+            let jsxResult: JSX.Element | Error | Promise<JSX.Element | null>;
             try {
                 jsxResult =
                     ActiveComponent(componentProps, lifecycle) ||

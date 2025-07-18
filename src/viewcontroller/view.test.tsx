@@ -3010,6 +3010,22 @@ suite('promise values', () => {
             testRoot.innerHTML
         );
     });
+
+    test('async components work as expected', async () => {
+        let resolve: ((msg: string) => void) | undefined;
+        const promise = new Promise<string>((res) => {
+            resolve = res;
+        });
+        const AsyncComponent1: Component = async () => {
+            const msg = await promise;
+            return <p>{msg}</p>;
+        };
+        mount(testRoot, <AsyncComponent1 />);
+        assert.is('', testRoot.innerHTML);
+        resolve?.('hello');
+        flush();
+        assert.is('', testRoot.innerHTML);
+    });
 });
 
 suite('IntrinsicObserver component', () => {
