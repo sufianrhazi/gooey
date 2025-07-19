@@ -9,7 +9,7 @@ const leftSide = calc(() => (isLeft.get() ? item : null));
 const rightSide = calc(() => (isLeft.get() ? null : item));
 
 mount(
-    document.body,
+    document.getElementById('app')!,
     <>
         <p>
             The following items have a CSS animation on enter, they should fade

@@ -1,13 +1,12 @@
-import type { Component} from '../../index';
-import Gooey, { model, calc, mount } from '../../index';
-
-import { Counter } from './counter';
-import { TemperatureConverter } from './temperatureconverter';
-import { FlightBooker } from './flightbooker';
-import { Timer } from './timer';
-import { CRUD } from './crud';
-import { CircleDrawer } from './circledrawer';
+import type { Component } from '../../index';
+import Gooey, { calc, model, mount } from '../../index';
 import { Cells } from './cells/cells';
+import { CircleDrawer } from './circledrawer';
+import { Counter } from './counter';
+import { CRUD } from './crud';
+import { FlightBooker } from './flightbooker';
+import { TemperatureConverter } from './temperatureconverter';
+import { Timer } from './timer';
 import { Window } from './window';
 
 import './95.css';
@@ -135,4 +134,5 @@ const App: Component = (_props, { onMount }) => {
     );
 };
 
-mount(document.body, <App />);
+const root = document.getElementById('root');
+mount(root!, <App />);

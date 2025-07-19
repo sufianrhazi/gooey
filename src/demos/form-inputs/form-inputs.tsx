@@ -1,14 +1,11 @@
-import type {
-    Component,
-    Ref,
-    Collection} from '../../index';
+import type { Collection, Component, Ref } from '../../index';
 import Gooey, {
-    IntrinsicObserver,
-    ref,
-    mount,
-    model,
-    collection,
     calc,
+    collection,
+    IntrinsicObserver,
+    model,
+    mount,
+    ref,
 } from '../../index';
 
 const Log: Component<{ messages: Collection<string> }> = ({ messages }) => {
@@ -781,7 +778,7 @@ const Details: Component<{}> = (props, { onDestroy }) => {
 };
 
 mount(
-    document.body,
+    document.getElementById('app')!,
     <div>
         {(['button', 'reset', 'submit'] as const).map((inputType) => (
             <ButtonLike inputType={inputType} />

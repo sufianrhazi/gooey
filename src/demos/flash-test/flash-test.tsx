@@ -80,7 +80,7 @@ Flash rate: ${calculateRate()}
 };
 
 mount(
-    document.body,
+    document.getElementById('app')!,
     <>
         <h1>Tick Processor</h1>
         <p>
