@@ -116,6 +116,13 @@ function attrStringOrNumberToNumber(
     val: string | number | undefined
 ): number | undefined {
     if (val === undefined) return undefined;
+    return typeof val === 'number' ? val : parseFloat(val);
+}
+
+function attrStringOrIntegerToNumber(
+    val: string | number | undefined
+): number | undefined {
+    if (val === undefined) return undefined;
     return typeof val === 'number' ? val : parseInt(val);
 }
 
@@ -198,8 +205,8 @@ const attrBehavior: Record<
     cite: {},
     class: { idn: 'className' },
     color: { idn: null },
-    cols: { idv: attrStringOrNumberToNumber },
-    colspan: { idn: 'colSpan', idv: attrStringOrNumberToNumber },
+    cols: { idv: attrStringOrIntegerToNumber },
+    colspan: { idn: 'colSpan', idv: attrStringOrIntegerToNumber },
     content: {},
     contenteditable: { idn: 'contentEditable' },
     controls: {},
@@ -253,14 +260,14 @@ const attrBehavior: Record<
     max: { idv: attrStringOrNumberToNumber },
     maxlength: {
         idn: 'maxLength',
-        idv: attrStringOrNumberToNumber,
+        idv: attrStringOrIntegerToNumber,
     },
     media: {},
     method: {},
     min: { idv: attrStringOrNumberToNumber },
     minlength: {
         idn: 'minLength',
-        idv: attrStringOrNumberToNumber,
+        idv: attrStringOrIntegerToNumber,
     },
     multiple: {},
     muted: { idn: null, idv: attrBooleanToEmptyString },
@@ -289,8 +296,8 @@ const attrBehavior: Record<
     required: {},
     reversed: {},
     role: {},
-    rows: { idv: attrStringOrNumberToNumber },
-    rowspan: { idn: 'rowSpan', idv: attrStringOrNumberToNumber },
+    rows: { idv: attrStringOrIntegerToNumber },
+    rowspan: { idn: 'rowSpan', idv: attrStringOrIntegerToNumber },
     sandbox: {},
     scope: {},
     selected: {},
@@ -298,7 +305,7 @@ const attrBehavior: Record<
     size: { idv: attrStringOrNumberToNumber },
     sizes: {},
     slot: {},
-    span: { idv: attrStringOrNumberToNumber },
+    span: { idv: attrStringOrIntegerToNumber },
     spellcheck: {},
     src: {},
     srcdoc: {},
@@ -307,7 +314,7 @@ const attrBehavior: Record<
     start: { idv: attrStringOrNumberToNumber },
     step: { idv: attrStringOrNumberToNumber },
     style: {},
-    tabindex: { idn: 'tabIndex', idv: attrStringOrNumberToNumber },
+    tabindex: { idn: 'tabIndex', idv: attrStringOrIntegerToNumber },
     target: {},
     title: {},
     translate: { idv: attrYesNo },

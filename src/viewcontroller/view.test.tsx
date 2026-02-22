@@ -5015,6 +5015,44 @@ suite('bugs', () => {
         flush();
         assert.is(2, numRenders);
     });
+
+    test('jsx step/min/max props can be floating point numeric strings', () => {
+        mount(
+            testRoot,
+            <input
+                data-cool="yes"
+                type="range"
+                min="0.2"
+                max="0.5"
+                step="0.01"
+                value="0.3"
+            />
+        );
+        const el = testRoot.querySelector('[data-cool="yes"]');
+        assert.is('0.2', el?.getAttribute('min'));
+        assert.is('0.5', el?.getAttribute('max'));
+        assert.is('0.01', el?.getAttribute('step'));
+        assert.is('0.3', el?.getAttribute('value'));
+    });
+
+    test('jsx step/min/max props can be floating point numbers', () => {
+        mount(
+            testRoot,
+            <input
+                data-cool="yes"
+                type="range"
+                min={0.2}
+                max={0.5}
+                step={0.01}
+                value={0.3}
+            />
+        );
+        const el = testRoot.querySelector('[data-cool="yes"]');
+        assert.is('0.2', el?.getAttribute('min'));
+        assert.is('0.5', el?.getAttribute('max'));
+        assert.is('0.01', el?.getAttribute('step'));
+        assert.is('0.3', el?.getAttribute('value'));
+    });
 });
 
 let uniqueid = 0;
