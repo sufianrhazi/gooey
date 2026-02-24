@@ -3859,6 +3859,11 @@ function attrBooleanToEmptyString(val) {
 function attrStringOrNumberToNumber(val) {
   if (val === void 0)
     return void 0;
+  return typeof val === "number" ? val : parseFloat(val);
+}
+function attrStringOrIntegerToNumber(val) {
+  if (val === void 0)
+    return void 0;
   return typeof val === "number" ? val : parseInt(val);
 }
 function attrYesNo(val) {
@@ -3926,8 +3931,8 @@ var attrBehavior = {
   cite: {},
   class: { idn: "className" },
   color: { idn: null },
-  cols: { idv: attrStringOrNumberToNumber },
-  colspan: { idn: "colSpan", idv: attrStringOrNumberToNumber },
+  cols: { idv: attrStringOrIntegerToNumber },
+  colspan: { idn: "colSpan", idv: attrStringOrIntegerToNumber },
   content: {},
   contenteditable: { idn: "contentEditable" },
   controls: {},
@@ -3981,14 +3986,14 @@ var attrBehavior = {
   max: { idv: attrStringOrNumberToNumber },
   maxlength: {
     idn: "maxLength",
-    idv: attrStringOrNumberToNumber
+    idv: attrStringOrIntegerToNumber
   },
   media: {},
   method: {},
   min: { idv: attrStringOrNumberToNumber },
   minlength: {
     idn: "minLength",
-    idv: attrStringOrNumberToNumber
+    idv: attrStringOrIntegerToNumber
   },
   multiple: {},
   muted: { idn: null, idv: attrBooleanToEmptyString },
@@ -4019,8 +4024,8 @@ var attrBehavior = {
   required: {},
   reversed: {},
   role: {},
-  rows: { idv: attrStringOrNumberToNumber },
-  rowspan: { idn: "rowSpan", idv: attrStringOrNumberToNumber },
+  rows: { idv: attrStringOrIntegerToNumber },
+  rowspan: { idn: "rowSpan", idv: attrStringOrIntegerToNumber },
   sandbox: {},
   scope: {},
   selected: {},
@@ -4028,7 +4033,7 @@ var attrBehavior = {
   size: { idv: attrStringOrNumberToNumber },
   sizes: {},
   slot: {},
-  span: { idv: attrStringOrNumberToNumber },
+  span: { idv: attrStringOrIntegerToNumber },
   spellcheck: {},
   src: {},
   srcdoc: {},
@@ -4037,7 +4042,7 @@ var attrBehavior = {
   start: { idv: attrStringOrNumberToNumber },
   step: { idv: attrStringOrNumberToNumber },
   style: {},
-  tabindex: { idn: "tabIndex", idv: attrStringOrNumberToNumber },
+  tabindex: { idn: "tabIndex", idv: attrStringOrIntegerToNumber },
   target: {},
   title: {},
   translate: { idv: attrYesNo },
@@ -5796,7 +5801,7 @@ function mount(target, node) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.25.0" : "development";
+var VERSION = true ? "0.25.1" : "development";
 export {
   ArrayEventType,
   ClassComponent,
