@@ -667,7 +667,7 @@ interface JSXVideoElementInterface extends JSXMediaElementInterface {
     /** Poster frame to show prior to video playback */
     poster?: string | undefined;
     /** Encourage the user agent to display video content within the element's playback area */
-    playsinline?: string | undefined;
+    playsinline?: boolean | undefined;
     /** Horizontal dimension */
     width?: string | number | undefined;
     /** Vertical dimension */

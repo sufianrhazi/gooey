@@ -3851,11 +3851,6 @@ function takeCalcSubscriptions(calc2) {
 function isCustomJSXNode(node) {
   return !!(node && typeof node === "object" && "__renderNode" in node && typeof node.__renderNode === "function");
 }
-function attrBooleanToEmptyString(val) {
-  if (!val)
-    return void 0;
-  return "";
-}
 function attrStringOrNumberToNumber(val) {
   if (val === void 0)
     return void 0;
@@ -3925,7 +3920,7 @@ var attrBehavior = {
   autocapitalize: {},
   autocomplete: {},
   autofocus: {},
-  autoplay: { idn: null, idv: attrBooleanToEmptyString },
+  autoplay: { idn: null },
   charset: { idn: null },
   checked: {},
   cite: {},
@@ -3981,7 +3976,7 @@ var attrBehavior = {
   lang: {},
   list: {},
   loading: {},
-  loop: { idv: attrBooleanToEmptyString },
+  loop: { idn: null },
   low: { idv: attrStringOrNumberToNumber },
   max: { idv: attrStringOrNumberToNumber },
   maxlength: {
@@ -3996,7 +3991,7 @@ var attrBehavior = {
     idv: attrStringOrIntegerToNumber
   },
   multiple: {},
-  muted: { idn: null, idv: attrBooleanToEmptyString },
+  muted: {},
   name: {},
   nomodule: { idn: "noModule" },
   nonce: {},
@@ -4006,7 +4001,7 @@ var attrBehavior = {
   pattern: {},
   ping: {},
   placeholder: {},
-  playsinline: { idn: "playsInline" },
+  playsinline: { idn: null },
   popover: {
     idv: (val) => {
       if (val === true)
@@ -5801,7 +5796,7 @@ function mount(target, node) {
 
 // src/index.ts
 var src_default = createElement;
-var VERSION = true ? "0.25.1" : "development";
+var VERSION = true ? "0.25.2" : "development";
 export {
   ArrayEventType,
   ClassComponent,
