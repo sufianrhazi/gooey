@@ -105,13 +105,6 @@ declare global {
     }
 }
 
-function attrBooleanToEmptyString(
-    val: boolean | undefined
-): string | undefined {
-    if (!val) return undefined;
-    return '';
-}
-
 function attrStringOrNumberToNumber(
     val: string | number | undefined
 ): number | undefined {
@@ -199,7 +192,7 @@ const attrBehavior: Record<
     autocapitalize: {},
     autocomplete: {},
     autofocus: {},
-    autoplay: { idn: null, idv: attrBooleanToEmptyString },
+    autoplay: { idn: null },
     charset: { idn: null },
     checked: {},
     cite: {},
@@ -255,7 +248,7 @@ const attrBehavior: Record<
     lang: {},
     list: {},
     loading: {},
-    loop: { idv: attrBooleanToEmptyString },
+    loop: { idn: null },
     low: { idv: attrStringOrNumberToNumber },
     max: { idv: attrStringOrNumberToNumber },
     maxlength: {
@@ -270,7 +263,7 @@ const attrBehavior: Record<
         idv: attrStringOrIntegerToNumber,
     },
     multiple: {},
-    muted: { idn: null, idv: attrBooleanToEmptyString },
+    muted: {},
     name: {},
     nomodule: { idn: 'noModule' },
     nonce: {},
@@ -280,7 +273,7 @@ const attrBehavior: Record<
     pattern: {},
     ping: {},
     placeholder: {},
-    playsinline: { idn: 'playsInline' },
+    playsinline: { idn: null },
     popover: {
         idv: (val) => {
             if (val === true) return 'auto';
@@ -1298,7 +1291,7 @@ interface JSXVideoElementInterface extends JSXMediaElementInterface {
     /** Poster frame to show prior to video playback */
     poster?: string | undefined;
     /** Encourage the user agent to display video content within the element's playback area */
-    playsinline?: string | undefined;
+    playsinline?: boolean | undefined;
     /** Horizontal dimension */
     width?: string | number | undefined;
     /** Vertical dimension */
